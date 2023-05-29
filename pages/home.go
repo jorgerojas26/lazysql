@@ -226,15 +226,14 @@ func inputFieldFilter() *tview.InputField {
 				for _, tableName := range tables {
 					if strings.Contains(strings.ToLower(tableName), strings.ToLower(text)) {
 						found := false
-						for _, filteredTable := range FilteredTables {
+						for i, filteredTable := range FilteredTables {
 							if filteredTable.database == db {
 								found = true
-								filteredTable.tables = append(filteredTable.tables, tableName)
+								FilteredTables[i].tables = append(FilteredTables[i].tables, tableName)
 							}
 						}
 
 						if !found {
-
 							FilteredTables = append(FilteredTables, Table{database: db, tables: []string{tableName}})
 						}
 
