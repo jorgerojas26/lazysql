@@ -38,6 +38,8 @@ func (db *MySql) Connect() error {
 	var err error
 
 	db.connection, err = dburl.Open(db.connectionString)
+	db.connection.SetConnMaxIdleTime(10000)
+	db.connection.SetConnMaxLifetime(10000)
 	if err != nil {
 		return err
 	}
@@ -114,6 +116,57 @@ func (db *MySql) DescribeTable(table string) (results [][]string) {
 		rows.Scan(&field, &type_, &null, &key, &default_, &extra)
 
 		results = append(results, []string{field, type_, null, key, default_, extra})
+
+	}
+
+	return
+}
+
+func (db *MySql) GetTableConstraints(table string) (results [][]string) {
+	rows, _ := db.connection.Query("SELECT COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_NAME = " + "'" + table + "'")
+	defer rows.Close()
+
+	results = append(results, []string{"COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_COLUMN_NAME", "REFERENCED_TABLE_NAME"})
+
+	for rows.Next() {
+		var columnName, constraintName, referencedColumnName, referencedTableName string
+		rows.Scan(&columnName, &constraintName, &referencedColumnName, &referencedTableName)
+
+		results = append(results, []string{columnName, constraintName, referencedColumnName, referencedTableName})
+
+	}
+
+	return
+}
+
+func (db *MySql) GetTableForeignKeys(table string) (results [][]string) {
+	rows, _ := db.connection.Query("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME = " + "'" + table + "'")
+	defer rows.Close()
+
+	results = append(results, []string{"TABLE_NAME", "COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_TABLE_NAME", "REFERENCED_COLUMN_NAME"})
+
+	for rows.Next() {
+		var tableName, columnName, constraintName, referencedTableName, referencedColumnName string
+		rows.Scan(&tableName, &columnName, &constraintName, &referencedTableName, &referencedColumnName)
+
+		results = append(results, []string{tableName, columnName, constraintName, referencedTableName, referencedColumnName})
+
+	}
+
+	return
+}
+
+func (db *MySql) GetTableIndexes(table string) (results [][]string) {
+	rows, _ := db.connection.Query("SHOW INDEX FROM " + table)
+	defer rows.Close()
+
+	results = append(results, []string{"Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name", "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type", "Comment"})
+
+	for rows.Next() {
+		var tableName, nonUnique, keyName, seqInIndex, columnName, collation, cardinality, subPart, packed, null, indexType, comment string
+		rows.Scan(&tableName, &nonUnique, &keyName, &seqInIndex, &columnName, &collation, &cardinality, &subPart, &packed, &null, &indexType, &comment)
+
+		results = append(results, []string{tableName, nonUnique, keyName, seqInIndex, columnName, collation, cardinality, subPart, packed, null, indexType, comment})
 
 	}
 
