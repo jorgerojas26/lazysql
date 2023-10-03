@@ -60,7 +60,14 @@ func (t *TabbedPane) RemoveTab(index int) {
 	tab := t.state.Tabs[index]
 	t.RemovePage(tab.Name)
 	t.state.Tabs = append(t.state.Tabs[:index], t.state.Tabs[index+1:]...)
-	t.Wrapper.RemoveItem(tab.Page)
+	item := t.Wrapper.GetItem(index)
+	t.Wrapper.RemoveItem(item)
+
+	if t.GetTabCount() > 0 {
+		t.SwitchToPreviousTab()
+	} else {
+		t.state.CurrentTab = nil
+	}
 }
 
 func (t *TabbedPane) SetCurrentTab(index int) *Tab {

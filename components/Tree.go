@@ -135,7 +135,7 @@ func (tree *Tree) SetSelectedTable(table string) {
 }
 
 // Blur func
-func (tree *Tree) SetBlur() {
+func (tree *Tree) RemoveHighlight() {
 	tree.SetBorderColor(app.BlurTextColor)
 	tree.SetGraphicsColor(app.BlurTextColor)
 	tree.SetTitleColor(app.BlurTextColor)
@@ -156,7 +156,7 @@ func (tree *Tree) SetBlur() {
 }
 
 // Focus func
-func (tree *Tree) SetFocus() {
+func (tree *Tree) Highlight() {
 	tree.SetBorderColor(tcell.ColorWhite.TrueColor())
 	tree.SetGraphicsColor(app.ActiveTextColor)
 	tree.SetTitleColor(tcell.ColorWhite.TrueColor())

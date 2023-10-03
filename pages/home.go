@@ -30,30 +30,30 @@ func init() {
 	RightWrapper.SetBorder(true)
 	RightWrapper.SetDirection(tview.FlexColumnCSS)
 
-	LeftWrapper.SetFocusFunc(func() {
-		focusLeftWrapper()
-		App.ForceDraw()
-	})
-
-	RightWrapper.SetFocusFunc(func() {
-		focusRightWrapper()
-		App.ForceDraw()
-	})
-
 	RightWrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		var tab *components.Tab
 
 		if event.Rune() == '[' {
-			tab = TabbedPane.SwitchToPreviousTab()
+			focusTab(TabbedPane.SwitchToPreviousTab())
 		} else if event.Rune() == ']' {
-			tab = TabbedPane.SwitchToNextTab()
+			focusTab(TabbedPane.SwitchToNextTab())
 		} else if event.Rune() == '{' {
-			tab = TabbedPane.SwitchToFirstTab()
+			focusTab(TabbedPane.SwitchToFirstTab())
 		} else if event.Rune() == '}' {
-			tab = TabbedPane.SwitchToLastTab()
-		}
+			focusTab(TabbedPane.SwitchToLastTab())
+		} else if event.Rune() == 'X' {
+			tab = TabbedPane.GetCurrentTab()
 
-		focusTab(tab)
+			if tab != nil {
+				TabbedPane.RemoveTab(tab.Index)
+
+				if TabbedPane.GetTabCount() == 0 {
+					focusLeftWrapper()
+					return nil
+				}
+			}
+
+		}
 
 		return event
 	})
@@ -121,7 +121,7 @@ func subscribeToTreeChanges() {
 			records, err := drivers.Database.GetRecords(tableName, "", "", 0, 100, true)
 			if err != nil {
 				table.SetError(err.Error(), func() {
-					App.SetFocus(LeftWrapper)
+					focusLeftWrapper()
 				})
 				return
 			}
@@ -133,20 +133,22 @@ func subscribeToTreeChanges() {
 			table.SetIndexes(indexes)
 			table.SetDBReference(tableName)
 
-			App.SetFocus(RightWrapper)
+			focusRightWrapper()
 			table.SetLoading(false)
 		}
 	}
 }
 
 func focusRightWrapper() {
-	Tree.SetBlur()
+	Tree.RemoveHighlight()
 
 	RightWrapper.SetBorderColor(app.FocusTextColor)
 	LeftWrapper.SetBorderColor(app.BlurTextColor)
 	tab := TabbedPane.GetCurrentTab()
 
-	focusTab(tab)
+	if tab != nil {
+		focusTab(tab)
+	}
 }
 
 func focusTab(tab *components.Tab) {
@@ -169,12 +171,12 @@ func focusTab(tab *components.Tab) {
 }
 
 func focusLeftWrapper() {
-	Tree.SetFocus()
+	Tree.Highlight()
+
+	App.SetFocus(Tree)
 
 	RightWrapper.SetBorderColor(app.BlurTextColor)
 	LeftWrapper.SetBorderColor(app.FocusTextColor)
-
-	App.SetFocus(LeftWrapper)
 
 	tab := TabbedPane.GetCurrentTab()
 
