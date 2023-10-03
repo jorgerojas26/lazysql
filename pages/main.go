@@ -5,9 +5,7 @@ import (
 )
 
 var AllPages = tview.NewPages()
-var App = tview.NewApplication()
 
 func init() {
 	AllPages.AddPage("Connections", Connections, true, true)
-
 }

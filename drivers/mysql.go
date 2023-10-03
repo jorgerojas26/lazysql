@@ -3,25 +3,27 @@ package drivers
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/xo/dburl"
 )
 
 type MySql struct {
-	connection       *sql.DB
-	connectionString string
+	conn              *sql.DB
+	connectionString  string
+	lastExecutedQuery string
 }
 
 func (db *MySql) TestConnection() error {
 	var err error
 
-	db.connection, err = dburl.Open(db.connectionString)
+	db.conn, err = dburl.Open(db.connectionString)
 	if err != nil {
 		return err
 	}
 
-	err = db.connection.Ping()
+	err = db.conn.Ping()
 
 	if err != nil {
 		return err
@@ -37,26 +39,35 @@ func (db *MySql) ParseConnectionString(url string) (*dburl.URL, error) {
 func (db *MySql) Connect() error {
 	var err error
 
-	db.connection, err = dburl.Open(db.connectionString)
-	db.connection.SetConnMaxIdleTime(10000)
-	db.connection.SetConnMaxLifetime(10000)
+	db.conn, err = dburl.Open(db.connectionString)
+	// db.connection.SetConnMaxLifetime(time.Second * 120)
+	// db.conn.SetMaxIdleConns(0)
 	if err != nil {
 		return err
 	}
 
-	err = db.connection.Ping()
+	err = db.conn.Ping()
 	if err != nil {
 		return err
 	}
+
+	// Start polling the database for deadlocks
+	go func() {
+		for {
+			time.Sleep(25 * time.Second)
+			db.conn.Query("DO 42")
+		}
+	}()
+	// End polling the database for deadlocks
+
 	return nil
 }
 
 func (db *MySql) Disconnect() error {
-	return db.connection.Close()
+	return db.conn.Close()
 }
 
 func (db *MySql) SetConnectionString(connectionString string) {
-
 	db.connectionString = connectionString
 }
 
@@ -65,13 +76,13 @@ func (db *MySql) GetConnectionString() string {
 }
 
 func (db *MySql) GetConnection() *sql.DB {
-	return db.connection
+	return db.conn
 }
 
 func (db *MySql) GetDatabases() ([]string, error) {
 	var databases []string
 
-	rows, err := db.connection.Query("SHOW DATABASES")
+	rows, err := db.conn.Query("SHOW DATABASES")
 	if err != nil {
 		return databases, err
 	}
@@ -90,8 +101,7 @@ func (db *MySql) GetDatabases() ([]string, error) {
 func (db *MySql) GetTables(database string) ([]string, error) {
 	var tables []string
 
-	rows, err := db.connection.Query("SHOW TABLES FROM " + database)
-
+	rows, err := db.conn.Query("SHOW TABLES FROM " + database)
 	if err != nil {
 		return tables, err
 	}
@@ -106,7 +116,7 @@ func (db *MySql) GetTables(database string) ([]string, error) {
 }
 
 func (db *MySql) DescribeTable(table string) (results [][]string) {
-	rows, _ := db.connection.Query("DESCRIBE " + table)
+	rows, _ := db.conn.Query("DESCRIBE " + table)
 	defer rows.Close()
 
 	results = append(results, []string{"Name", "Type", "Null", "Key", "Default", "Extra"})
@@ -123,7 +133,7 @@ func (db *MySql) DescribeTable(table string) (results [][]string) {
 }
 
 func (db *MySql) GetTableConstraints(table string) (results [][]string) {
-	rows, _ := db.connection.Query("SELECT COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_NAME = " + "'" + table + "'")
+	rows, _ := db.conn.Query("SELECT COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_NAME = " + "'" + table + "'")
 	defer rows.Close()
 
 	results = append(results, []string{"COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_COLUMN_NAME", "REFERENCED_TABLE_NAME"})
@@ -140,7 +150,7 @@ func (db *MySql) GetTableConstraints(table string) (results [][]string) {
 }
 
 func (db *MySql) GetTableForeignKeys(table string) (results [][]string) {
-	rows, _ := db.connection.Query("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME = " + "'" + table + "'")
+	rows, _ := db.conn.Query("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME = " + "'" + table + "'")
 	defer rows.Close()
 
 	results = append(results, []string{"TABLE_NAME", "COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_TABLE_NAME", "REFERENCED_COLUMN_NAME"})
@@ -157,7 +167,7 @@ func (db *MySql) GetTableForeignKeys(table string) (results [][]string) {
 }
 
 func (db *MySql) GetTableIndexes(table string) (results [][]string) {
-	rows, _ := db.connection.Query("SHOW INDEX FROM " + table)
+	rows, _ := db.conn.Query("SHOW INDEX FROM " + table)
 	defer rows.Close()
 
 	results = append(results, []string{"Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name", "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type", "Comment"})
@@ -173,14 +183,29 @@ func (db *MySql) GetTableIndexes(table string) (results [][]string) {
 	return
 }
 
-func (db *MySql) GetTableData(table string, offset int, limit int, appendColumns bool) (results [][]string) {
+func (db *MySql) GetRecords(table string, where string, sort string, offset int, limit int, appendColumns bool) (results [][]string, err error) {
 	defaultLimit := 100
 
 	if limit != 0 {
 		defaultLimit = limit
 	}
 
-	rows, _ := db.connection.Query("SELECT * FROM " + table + " LIMIT " + fmt.Sprint(offset) + "," + fmt.Sprint(defaultLimit))
+	query := fmt.Sprintf("SELECT * FROM %s s LIMIT %d,%d", table, offset, defaultLimit)
+
+	if where != "" {
+		query = fmt.Sprintf("SELECT * FROM %s %s LIMIT %d,%d", table, where, offset, defaultLimit)
+	}
+
+	if sort != "" {
+		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d,%d", table, where, sort, offset, defaultLimit)
+	}
+
+	rows, err := db.conn.Query(query)
+	if err != nil {
+		return results, err
+	}
+	db.lastExecutedQuery = query
+
 	defer rows.Close()
 
 	columns, _ := rows.Columns()
@@ -207,6 +232,19 @@ func (db *MySql) GetTableData(table string, offset int, limit int, appendColumns
 	}
 
 	return
+}
+
+func (db *MySql) UpdateRecord(table string, column string, value string, id string) error {
+	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE id = \"%s\"", table, column, value, id)
+	_, err := db.conn.Exec(query)
+
+	return err
+}
+
+// lastExecutedQuery GETTER
+
+func (db *MySql) GetLastExecutedQuery() string {
+	return db.lastExecutedQuery
 }
 
 //export the database

@@ -8,8 +8,10 @@ import (
 	"github.com/rivo/tview"
 )
 
-var AddConnectionForm *tview.Form
-var AddConnectionFormWrapper *tview.Flex
+var (
+	AddConnectionForm        *tview.Form
+	AddConnectionFormWrapper *tview.Flex
+)
 
 func init() {
 	AddConnectionFormWrapper, AddConnectionForm = renderConnectionForm()
@@ -17,26 +19,36 @@ func init() {
 }
 
 func renderConnectionForm() (wrapper *tview.Flex, addForm *tview.Form) {
-
 	wrapper = tview.NewFlex().SetDirection(tview.FlexRow)
 
-	addForm = tview.NewForm().SetFieldBackgroundColor(tcell.Color100).SetButtonBackgroundColor(tcell.Color101).SetLabelColor(tcell.ColorAntiqueWhite)
+	addForm = tview.NewForm().SetFieldBackgroundColor(tcell.ColorWhite).SetButtonBackgroundColor(tcell.ColorWhite).SetLabelColor(tcell.ColorWhite.TrueColor()).SetFieldTextColor(tcell.ColorBlack)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 
 	wrapper.AddItem(addForm, 0, 1, true)
 
-	ConnectionStatus.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki).Background(tcell.ColorBlack))
+	ConnectionStatus.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()).Background(tcell.ColorBlack))
 	wrapper.AddItem(ConnectionStatus, 1, 0, false)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
-	buttonsWrapper.AddItem(tview.NewButton("[black]F1 [white]Save"), 0, 1, false)
-	buttonsWrapper.AddItem(nil, 1, 0, false)
-	buttonsWrapper.AddItem(tview.NewButton("[black]F2 [white]Test"), 0, 1, false)
-	buttonsWrapper.AddItem(nil, 1, 0, false)
-	buttonsWrapper.AddItem(tview.NewButton("[black]F3 [white]Connect"), 0, 1, false)
-	buttonsWrapper.AddItem(nil, 1, 0, false)
-	buttonsWrapper.AddItem(tview.NewButton("[black]Esc [white]Cancel"), 0, 1, false)
 
+	saveButton := tview.NewButton("[darkred]F1 [black]Save")
+	saveButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	buttonsWrapper.AddItem(saveButton, 0, 1, false)
+	buttonsWrapper.AddItem(nil, 1, 0, false)
+
+	testButton := tview.NewButton("[darkred]F2 [black]Test")
+	testButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	buttonsWrapper.AddItem(testButton, 0, 1, false)
+	buttonsWrapper.AddItem(nil, 1, 0, false)
+
+	connectButton := tview.NewButton("[darkred]F3 [black]Connect")
+	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	buttonsWrapper.AddItem(connectButton, 0, 1, false)
+	buttonsWrapper.AddItem(nil, 1, 0, false)
+
+	cancelButton := tview.NewButton("[darkred]Esc [black]Cancel")
+	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 	wrapper.SetInputCapture(SaveConnectionInputHandler())
 	wrapper.AddItem(buttonsWrapper, 1, 0, false)
 
@@ -44,7 +56,7 @@ func renderConnectionForm() (wrapper *tview.Flex, addForm *tview.Form) {
 }
 
 func TestConnection(connectionString string) {
-	ConnectionStatus.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki).Background(tcell.ColorBlack))
+	ConnectionStatus.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()).Background(tcell.ColorBlack))
 
 	db := drivers.MySql{}
 	db.SetConnectionString(connectionString)
@@ -54,7 +66,7 @@ func TestConnection(connectionString string) {
 	if err != nil {
 		ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
 	} else {
-		ConnectionStatus.SetText("Connection success").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki).Background(tcell.ColorBlack))
+		ConnectionStatus.SetText("Connection success").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()).Background(tcell.ColorBlack))
 	}
 }
 
@@ -94,7 +106,6 @@ func SaveConnectionInputHandler() func(event *tcell.EventKey) *tcell.EventKey {
 				databases, _ := utils.LoadConnections()
 				newDatabases := append(databases, database)
 				err := utils.SaveConnectionConfig(newDatabases)
-
 				if err != nil {
 					ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
 					return event
@@ -139,7 +150,6 @@ func EditConnectionInputHandler(databases []utils.Connection, row int) func(even
 				}
 
 				err := utils.SaveConnectionConfig(newDatabases)
-
 				if err != nil {
 					ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
 					return event

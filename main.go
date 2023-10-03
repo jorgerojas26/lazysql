@@ -1,12 +1,12 @@
 package main
 
 import (
+	"lazysql/app"
 	"lazysql/pages"
 )
 
 func main() {
-
-	if err := pages.App.SetRoot(pages.AllPages, true).EnableMouse(true).Run(); err != nil {
+	if err := app.App.SetRoot(pages.AllPages, true).Run(); err != nil {
 		panic(err)
 	}
 }
