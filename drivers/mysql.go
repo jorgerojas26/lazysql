@@ -54,8 +54,8 @@ func (db *MySql) Connect() error {
 	// Start polling the database for deadlocks
 	go func() {
 		for {
-			time.Sleep(25 * time.Second)
-			db.conn.Query("DO 42")
+			time.Sleep(15 * time.Second)
+			db.conn.Ping()
 		}
 	}()
 	// End polling the database for deadlocks

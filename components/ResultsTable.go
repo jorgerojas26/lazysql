@@ -5,6 +5,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"golang.design/x/clipboard"
 
 	"lazysql/app"
 	"lazysql/drivers"
@@ -12,13 +13,13 @@ import (
 
 type ResultsTableState struct {
 	DBReference string
+	currentSort string
 	records     [][]string
 	columns     [][]string
 	constraints [][]string
 	foreignKeys [][]string
 	indexes     [][]string
 	isEditing   bool
-	currentSort string
 }
 
 type ResultsTable struct {
@@ -226,6 +227,20 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if event.Rune() == 75 {
 		currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 		table.SetSortedBy(currentColumnName, "ASC")
+	} else if event.Rune() == 121 { // y Key
+		selectedCell := table.Table.GetCell(selectedRowIndex, selectedColumnIndex)
+
+		if selectedCell != nil {
+			err := clipboard.Init()
+
+			if err == nil {
+				text := []byte(selectedCell.Text)
+
+				if text != nil {
+					clipboard.Write(clipboard.FmtText, text)
+				}
+			}
+		}
 	}
 
 	return event

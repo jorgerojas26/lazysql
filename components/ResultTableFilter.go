@@ -11,9 +11,9 @@ type ResultsTableFilter struct {
 	*tview.Flex
 	Input         *tview.InputField
 	Label         *tview.TextView
+	currentFilter string
 	subscribers   []chan StateChange
 	filtering     bool
-	currentFilter string
 }
 
 func NewResultsFilter() *ResultsTableFilter {

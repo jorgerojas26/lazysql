@@ -61,7 +61,6 @@ func init() {
 
 	RightWrapper.AddItem(TabbedPane.Wrapper, 2, 0, false)
 	RightWrapper.AddItem(TabbedPane.Pages, 0, 1, false)
-	// RightWrapper.AddItem(Table.Page, 0, 1, false)
 
 	HomePage.AddItem(LeftWrapper, 30, 1, true)
 	HomePage.AddItem(RightWrapper, 0, 5, false)
@@ -80,6 +79,8 @@ func init() {
 				if !table.Filter.GetIsFiltering() && !table.GetIsEditing() {
 					App.Stop()
 				}
+			} else {
+				App.Stop()
 			}
 		}
 
@@ -132,6 +133,7 @@ func subscribeToTreeChanges() {
 			table.SetForeignKeys(foreignKeys)
 			table.SetIndexes(indexes)
 			table.SetDBReference(tableName)
+			table.Select(1, 0)
 
 			focusRightWrapper()
 			table.SetLoading(false)
@@ -173,8 +175,6 @@ func focusTab(tab *components.Tab) {
 func focusLeftWrapper() {
 	Tree.Highlight()
 
-	App.SetFocus(Tree)
-
 	RightWrapper.SetBorderColor(app.BlurTextColor)
 	LeftWrapper.SetBorderColor(app.FocusTextColor)
 
@@ -186,4 +186,6 @@ func focusLeftWrapper() {
 		table.RemoveHighlightAll()
 
 	}
+
+	App.SetFocus(Tree)
 }

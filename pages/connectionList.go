@@ -150,6 +150,7 @@ func connect(connectionUrl string) {
 		ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
 	} else {
 		AllPages.SwitchToPage("home")
+		Tree.SetCurrentNode(Tree.GetRoot())
 		App.Draw()
 	}
 }
