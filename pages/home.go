@@ -60,7 +60,7 @@ func init() {
 			if tab != nil {
 				table := tab.Page
 
-				if !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
+				if table.Menu.GetSelectedOption() == 1 && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 					table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
 					table.FetchRecords(table.GetDBReference())
 
@@ -74,7 +74,7 @@ func init() {
 			if tab != nil {
 				table := tab.Page
 
-				if !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
+				if table.Menu.GetSelectedOption() == 1 && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 					table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
 					table.FetchRecords(table.GetDBReference())
 				}

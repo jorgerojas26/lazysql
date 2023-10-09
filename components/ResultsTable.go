@@ -14,6 +14,7 @@ import (
 type ResultsTableState struct {
 	dbReference string
 	currentSort string
+	error       string
 	records     [][]string
 	columns     [][]string
 	constraints [][]string
@@ -235,10 +236,12 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		}
 	} else if event.Rune() == 74 { // J Key
 		currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
+		table.Pagination.SetOffset(0)
 		table.SetSortedBy(currentColumnName, "DESC")
 
 	} else if event.Rune() == 75 {
 		currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
+		table.Pagination.SetOffset(0)
 		table.SetSortedBy(currentColumnName, "ASC")
 	} else if event.Rune() == 121 { // y Key
 		selectedCell := table.Table.GetCell(selectedRowIndex, selectedColumnIndex)
@@ -313,39 +316,25 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 		case "Filter":
 			table.Filter.SetIsFiltering(false)
 			if stateChange.Value != "" {
-				rows, err := drivers.MySQL.GetRecords(table.GetDBReference(), stateChange.Value.(string), "", 0, 100, true)
+				rows := table.FetchRecords(table.GetDBReference())
 
-				if err != nil {
-					table.SetError(err.Error(), func() {
-						app.App.SetFocus(table.Filter.Input)
-					})
-				} else {
-					table.SetRecords(rows)
-					if len(rows) > 1 {
-						table.Menu.SetSelectedOption(1)
-						app.App.SetFocus(table)
-						table.HighlightTable()
-						table.Filter.HighlightLocal()
-						table.SetInputCapture(table.tableInputCapture)
-						app.App.ForceDraw()
-					}
-				}
-
-			} else {
-				rows, err := drivers.MySQL.GetRecords(table.GetDBReference(), "", "", 0, 100, true)
-
-				if err != nil {
-					table.SetError(err.Error(), func() {
-						app.App.SetFocus(table.Filter.Input)
-					})
-				} else {
-					table.SetRecords(rows)
-					table.SetInputCapture(table.tableInputCapture)
+				if len(rows) > 1 {
+					table.Menu.SetSelectedOption(1)
 					app.App.SetFocus(table)
 					table.HighlightTable()
 					table.Filter.HighlightLocal()
+					table.SetInputCapture(table.tableInputCapture)
 					app.App.ForceDraw()
 				}
+
+			} else {
+				table.FetchRecords(table.GetDBReference())
+
+				table.SetInputCapture(table.tableInputCapture)
+				app.App.SetFocus(table)
+				table.HighlightTable()
+				table.Filter.HighlightLocal()
+				app.App.ForceDraw()
 
 			}
 		}
@@ -430,10 +419,17 @@ func (table *ResultsTable) SetDBReference(dbReference string) {
 }
 
 func (table *ResultsTable) SetError(err string, done func()) {
+	table.state.error = err
+
 	table.Error.SetText(err)
 	table.Error.SetDoneFunc(func(_ int, _ string) {
+		table.state.error = ""
 		table.Page.HidePage("error")
-		app.App.SetFocus(table)
+		if table.Filter.GetIsFiltering() {
+			app.App.SetFocus(table.Filter.Input)
+		} else {
+			app.App.SetFocus(table)
+		}
 		if done != nil {
 			done()
 		}
@@ -451,7 +447,11 @@ func (table *ResultsTable) SetLoading(show bool) {
 		app.App.ForceDraw()
 	} else {
 		table.Page.HidePage("loading")
-		app.App.SetFocus(table)
+		if table.state.error != "" {
+			app.App.SetFocus(table.Error)
+		} else {
+			app.App.SetFocus(table)
+		}
 		app.App.ForceDraw()
 	}
 }
@@ -470,7 +470,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	if table.GetCurrentSort() != sort {
 		where := table.Filter.GetCurrentFilter()
 		table.SetLoading(true)
-		records, err := drivers.MySQL.GetRecords(table.GetDBReference(), where, sort, 0, 100, true)
+		records, err := drivers.MySQL.GetRecords(table.GetDBReference(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
 		table.SetLoading(false)
 
 		if err != nil {
@@ -507,13 +507,18 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	}
 }
 
-func (table *ResultsTable) FetchRecords(tableName string) {
+func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	table.SetLoading(true)
 
-	records, totalRecords, err := drivers.MySQL.GetPaginatedRecords(tableName, "", "", table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
+	where := table.Filter.GetCurrentFilter()
+	sort := table.GetCurrentSort()
+
+	records, totalRecords, err := drivers.MySQL.GetPaginatedRecords(tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
 
 	if err != nil {
-		table.SetError(err.Error(), nil)
+		table.SetError(err.Error(), func() {
+			app.App.SetFocus(table)
+		})
 	}
 
 	columns := drivers.MySQL.DescribeTable(tableName)
@@ -533,4 +538,5 @@ func (table *ResultsTable) FetchRecords(tableName string) {
 
 	table.SetLoading(false)
 
+	return records
 }
