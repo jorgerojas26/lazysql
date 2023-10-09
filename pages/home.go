@@ -6,7 +6,6 @@ import (
 
 	"lazysql/app"
 	"lazysql/components"
-	"lazysql/drivers"
 )
 
 var (
@@ -20,6 +19,8 @@ var (
 	LeftWrapper  = tview.NewFlex()
 	RightWrapper = tview.NewFlex()
 )
+
+var FocusedWrapper = "left"
 
 func init() {
 	go subscribeToTreeChanges()
@@ -53,13 +54,38 @@ func init() {
 				}
 			}
 
+		} else if event.Rune() == '<' {
+			tab = TabbedPane.GetCurrentTab()
+
+			if tab != nil {
+				table := tab.Page
+
+				if !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
+					table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
+					table.FetchRecords(table.GetDBReference())
+
+				}
+
+			}
+
+		} else if event.Rune() == '>' {
+			tab = TabbedPane.GetCurrentTab()
+
+			if tab != nil {
+				table := tab.Page
+
+				if !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
+					table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
+					table.FetchRecords(table.GetDBReference())
+				}
+			}
 		}
 
 		return event
 	})
 	LeftWrapper.AddItem(Tree, 0, 1, true)
 
-	RightWrapper.AddItem(TabbedPane.Wrapper, 2, 0, false)
+	RightWrapper.AddItem(TabbedPane.Wrapper, 1, 0, false)
 	RightWrapper.AddItem(TabbedPane.Pages, 0, 1, false)
 
 	HomePage.AddItem(LeftWrapper, 30, 1, true)
@@ -69,9 +95,13 @@ func init() {
 		tab := TabbedPane.GetCurrentTab()
 
 		if event.Rune() == 'H' {
-			focusLeftWrapper()
+			if FocusedWrapper == "right" {
+				focusLeftWrapper()
+			}
 		} else if event.Rune() == 'L' {
-			focusRightWrapper()
+			if FocusedWrapper == "left" {
+				focusRightWrapper()
+			}
 		} else if event.Rune() == 'q' {
 			if tab != nil {
 				table := tab.Page
@@ -98,11 +128,6 @@ func subscribeToTreeChanges() {
 		case "SelectedTable":
 			tableName := stateChange.Value.(string)
 
-			columns := drivers.Database.DescribeTable(tableName)
-			constraints := drivers.Database.GetTableConstraints(tableName)
-			foreignKeys := drivers.Database.GetTableForeignKeys(tableName)
-			indexes := drivers.Database.GetTableIndexes(tableName)
-
 			tab := TabbedPane.GetTabByName(tableName)
 			var table *components.ResultsTable = nil
 
@@ -118,25 +143,12 @@ func subscribeToTreeChanges() {
 				})
 			}
 
-			table.SetLoading(true)
-			records, err := drivers.Database.GetRecords(tableName, "", "", 0, 100, true)
-			if err != nil {
-				table.SetError(err.Error(), func() {
-					focusLeftWrapper()
-				})
-				return
-			}
-
-			table.SetRecords(records)
-			table.SetColumns(columns)
-			table.SetConstraints(constraints)
-			table.SetForeignKeys(foreignKeys)
-			table.SetIndexes(indexes)
-			table.SetDBReference(tableName)
-			table.Select(1, 0)
+			table.FetchRecords(tableName)
 
 			focusRightWrapper()
-			table.SetLoading(false)
+
+			app.App.ForceDraw()
+
 		}
 	}
 }
@@ -146,11 +158,14 @@ func focusRightWrapper() {
 
 	RightWrapper.SetBorderColor(app.FocusTextColor)
 	LeftWrapper.SetBorderColor(app.BlurTextColor)
+	TabbedPane.Highlight()
 	tab := TabbedPane.GetCurrentTab()
 
 	if tab != nil {
 		focusTab(tab)
 	}
+
+	FocusedWrapper = "right"
 }
 
 func focusTab(tab *components.Tab) {
@@ -187,5 +202,9 @@ func focusLeftWrapper() {
 
 	}
 
+	TabbedPane.RemoveHighlight()
+
 	App.SetFocus(Tree)
+
+	FocusedWrapper = "left"
 }

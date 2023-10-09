@@ -11,8 +11,8 @@ import (
 )
 
 type TreeState struct {
-	SelectedDatabase string
-	SelectedTable    string
+	selectedDatabase string
+	selectedTable    string
 }
 
 type Tree struct {
@@ -23,8 +23,8 @@ type Tree struct {
 
 func NewTree() *Tree {
 	state := &TreeState{
-		SelectedDatabase: "",
-		SelectedTable:    "",
+		selectedDatabase: "",
+		selectedTable:    "",
 	}
 
 	tree := &Tree{
@@ -45,7 +45,7 @@ func NewTree() *Tree {
 	tree.SetCurrentNode(rootNode)
 
 	tree.SetFocusFunc(func() {
-		databases, err := drivers.Database.GetDatabases()
+		databases, err := drivers.MySQL.GetDatabases()
 		if err != nil {
 			panic(err)
 		}
@@ -62,7 +62,7 @@ func NewTree() *Tree {
 			} else {
 				tree.SetSelectedDatabase(node.GetText())
 
-				tables, err := drivers.Database.GetTables(state.SelectedDatabase)
+				tables, err := drivers.MySQL.GetTables(tree.GetSelectedDatabase())
 				if err != nil {
 					// TODO: Handle error
 					return
@@ -102,8 +102,8 @@ func (tree *Tree) Subscribe() chan StateChange {
 	return subscriber
 }
 
-// Notify subscribers of changes in the tree state
-func (tree *Tree) Notify(change StateChange) {
+// Publish subscribers of changes in the tree state
+func (tree *Tree) Publish(change StateChange) {
 	for _, subscriber := range tree.subscribers {
 		subscriber <- change
 	}
@@ -111,24 +111,24 @@ func (tree *Tree) Notify(change StateChange) {
 
 // Getters and Setters
 func (tree *Tree) GetSelectedDatabase() string {
-	return tree.state.SelectedDatabase
+	return tree.state.selectedDatabase
 }
 
 func (tree *Tree) GetSelectedTable() string {
-	return tree.state.SelectedTable
+	return tree.state.selectedTable
 }
 
 func (tree *Tree) SetSelectedDatabase(database string) {
-	tree.state.SelectedDatabase = database
-	tree.Notify(StateChange{
+	tree.state.selectedDatabase = database
+	tree.Publish(StateChange{
 		Key:   "SelectedDatabase",
 		Value: database,
 	})
 }
 
 func (tree *Tree) SetSelectedTable(table string) {
-	tree.state.SelectedTable = table
-	tree.Notify(StateChange{
+	tree.state.selectedTable = table
+	tree.Publish(StateChange{
 		Key:   "SelectedTable",
 		Value: table,
 	})

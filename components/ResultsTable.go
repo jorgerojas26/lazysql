@@ -12,7 +12,7 @@ import (
 )
 
 type ResultsTableState struct {
-	DBReference string
+	dbReference string
 	currentSort string
 	records     [][]string
 	columns     [][]string
@@ -20,17 +20,19 @@ type ResultsTableState struct {
 	foreignKeys [][]string
 	indexes     [][]string
 	isEditing   bool
+	isLoading   bool
 }
 
 type ResultsTable struct {
 	*tview.Table
-	state   *ResultsTableState
-	Page    *tview.Pages
-	Wrapper *tview.Flex
-	Menu    *ResultsTableMenu
-	Filter  *ResultsTableFilter
-	Error   *tview.Modal
-	Loading *tview.Modal
+	state      *ResultsTableState
+	Page       *tview.Pages
+	Wrapper    *tview.Flex
+	Menu       *ResultsTableMenu
+	Filter     *ResultsTableFilter
+	Error      *tview.Modal
+	Loading    *tview.Modal
+	Pagination *Pagination
 }
 
 var ErrorModal = tview.NewModal()
@@ -42,6 +44,8 @@ func NewResultsTable() *ResultsTable {
 		constraints: [][]string{},
 		foreignKeys: [][]string{},
 		indexes:     [][]string{},
+		isEditing:   false,
+		isLoading:   false,
 	}
 
 	menu := NewResultsTableMenu()
@@ -70,15 +74,18 @@ func NewResultsTable() *ResultsTable {
 	pages.AddPage("error", errorModal, true, false)
 	pages.AddPage("loading", loadingModal, false, false)
 
+	pagination := NewPagination()
+
 	table := &ResultsTable{
-		Table:   tview.NewTable(),
-		state:   state,
-		Menu:    menu,
-		Filter:  filter,
-		Page:    pages,
-		Wrapper: wrapper,
-		Error:   errorModal,
-		Loading: loadingModal,
+		Table:      tview.NewTable(),
+		state:      state,
+		Menu:       menu,
+		Filter:     filter,
+		Page:       pages,
+		Wrapper:    wrapper,
+		Error:      errorModal,
+		Loading:    loadingModal,
+		Pagination: pagination,
 	}
 
 	table.SetSelectable(true, true)
@@ -90,6 +97,7 @@ func NewResultsTable() *ResultsTable {
 	go table.subscribeToFilterChanges()
 
 	wrapper.AddItem(table, 0, 1, true)
+	wrapper.AddItem(pagination, 3, 0, false)
 
 	return table
 }
@@ -124,18 +132,23 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	if event.Rune() == 49 { // 1 Key
 		table.Menu.SetSelectedOption(1)
 		table.UpdateRows(table.GetRecords())
+		table.Select(1, 0)
 	} else if event.Rune() == 50 { // 2 Key
 		table.Menu.SetSelectedOption(2)
 		table.UpdateRows(table.GetColumns())
+		table.Select(1, 0)
 	} else if event.Rune() == 51 { // 3 Key
 		table.Menu.SetSelectedOption(3)
 		table.UpdateRows(table.GetConstraints())
+		table.Select(1, 0)
 	} else if event.Rune() == 52 { // 4 Key
 		table.Menu.SetSelectedOption(4)
 		table.UpdateRows(table.GetForeignKeys())
+		table.Select(1, 0)
 	} else if event.Rune() == 53 { // 5 Key
 		table.Menu.SetSelectedOption(5)
 		table.UpdateRows(table.GetIndexes())
+		table.Select(1, 0)
 	} else if event.Rune() == 47 { // / Key
 		app.App.SetFocus(table.Filter.Input)
 		table.RemoveHighlightTable()
@@ -171,7 +184,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 						cell.SetBackgroundColor(tcell.ColorYellow)
 						cell.SetTextColor(tcell.ColorBlack)
 
-						err := drivers.Database.UpdateRecord(table.GetDBReference(), selectedColumnName, newValue, selectedRowId)
+						err := drivers.MySQL.UpdateRecord(table.GetDBReference(), selectedColumnName, newValue, selectedRowId)
 						if err != nil {
 							panic(err)
 						}
@@ -300,7 +313,8 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 		case "Filter":
 			table.Filter.SetIsFiltering(false)
 			if stateChange.Value != "" {
-				rows, err := drivers.Database.GetRecords(table.GetDBReference(), stateChange.Value.(string), "", 0, 100, true)
+				rows, err := drivers.MySQL.GetRecords(table.GetDBReference(), stateChange.Value.(string), "", 0, 100, true)
+
 				if err != nil {
 					table.SetError(err.Error(), func() {
 						app.App.SetFocus(table.Filter.Input)
@@ -318,7 +332,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 				}
 
 			} else {
-				rows, err := drivers.Database.GetRecords(table.GetDBReference(), "", "", 0, 100, true)
+				rows, err := drivers.MySQL.GetRecords(table.GetDBReference(), "", "", 0, 100, true)
 
 				if err != nil {
 					table.SetError(err.Error(), func() {
@@ -361,7 +375,7 @@ func (table *ResultsTable) GetForeignKeys() [][]string {
 }
 
 func (table *ResultsTable) GetDBReference() string {
-	return table.state.DBReference
+	return table.state.dbReference
 }
 
 func (table *ResultsTable) GetIsEditing() bool {
@@ -370,6 +384,22 @@ func (table *ResultsTable) GetIsEditing() bool {
 
 func (table *ResultsTable) GetCurrentSort() string {
 	return table.state.currentSort
+}
+
+func (table *ResultsTable) GetColumnNameByIndex(index int) string {
+	columns := table.GetColumns()
+
+	for i, col := range columns {
+		if i > 0 && i == index+1 {
+			return col[0]
+		}
+	}
+
+	return ""
+}
+
+func (table *ResultsTable) GetIsLoading() bool {
+	return table.state.isLoading
 }
 
 // Setters
@@ -396,7 +426,7 @@ func (table *ResultsTable) SetIndexes(indexes [][]string) {
 }
 
 func (table *ResultsTable) SetDBReference(dbReference string) {
-	table.state.DBReference = dbReference
+	table.state.dbReference = dbReference
 }
 
 func (table *ResultsTable) SetError(err string, done func()) {
@@ -414,6 +444,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 }
 
 func (table *ResultsTable) SetLoading(show bool) {
+	table.state.isLoading = show
 	if show {
 		table.Page.ShowPage("loading")
 		app.App.SetFocus(table.Loading)
@@ -439,7 +470,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	if table.GetCurrentSort() != sort {
 		where := table.Filter.GetCurrentFilter()
 		table.SetLoading(true)
-		records, err := drivers.Database.GetRecords(table.GetDBReference(), where, sort, 0, 100, true)
+		records, err := drivers.MySQL.GetRecords(table.GetDBReference(), where, sort, 0, 100, true)
 		table.SetLoading(false)
 
 		if err != nil {
@@ -476,14 +507,30 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	}
 }
 
-func (table *ResultsTable) GetColumnNameByIndex(index int) string {
-	columns := table.GetColumns()
+func (table *ResultsTable) FetchRecords(tableName string) {
+	table.SetLoading(true)
 
-	for i, col := range columns {
-		if i > 0 && i == index+1 {
-			return col[0]
-		}
+	records, totalRecords, err := drivers.MySQL.GetPaginatedRecords(tableName, "", "", table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
+
+	if err != nil {
+		table.SetError(err.Error(), nil)
 	}
 
-	return ""
+	columns := drivers.MySQL.DescribeTable(tableName)
+	constraints := drivers.MySQL.GetTableConstraints(tableName)
+	foreignKeys := drivers.MySQL.GetTableForeignKeys(tableName)
+	indexes := drivers.MySQL.GetTableIndexes(tableName)
+
+	table.SetRecords(records)
+	table.SetColumns(columns)
+	table.SetConstraints(constraints)
+	table.SetForeignKeys(foreignKeys)
+	table.SetIndexes(indexes)
+	table.SetDBReference(tableName)
+	table.Select(1, 0)
+
+	table.Pagination.SetTotalRecords(totalRecords)
+
+	table.SetLoading(false)
+
 }

@@ -54,7 +54,7 @@ func (db *MySql) Connect() error {
 	// Start polling the database for deadlocks
 	go func() {
 		for {
-			time.Sleep(15 * time.Second)
+			time.Sleep(30 * time.Second)
 			db.conn.Ping()
 		}
 	}()
@@ -234,6 +234,68 @@ func (db *MySql) GetRecords(table string, where string, sort string, offset int,
 	return
 }
 
+// Get paginated records
+func (db *MySql) GetPaginatedRecords(table string, where string, sort string, offset int, limit int, appendColumns bool) (paginatedResults [][]string, totalRecords int, err error) {
+	defaultLimit := 100
+
+	if limit != 0 {
+		defaultLimit = limit
+	}
+
+	query := fmt.Sprintf("SELECT * FROM %s s LIMIT %d,%d", table, offset, defaultLimit)
+
+	if where != "" {
+		query = fmt.Sprintf("SELECT * FROM %s %s LIMIT %d,%d", table, where, offset, defaultLimit)
+	}
+
+	if sort != "" {
+		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d,%d", table, where, sort, offset, defaultLimit)
+	}
+
+	paginatedRows, err := db.conn.Query(query)
+	if err != nil {
+		totalRecords = 0
+		return paginatedResults, totalRecords, err
+	}
+
+	queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", table, where)
+
+	rows := db.conn.QueryRow(queryWithoutLimit)
+	if err != nil {
+		totalRecords = 0
+		return paginatedResults, totalRecords, err
+	}
+
+	rows.Scan(&totalRecords)
+
+	defer paginatedRows.Close()
+
+	columns, _ := paginatedRows.Columns()
+
+	if appendColumns {
+		paginatedResults = append(paginatedResults, columns)
+	}
+
+	for paginatedRows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		paginatedRows.Scan(rowValues...)
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		paginatedResults = append(paginatedResults, row)
+
+	}
+
+	return
+}
+
 func (db *MySql) UpdateRecord(table string, column string, value string, id string) error {
 	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE id = \"%s\"", table, column, value, id)
 	_, err := db.conn.Exec(query)
@@ -241,11 +303,9 @@ func (db *MySql) UpdateRecord(table string, column string, value string, id stri
 	return err
 }
 
-// lastExecutedQuery GETTER
-
 func (db *MySql) GetLastExecutedQuery() string {
 	return db.lastExecutedQuery
 }
 
 //export the database
-var Database MySql = MySql{}
+var MySQL MySql = MySql{}

@@ -1,11 +1,11 @@
 package pages
 
 import (
-	"lazysql/drivers"
-	"lazysql/utils"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+
+	"lazysql/drivers"
+	"lazysql/utils"
 )
 
 var (
@@ -87,7 +87,7 @@ func SaveConnectionInputHandler() func(event *tcell.EventKey) *tcell.EventKey {
 			}
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
 			connectionString := AddConnectionForm.GetFormItem(0).(*tview.InputField).GetText()
-			parsed, err := drivers.Database.ParseConnectionString(connectionString)
+			parsed, err := drivers.MySQL.ParseConnectionString(connectionString)
 			if err != nil {
 				ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
 				return event
@@ -128,7 +128,7 @@ func EditConnectionInputHandler(databases []utils.Connection, row int) func(even
 			ConnectionPages.SwitchToPage("ConnectionList")
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
 			connectionString := AddConnectionForm.GetFormItem(0).(*tview.InputField).GetText()
-			parsed, err := drivers.Database.ParseConnectionString(connectionString)
+			parsed, err := drivers.MySQL.ParseConnectionString(connectionString)
 
 			if err != nil {
 				ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))

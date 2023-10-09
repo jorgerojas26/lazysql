@@ -1,6 +1,7 @@
 package components
 
 import (
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"lazysql/app"
@@ -29,6 +30,7 @@ type TabbedPane struct {
 
 func NewTabbedPane() *TabbedPane {
 	wrapper := tview.NewFlex()
+	wrapper.SetBorderPadding(0, 0, 1, 1)
 	return &TabbedPane{
 		Pages:   tview.NewPages(),
 		Wrapper: wrapper,
@@ -50,7 +52,7 @@ func (t *TabbedPane) AddTab(tab *Tab) {
 	textView.SetDynamicColors(true)
 	item := &Item{textView}
 
-	t.Wrapper.AddItem(item, len(tabWithIndex.Name)+1, 1, false)
+	t.Wrapper.AddItem(item, len(tabWithIndex.Name)+2, 0, false)
 	t.HighlightTabItem(len(t.state.Tabs) - 1)
 
 	t.AddAndSwitchToPage(tab.Name, tab.Page.Page, true)
@@ -184,7 +186,30 @@ func (t *TabbedPane) HighlightTabItem(index int) {
 	itemCount := t.Wrapper.GetItemCount()
 
 	for i := 0; i < itemCount; i++ {
+		item := t.Wrapper.GetItem(i).(*Item)
+
 		if i == index {
+			item.SetTextColor(app.ActiveTextColor)
+			item.SetBackgroundColor(tcell.ColorBlack.TrueColor())
+		} else {
+			item.SetTextColor(app.FocusTextColor)
+		}
+	}
+}
+
+func (t *TabbedPane) RemoveHighlight() {
+	itemCount := t.Wrapper.GetItemCount()
+
+	for i := 0; i < itemCount; i++ {
+		t.Wrapper.GetItem(i).(*Item).SetTextColor(app.BlurTextColor)
+	}
+}
+
+func (t *TabbedPane) Highlight() {
+	itemCount := t.Wrapper.GetItemCount()
+
+	for i := 0; i < itemCount; i++ {
+		if i == t.state.CurrentTab.Index {
 			t.Wrapper.GetItem(i).(*Item).SetTextColor(app.ActiveTextColor)
 		} else {
 			t.Wrapper.GetItem(i).(*Item).SetTextColor(app.FocusTextColor)

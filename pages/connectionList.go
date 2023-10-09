@@ -143,8 +143,8 @@ func refreshConnectionList(connections []utils.Connection) {
 func connect(connectionUrl string) {
 	ConnectionStatus.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorBlack))
 
-	drivers.Database.SetConnectionString(connectionUrl)
-	err := drivers.Database.Connect()
+	drivers.MySQL.SetConnectionString(connectionUrl)
+	err := drivers.MySQL.Connect()
 
 	if err != nil {
 		ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
