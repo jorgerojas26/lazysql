@@ -314,7 +314,6 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 	for stateChange := range ch {
 		switch stateChange.Key {
 		case "Filter":
-			table.Filter.SetIsFiltering(false)
 			if stateChange.Value != "" {
 				rows := table.FetchRecords(table.GetDBReference())
 
@@ -436,6 +435,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	})
 	table.Page.ShowPage("error")
 	app.App.SetFocus(table.Error)
+	table.Error.SetFocus(0)
 	app.App.ForceDraw()
 }
 
@@ -516,9 +516,11 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	records, totalRecords, err := drivers.MySQL.GetPaginatedRecords(tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
 
 	if err != nil {
-		table.SetError(err.Error(), func() {
-			app.App.SetFocus(table)
-		})
+		table.SetError(err.Error(), nil)
+	} else {
+		if table.Filter.GetIsFiltering() {
+			table.Filter.SetIsFiltering(false)
+		}
 	}
 
 	columns := drivers.MySQL.DescribeTable(tableName)

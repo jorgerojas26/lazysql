@@ -92,14 +92,21 @@ func init() {
 	HomePage.AddItem(RightWrapper, 0, 5, false)
 
 	HomePage.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+
 		tab := TabbedPane.GetCurrentTab()
 
+		var table *components.ResultsTable = nil
+
+		if tab != nil {
+			table = tab.Page
+		}
+
 		if event.Rune() == 'H' {
-			if FocusedWrapper == "right" {
+			if table != nil && !table.GetIsEditing() && !table.Filter.GetIsFiltering() && FocusedWrapper == "right" {
 				focusLeftWrapper()
 			}
 		} else if event.Rune() == 'L' {
-			if FocusedWrapper == "left" {
+			if table != nil && !table.GetIsEditing() && !table.Filter.GetIsFiltering() && FocusedWrapper == "left" {
 				focusRightWrapper()
 			}
 		} else if event.Rune() == 'q' {
