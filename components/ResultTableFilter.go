@@ -1,11 +1,8 @@
 package components
 
 import (
-	"fmt"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"golang.design/x/clipboard"
 
 	"lazysql/app"
 )
@@ -52,15 +49,6 @@ func NewResultsFilter() *ResultsTableFilter {
 			recordsFilter.Publish("")
 
 		}
-	})
-	recordsFilter.Input.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 93 {
-			fmt.Print("Ctrl+VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV")
-			bytes := clipboard.Read(clipboard.FmtText)
-			recordsFilter.Input.SetText(string(bytes))
-			return nil
-		}
-		return event
 	})
 
 	recordsFilter.AddItem(recordsFilter.Label, 6, 0, false)

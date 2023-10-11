@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -159,6 +160,58 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.Filter.Input.GetText() == "/" {
 			go table.Filter.Input.SetText("")
 		}
+
+		table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
+			comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
+			split := strings.Split(currentText, " ")
+
+			if len(split) == 1 {
+				columns := table.GetColumns()
+				columnNames := []string{}
+
+				for i, col := range columns {
+					if i > 0 {
+						columnNames = append(columnNames, col[0])
+					}
+				}
+
+				return columnNames
+			} else if len(split) == 2 {
+
+				for i, comparator := range comparators {
+					comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
+				}
+
+				return comparators
+			} else if len(split) == 3 {
+
+				if split[1] == "not" || split[1] == "is" {
+
+					for i, comparator := range comparators {
+						comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
+					}
+					return comparators
+				}
+
+			}
+
+			return []string{}
+		})
+
+		table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
+			if source != tview.AutocompletedNavigate {
+				inputText := strings.Split(table.Filter.Input.GetText(), " ")
+
+				if len(inputText) == 1 {
+					table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
+				} else if len(inputText) == 2 {
+					table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
+				}
+
+				table.Filter.Input.SetText(text)
+			}
+			return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
+		})
 
 		table.SetInputCapture(nil)
 	} else if event.Rune() == 99 { // c Key
@@ -323,6 +376,13 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 					table.HighlightTable()
 					table.Filter.HighlightLocal()
 					table.SetInputCapture(table.tableInputCapture)
+					app.App.ForceDraw()
+				} else if len(rows) == 1 {
+					table.SetInputCapture(nil)
+					app.App.SetFocus(table.Filter.Input)
+					table.RemoveHighlightTable()
+					table.Filter.HighlightLocal()
+					table.Filter.SetIsFiltering(true)
 					app.App.ForceDraw()
 				}
 
@@ -517,28 +577,31 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 
 	if err != nil {
 		table.SetError(err.Error(), nil)
+		table.SetLoading(false)
 	} else {
 		if table.Filter.GetIsFiltering() {
 			table.Filter.SetIsFiltering(false)
 		}
+		columns := drivers.MySQL.DescribeTable(tableName)
+		constraints := drivers.MySQL.GetTableConstraints(tableName)
+		foreignKeys := drivers.MySQL.GetTableForeignKeys(tableName)
+		indexes := drivers.MySQL.GetTableIndexes(tableName)
+
+		table.SetRecords(records)
+		table.SetColumns(columns)
+		table.SetConstraints(constraints)
+		table.SetForeignKeys(foreignKeys)
+		table.SetIndexes(indexes)
+		table.SetDBReference(tableName)
+		table.Select(1, 0)
+
+		table.Pagination.SetTotalRecords(totalRecords)
+
+		table.SetLoading(false)
+
+		return records
 	}
 
-	columns := drivers.MySQL.DescribeTable(tableName)
-	constraints := drivers.MySQL.GetTableConstraints(tableName)
-	foreignKeys := drivers.MySQL.GetTableForeignKeys(tableName)
-	indexes := drivers.MySQL.GetTableIndexes(tableName)
+	return [][]string{}
 
-	table.SetRecords(records)
-	table.SetColumns(columns)
-	table.SetConstraints(constraints)
-	table.SetForeignKeys(foreignKeys)
-	table.SetIndexes(indexes)
-	table.SetDBReference(tableName)
-	table.Select(1, 0)
-
-	table.Pagination.SetTotalRecords(totalRecords)
-
-	table.SetLoading(false)
-
-	return records
 }
