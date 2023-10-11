@@ -162,8 +162,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		}
 
 		table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
-			comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
 			split := strings.Split(currentText, " ")
+			comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
 
 			if len(split) == 1 {
 				columns := table.GetColumns()
@@ -185,14 +185,41 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				return comparators
 			} else if len(split) == 3 {
 
-				if split[1] == "not" || split[1] == "is" {
+				ret := true
 
+				if split[1] == "not" {
+					comparators = []string{"between", "in", "like"}
+				} else if split[1] == "is" {
+					comparators = []string{"not", "null"}
+				} else {
+					ret = false
+				}
+
+				if ret {
 					for i, comparator := range comparators {
 						comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
 					}
 					return comparators
 				}
 
+			} else if len(split) == 4 {
+				ret := true
+
+				if split[2] == "not" {
+					comparators = []string{"null"}
+				} else if split[2] == "is" {
+					comparators = []string{"not", "null"}
+				} else {
+					ret = false
+				}
+
+				if ret {
+					for i, comparator := range comparators {
+						comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
+					}
+
+					return comparators
+				}
 			}
 
 			return []string{}
