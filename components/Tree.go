@@ -53,6 +53,7 @@ func NewTree() *Tree {
 		if tree.GetSelectedDatabase() == "" {
 			tree.updateNodes(databases, rootNode, false)
 		}
+		tree.SetFocusFunc(nil)
 	})
 
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
