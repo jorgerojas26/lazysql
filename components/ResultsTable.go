@@ -363,10 +363,10 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 }
 
 func (table *ResultsTable) RemoveHighlightTable() {
-	table.SetBorderColor(app.BlurTextColor)
-	table.SetBordersColor(app.BlurTextColor)
-	table.SetTitleColor(app.BlurTextColor)
-	table.UpdateRowsColor(app.BlurTextColor, app.BlurTextColor)
+	table.SetBorderColor(app.InactiveTextColor)
+	table.SetBordersColor(app.InactiveTextColor)
+	table.SetTitleColor(app.InactiveTextColor)
+	table.UpdateRowsColor(app.InactiveTextColor, app.InactiveTextColor)
 }
 
 func (table *ResultsTable) RemoveHighlightAll() {

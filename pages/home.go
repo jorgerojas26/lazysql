@@ -25,9 +25,9 @@ var FocusedWrapper = "left"
 func init() {
 	go subscribeToTreeChanges()
 
-	LeftWrapper.SetBorderColor(app.BlurTextColor)
+	LeftWrapper.SetBorderColor(app.InactiveTextColor)
 
-	RightWrapper.SetBorderColor(app.BlurTextColor)
+	RightWrapper.SetBorderColor(app.InactiveTextColor)
 	RightWrapper.SetBorder(true)
 	RightWrapper.SetDirection(tview.FlexColumnCSS)
 
@@ -43,22 +43,18 @@ func init() {
 		} else if event.Rune() == '}' {
 			focusTab(TabbedPane.SwitchToLastTab())
 		} else if event.Rune() == 'X' {
-			tab = TabbedPane.GetCurrentTab()
+			TabbedPane.RemoveCurrentTab()
 
-			if tab != nil {
-				TabbedPane.RemoveTab(tab.Index)
-
-				if TabbedPane.GetTabCount() == 0 {
-					focusLeftWrapper()
-					return nil
-				}
+			if TabbedPane.GetLenght() == 0 {
+				focusLeftWrapper()
+				return nil
 			}
 
 		} else if event.Rune() == '<' {
 			tab = TabbedPane.GetCurrentTab()
 
 			if tab != nil {
-				table := tab.Page
+				table := tab.Content
 
 				if table.Menu.GetSelectedOption() == 1 && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 					table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
@@ -72,7 +68,7 @@ func init() {
 			tab = TabbedPane.GetCurrentTab()
 
 			if tab != nil {
-				table := tab.Page
+				table := tab.Content
 
 				if table.Menu.GetSelectedOption() == 1 && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 					table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
@@ -85,7 +81,7 @@ func init() {
 	})
 	LeftWrapper.AddItem(Tree, 0, 1, true)
 
-	RightWrapper.AddItem(TabbedPane.Wrapper, 1, 0, false)
+	RightWrapper.AddItem(TabbedPane.HeaderContainer, 1, 0, false)
 	RightWrapper.AddItem(TabbedPane.Pages, 0, 1, false)
 
 	HomePage.AddItem(LeftWrapper, 30, 1, true)
@@ -98,7 +94,7 @@ func init() {
 		var table *components.ResultsTable = nil
 
 		if tab != nil {
-			table = tab.Page
+			table = tab.Content
 		}
 
 		if event.Rune() == 'H' {
@@ -111,7 +107,7 @@ func init() {
 			}
 		} else if event.Rune() == 'q' {
 			if tab != nil {
-				table := tab.Page
+				table := tab.Content
 
 				if !table.Filter.GetIsFiltering() && !table.GetIsEditing() {
 					App.Stop()
@@ -139,20 +135,17 @@ func subscribeToTreeChanges() {
 			var table *components.ResultsTable = nil
 
 			if tab != nil {
-				table = tab.Page
-				TabbedPane.SwitchToTab(tab.Name)
+				table = tab.Content
+				TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
 				table = components.NewResultsTable()
 
-				TabbedPane.AddTab(&components.Tab{
-					Name: tableName,
-					Page: table,
-				})
+				TabbedPane.AppendTab(tableName, table)
 			}
 
-			table.FetchRecords(tableName)
-
 			focusRightWrapper()
+
+			table.FetchRecords(tableName)
 
 			app.App.ForceDraw()
 
@@ -164,7 +157,7 @@ func focusRightWrapper() {
 	Tree.RemoveHighlight()
 
 	RightWrapper.SetBorderColor(app.FocusTextColor)
-	LeftWrapper.SetBorderColor(app.BlurTextColor)
+	LeftWrapper.SetBorderColor(app.InactiveTextColor)
 	TabbedPane.Highlight()
 	tab := TabbedPane.GetCurrentTab()
 
@@ -177,7 +170,7 @@ func focusRightWrapper() {
 
 func focusTab(tab *components.Tab) {
 	if tab != nil {
-		table := tab.Page
+		table := tab.Content
 		table.HighlightAll()
 
 		if table.Filter.GetIsFiltering() {
@@ -197,19 +190,19 @@ func focusTab(tab *components.Tab) {
 func focusLeftWrapper() {
 	Tree.Highlight()
 
-	RightWrapper.SetBorderColor(app.BlurTextColor)
+	RightWrapper.SetBorderColor(app.InactiveTextColor)
 	LeftWrapper.SetBorderColor(app.FocusTextColor)
 
 	tab := TabbedPane.GetCurrentTab()
 
 	if tab != nil {
-		table := tab.Page
+		table := tab.Content
 
 		table.RemoveHighlightAll()
 
 	}
 
-	TabbedPane.RemoveHighlight()
+	TabbedPane.SetBlur()
 
 	App.SetFocus(Tree)
 

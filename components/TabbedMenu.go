@@ -1,87 +1,124 @@
 package components
 
 import (
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"lazysql/app"
 )
 
-type Item struct {
+type Header struct {
 	*tview.TextView
 }
 
 type Tab struct {
-	Page  *ResultsTable
-	Name  string
-	Index int
+	Content     *ResultsTable
+	NextTab     *Tab
+	PreviousTab *Tab
+	Header      *Header
+	Name        string
 }
 
 type TabbedPaneState struct {
 	CurrentTab *Tab
-	Tabs       []*Tab
+	FirstTab   *Tab
+	LastTab    *Tab
+	Length     int
 }
 
 type TabbedPane struct {
 	*tview.Pages
-	Wrapper *tview.Flex
-	state   *TabbedPaneState
+	HeaderContainer *tview.Flex
+	state           *TabbedPaneState
 }
 
 func NewTabbedPane() *TabbedPane {
-	wrapper := tview.NewFlex()
-	wrapper.SetBorderPadding(0, 0, 1, 1)
+	container := tview.NewFlex()
+	container.SetBorderPadding(0, 0, 1, 1)
+
 	return &TabbedPane{
-		Pages:   tview.NewPages(),
-		Wrapper: wrapper,
-		state:   &TabbedPaneState{},
+		Pages:           tview.NewPages(),
+		HeaderContainer: container,
+		state:           &TabbedPaneState{},
 	}
 }
 
-func (t *TabbedPane) AddTab(tab *Tab) {
-	tabWithIndex := &Tab{
-		Page:  tab.Page,
-		Name:  tab.Name,
-		Index: len(t.state.Tabs),
-	}
-	t.state.Tabs = append(t.state.Tabs, tabWithIndex)
-	t.state.CurrentTab = tabWithIndex
-
+func (t *TabbedPane) AppendTab(name string, content *ResultsTable) {
 	textView := tview.NewTextView()
-	textView.SetText(tab.Name)
-	textView.SetDynamicColors(true)
-	item := &Item{textView}
+	textView.SetText(name)
+	item := &Header{textView}
 
-	t.Wrapper.AddItem(item, len(tabWithIndex.Name)+2, 0, false)
-	t.HighlightTabItem(len(t.state.Tabs) - 1)
-
-	t.AddAndSwitchToPage(tab.Name, tab.Page.Page, true)
-}
-
-func (t *TabbedPane) RemoveTab(index int) {
-	tab := t.state.Tabs[index]
-	t.RemovePage(tab.Name)
-	t.state.Tabs = append(t.state.Tabs[:index], t.state.Tabs[index+1:]...)
-	item := t.Wrapper.GetItem(index)
-	t.Wrapper.RemoveItem(item)
-
-	if t.GetTabCount() > 0 {
-		t.SwitchToPreviousTab()
-	} else {
-		t.state.CurrentTab = nil
+	newTab := &Tab{
+		Content: content,
+		Name:    name,
+		Header:  item,
 	}
+
+	t.state.Length++
+
+	if t.state.LastTab == nil {
+		t.state.FirstTab = newTab
+		t.state.LastTab = newTab
+		t.state.CurrentTab = newTab
+	} else {
+		newTab.PreviousTab = t.state.LastTab
+		t.state.LastTab.NextTab = newTab
+		t.state.LastTab = newTab
+		t.state.CurrentTab = newTab
+	}
+
+	t.HeaderContainer.AddItem(newTab.Header, len(newTab.Name)+2, 0, false)
+
+	t.HighlightTabHeader(newTab)
+
+	t.AddAndSwitchToPage(name, content.Page, true)
 }
 
-func (t *TabbedPane) SetCurrentTab(index int) *Tab {
-	tab := t.state.Tabs[index]
+func (t *TabbedPane) RemoveCurrentTab() {
+	currentTab := t.state.CurrentTab
+
+	if currentTab != nil {
+		t.HeaderContainer.RemoveItem(currentTab.Header)
+		t.RemovePage(currentTab.Name)
+
+		t.state.Length--
+
+		if t.state.Length == 0 {
+			t.state.FirstTab = nil
+			t.state.LastTab = nil
+			t.state.CurrentTab = nil
+			return
+		}
+
+		if currentTab == t.state.FirstTab {
+			t.state.FirstTab = currentTab.NextTab
+		}
+
+		if currentTab == t.state.LastTab {
+			t.state.LastTab = currentTab.PreviousTab
+		}
+
+		if currentTab.PreviousTab != nil {
+			currentTab.PreviousTab.NextTab = currentTab.NextTab
+			t.SetCurrentTab(currentTab.PreviousTab)
+		}
+
+		if currentTab.NextTab != nil {
+			currentTab.NextTab.PreviousTab = currentTab.PreviousTab
+			t.SetCurrentTab(currentTab.NextTab)
+		}
+
+	}
+
+}
+
+func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
 
 	t.state.CurrentTab = tab
+	t.HighlightTabHeader(tab)
 
-	t.SwitchToPage(t.state.Tabs[index].Name)
+	t.SwitchToPage(tab.Name)
 
-	t.HighlightTabItem(index)
-
-	app.App.SetFocus(tab.Page.Page)
+	app.App.SetFocus(tab.Content.Page)
 
 	return tab
 }
@@ -90,129 +127,112 @@ func (t *TabbedPane) GetCurrentTab() *Tab {
 	return t.state.CurrentTab
 }
 
-func (t *TabbedPane) GetCurrentTabName() string {
-	return t.state.CurrentTab.Name
-}
-
-func (t *TabbedPane) GetCurrentTabPrimitive() tview.Primitive {
-	return t.state.CurrentTab.Page
-}
-
-func (t *TabbedPane) GetTabs() []*Tab {
-	return t.state.Tabs
-}
-
 func (t *TabbedPane) GetTabByName(name string) *Tab {
-	for _, tab := range t.state.Tabs {
+	tab := t.state.FirstTab
+	for i := 0; tab != nil && i < t.state.Length; i++ {
 		if tab.Name == name {
-			return tab
+			break
 		}
+		tab = tab.NextTab
+	}
+
+	return tab
+}
+
+func (t *TabbedPane) GetLenght() int {
+	return t.state.Length
+}
+
+func (t *TabbedPane) SwitchToNextTab() *Tab {
+	if t.state.CurrentTab != nil {
+		if t.state.CurrentTab == t.state.LastTab {
+			t.SetCurrentTab(t.state.FirstTab)
+		} else {
+			if t.state.CurrentTab.NextTab != nil {
+				t.SetCurrentTab(t.state.CurrentTab.NextTab)
+			}
+		}
+	}
+
+	return t.state.CurrentTab
+}
+
+func (t *TabbedPane) SwitchToPreviousTab() *Tab {
+	if t.state.CurrentTab != nil {
+		if t.state.CurrentTab == t.state.FirstTab {
+			t.SetCurrentTab(t.state.LastTab)
+		} else {
+			if t.state.CurrentTab.PreviousTab != nil {
+				t.SetCurrentTab(t.state.CurrentTab.PreviousTab)
+			}
+		}
+	}
+
+	return t.state.CurrentTab
+}
+
+func (t *TabbedPane) SwitchToFirstTab() *Tab {
+	if t.state.FirstTab != nil {
+		t.SetCurrentTab(t.state.FirstTab)
+	}
+
+	return t.state.CurrentTab
+}
+
+func (t *TabbedPane) SwitchToLastTab() *Tab {
+	if t.state.LastTab != nil {
+		t.SetCurrentTab(t.state.LastTab)
+	}
+
+	return t.state.CurrentTab
+}
+
+func (t *TabbedPane) SwitchToTabByName(name string) *Tab {
+	tab := t.state.FirstTab
+
+	for i := 0; tab != nil && i < t.state.Length; i++ {
+		tab = tab.NextTab
+	}
+
+	if tab != nil {
+		t.SetCurrentTab(tab)
+		return tab
 	}
 
 	return nil
 }
 
-func (t *TabbedPane) GetTabByIndex(index int) *Tab {
-	return t.state.Tabs[index]
-}
+func (t *TabbedPane) HighlightTabHeader(tab *Tab) {
+	tabToHighlight := t.state.FirstTab
 
-func (t *TabbedPane) GetTabIndexByName(name string) int {
-	for i, tab := range t.state.Tabs {
-		if tab.Name == name {
-			return i
-		}
-	}
-
-	return -1
-}
-
-func (t *TabbedPane) GetTabCount() int {
-	return len(t.state.Tabs)
-}
-
-func (t *TabbedPane) SwitchToTab(name string) {
-	for i, tab := range t.state.Tabs {
-		if tab.Name == name {
-			t.SetCurrentTab(i)
-			break
-		}
-	}
-
-	index := t.GetTabIndexByName(name)
-
-	item := t.Wrapper.GetItem(index).(*Item)
-	item.SetTextColor(app.ActiveTextColor)
-}
-
-// switch to last tab
-func (t *TabbedPane) SwitchToLastTab() *Tab {
-	t.SetCurrentTab(t.GetTabCount() - 1)
-	return t.state.CurrentTab
-}
-
-// switch to first tab
-func (t *TabbedPane) SwitchToFirstTab() *Tab {
-	t.SetCurrentTab(0)
-	return t.state.CurrentTab
-}
-
-// switch to next tab
-func (t *TabbedPane) SwitchToNextTab() *Tab {
-	if t.state.CurrentTab != nil {
-		if t.state.CurrentTab.Index == t.GetTabCount()-1 {
-			t.SwitchToFirstTab()
+	for i := 0; tabToHighlight != nil && i < t.state.Length; i++ {
+		if tabToHighlight.Header == tab.Header {
+			tabToHighlight.Header.SetTextColor(app.ActiveTextColor)
 		} else {
-			t.SetCurrentTab(t.state.CurrentTab.Index + 1)
+			tabToHighlight.Header.SetTextColor(app.FocusTextColor)
 		}
-	}
-
-	return t.state.CurrentTab
-}
-
-// switch to previous tab
-func (t *TabbedPane) SwitchToPreviousTab() *Tab {
-	if t.state.CurrentTab != nil {
-		if t.state.CurrentTab.Index == 0 {
-			t.SwitchToLastTab()
-		} else {
-			t.SetCurrentTab(t.state.CurrentTab.Index - 1)
-		}
-	}
-
-	return t.state.CurrentTab
-}
-
-func (t *TabbedPane) HighlightTabItem(index int) {
-	itemCount := t.Wrapper.GetItemCount()
-
-	for i := 0; i < itemCount; i++ {
-		item := t.Wrapper.GetItem(i).(*Item)
-
-		if i == index {
-			item.SetTextColor(app.ActiveTextColor)
-			item.SetBackgroundColor(tcell.ColorBlack.TrueColor())
-		} else {
-			item.SetTextColor(app.FocusTextColor)
-		}
-	}
-}
-
-func (t *TabbedPane) RemoveHighlight() {
-	itemCount := t.Wrapper.GetItemCount()
-
-	for i := 0; i < itemCount; i++ {
-		t.Wrapper.GetItem(i).(*Item).SetTextColor(app.BlurTextColor)
+		tabToHighlight = tabToHighlight.NextTab
 	}
 }
 
 func (t *TabbedPane) Highlight() {
-	itemCount := t.Wrapper.GetItemCount()
+	tab := t.state.FirstTab
 
-	for i := 0; i < itemCount; i++ {
-		if i == t.state.CurrentTab.Index {
-			t.Wrapper.GetItem(i).(*Item).SetTextColor(app.ActiveTextColor)
+	for i := 0; tab != nil && i < t.state.Length; i++ {
+		if tab == t.state.CurrentTab {
+			tab.Header.SetTextColor(app.ActiveTextColor)
 		} else {
-			t.Wrapper.GetItem(i).(*Item).SetTextColor(app.FocusTextColor)
+			tab.Header.SetTextColor(app.FocusTextColor)
 		}
+		tab = tab.NextTab
+	}
+}
+
+func (t *TabbedPane) SetBlur() {
+	tab := t.state.FirstTab
+
+	for i := 0; tab != nil && i < t.state.Length; i++ {
+		tab.Header.SetTextColor(app.InactiveTextColor)
+		tab = tab.NextTab
 	}
 }

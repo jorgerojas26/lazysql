@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	App             = tview.NewApplication()
-	BlurTextColor   = tcell.ColorDarkGray
-	FocusTextColor  = tcell.ColorWhite.TrueColor()
-	ActiveTextColor = tcell.ColorCadetBlue
+	App               = tview.NewApplication()
+	InactiveTextColor = tcell.ColorDarkGray
+	FocusTextColor    = tcell.ColorWhite.TrueColor()
+	ActiveTextColor   = tcell.ColorCadetBlue
 )

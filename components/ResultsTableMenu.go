@@ -93,7 +93,7 @@ func (menu *ResultsTableMenu) SetBlur() {
 	menu.SetBorderColor(tcell.ColorDarkGray)
 
 	for _, item := range menu.MenuItems {
-		item.SetTextColor(app.BlurTextColor)
+		item.SetTextColor(app.InactiveTextColor)
 	}
 }
 

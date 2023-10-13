@@ -86,17 +86,17 @@ func (filter *ResultsTableFilter) SetIsFiltering(filtering bool) {
 
 // Function to blur
 func (filter *ResultsTableFilter) RemoveHighlight() {
-	filter.SetBorderColor(app.BlurTextColor)
-	filter.Label.SetTextColor(app.BlurTextColor)
-	filter.Input.SetPlaceholderTextColor(app.BlurTextColor)
-	filter.Input.SetFieldTextColor(app.BlurTextColor)
+	filter.SetBorderColor(app.InactiveTextColor)
+	filter.Label.SetTextColor(app.InactiveTextColor)
+	filter.Input.SetPlaceholderTextColor(app.InactiveTextColor)
+	filter.Input.SetFieldTextColor(app.InactiveTextColor)
 }
 
 func (filter *ResultsTableFilter) RemoveLocalHighlight() {
 	filter.SetBorderColor(tcell.ColorWhite)
 	filter.Label.SetTextColor(tcell.ColorOrange)
-	filter.Input.SetPlaceholderTextColor(app.BlurTextColor)
-	filter.Input.SetFieldTextColor(app.BlurTextColor)
+	filter.Input.SetPlaceholderTextColor(app.InactiveTextColor)
+	filter.Input.SetFieldTextColor(app.InactiveTextColor)
 }
 
 func (filter *ResultsTableFilter) Highlight() {
