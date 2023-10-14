@@ -80,38 +80,38 @@ func renderConnectionList() *tview.Flex {
 	connectionsListWrapper.AddItem(buttonsWrapper, 1, 0, false)
 	connectionsListWrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		connections, _ := utils.LoadConnections()
-		row, _ := ConnectionsTable.GetSelection()
-		selectedConnection := connections[row]
-		connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+		if len(connections) != 0 {
+			row, _ := ConnectionsTable.GetSelection()
+			selectedConnection := connections[row]
+			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
 
-		// N Key
-		if event.Rune() == 110 {
+			if event.Rune() == 99 || event.Key() == tcell.KeyEnter {
+				go connect(connectionUrl)
+			} else if event.Rune() == 101 { // E Key
+				ConnectionPages.SwitchToPage("NewConnection")
+				AddConnectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionUrl)
+
+				AddConnectionFormWrapper.SetInputCapture(EditConnectionInputHandler(connections, row))
+
+				// D Key
+			} else if event.Rune() == 100 {
+				newConnections := append(connections[:row], connections[row+1:]...)
+
+				err := utils.SaveConnectionConfig(newConnections)
+				if err != nil {
+					ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+					return event
+				}
+
+				refreshConnectionList(newConnections)
+
+			}
+		}
+
+		if event.Rune() == 110 { // N Key
 			AddConnectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			ConnectionPages.SwitchToPage("NewConnection")
-			// C Key or Enter Key
-		} else if event.Rune() == 99 || event.Key() == tcell.KeyEnter {
-			go connect(connectionUrl)
-			// E Key
-		} else if event.Rune() == 101 {
-			ConnectionPages.SwitchToPage("NewConnection")
-			AddConnectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionUrl)
-
-			AddConnectionFormWrapper.SetInputCapture(EditConnectionInputHandler(connections, row))
-
-			// D Key
-		} else if event.Rune() == 100 {
-			newConnections := append(connections[:row], connections[row+1:]...)
-
-			err := utils.SaveConnectionConfig(newConnections)
-			if err != nil {
-				ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
-				return event
-			}
-
-			refreshConnectionList(newConnections)
-
-			// Q Key
-		} else if event.Rune() == 113 {
+		} else if event.Rune() == 113 { // Q Key
 			if connectionsListWrapper.HasFocus() {
 				App.Stop()
 			}
