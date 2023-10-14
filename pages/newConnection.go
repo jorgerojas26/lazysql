@@ -137,7 +137,8 @@ func EditConnectionInputHandler(databases []utils.Connection, row int) func(even
 			ConnectionStatus.SetText("")
 			ConnectionPages.SwitchToPage("ConnectionList")
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
-			connectionString := AddConnectionForm.GetFormItem(0).(*tview.InputField).GetText()
+			connectionName := AddConnectionForm.GetFormItem(0).(*tview.InputField).GetText()
+			connectionString := AddConnectionForm.GetFormItem(1).(*tview.InputField).GetText()
 			parsed, err := drivers.MySQL.ParseConnectionString(connectionString)
 
 			if err != nil {
@@ -147,7 +148,7 @@ func EditConnectionInputHandler(databases []utils.Connection, row int) func(even
 				newDatabases := make([]utils.Connection, len(databases))
 				for i, database := range databases {
 					if i == row {
-						newDatabases[i].Name = database.Name
+						newDatabases[i].Name = connectionName
 						newDatabases[i].Provider = database.Provider
 						newDatabases[i].User = parsed.User.Username()
 						newDatabases[i].Password, _ = parsed.User.Password()

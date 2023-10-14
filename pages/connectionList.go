@@ -89,6 +89,7 @@ func renderConnectionList() *tview.Flex {
 				go connect(connectionUrl)
 			} else if event.Rune() == 101 { // E Key
 				ConnectionPages.SwitchToPage("NewConnection")
+				AddConnectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
 				AddConnectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionUrl)
 
 				AddConnectionFormWrapper.SetInputCapture(EditConnectionInputHandler(connections, row))
