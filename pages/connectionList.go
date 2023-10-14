@@ -128,7 +128,12 @@ func refreshConnectionList(connections []utils.Connection) {
 	ConnectionsTable.Clear()
 
 	for i, connection := range connections {
-		ConnectionsTable.SetCell(i, 0, tview.NewTableCell(connection.Name).SetExpansion(1))
+		connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", connection.Provider, connection.User, connection.Password, connection.Host, connection.Port)
+		cell := tview.NewTableCell(connection.Name).SetExpansion(1)
+		if AllPages.HasPage(connectionUrl) {
+			cell.SetTextColor(tcell.ColorDarkSeaGreen)
+		}
+		ConnectionsTable.SetCell(i, 0, cell)
 	}
 
 	selectedRow, _ := ConnectionsTable.GetSelection()
@@ -142,16 +147,27 @@ func refreshConnectionList(connections []utils.Connection) {
 }
 
 func connect(connectionUrl string) {
-	ConnectionStatus.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorBlack))
-
-	drivers.MySQL.SetConnectionString(connectionUrl)
-	err := drivers.MySQL.Connect()
-
-	if err != nil {
-		ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
-	} else {
-		AllPages.SwitchToPage("home")
-		Tree.SetCurrentNode(Tree.GetRoot())
+	if AllPages.HasPage(connectionUrl) {
+		AllPages.SwitchToPage(connectionUrl)
 		App.Draw()
+	} else {
+		newHome := NewHomePage(connectionUrl)
+		ConnectionStatus.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorBlack))
+
+		drivers.MySQL.SetConnectionString(connectionUrl)
+		err := drivers.MySQL.Connect()
+
+		if err != nil {
+			ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+		} else {
+			AllPages.SwitchToPage(connectionUrl)
+			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
+			App.Draw()
+		}
+
+		AllPages.AddAndSwitchToPage(connectionUrl, newHome, true)
+
+		ConnectionStatus.SetText("")
 	}
+
 }

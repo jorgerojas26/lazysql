@@ -8,50 +8,60 @@ import (
 	"lazysql/components"
 )
 
-var (
-	HomePage   = tview.NewFlex()
-	Tree       = components.NewTree()
-	App        = app.App
-	TabbedPane = components.NewTabbedPane()
-)
+type Home struct {
+	*tview.Flex
+	Tree           *components.Tree
+	TabbedPane     *components.TabbedPane
+	LeftWrapper    *tview.Flex
+	RightWrapper   *tview.Flex
+	FocusedWrapper string
+}
 
-var (
-	LeftWrapper  = tview.NewFlex()
-	RightWrapper = tview.NewFlex()
-)
+var App = app.App
 
-var FocusedWrapper = "left"
+func NewHomePage(name string) *Home {
+	tree := components.NewTree()
+	tabbedPane := components.NewTabbedPane()
+	leftWrapper := tview.NewFlex()
+	rightWrapper := tview.NewFlex()
 
-func init() {
-	go subscribeToTreeChanges()
+	home := &Home{
+		Flex:         tview.NewFlex(),
+		Tree:         tree,
+		TabbedPane:   tabbedPane,
+		LeftWrapper:  leftWrapper,
+		RightWrapper: rightWrapper,
+	}
 
-	LeftWrapper.SetBorderColor(app.InactiveTextColor)
+	go home.subscribeToTreeChanges()
 
-	RightWrapper.SetBorderColor(app.InactiveTextColor)
-	RightWrapper.SetBorder(true)
-	RightWrapper.SetDirection(tview.FlexColumnCSS)
+	leftWrapper.SetBorderColor(app.InactiveTextColor)
 
-	RightWrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	rightWrapper.SetBorderColor(app.InactiveTextColor)
+	rightWrapper.SetBorder(true)
+	rightWrapper.SetDirection(tview.FlexColumnCSS)
+
+	rightWrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		var tab *components.Tab
 
 		if event.Rune() == '[' {
-			focusTab(TabbedPane.SwitchToPreviousTab())
+			focusTab(tabbedPane.SwitchToPreviousTab())
 		} else if event.Rune() == ']' {
-			focusTab(TabbedPane.SwitchToNextTab())
+			focusTab(tabbedPane.SwitchToNextTab())
 		} else if event.Rune() == '{' {
-			focusTab(TabbedPane.SwitchToFirstTab())
+			focusTab(tabbedPane.SwitchToFirstTab())
 		} else if event.Rune() == '}' {
-			focusTab(TabbedPane.SwitchToLastTab())
+			focusTab(tabbedPane.SwitchToLastTab())
 		} else if event.Rune() == 'X' {
-			TabbedPane.RemoveCurrentTab()
+			tabbedPane.RemoveCurrentTab()
 
-			if TabbedPane.GetLenght() == 0 {
-				focusLeftWrapper()
+			if tabbedPane.GetLenght() == 0 {
+				home.focusLeftWrapper()
 				return nil
 			}
 
 		} else if event.Rune() == '<' {
-			tab = TabbedPane.GetCurrentTab()
+			tab = tabbedPane.GetCurrentTab()
 
 			if tab != nil {
 				table := tab.Content
@@ -65,7 +75,7 @@ func init() {
 			}
 
 		} else if event.Rune() == '>' {
-			tab = TabbedPane.GetCurrentTab()
+			tab = tabbedPane.GetCurrentTab()
 
 			if tab != nil {
 				table := tab.Content
@@ -79,17 +89,17 @@ func init() {
 
 		return event
 	})
-	LeftWrapper.AddItem(Tree, 0, 1, true)
+	leftWrapper.AddItem(tree, 0, 1, true)
 
-	RightWrapper.AddItem(TabbedPane.HeaderContainer, 1, 0, false)
-	RightWrapper.AddItem(TabbedPane.Pages, 0, 1, false)
+	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
+	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	HomePage.AddItem(LeftWrapper, 30, 1, true)
-	HomePage.AddItem(RightWrapper, 0, 5, false)
+	home.AddItem(leftWrapper, 30, 1, false)
+	home.AddItem(rightWrapper, 0, 5, false)
 
-	HomePage.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	home.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 
-		tab := TabbedPane.GetCurrentTab()
+		tab := tabbedPane.GetCurrentTab()
 
 		var table *components.ResultsTable = nil
 
@@ -98,24 +108,28 @@ func init() {
 		}
 
 		if event.Rune() == 'H' {
-			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && FocusedWrapper == "right" {
-				focusLeftWrapper()
+			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "right" {
+				home.focusLeftWrapper()
 			}
 		} else if event.Rune() == 'L' {
-			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && FocusedWrapper == "left" {
-				focusRightWrapper()
+			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "left" {
+				home.focusRightWrapper()
 			}
-		} else if event.Rune() == 5 {
-			tab := TabbedPane.GetTabByName("Editor")
+		} else if event.Rune() == 5 { // CTRL + e
+			tab := tabbedPane.GetTabByName("Editor")
 
 			if tab != nil {
-				TabbedPane.SwitchToTabByName("Editor")
+				tabbedPane.SwitchToTabByName("Editor")
 			} else {
 				tableWithEditor := components.NewResultsTable().WithEditor()
-				TabbedPane.AppendTab("Editor", tableWithEditor)
+				tabbedPane.AppendTab("Editor", tableWithEditor)
 			}
-			focusRightWrapper()
+			home.focusRightWrapper()
 			App.ForceDraw()
+		} else if event.Rune() == 127 {
+			if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering()) || table == nil {
+				AllPages.SwitchToPage("Connections")
+			}
 		} else if event.Rune() == 'q' {
 			if tab != nil {
 				table := tab.Content
@@ -131,30 +145,39 @@ func init() {
 		return event
 	})
 
-	AllPages.AddPage("home", HomePage, true, false)
+	home.SetFocusFunc(func() {
+		if home.FocusedWrapper == "left" || home.FocusedWrapper == "" {
+			home.focusLeftWrapper()
+		} else {
+			home.focusRightWrapper()
+		}
+	})
+
+	AllPages.AddPage(name, home, true, false)
+	return home
 }
 
-func subscribeToTreeChanges() {
-	ch := Tree.Subscribe()
+func (home *Home) subscribeToTreeChanges() {
+	ch := home.Tree.Subscribe()
 
 	for stateChange := range ch {
 		switch stateChange.Key {
 		case "SelectedTable":
 			tableName := stateChange.Value.(string)
 
-			tab := TabbedPane.GetTabByName(tableName)
+			tab := home.TabbedPane.GetTabByName(tableName)
 			var table *components.ResultsTable = nil
 
 			if tab != nil {
 				table = tab.Content
-				TabbedPane.SwitchToTabByName(tab.Name)
+				home.TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
 				table = components.NewResultsTable().WithFilter()
 
-				TabbedPane.AppendTab(tableName, table)
+				home.TabbedPane.AppendTab(tableName, table)
 			}
 
-			focusRightWrapper()
+			home.focusRightWrapper()
 
 			table.FetchRecords(tableName)
 
@@ -164,19 +187,19 @@ func subscribeToTreeChanges() {
 	}
 }
 
-func focusRightWrapper() {
-	Tree.RemoveHighlight()
+func (home *Home) focusRightWrapper() {
+	home.Tree.RemoveHighlight()
 
-	RightWrapper.SetBorderColor(app.FocusTextColor)
-	LeftWrapper.SetBorderColor(app.InactiveTextColor)
-	TabbedPane.Highlight()
-	tab := TabbedPane.GetCurrentTab()
+	home.RightWrapper.SetBorderColor(app.FocusTextColor)
+	home.LeftWrapper.SetBorderColor(app.InactiveTextColor)
+	home.TabbedPane.Highlight()
+	tab := home.TabbedPane.GetCurrentTab()
 
 	if tab != nil {
 		focusTab(tab)
 	}
 
-	FocusedWrapper = "right"
+	home.FocusedWrapper = "right"
 }
 
 func focusTab(tab *components.Tab) {
@@ -198,13 +221,13 @@ func focusTab(tab *components.Tab) {
 	}
 }
 
-func focusLeftWrapper() {
-	Tree.Highlight()
+func (home *Home) focusLeftWrapper() {
+	home.Tree.Highlight()
 
-	RightWrapper.SetBorderColor(app.InactiveTextColor)
-	LeftWrapper.SetBorderColor(app.FocusTextColor)
+	home.RightWrapper.SetBorderColor(app.InactiveTextColor)
+	home.LeftWrapper.SetBorderColor(app.FocusTextColor)
 
-	tab := TabbedPane.GetCurrentTab()
+	tab := home.TabbedPane.GetCurrentTab()
 
 	if tab != nil {
 		table := tab.Content
@@ -213,9 +236,9 @@ func focusLeftWrapper() {
 
 	}
 
-	TabbedPane.SetBlur()
+	home.TabbedPane.SetBlur()
 
-	App.SetFocus(Tree)
+	App.SetFocus(home.Tree)
 
-	FocusedWrapper = "left"
+	home.FocusedWrapper = "left"
 }
