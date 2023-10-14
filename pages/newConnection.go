@@ -22,6 +22,7 @@ func renderConnectionForm() (wrapper *tview.Flex, addForm *tview.Form) {
 	wrapper = tview.NewFlex().SetDirection(tview.FlexRow)
 
 	addForm = tview.NewForm().SetFieldBackgroundColor(tcell.ColorWhite).SetButtonBackgroundColor(tcell.ColorWhite).SetLabelColor(tcell.ColorWhite.TrueColor()).SetFieldTextColor(tcell.ColorBlack)
+	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 
 	wrapper.AddItem(addForm, 0, 1, true)
@@ -86,8 +87,17 @@ func SaveConnectionInputHandler() func(event *tcell.EventKey) *tcell.EventKey {
 				ConnectionPages.SwitchToPage("ConnectionList")
 			}
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
-			connectionString := AddConnectionForm.GetFormItem(0).(*tview.InputField).GetText()
+			connectionName := AddConnectionForm.GetFormItem(0).(*tview.InputField).GetText()
+
+			if connectionName == "" {
+				ConnectionStatus.SetText("Connection name is required").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+				return event
+			}
+
+			connectionString := AddConnectionForm.GetFormItem(1).(*tview.InputField).GetText()
+
 			parsed, err := drivers.MySQL.ParseConnectionString(connectionString)
+
 			if err != nil {
 				ConnectionStatus.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
 				return event
@@ -95,7 +105,7 @@ func SaveConnectionInputHandler() func(event *tcell.EventKey) *tcell.EventKey {
 				password, _ := parsed.User.Password()
 
 				database := utils.Connection{
-					Name:     parsed.Short(),
+					Name:     connectionName,
 					Provider: parsed.Driver,
 					User:     parsed.User.Username(),
 					Password: password,
