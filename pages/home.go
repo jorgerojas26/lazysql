@@ -98,18 +98,29 @@ func init() {
 		}
 
 		if event.Rune() == 'H' {
-			if table != nil && !table.GetIsEditing() && !table.Filter.GetIsFiltering() && FocusedWrapper == "right" {
+			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && FocusedWrapper == "right" {
 				focusLeftWrapper()
 			}
 		} else if event.Rune() == 'L' {
-			if table != nil && !table.GetIsEditing() && !table.Filter.GetIsFiltering() && FocusedWrapper == "left" {
+			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && FocusedWrapper == "left" {
 				focusRightWrapper()
 			}
+		} else if event.Rune() == 5 {
+			tab := TabbedPane.GetTabByName("Editor")
+
+			if tab != nil {
+				TabbedPane.SwitchToTabByName("Editor")
+			} else {
+				tableWithEditor := components.NewResultsTable().WithEditor()
+				TabbedPane.AppendTab("Editor", tableWithEditor)
+			}
+			focusRightWrapper()
+			App.ForceDraw()
 		} else if event.Rune() == 'q' {
 			if tab != nil {
 				table := tab.Content
 
-				if !table.Filter.GetIsFiltering() && !table.GetIsEditing() {
+				if !table.GetIsFiltering() && !table.GetIsEditing() {
 					App.Stop()
 				}
 			} else {
@@ -138,7 +149,7 @@ func subscribeToTreeChanges() {
 				table = tab.Content
 				TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
-				table = components.NewResultsTable()
+				table = components.NewResultsTable().WithFilter()
 
 				TabbedPane.AppendTab(tableName, table)
 			}
@@ -173,7 +184,7 @@ func focusTab(tab *components.Tab) {
 		table := tab.Content
 		table.HighlightAll()
 
-		if table.Filter.GetIsFiltering() {
+		if table.GetIsFiltering() {
 			go func() {
 				App.SetFocus(table.Filter.Input)
 				table.Filter.HighlightLocal()

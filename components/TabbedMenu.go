@@ -191,6 +191,9 @@ func (t *TabbedPane) SwitchToTabByName(name string) *Tab {
 	tab := t.state.FirstTab
 
 	for i := 0; tab != nil && i < t.state.Length; i++ {
+		if tab.Name == name {
+			break
+		}
 		tab = tab.NextTab
 	}
 

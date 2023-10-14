@@ -22,6 +22,7 @@ type ResultsTableState struct {
 	foreignKeys [][]string
 	indexes     [][]string
 	isEditing   bool
+	isFiltering bool
 	isLoading   bool
 }
 
@@ -35,6 +36,7 @@ type ResultsTable struct {
 	Error      *tview.Modal
 	Loading    *tview.Modal
 	Pagination *Pagination
+	Editor     *SQLEditor
 }
 
 var ErrorModal = tview.NewModal()
@@ -50,14 +52,8 @@ func NewResultsTable() *ResultsTable {
 		isLoading:   false,
 	}
 
-	menu := NewResultsTableMenu()
-
-	filter := NewResultsFilter()
-
 	wrapper := tview.NewFlex()
 	wrapper.SetDirection(tview.FlexColumnCSS)
-	wrapper.AddItem(menu.Flex, 3, 0, false)
-	wrapper.AddItem(filter.Flex, 3, 0, false)
 
 	errorModal := tview.NewModal()
 	errorModal.AddButtons([]string{"Ok"})
@@ -81,27 +77,56 @@ func NewResultsTable() *ResultsTable {
 	table := &ResultsTable{
 		Table:      tview.NewTable(),
 		state:      state,
-		Menu:       menu,
-		Filter:     filter,
 		Page:       pages,
 		Wrapper:    wrapper,
 		Error:      errorModal,
 		Loading:    loadingModal,
 		Pagination: pagination,
+		Editor:     nil,
 	}
 
 	table.SetSelectable(true, true)
 	table.SetBorders(true)
-	// table.SetBorder(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
 
+	return table
+}
+
+func (table *ResultsTable) WithFilter() *ResultsTable {
+	menu := NewResultsTableMenu()
+	filter := NewResultsFilter()
+
+	table.Menu = menu
+	table.Filter = filter
+
+	table.Wrapper.AddItem(menu.Flex, 3, 0, false)
+	table.Wrapper.AddItem(filter.Flex, 3, 0, false)
+	table.Wrapper.AddItem(table, 0, 1, true)
+	table.Wrapper.AddItem(table.Pagination, 3, 0, false)
+
 	go table.subscribeToFilterChanges()
 
-	wrapper.AddItem(table, 0, 1, true)
-	wrapper.AddItem(pagination, 3, 0, false)
+	return table
+
+}
+
+func (table *ResultsTable) WithEditor() *ResultsTable {
+	editor := NewSQLEditor()
+
+	table.Editor = editor
+
+	table.Wrapper.Clear()
+
+	table.Wrapper.AddItem(editor, 12, 0, true)
+	table.Wrapper.AddItem(table, 0, 1, false)
+	table.Wrapper.AddItem(table.Pagination, 3, 0, false)
+	table.SetBorder(true)
+
+	go table.subscribeToEditorChanges()
 
 	return table
+
 }
 
 func (table *ResultsTable) AddRows(rows [][]string) {
@@ -132,114 +157,133 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if event.Rune() == 49 { // 1 Key
-		table.Menu.SetSelectedOption(1)
+		if table.Menu != nil {
+			table.Menu.SetSelectedOption(1)
+		}
 		table.UpdateRows(table.GetRecords())
 		table.Select(1, 0)
 	} else if event.Rune() == 50 { // 2 Key
-		table.Menu.SetSelectedOption(2)
+		if table.Menu != nil {
+			table.Menu.SetSelectedOption(2)
+		}
 		table.UpdateRows(table.GetColumns())
 		table.Select(1, 0)
 	} else if event.Rune() == 51 { // 3 Key
-		table.Menu.SetSelectedOption(3)
+		if table.Menu != nil {
+			table.Menu.SetSelectedOption(3)
+		}
 		table.UpdateRows(table.GetConstraints())
 		table.Select(1, 0)
 	} else if event.Rune() == 52 { // 4 Key
-		table.Menu.SetSelectedOption(4)
+		if table.Menu != nil {
+			table.Menu.SetSelectedOption(4)
+		}
 		table.UpdateRows(table.GetForeignKeys())
 		table.Select(1, 0)
 	} else if event.Rune() == 53 { // 5 Key
-		table.Menu.SetSelectedOption(5)
+		if table.Menu != nil {
+			table.Menu.SetSelectedOption(5)
+		}
 		table.UpdateRows(table.GetIndexes())
 		table.Select(1, 0)
 	} else if event.Rune() == 47 { // / Key
-		app.App.SetFocus(table.Filter.Input)
-		table.RemoveHighlightTable()
-		table.Filter.HighlightLocal()
-		table.Filter.SetIsFiltering(true)
+		if table.Editor != nil {
+			app.App.SetFocus(table.Editor)
+			table.RemoveHighlightTable()
+			table.SetIsFiltering(true)
+			if table.Editor.GetText() == "/" {
+				go table.Editor.SetText("", true)
+			}
+		} else {
+			app.App.SetFocus(table.Filter.Input)
+			table.RemoveHighlightTable()
+			table.Filter.HighlightLocal()
+			table.SetIsFiltering(true)
 
-		if table.Filter.Input.GetText() == "/" {
-			go table.Filter.Input.SetText("")
+			if table.Filter.Input.GetText() == "/" {
+				go table.Filter.Input.SetText("")
+			}
+
+			table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
+				split := strings.Split(currentText, " ")
+				comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
+
+				if len(split) == 1 {
+					columns := table.GetColumns()
+					columnNames := []string{}
+
+					for i, col := range columns {
+						if i > 0 {
+							columnNames = append(columnNames, col[0])
+						}
+					}
+
+					return columnNames
+				} else if len(split) == 2 {
+
+					for i, comparator := range comparators {
+						comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
+					}
+
+					return comparators
+				} else if len(split) == 3 {
+
+					ret := true
+
+					if split[1] == "not" {
+						comparators = []string{"between", "in", "like"}
+					} else if split[1] == "is" {
+						comparators = []string{"not", "null"}
+					} else {
+						ret = false
+					}
+
+					if ret {
+						for i, comparator := range comparators {
+							comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
+						}
+						return comparators
+					}
+
+				} else if len(split) == 4 {
+					ret := true
+
+					if split[2] == "not" {
+						comparators = []string{"null"}
+					} else if split[2] == "is" {
+						comparators = []string{"not", "null"}
+					} else {
+						ret = false
+					}
+
+					if ret {
+						for i, comparator := range comparators {
+							comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
+						}
+
+						return comparators
+					}
+				}
+
+				return []string{}
+			})
+
+			table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
+				if source != tview.AutocompletedNavigate {
+					inputText := strings.Split(table.Filter.Input.GetText(), " ")
+
+					if len(inputText) == 1 {
+						table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
+					} else if len(inputText) == 2 {
+						table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
+					}
+
+					table.Filter.Input.SetText(text)
+				}
+				return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
+			})
+
 		}
-
-		table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
-			split := strings.Split(currentText, " ")
-			comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
-
-			if len(split) == 1 {
-				columns := table.GetColumns()
-				columnNames := []string{}
-
-				for i, col := range columns {
-					if i > 0 {
-						columnNames = append(columnNames, col[0])
-					}
-				}
-
-				return columnNames
-			} else if len(split) == 2 {
-
-				for i, comparator := range comparators {
-					comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
-				}
-
-				return comparators
-			} else if len(split) == 3 {
-
-				ret := true
-
-				if split[1] == "not" {
-					comparators = []string{"between", "in", "like"}
-				} else if split[1] == "is" {
-					comparators = []string{"not", "null"}
-				} else {
-					ret = false
-				}
-
-				if ret {
-					for i, comparator := range comparators {
-						comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
-					}
-					return comparators
-				}
-
-			} else if len(split) == 4 {
-				ret := true
-
-				if split[2] == "not" {
-					comparators = []string{"null"}
-				} else if split[2] == "is" {
-					comparators = []string{"not", "null"}
-				} else {
-					ret = false
-				}
-
-				if ret {
-					for i, comparator := range comparators {
-						comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
-					}
-
-					return comparators
-				}
-			}
-
-			return []string{}
-		})
-
-		table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
-			if source != tview.AutocompletedNavigate {
-				inputText := strings.Split(table.Filter.Input.GetText(), " ")
-
-				if len(inputText) == 1 {
-					table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
-				} else if len(inputText) == 2 {
-					table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
-				}
-
-				table.Filter.Input.SetText(text)
-			}
-			return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
-		})
-
 		table.SetInputCapture(nil)
 	} else if event.Rune() == 99 { // c Key
 		table.SetIsEditing(true)
@@ -371,8 +415,12 @@ func (table *ResultsTable) RemoveHighlightTable() {
 
 func (table *ResultsTable) RemoveHighlightAll() {
 	table.RemoveHighlightTable()
-	table.Menu.SetBlur()
-	table.Filter.RemoveHighlight()
+	if table.Menu != nil {
+		table.Menu.SetBlur()
+	}
+	if table.Filter != nil {
+		table.Filter.RemoveHighlight()
+	}
 }
 
 func (table *ResultsTable) HighlightTable() {
@@ -384,8 +432,12 @@ func (table *ResultsTable) HighlightTable() {
 
 func (table *ResultsTable) HighlightAll() {
 	table.HighlightTable()
-	table.Menu.SetFocus()
-	table.Filter.Highlight()
+	if table.Menu != nil {
+		table.Menu.SetFocus()
+	}
+	if table.Filter != nil {
+		table.Filter.Highlight()
+	}
 }
 
 func (table *ResultsTable) subscribeToFilterChanges() {
@@ -409,7 +461,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 					app.App.SetFocus(table.Filter.Input)
 					table.RemoveHighlightTable()
 					table.Filter.HighlightLocal()
-					table.Filter.SetIsFiltering(true)
+					table.SetIsFiltering(true)
 					app.App.ForceDraw()
 				}
 
@@ -422,6 +474,39 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 				table.Filter.HighlightLocal()
 				app.App.ForceDraw()
 
+			}
+		}
+	}
+}
+
+func (table *ResultsTable) subscribeToEditorChanges() {
+	ch := table.Editor.Subscribe()
+
+	for stateChange := range ch {
+		switch stateChange.Key {
+		case "Query":
+			table.SetIsFiltering(false)
+			if stateChange.Value != "" {
+				rows, err := drivers.MySQL.QueryPaginatedRecords(stateChange.Value.(string))
+
+				if err != nil {
+					table.SetError(err.Error(), nil)
+				} else {
+					table.UpdateRows(rows)
+
+					if len(rows) > 1 {
+						app.App.SetFocus(table)
+						table.HighlightTable()
+						table.SetInputCapture(table.tableInputCapture)
+						app.App.Draw()
+					} else if len(rows) == 1 {
+						table.SetInputCapture(nil)
+						app.App.SetFocus(table.Editor)
+						table.RemoveHighlightTable()
+						table.SetIsFiltering(true)
+						app.App.Draw()
+					}
+				}
 			}
 		}
 	}
@@ -477,6 +562,10 @@ func (table *ResultsTable) GetIsLoading() bool {
 	return table.state.isLoading
 }
 
+func (table *ResultsTable) GetIsFiltering() bool {
+	return table.state.isFiltering
+}
+
 // Setters
 
 func (table *ResultsTable) SetRecords(rows [][]string) {
@@ -511,8 +600,12 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
 		table.Page.HidePage("error")
-		if table.Filter.GetIsFiltering() {
-			app.App.SetFocus(table.Filter.Input)
+		if table.GetIsFiltering() {
+			if table.Editor != nil {
+				app.App.SetFocus(table.Editor)
+			} else {
+				app.App.SetFocus(table.Filter.Input)
+			}
 		} else {
 			app.App.SetFocus(table)
 		}
@@ -522,7 +615,6 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	})
 	table.Page.ShowPage("error")
 	app.App.SetFocus(table.Error)
-	table.Error.SetFocus(0)
 	app.App.ForceDraw()
 }
 
@@ -545,6 +637,10 @@ func (table *ResultsTable) SetLoading(show bool) {
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
 	table.state.isEditing = editing
+}
+
+func (table *ResultsTable) SetIsFiltering(filtering bool) {
+	table.state.isFiltering = filtering
 }
 
 func (table *ResultsTable) SetCurrentSort(sort string) {
@@ -606,8 +702,8 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 		table.SetError(err.Error(), nil)
 		table.SetLoading(false)
 	} else {
-		if table.Filter.GetIsFiltering() {
-			table.Filter.SetIsFiltering(false)
+		if table.GetIsFiltering() {
+			table.SetIsFiltering(false)
 		}
 		columns := drivers.MySQL.DescribeTable(tableName)
 		constraints := drivers.MySQL.GetTableConstraints(tableName)

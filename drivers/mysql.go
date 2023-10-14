@@ -296,6 +296,40 @@ func (db *MySql) GetPaginatedRecords(table string, where string, sort string, of
 	return
 }
 
+func (db *MySql) QueryPaginatedRecords(query string) (results [][]string, err error) {
+
+	rows, err := db.conn.Query(query)
+
+	if err != nil {
+		return results, err
+	}
+
+	defer rows.Close()
+
+	columns, _ := rows.Columns()
+
+	results = append(results, columns)
+
+	for rows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		rows.Scan(rowValues...)
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		results = append(results, row)
+
+	}
+
+	return
+}
+
 func (db *MySql) UpdateRecord(table string, column string, value string, id string) error {
 	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE id = \"%s\"", table, column, value, id)
 	_, err := db.conn.Exec(query)
