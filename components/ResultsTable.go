@@ -40,6 +40,7 @@ type ResultsTable struct {
 }
 
 var ErrorModal = tview.NewModal()
+var App = app.App
 
 func NewResultsTable() *ResultsTable {
 	state := &ResultsTableState{
@@ -156,46 +157,40 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		table.Select(1, 0)
 	}
 
-	if event.Rune() == 49 { // 1 Key
-		if table.Menu != nil {
+	if table.Menu != nil {
+		if event.Rune() == 49 { // 1 Key
 			table.Menu.SetSelectedOption(1)
-		}
-		table.UpdateRows(table.GetRecords())
-		table.Select(1, 0)
-	} else if event.Rune() == 50 { // 2 Key
-		if table.Menu != nil {
+			table.UpdateRows(table.GetRecords())
+			table.Select(1, 0)
+		} else if event.Rune() == 50 { // 2 Key
 			table.Menu.SetSelectedOption(2)
-		}
-		table.UpdateRows(table.GetColumns())
-		table.Select(1, 0)
-	} else if event.Rune() == 51 { // 3 Key
-		if table.Menu != nil {
+			table.UpdateRows(table.GetColumns())
+			table.Select(1, 0)
+		} else if event.Rune() == 51 { // 3 Key
 			table.Menu.SetSelectedOption(3)
-		}
-		table.UpdateRows(table.GetConstraints())
-		table.Select(1, 0)
-	} else if event.Rune() == 52 { // 4 Key
-		if table.Menu != nil {
+			table.UpdateRows(table.GetConstraints())
+			table.Select(1, 0)
+		} else if event.Rune() == 52 { // 4 Key
 			table.Menu.SetSelectedOption(4)
-		}
-		table.UpdateRows(table.GetForeignKeys())
-		table.Select(1, 0)
-	} else if event.Rune() == 53 { // 5 Key
-		if table.Menu != nil {
+			table.UpdateRows(table.GetForeignKeys())
+			table.Select(1, 0)
+		} else if event.Rune() == 53 { // 5 Key
 			table.Menu.SetSelectedOption(5)
+			table.UpdateRows(table.GetIndexes())
+			table.Select(1, 0)
 		}
-		table.UpdateRows(table.GetIndexes())
-		table.Select(1, 0)
-	} else if event.Rune() == 47 { // / Key
+	}
+
+	if event.Rune() == 47 { // / Key
 		if table.Editor != nil {
-			app.App.SetFocus(table.Editor)
+			App.SetFocus(table.Editor)
 			table.RemoveHighlightTable()
 			table.SetIsFiltering(true)
 			if table.Editor.GetText() == "/" {
 				go table.Editor.SetText("", true)
 			}
 		} else {
-			app.App.SetFocus(table.Filter.Input)
+			App.SetFocus(table.Filter.Input)
 			table.RemoveHighlightTable()
 			table.Filter.HighlightLocal()
 			table.SetIsFiltering(true)
@@ -321,14 +316,14 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				}
 				table.SetInputCapture(table.tableInputCapture)
 				table.Page.RemovePage("edit")
-				app.App.SetFocus(table)
+				App.SetFocus(table)
 			})
 
 			x, y, width := cell.GetLastPosition()
 			inputField.SetRect(x, y, width+1, 1)
 			table.Page.AddPage("edit", inputField, false, true)
-			app.App.SetFocus(inputField)
-			app.App.Draw()
+			App.SetFocus(inputField)
+			App.Draw()
 		}()
 	} else if event.Rune() == 119 { // w key
 		if selectedColumnIndex+1 < colCount {
@@ -358,26 +353,30 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		} else {
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
-	} else if event.Rune() == 74 { // J Key
-		currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
-		table.Pagination.SetOffset(0)
-		table.SetSortedBy(currentColumnName, "DESC")
+	}
 
-	} else if event.Rune() == 75 {
-		currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
-		table.Pagination.SetOffset(0)
-		table.SetSortedBy(currentColumnName, "ASC")
-	} else if event.Rune() == 121 { // y Key
-		selectedCell := table.Table.GetCell(selectedRowIndex, selectedColumnIndex)
+	if len(table.GetRecords()) > 0 {
+		if event.Rune() == 74 { // J Key
+			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
+			table.Pagination.SetOffset(0)
+			table.SetSortedBy(currentColumnName, "DESC")
 
-		if selectedCell != nil {
-			err := clipboard.Init()
+		} else if event.Rune() == 75 {
+			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
+			table.Pagination.SetOffset(0)
+			table.SetSortedBy(currentColumnName, "ASC")
+		} else if event.Rune() == 121 { // y Key
+			selectedCell := table.Table.GetCell(selectedRowIndex, selectedColumnIndex)
 
-			if err == nil {
-				text := []byte(selectedCell.Text)
+			if selectedCell != nil {
+				err := clipboard.Init()
 
-				if text != nil {
-					clipboard.Write(clipboard.FmtText, text)
+				if err == nil {
+					text := []byte(selectedCell.Text)
+
+					if text != nil {
+						clipboard.Write(clipboard.FmtText, text)
+					}
 				}
 			}
 		}
@@ -390,7 +389,7 @@ func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.Clear()
 	table.AddRows(rows)
 	table.Select(0, 0)
-	app.App.ForceDraw()
+	App.ForceDraw()
 }
 
 func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tcell.Color) {
@@ -451,28 +450,28 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 
 				if len(rows) > 1 {
 					table.Menu.SetSelectedOption(1)
-					app.App.SetFocus(table)
+					App.SetFocus(table)
 					table.HighlightTable()
 					table.Filter.HighlightLocal()
 					table.SetInputCapture(table.tableInputCapture)
-					app.App.ForceDraw()
+					App.ForceDraw()
 				} else if len(rows) == 1 {
 					table.SetInputCapture(nil)
-					app.App.SetFocus(table.Filter.Input)
+					App.SetFocus(table.Filter.Input)
 					table.RemoveHighlightTable()
 					table.Filter.HighlightLocal()
 					table.SetIsFiltering(true)
-					app.App.ForceDraw()
+					App.ForceDraw()
 				}
 
 			} else {
 				table.FetchRecords(table.GetDBReference())
 
 				table.SetInputCapture(table.tableInputCapture)
-				app.App.SetFocus(table)
+				App.SetFocus(table)
 				table.HighlightTable()
 				table.Filter.HighlightLocal()
-				app.App.ForceDraw()
+				App.ForceDraw()
 
 			}
 		}
@@ -485,7 +484,6 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 	for stateChange := range ch {
 		switch stateChange.Key {
 		case "Query":
-			table.SetIsFiltering(false)
 			if stateChange.Value != "" {
 				rows, err := drivers.MySQL.QueryPaginatedRecords(stateChange.Value.(string))
 
@@ -493,21 +491,31 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					table.SetError(err.Error(), nil)
 				} else {
 					table.UpdateRows(rows)
+					table.SetIsFiltering(false)
 
 					if len(rows) > 1 {
-						app.App.SetFocus(table)
+						App.SetFocus(table)
 						table.HighlightTable()
+						table.Editor.SetBlur()
 						table.SetInputCapture(table.tableInputCapture)
-						app.App.Draw()
+						App.Draw()
 					} else if len(rows) == 1 {
 						table.SetInputCapture(nil)
-						app.App.SetFocus(table.Editor)
+						App.SetFocus(table.Editor)
+						table.Editor.Highlight()
 						table.RemoveHighlightTable()
 						table.SetIsFiltering(true)
-						app.App.Draw()
+						App.Draw()
 					}
 				}
 			}
+		case "Escape":
+			table.SetIsFiltering(false)
+			App.SetFocus(table)
+			table.HighlightTable()
+			table.Editor.SetBlur()
+			table.SetInputCapture(table.tableInputCapture)
+			App.Draw()
 		}
 	}
 }
@@ -602,36 +610,36 @@ func (table *ResultsTable) SetError(err string, done func()) {
 		table.Page.HidePage("error")
 		if table.GetIsFiltering() {
 			if table.Editor != nil {
-				app.App.SetFocus(table.Editor)
+				App.SetFocus(table.Editor)
 			} else {
-				app.App.SetFocus(table.Filter.Input)
+				App.SetFocus(table.Filter.Input)
 			}
 		} else {
-			app.App.SetFocus(table)
+			App.SetFocus(table)
 		}
 		if done != nil {
 			done()
 		}
 	})
 	table.Page.ShowPage("error")
-	app.App.SetFocus(table.Error)
-	app.App.ForceDraw()
+	App.SetFocus(table.Error)
+	App.ForceDraw()
 }
 
 func (table *ResultsTable) SetLoading(show bool) {
 	table.state.isLoading = show
 	if show {
 		table.Page.ShowPage("loading")
-		app.App.SetFocus(table.Loading)
-		app.App.ForceDraw()
+		App.SetFocus(table.Loading)
+		App.ForceDraw()
 	} else {
 		table.Page.HidePage("loading")
 		if table.state.error != "" {
-			app.App.SetFocus(table.Error)
+			App.SetFocus(table.Error)
 		} else {
-			app.App.SetFocus(table)
+			App.SetFocus(table)
 		}
-		app.App.ForceDraw()
+		App.ForceDraw()
 	}
 }
 
@@ -651,7 +659,10 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	sort := fmt.Sprintf("%s %s", column, direction)
 
 	if table.GetCurrentSort() != sort {
-		where := table.Filter.GetCurrentFilter()
+		where := ""
+		if table.Filter != nil {
+			where = table.Filter.GetCurrentFilter()
+		}
 		table.SetLoading(true)
 		records, err := drivers.MySQL.GetRecords(table.GetDBReference(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
 		table.SetLoading(false)
@@ -660,7 +671,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 			table.SetError(err.Error(), nil)
 		} else {
 			table.SetRecords(records)
-			app.App.ForceDraw()
+			App.ForceDraw()
 		}
 
 		table.SetCurrentSort(sort)
@@ -693,7 +704,10 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	table.SetLoading(true)
 
-	where := table.Filter.GetCurrentFilter()
+	where := ""
+	if table.Filter != nil {
+		where = table.Filter.GetCurrentFilter()
+	}
 	sort := table.GetCurrentSort()
 
 	records, totalRecords, err := drivers.MySQL.GetPaginatedRecords(tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)

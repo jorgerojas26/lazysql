@@ -1,6 +1,8 @@
 package components
 
 import (
+	"lazysql/app"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -31,8 +33,10 @@ func NewSQLEditor() *SQLEditor {
 
 	sqlEditor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 18 { // Ctrl + R
-			sqlEditor.Publish(sqlEditor.GetText())
+			sqlEditor.Publish("Query", sqlEditor.GetText())
 			return nil
+		} else if event.Key() == tcell.KeyEscape {
+			sqlEditor.Publish("Escape", "")
 		}
 
 		return event
@@ -48,10 +52,10 @@ func (s *SQLEditor) Subscribe() chan StateChange {
 	return subscriber
 }
 
-func (s *SQLEditor) Publish(message string) {
+func (s *SQLEditor) Publish(key string, message string) {
 	for _, sub := range s.subscribers {
 		sub <- StateChange{
-			Key:   "Query",
+			Key:   key,
 			Value: message,
 		}
 	}
@@ -63,4 +67,14 @@ func (s *SQLEditor) GetIsFocused() bool {
 
 func (s *SQLEditor) SetIsFocused(isFocused bool) {
 	s.state.isFocused = isFocused
+}
+
+func (s *SQLEditor) Highlight() {
+	s.SetBorderColor(app.FocusTextColor)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(app.FocusTextColor))
+}
+
+func (s *SQLEditor) SetBlur() {
+	s.SetBorderColor(tcell.ColorWhite)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
 }
