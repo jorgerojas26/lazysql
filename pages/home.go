@@ -1,11 +1,11 @@
 package pages
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-
 	"lazysql/app"
 	"lazysql/components"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type Home struct {
@@ -46,12 +46,16 @@ func NewHomePage(name string) *Home {
 
 		if event.Rune() == '[' {
 			focusTab(tabbedPane.SwitchToPreviousTab())
+			return nil
 		} else if event.Rune() == ']' {
 			focusTab(tabbedPane.SwitchToNextTab())
+			return nil
 		} else if event.Rune() == '{' {
 			focusTab(tabbedPane.SwitchToFirstTab())
+			return nil
 		} else if event.Rune() == '}' {
 			focusTab(tabbedPane.SwitchToLastTab())
+			return nil
 		} else if event.Rune() == 'X' {
 			tabbedPane.RemoveCurrentTab()
 
@@ -98,7 +102,6 @@ func NewHomePage(name string) *Home {
 	home.AddItem(rightWrapper, 0, 5, false)
 
 	home.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-
 		tab := tabbedPane.GetCurrentTab()
 
 		var table *components.ResultsTable = nil
@@ -123,6 +126,7 @@ func NewHomePage(name string) *Home {
 			} else {
 				tableWithEditor := components.NewResultsTable().WithEditor()
 				tabbedPane.AppendTab("Editor", tableWithEditor)
+				tableWithEditor.SetIsFiltering(true)
 			}
 			home.focusRightWrapper()
 			App.ForceDraw()
@@ -182,7 +186,6 @@ func (home *Home) subscribeToTreeChanges() {
 			table.FetchRecords(tableName)
 
 			app.App.ForceDraw()
-
 		}
 	}
 }
@@ -209,8 +212,14 @@ func focusTab(tab *components.Tab) {
 
 		if table.GetIsFiltering() {
 			go func() {
-				App.SetFocus(table.Filter.Input)
-				table.Filter.HighlightLocal()
+				if table.Filter != nil {
+					App.SetFocus(table.Filter.Input)
+					table.Filter.HighlightLocal()
+				} else if table.Editor != nil {
+					App.SetFocus(table.Editor)
+					table.Editor.Highlight()
+				}
+
 				table.RemoveHighlightTable()
 				App.Draw()
 			}()

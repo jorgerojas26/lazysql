@@ -2,14 +2,13 @@ package components
 
 import (
 	"fmt"
+	"lazysql/app"
+	"lazysql/drivers"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.design/x/clipboard"
-
-	"lazysql/app"
-	"lazysql/drivers"
 )
 
 type ResultsTableState struct {
@@ -39,8 +38,10 @@ type ResultsTable struct {
 	Editor     *SQLEditor
 }
 
-var ErrorModal = tview.NewModal()
-var App = app.App
+var (
+	ErrorModal = tview.NewModal()
+	App        = app.App
+)
 
 func NewResultsTable() *ResultsTable {
 	state := &ResultsTableState{
@@ -109,7 +110,6 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 	go table.subscribeToFilterChanges()
 
 	return table
-
 }
 
 func (table *ResultsTable) WithEditor() *ResultsTable {
@@ -127,7 +127,6 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	go table.subscribeToEditorChanges()
 
 	return table
-
 }
 
 func (table *ResultsTable) AddRows(rows [][]string) {
@@ -184,11 +183,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	if event.Rune() == 47 { // / Key
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
+			table.Editor.Highlight()
 			table.RemoveHighlightTable()
 			table.SetIsFiltering(true)
-			if table.Editor.GetText() == "/" {
-				go table.Editor.SetText("", true)
-			}
+			return nil
 		} else {
 			App.SetFocus(table.Filter.Input)
 			table.RemoveHighlightTable()
@@ -740,5 +738,4 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	}
 
 	return [][]string{}
-
 }
