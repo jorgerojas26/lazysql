@@ -1,8 +1,7 @@
-package pages
+package components
 
 import (
 	"lazysql/app"
-	"lazysql/components"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -10,18 +9,16 @@ import (
 
 type Home struct {
 	*tview.Flex
-	Tree           *components.Tree
-	TabbedPane     *components.TabbedPane
+	Tree           *Tree
+	TabbedPane     *TabbedPane
 	LeftWrapper    *tview.Flex
 	RightWrapper   *tview.Flex
 	FocusedWrapper string
 }
 
-var App = app.App
-
 func NewHomePage(name string) *Home {
-	tree := components.NewTree()
-	tabbedPane := components.NewTabbedPane()
+	tree := NewTree()
+	tabbedPane := NewTabbedPane()
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
@@ -42,7 +39,7 @@ func NewHomePage(name string) *Home {
 	rightWrapper.SetDirection(tview.FlexColumnCSS)
 
 	rightWrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		var tab *components.Tab
+		var tab *Tab
 
 		if event.Rune() == '[' {
 			focusTab(tabbedPane.SwitchToPreviousTab())
@@ -104,7 +101,7 @@ func NewHomePage(name string) *Home {
 	home.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		tab := tabbedPane.GetCurrentTab()
 
-		var table *components.ResultsTable = nil
+		var table *ResultsTable = nil
 
 		if tab != nil {
 			table = tab.Content
@@ -124,15 +121,15 @@ func NewHomePage(name string) *Home {
 			if tab != nil {
 				tabbedPane.SwitchToTabByName("Editor")
 			} else {
-				tableWithEditor := components.NewResultsTable().WithEditor()
+				tableWithEditor := NewResultsTable().WithEditor()
 				tabbedPane.AppendTab("Editor", tableWithEditor)
 				tableWithEditor.SetIsFiltering(true)
 			}
 			home.focusRightWrapper()
 			App.ForceDraw()
 		} else if event.Rune() == 127 {
-			if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering()) || table == nil {
-				AllPages.SwitchToPage("Connections")
+			if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
+				MainPages.SwitchToPage("Connections")
 			}
 		} else if event.Rune() == 'q' {
 			if tab != nil {
@@ -157,7 +154,7 @@ func NewHomePage(name string) *Home {
 		}
 	})
 
-	AllPages.AddPage(name, home, true, false)
+	MainPages.AddPage(name, home, true, false)
 	return home
 }
 
@@ -170,13 +167,13 @@ func (home *Home) subscribeToTreeChanges() {
 			tableName := stateChange.Value.(string)
 
 			tab := home.TabbedPane.GetTabByName(tableName)
-			var table *components.ResultsTable = nil
+			var table *ResultsTable = nil
 
 			if tab != nil {
 				table = tab.Content
 				home.TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
-				table = components.NewResultsTable().WithFilter()
+				table = NewResultsTable().WithFilter()
 
 				home.TabbedPane.AppendTab(tableName, table)
 			}
@@ -205,7 +202,7 @@ func (home *Home) focusRightWrapper() {
 	home.FocusedWrapper = "right"
 }
 
-func focusTab(tab *components.Tab) {
+func focusTab(tab *Tab) {
 	if tab != nil {
 		table := tab.Content
 		table.HighlightAll()

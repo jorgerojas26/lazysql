@@ -2,12 +2,12 @@ package components
 
 import (
 	"fmt"
+	"lazysql/app"
+	"lazysql/drivers"
+	"lazysql/models"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-
-	"lazysql/app"
-	"lazysql/drivers"
 )
 
 type TreeState struct {
@@ -18,7 +18,7 @@ type TreeState struct {
 type Tree struct {
 	*tview.TreeView
 	state       *TreeState
-	subscribers []chan StateChange
+	subscribers []chan models.StateChange
 }
 
 func NewTree() *Tree {
@@ -30,7 +30,7 @@ func NewTree() *Tree {
 	tree := &Tree{
 		TreeView:    tview.NewTreeView(),
 		state:       state,
-		subscribers: []chan StateChange{},
+		subscribers: []chan models.StateChange{},
 	}
 
 	tree.SetTopLevel(1)
@@ -97,14 +97,14 @@ func (tree *Tree) updateNodes(children []string, node *tview.TreeNode, defaultEx
 }
 
 // Subscribe to changes in the tree state
-func (tree *Tree) Subscribe() chan StateChange {
-	subscriber := make(chan StateChange)
+func (tree *Tree) Subscribe() chan models.StateChange {
+	subscriber := make(chan models.StateChange)
 	tree.subscribers = append(tree.subscribers, subscriber)
 	return subscriber
 }
 
 // Publish subscribers of changes in the tree state
-func (tree *Tree) Publish(change StateChange) {
+func (tree *Tree) Publish(change models.StateChange) {
 	for _, subscriber := range tree.subscribers {
 		subscriber <- change
 	}
@@ -121,7 +121,7 @@ func (tree *Tree) GetSelectedTable() string {
 
 func (tree *Tree) SetSelectedDatabase(database string) {
 	tree.state.selectedDatabase = database
-	tree.Publish(StateChange{
+	tree.Publish(models.StateChange{
 		Key:   "SelectedDatabase",
 		Value: database,
 	})
@@ -129,7 +129,7 @@ func (tree *Tree) SetSelectedDatabase(database string) {
 
 func (tree *Tree) SetSelectedTable(table string) {
 	tree.state.selectedTable = table
-	tree.Publish(StateChange{
+	tree.Publish(models.StateChange{
 		Key:   "SelectedTable",
 		Value: table,
 	})

@@ -38,10 +38,7 @@ type ResultsTable struct {
 	Editor     *SQLEditor
 }
 
-var (
-	ErrorModal = tview.NewModal()
-	App        = app.App
-)
+var ErrorModal = tview.NewModal()
 
 func NewResultsTable() *ResultsTable {
 	state := &ResultsTableState{

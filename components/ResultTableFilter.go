@@ -1,10 +1,11 @@
 package components
 
 import (
+	"lazysql/app"
+	"lazysql/models"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-
-	"lazysql/app"
 )
 
 type ResultsTableFilter struct {
@@ -12,7 +13,7 @@ type ResultsTableFilter struct {
 	Input         *tview.InputField
 	Label         *tview.TextView
 	currentFilter string
-	subscribers   []chan StateChange
+	subscribers   []chan models.StateChange
 	filtering     bool
 }
 
@@ -57,15 +58,15 @@ func NewResultsFilter() *ResultsTableFilter {
 	return recordsFilter
 }
 
-func (filter *ResultsTableFilter) Subscribe() chan StateChange {
-	subscriber := make(chan StateChange)
+func (filter *ResultsTableFilter) Subscribe() chan models.StateChange {
+	subscriber := make(chan models.StateChange)
 	filter.subscribers = append(filter.subscribers, subscriber)
 	return subscriber
 }
 
 func (filter *ResultsTableFilter) Publish(message string) {
 	for _, sub := range filter.subscribers {
-		sub <- StateChange{
+		sub <- models.StateChange{
 			Key:   "Filter",
 			Value: message,
 		}

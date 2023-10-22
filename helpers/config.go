@@ -1,28 +1,19 @@
-package utils
+package helpers
 
 import (
+	"lazysql/models"
 	"os"
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
 )
 
-type Connection struct {
-	Name     string
-	Provider string
-	User     string
-	Password string
-	Host     string
-	Port     string
-}
-
 type Config struct {
-	Connections []Connection `toml:"database"`
+	Connections []models.Connection `toml:"database"`
 }
 
 func LoadConfig() (config Config, err error) {
 	file, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".config", "lazysql", "config.toml"))
-
 	if err != nil {
 		return
 	}
@@ -30,23 +21,21 @@ func LoadConfig() (config Config, err error) {
 	err = toml.Unmarshal(file, &config)
 
 	return
-
 }
 
-func LoadConnections() (databases []Connection, err error) {
+func LoadConnections() (connections []models.Connection, err error) {
 	config, err := LoadConfig()
-
 	if err != nil {
 		return
 	}
 
-	databases = config.Connections
+	connections = config.Connections
 
 	return
 }
 
-func SaveConnectionConfig(databases []Connection) (err error) {
-	config := Config{Connections: databases}
+func SaveConnectionConfig(connections []models.Connection) (err error) {
+	config := Config{Connections: connections}
 
 	directoriesPath := filepath.Join(os.Getenv("HOME"), ".config", "lazysql")
 	configFilePath := filepath.Join(directoriesPath, "config.toml")
@@ -54,18 +43,17 @@ func SaveConnectionConfig(databases []Connection) (err error) {
 	err = os.MkdirAll(directoriesPath, 0755)
 
 	if err != nil {
-		return
+		return err
 	}
 
-	file, err := os.OpenFile(configFilePath, os.O_RDWR|os.O_CREATE, 0755)
-
+	file, err := os.Create(configFilePath)
 	if err != nil {
-		return
+		return err
 	}
 
 	defer file.Close()
 
 	err = toml.NewEncoder(file).Encode(config)
 
-	return
+	return err
 }

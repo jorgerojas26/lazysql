@@ -2,6 +2,7 @@ package components
 
 import (
 	"lazysql/app"
+	"lazysql/models"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -14,7 +15,7 @@ type SQLEditorState struct {
 type SQLEditor struct {
 	*tview.TextArea
 	state       *SQLEditorState
-	subscribers []chan StateChange
+	subscribers []chan models.StateChange
 }
 
 func NewSQLEditor() *SQLEditor {
@@ -40,21 +41,20 @@ func NewSQLEditor() *SQLEditor {
 		}
 
 		return event
-
 	})
 
 	return sqlEditor
 }
 
-func (s *SQLEditor) Subscribe() chan StateChange {
-	subscriber := make(chan StateChange)
+func (s *SQLEditor) Subscribe() chan models.StateChange {
+	subscriber := make(chan models.StateChange)
 	s.subscribers = append(s.subscribers, subscriber)
 	return subscriber
 }
 
 func (s *SQLEditor) Publish(key string, message string) {
 	for _, sub := range s.subscribers {
-		sub <- StateChange{
+		sub <- models.StateChange{
 			Key:   key,
 			Value: message,
 		}

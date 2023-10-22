@@ -3,7 +3,7 @@ package main
 import (
 	"io"
 	"lazysql/app"
-	"lazysql/pages"
+	"lazysql/components"
 	"log"
 
 	"github.com/go-sql-driver/mysql"
@@ -11,7 +11,8 @@ import (
 
 func main() {
 	mysql.SetLogger(log.New(io.Discard, "", 0))
-	if err := app.App.SetRoot(pages.AllPages, true).Run(); err != nil {
+
+	if err := app.App.SetRoot(components.MainPages, true).Run(); err != nil {
 		panic(err)
 	}
 }
