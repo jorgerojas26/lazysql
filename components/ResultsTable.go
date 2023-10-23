@@ -149,35 +149,35 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	colCount := table.GetColumnCount()
 	rowCount := table.GetRowCount()
 
-	if event.Rune() == 49 || event.Rune() == 50 || event.Rune() == 51 || event.Rune() == 52 || event.Rune() == 53 {
+	if event.Rune() == '1' || event.Rune() == '2' || event.Rune() == '3' || event.Rune() == '4' || event.Rune() == '5' {
 		table.Select(1, 0)
 	}
 
 	if table.Menu != nil {
-		if event.Rune() == 49 { // 1 Key
+		if event.Rune() == '1' {
 			table.Menu.SetSelectedOption(1)
 			table.UpdateRows(table.GetRecords())
 			table.Select(1, 0)
-		} else if event.Rune() == 50 { // 2 Key
+		} else if event.Rune() == '2' {
 			table.Menu.SetSelectedOption(2)
 			table.UpdateRows(table.GetColumns())
 			table.Select(1, 0)
-		} else if event.Rune() == 51 { // 3 Key
+		} else if event.Rune() == '3' {
 			table.Menu.SetSelectedOption(3)
 			table.UpdateRows(table.GetConstraints())
 			table.Select(1, 0)
-		} else if event.Rune() == 52 { // 4 Key
+		} else if event.Rune() == '4' {
 			table.Menu.SetSelectedOption(4)
 			table.UpdateRows(table.GetForeignKeys())
 			table.Select(1, 0)
-		} else if event.Rune() == 53 { // 5 Key
+		} else if event.Rune() == '5' {
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
 			table.Select(1, 0)
 		}
 	}
 
-	if event.Rune() == 47 { // / Key
+	if event.Rune() == '/' {
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
 			table.Editor.Highlight()
@@ -275,7 +275,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 		table.SetInputCapture(nil)
-	} else if event.Rune() == 99 { // c Key
+	} else if event.Rune() == 'c' {
 		table.SetIsEditing(true)
 		go func() {
 			table.SetInputCapture(nil)
@@ -320,21 +320,21 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			App.SetFocus(inputField)
 			App.Draw()
 		}()
-	} else if event.Rune() == 119 { // w key
+	} else if event.Rune() == 'w' {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
 		}
-	} else if event.Rune() == 98 { // b key
+	} else if event.Rune() == 'b' {
 		if selectedColumnIndex > 0 {
 			table.Select(selectedRowIndex, selectedColumnIndex-1)
 		}
-	} else if event.Rune() == 36 { // $ Key
+	} else if event.Rune() == '$' {
 		table.Select(selectedRowIndex, colCount-1)
-	} else if event.Rune() == 48 { // 0 Key
+	} else if event.Rune() == '0' {
 		table.Select(selectedRowIndex, 0)
-	} else if event.Rune() == 103 { // g Key
+	} else if event.Rune() == 'g' {
 		go table.Select(1, selectedColumnIndex)
-	} else if event.Rune() == 71 { // G Key
+	} else if event.Rune() == 'G' {
 		go table.Select(rowCount-1, selectedColumnIndex)
 	} else if event.Rune() == 4 { // Ctrl + D
 		if selectedRowIndex+7 > rowCount-1 {
@@ -364,17 +364,17 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if len(table.GetRecords()) > 0 {
-		if event.Rune() == 74 { // J Key
+		if event.Rune() == 'J' {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "DESC")
 
-		} else if event.Rune() == 75 {
+		} else if event.Rune() == 'K' {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
-		} else if event.Rune() == 121 { // y Key
-			selectedCell := table.Table.GetCell(selectedRowIndex, selectedColumnIndex)
+		} else if event.Rune() == 'y' {
+			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 
 			if selectedCell != nil {
 				err := clipboard.Init()
