@@ -63,20 +63,12 @@ func (db *MySql) Connect() error {
 	return nil
 }
 
-func (db *MySql) Disconnect() error {
-	return db.conn.Close()
-}
-
 func (db *MySql) SetConnectionString(connectionString string) {
 	db.connectionString = connectionString
 }
 
 func (db *MySql) GetConnectionString() string {
 	return db.connectionString
-}
-
-func (db *MySql) GetConnection() *sql.DB {
-	return db.conn
 }
 
 func (db *MySql) GetDatabases() ([]string, error) {
@@ -297,9 +289,7 @@ func (db *MySql) GetPaginatedRecords(table string, where string, sort string, of
 }
 
 func (db *MySql) QueryPaginatedRecords(query string) (results [][]string, err error) {
-
 	rows, err := db.conn.Query(query)
-
 	if err != nil {
 		return results, err
 	}
@@ -332,6 +322,13 @@ func (db *MySql) QueryPaginatedRecords(query string) (results [][]string, err er
 
 func (db *MySql) UpdateRecord(table string, column string, value string, id string) error {
 	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE id = \"%s\"", table, column, value, id)
+	_, err := db.conn.Exec(query)
+
+	return err
+}
+
+func (db *MySql) DeleteRecord(table string, id string) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE id = \"%s\"", table, id)
 	_, err := db.conn.Exec(query)
 
 	return err

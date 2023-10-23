@@ -336,17 +336,30 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		go table.Select(1, selectedColumnIndex)
 	} else if event.Rune() == 71 { // G Key
 		go table.Select(rowCount-1, selectedColumnIndex)
-	} else if event.Rune() == 100 { // d Key
+	} else if event.Rune() == 4 { // Ctrl + D
 		if selectedRowIndex+7 > rowCount-1 {
 			go table.Select(rowCount-1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex+7, selectedColumnIndex)
 		}
-	} else if event.Rune() == 117 { // u Key
+	} else if event.Rune() == 21 { // Ctrl + U
 		if selectedRowIndex-7 < 1 {
 			go table.Select(1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
+		}
+	} else if event.Rune() == 'd' {
+		id := table.GetCell(selectedRowIndex, 0).Text
+		error := drivers.MySQL.DeleteRecord(table.GetDBReference(), id)
+
+		if error != nil {
+			table.SetError(error.Error(), nil)
+		} else {
+			records := table.GetRecords()
+
+			newRecords := append(records[:selectedRowIndex], records[selectedRowIndex+1:]...)
+
+			table.SetRecords(newRecords)
 		}
 	}
 
