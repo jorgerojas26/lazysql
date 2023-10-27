@@ -33,8 +33,8 @@ func NewResultsFilter() *ResultsTableFilter {
 	recordsFilter.Label.SetBorderPadding(0, 0, 0, 1)
 
 	recordsFilter.Input.SetPlaceholder("Enter a WHERE clause to filter the results")
-	recordsFilter.Input.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack))
-	recordsFilter.Input.SetFieldBackgroundColor(tcell.ColorBlack)
+	recordsFilter.Input.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDefault))
+	recordsFilter.Input.SetFieldBackgroundColor(tcell.ColorDefault)
 	recordsFilter.Input.SetFieldTextColor(tcell.ColorWhite.TrueColor())
 	recordsFilter.Input.SetDoneFunc(func(key tcell.Key) {
 		switch key {
@@ -51,6 +51,7 @@ func NewResultsFilter() *ResultsTableFilter {
 
 		}
 	})
+	recordsFilter.Input.SetAutocompleteStyles(tcell.ColorBlack, tcell.StyleDefault.Foreground(app.FocusTextColor).Background(tcell.ColorBlack), tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorBlack))
 
 	recordsFilter.AddItem(recordsFilter.Label, 6, 0, false)
 	recordsFilter.AddItem(recordsFilter.Input, 0, 1, false)

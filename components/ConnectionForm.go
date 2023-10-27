@@ -47,10 +47,12 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
+	statusText.SetBackgroundColor(tcell.ColorDefault)
+	statusText.SetBorderPadding(0, 1, 0, 0)
 
 	wrapper.AddItem(addForm, 0, 1, true)
+	wrapper.AddItem(statusText, 2, 0, false)
 	wrapper.AddItem(buttonsWrapper, 1, 0, false)
-	wrapper.AddItem(statusText, 1, 0, false)
 
 	form := &ConnectionForm{
 		Flex:       wrapper,
@@ -71,7 +73,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
 			if connectionName == "" {
-				form.StatusText.SetText("Connection name is required").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+				form.StatusText.SetText("Connection name is required").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
 			}
 
@@ -80,7 +82,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			parsed, err := drivers.MySQL.ParseConnectionString(connectionString)
 
 			if err != nil {
-				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
 			} else {
 
@@ -101,7 +103,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 					newDatabases = append(databases, database)
 					err := helpers.SaveConnectionConfig(newDatabases)
 					if err != nil {
-						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 						return event
 					}
 				} else if form.Action == "edit" {
@@ -123,7 +125,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 					err := helpers.SaveConnectionConfig(newDatabases)
 					if err != nil {
-						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 						return event
 					}
 
@@ -140,7 +142,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 }
 
 func (form *ConnectionForm) testConnection(connectionString string) {
-	form.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()).Background(tcell.ColorBlack))
+	form.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()))
 
 	db := drivers.MySql{}
 	db.SetConnectionString(connectionString)
@@ -148,9 +150,9 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	err := db.TestConnection()
 
 	if err != nil {
-		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 	} else {
-		form.StatusText.SetText("Connection success").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()).Background(tcell.ColorBlack))
+		form.StatusText.SetText("Connection success").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()))
 	}
 	App.ForceDraw()
 }

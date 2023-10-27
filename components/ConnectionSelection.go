@@ -50,9 +50,10 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
+	statusText.SetBorderPadding(0, 2, 0, 0)
 
 	wrapper.AddItem(ConnectionListTable, 0, 1, true)
-	wrapper.AddItem(statusText, 2, 0, false)
+	wrapper.AddItem(statusText, 1, 0, false)
 	wrapper.AddItem(buttonsWrapper, 1, 0, false)
 
 	cs := &ConnectionSelection{
@@ -118,17 +119,17 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		App.Draw()
 	} else {
 		newHome := NewHomePage(connectionUrl)
-		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorBlack))
+		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
 		App.Draw()
 
 		drivers.MySQL.SetConnectionString(connectionUrl)
 		err := drivers.MySQL.Connect()
 
 		if err != nil {
-			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack))
+			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 		} else {
 			selectedRow, selectedCol := ConnectionListTable.GetSelection()
-			cell := ConnectionListTable.GetCell(selectedRow, selectedCol).SetStyle(tcell.StyleDefault.Foreground(tcell.ColorGreen).Background(tcell.ColorBlack))
+			cell := ConnectionListTable.GetCell(selectedRow, selectedCol).SetStyle(tcell.StyleDefault.Foreground(tcell.ColorGreen))
 
 			ConnectionListTable.SetCell(selectedRow, selectedCol, cell)
 
