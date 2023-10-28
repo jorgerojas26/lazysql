@@ -27,15 +27,17 @@ type ResultsTableState struct {
 
 type ResultsTable struct {
 	*tview.Table
-	state      *ResultsTableState
-	Page       *tview.Pages
-	Wrapper    *tview.Flex
-	Menu       *ResultsTableMenu
-	Filter     *ResultsTableFilter
-	Error      *tview.Modal
-	Loading    *tview.Modal
-	Pagination *Pagination
-	Editor     *SQLEditor
+	state       *ResultsTableState
+	Page        *tview.Pages
+	Wrapper     *tview.Flex
+	Menu        *ResultsTableMenu
+	Filter      *ResultsTableFilter
+	Error       *tview.Modal
+	Loading     *tview.Modal
+	Pagination  *Pagination
+	Editor      *SQLEditor
+	EditorPages *tview.Pages
+	ResultsInfo *tview.TextView
 }
 
 var ErrorModal = tview.NewModal()
@@ -111,15 +113,33 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 
 func (table *ResultsTable) WithEditor() *ResultsTable {
 	editor := NewSQLEditor()
+	editorPages := tview.NewPages()
 
 	table.Editor = editor
 
 	table.Wrapper.Clear()
 
 	table.Wrapper.AddItem(editor, 12, 0, true)
-	table.Wrapper.AddItem(table, 0, 1, false)
-	table.Wrapper.AddItem(table.Pagination, 3, 0, false)
 	table.SetBorder(true)
+
+	tableWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
+	tableWrapper.AddItem(table, 0, 1, false)
+	tableWrapper.AddItem(table.Pagination, 3, 0, false)
+
+	resultsInfoWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
+	resultsInfoText := tview.NewTextView()
+	resultsInfoText.SetBorder(true)
+	resultsInfoText.SetBorderColor(app.FocusTextColor)
+	resultsInfoText.SetTextColor(app.FocusTextColor)
+	resultsInfoWrapper.AddItem(resultsInfoText, 3, 0, false)
+
+	editorPages.AddPage("Table", tableWrapper, true, false)
+	editorPages.AddPage("ResultsInfo", resultsInfoWrapper, true, true)
+
+	table.EditorPages = editorPages
+	table.ResultsInfo = resultsInfoText
+
+	table.Wrapper.AddItem(editorPages, 0, 1, true)
 
 	go table.subscribeToEditorChanges()
 
@@ -492,27 +512,57 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 	for stateChange := range ch {
 		switch stateChange.Key {
 		case "Query":
-			if stateChange.Value != "" {
-				rows, err := drivers.MySQL.QueryPaginatedRecords(stateChange.Value.(string))
+			query := stateChange.Value.(string)
+			if query != "" {
+				if strings.Contains(strings.ToLower(query), "select") {
+					table.SetLoading(true)
+					App.Draw()
+					rows, err := drivers.MySQL.QueryPaginatedRecords(query)
+					table.Pagination.SetTotalRecords(len(rows))
+					table.Pagination.SetLimit(len(rows))
 
-				if err != nil {
-					table.SetError(err.Error(), nil)
-				} else {
-					table.UpdateRows(rows)
-					table.SetIsFiltering(false)
-
-					if len(rows) > 1 {
-						App.SetFocus(table)
-						table.HighlightTable()
-						table.Editor.SetBlur()
-						table.SetInputCapture(table.tableInputCapture)
+					if err != nil {
+						table.SetLoading(false)
 						App.Draw()
-					} else if len(rows) == 1 {
-						table.SetInputCapture(nil)
+						table.SetError(err.Error(), nil)
+					} else {
+						table.UpdateRows(rows)
+						table.SetIsFiltering(false)
+
+						if len(rows) > 1 {
+							App.SetFocus(table)
+							table.HighlightTable()
+							table.Editor.SetBlur()
+							table.SetInputCapture(table.tableInputCapture)
+							App.Draw()
+						} else if len(rows) == 1 {
+							table.SetInputCapture(nil)
+							App.SetFocus(table.Editor)
+							table.Editor.Highlight()
+							table.RemoveHighlightTable()
+							table.SetIsFiltering(true)
+							App.Draw()
+						}
+						table.SetLoading(false)
+					}
+					table.EditorPages.SwitchToPage("Table")
+					App.Draw()
+				} else {
+					table.SetRecords([][]string{})
+					table.SetLoading(true)
+					App.Draw()
+
+					result, err := drivers.MySQL.ExecuteDMLQuery(query)
+
+					if err != nil {
+						table.SetLoading(false)
+						App.Draw()
+						table.SetError(err.Error(), nil)
+					} else {
+						table.SetResultsInfo(result)
+						table.SetLoading(false)
+						table.EditorPages.SwitchToPage("ResultsInfo")
 						App.SetFocus(table.Editor)
-						table.Editor.Highlight()
-						table.RemoveHighlightTable()
-						table.SetIsFiltering(true)
 						App.Draw()
 					}
 				}
@@ -632,6 +682,10 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Page.ShowPage("error")
 	App.SetFocus(table.Error)
 	App.ForceDraw()
+}
+
+func (table *ResultsTable) SetResultsInfo(text string) {
+	table.ResultsInfo.SetText(text)
 }
 
 func (table *ResultsTable) SetLoading(show bool) {

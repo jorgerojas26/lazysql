@@ -54,20 +54,27 @@ func NewHomePage(name string) *Home {
 			focusTab(tabbedPane.SwitchToLastTab())
 			return nil
 		} else if event.Rune() == 'X' {
-			tabbedPane.RemoveCurrentTab()
+			tab = tabbedPane.GetCurrentTab()
 
-			if tabbedPane.GetLenght() == 0 {
-				home.focusLeftWrapper()
-				return nil
+			if tab != nil {
+				table := tab.Content
+
+				if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
+					tabbedPane.RemoveCurrentTab()
+
+					if tabbedPane.GetLenght() == 0 {
+						home.focusLeftWrapper()
+						return nil
+					}
+				}
 			}
-
 		} else if event.Rune() == '<' {
 			tab = tabbedPane.GetCurrentTab()
 
 			if tab != nil {
 				table := tab.Content
 
-				if table.Menu.GetSelectedOption() == 1 && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
+				if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 					table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
 					table.FetchRecords(table.GetDBReference())
 
@@ -81,7 +88,7 @@ func NewHomePage(name string) *Home {
 			if tab != nil {
 				table := tab.Content
 
-				if table.Menu.GetSelectedOption() == 1 && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
+				if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 					table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
 					table.FetchRecords(table.GetDBReference())
 				}

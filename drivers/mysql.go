@@ -228,7 +228,7 @@ func (db *MySql) GetRecords(table string, where string, sort string, offset int,
 
 // Get paginated records
 func (db *MySql) GetPaginatedRecords(table string, where string, sort string, offset int, limit int, appendColumns bool) (paginatedResults [][]string, totalRecords int, err error) {
-	defaultLimit := 100
+	defaultLimit := 300
 
 	if limit != 0 {
 		defaultLimit = limit
@@ -332,6 +332,18 @@ func (db *MySql) DeleteRecord(table string, id string) error {
 	_, err := db.conn.Exec(query)
 
 	return err
+}
+
+func (db *MySql) ExecuteDMLQuery(query string) (result string, err error) {
+	res, error := db.conn.Exec(query)
+
+	if error != nil {
+		return result, error
+	} else {
+		rowsAffected, _ := res.RowsAffected()
+
+		return fmt.Sprintf("%d rows affected", rowsAffected), error
+	}
 }
 
 func (db *MySql) GetLastExecutedQuery() string {
