@@ -69,9 +69,9 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			selectedConnection := connections[row]
 			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
 
-			if event.Rune() == 99 || event.Key() == tcell.KeyEnter {
+			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
 				go cs.connect(connectionUrl)
-			} else if event.Rune() == 101 { // E Key
+			} else if event.Rune() == 'e' {
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
 				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionUrl)
@@ -80,28 +80,38 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 				connectionForm.SetAction("edit")
 				return nil
 
-				// D Key
-			} else if event.Rune() == 100 {
-				newConnections := append(connections[:row], connections[row+1:]...)
+			} else if event.Rune() == 'd' {
+				confirmationModal := NewConfirmationModal()
+				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
+					if buttonLabel == "Yes" {
+						newConnections := append(connections[:row], connections[row+1:]...)
 
-				err := helpers.SaveConnectionConfig(newConnections)
-				if err != nil {
-					ConnectionListTable.SetError(err.Error())
-				} else {
-					ConnectionListTable.SetConnections(newConnections)
-				}
+						err := helpers.SaveConnectionConfig(newConnections)
+						if err != nil {
+							ConnectionListTable.SetError(err.Error())
+						} else {
+							ConnectionListTable.SetConnections(newConnections)
+						}
+						connectionPages.HidePage("Confirmation")
+
+					} else {
+						connectionPages.HidePage("Confirmation")
+					}
+				})
+				connectionPages.AddPage("Confirmation", confirmationModal, true, true)
+				connectionPages.ShowPage("Confirmation")
 
 				return nil
 			}
 		}
 
-		if event.Rune() == 110 { // N Key
+		if event.Rune() == 'n' {
 			connectionForm.SetAction("create")
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			connectionForm.StatusText.SetText("")
 			connectionPages.SwitchToPage("ConnectionForm")
-		} else if event.Rune() == 113 { // Q Key
+		} else if event.Rune() == 'q' {
 			if wrapper.HasFocus() {
 				app.App.Stop()
 			}
