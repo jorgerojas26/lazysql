@@ -139,7 +139,8 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 		} else {
 			selectedRow, selectedCol := ConnectionListTable.GetSelection()
-			cell := ConnectionListTable.GetCell(selectedRow, selectedCol).SetStyle(tcell.StyleDefault.Foreground(tcell.ColorGreen))
+			cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
+			cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
 
 			ConnectionListTable.SetCell(selectedRow, selectedCol, cell)
 

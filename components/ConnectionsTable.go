@@ -1,6 +1,7 @@
 package components
 
 import (
+	"lazysql/app"
 	"lazysql/helpers"
 	"lazysql/models"
 
@@ -27,6 +28,8 @@ func NewConnectionsTable() *ConnectionsTable {
 		Wrapper:       wrapper,
 		errorTextView: errorTextView,
 	}
+
+	table.SetSelectedStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorGray))
 
 	wrapper.AddItem(table, 0, 1, true)
 
