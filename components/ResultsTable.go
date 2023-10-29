@@ -514,7 +514,9 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 		case "Query":
 			query := stateChange.Value.(string)
 			if query != "" {
-				if strings.Contains(strings.ToLower(query), "select") {
+				isDMLStatement := strings.Contains(strings.ToLower(query), "insert") || strings.Contains(strings.ToLower(query), "update") || strings.Contains(strings.ToLower(query), "delete")
+
+				if !isDMLStatement {
 					table.SetLoading(true)
 					App.Draw()
 					rows, err := drivers.MySQL.QueryPaginatedRecords(query)

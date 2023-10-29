@@ -3,6 +3,7 @@ package drivers
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -111,65 +112,114 @@ func (db *MySql) DescribeTable(table string) (results [][]string) {
 	rows, _ := db.conn.Query("DESCRIBE " + table)
 	defer rows.Close()
 
-	results = append(results, []string{"Name", "Type", "Null", "Key", "Default", "Extra"})
+	columns, _ := rows.Columns()
+
+	results = append(results, columns)
 
 	for rows.Next() {
-		var field, type_, null, key, default_, extra string
-		rows.Scan(&field, &type_, &null, &key, &default_, &extra)
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
 
-		results = append(results, []string{field, type_, null, key, default_, extra})
+		rows.Scan(rowValues...)
 
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		results = append(results, row)
 	}
 
 	return
 }
 
 func (db *MySql) GetTableConstraints(table string) (results [][]string) {
-	rows, _ := db.conn.Query("SELECT COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_NAME = " + "'" + table + "'")
+	splitTableString := strings.Split(table, ".")
+	database := splitTableString[0]
+	tableName := splitTableString[1]
+
+	rows, _ := db.conn.Query(fmt.Sprintf("SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'", database, tableName))
+
 	defer rows.Close()
 
-	results = append(results, []string{"COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_COLUMN_NAME", "REFERENCED_TABLE_NAME"})
+	columns, _ := rows.Columns()
+
+	results = append(results, columns)
 
 	for rows.Next() {
-		var columnName, constraintName, referencedColumnName, referencedTableName string
-		rows.Scan(&columnName, &constraintName, &referencedColumnName, &referencedTableName)
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
 
-		results = append(results, []string{columnName, constraintName, referencedColumnName, referencedTableName})
+		rows.Scan(rowValues...)
 
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		results = append(results, row)
 	}
 
 	return
 }
 
 func (db *MySql) GetTableForeignKeys(table string) (results [][]string) {
-	rows, _ := db.conn.Query("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_NAME = " + "'" + table + "'")
+	splitTableString := strings.Split(table, ".")
+	database := splitTableString[0]
+	tableName := splitTableString[1]
+
+	rows, _ := db.conn.Query(fmt.Sprintf("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_SCHEMA = '%s' AND REFERENCED_TABLE_NAME = '%s'", database, tableName))
 	defer rows.Close()
 
-	results = append(results, []string{"TABLE_NAME", "COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_TABLE_NAME", "REFERENCED_COLUMN_NAME"})
+	columns, _ := rows.Columns()
+
+	results = append(results, columns)
 
 	for rows.Next() {
-		var tableName, columnName, constraintName, referencedTableName, referencedColumnName string
-		rows.Scan(&tableName, &columnName, &constraintName, &referencedTableName, &referencedColumnName)
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
 
-		results = append(results, []string{tableName, columnName, constraintName, referencedTableName, referencedColumnName})
+		rows.Scan(rowValues...)
 
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		results = append(results, row)
 	}
 
 	return
 }
 
 func (db *MySql) GetTableIndexes(table string) (results [][]string) {
-	rows, _ := db.conn.Query("SHOW INDEX FROM " + table)
+	rows, _ := db.conn.Query("SHOW INDEX FROM " + table) // TODO: handle error
 	defer rows.Close()
 
-	results = append(results, []string{"Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name", "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type", "Comment"})
+	columns, _ := rows.Columns()
+
+	results = append(results, columns)
 
 	for rows.Next() {
-		var tableName, nonUnique, keyName, seqInIndex, columnName, collation, cardinality, subPart, packed, null, indexType, comment string
-		rows.Scan(&tableName, &nonUnique, &keyName, &seqInIndex, &columnName, &collation, &cardinality, &subPart, &packed, &null, &indexType, &comment)
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
 
-		results = append(results, []string{tableName, nonUnique, keyName, seqInIndex, columnName, collation, cardinality, subPart, packed, null, indexType, comment})
+		rows.Scan(rowValues...)
 
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		results = append(results, row)
 	}
 
 	return
