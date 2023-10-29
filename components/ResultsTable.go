@@ -90,6 +90,7 @@ func NewResultsTable() *ResultsTable {
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
+	table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightGray).Foreground(tcell.ColorBlack.TrueColor()))
 
 	return table
 }
