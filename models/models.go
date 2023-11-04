@@ -1,6 +1,9 @@
 package models
 
-import "github.com/rivo/tview"
+import (
+	"github.com/google/uuid"
+	"github.com/rivo/tview"
+)
 
 type Connection struct {
 	Name     string
@@ -19,4 +22,19 @@ type StateChange struct {
 type ConnectionPages struct {
 	*tview.Flex
 	*tview.Pages
+}
+
+type DbDmlChange struct {
+	Type   string
+	Table  string
+	Column string
+	Value  string
+	RowId  string
+}
+
+type DbInsert struct {
+	Table   string
+	Columns []string
+	Values  []string
+	RowId   uuid.UUID
 }

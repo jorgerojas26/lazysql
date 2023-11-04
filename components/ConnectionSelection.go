@@ -81,8 +81,12 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 				return nil
 
 			} else if event.Rune() == 'd' {
-				confirmationModal := NewConfirmationModal()
+				confirmationModal := NewConfirmationModal("")
+
 				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
+					MainPages.RemovePage("Confirmation")
+					confirmationModal = nil
+
 					if buttonLabel == "Yes" {
 						newConnections := append(connections[:row], connections[row+1:]...)
 
@@ -92,14 +96,11 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 						} else {
 							ConnectionListTable.SetConnections(newConnections)
 						}
-						connectionPages.HidePage("Confirmation")
 
-					} else {
-						connectionPages.HidePage("Confirmation")
 					}
 				})
-				connectionPages.AddPage("Confirmation", confirmationModal, true, true)
-				connectionPages.ShowPage("Confirmation")
+
+				MainPages.AddPage("Confirmation", confirmationModal, true, true)
 
 				return nil
 			}

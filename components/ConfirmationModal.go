@@ -11,9 +11,13 @@ type ConfirmationModal struct {
 	*tview.Modal
 }
 
-func NewConfirmationModal() *ConfirmationModal {
+func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	modal := tview.NewModal()
-	modal.SetText("Are you sure?")
+	if confirmationText != "" {
+		modal.SetText(confirmationText)
+	} else {
+		modal.SetText("Are you sure?")
+	}
 	modal.AddButtons([]string{"Yes", "No"})
 	modal.SetBackgroundColor(tcell.ColorBlack)
 	modal.SetTextColor(app.ActiveTextColor)

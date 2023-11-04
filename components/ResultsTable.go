@@ -4,25 +4,29 @@ import (
 	"fmt"
 	"lazysql/app"
 	"lazysql/drivers"
+	"lazysql/models"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/google/uuid"
 	"github.com/rivo/tview"
 	"golang.design/x/clipboard"
 )
 
 type ResultsTableState struct {
-	dbReference string
-	currentSort string
-	error       string
-	records     [][]string
-	columns     [][]string
-	constraints [][]string
-	foreignKeys [][]string
-	indexes     [][]string
-	isEditing   bool
-	isFiltering bool
-	isLoading   bool
+	listOfDbChanges *[]models.DbDmlChange
+	listOfDbInserts *[]models.DbInsert
+	dbReference     string
+	currentSort     string
+	error           string
+	records         [][]string
+	columns         [][]string
+	constraints     [][]string
+	foreignKeys     [][]string
+	indexes         [][]string
+	isEditing       bool
+	isFiltering     bool
+	isLoading       bool
 }
 
 type ResultsTable struct {
@@ -38,19 +42,22 @@ type ResultsTable struct {
 	Editor      *SQLEditor
 	EditorPages *tview.Pages
 	ResultsInfo *tview.TextView
+	Tree        *Tree
 }
 
 var ErrorModal = tview.NewModal()
 
-func NewResultsTable() *ResultsTable {
+func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree) *ResultsTable {
 	state := &ResultsTableState{
-		records:     [][]string{},
-		columns:     [][]string{},
-		constraints: [][]string{},
-		foreignKeys: [][]string{},
-		indexes:     [][]string{},
-		isEditing:   false,
-		isLoading:   false,
+		records:         [][]string{},
+		columns:         [][]string{},
+		constraints:     [][]string{},
+		foreignKeys:     [][]string{},
+		indexes:         [][]string{},
+		isEditing:       false,
+		isLoading:       false,
+		listOfDbChanges: listOfDbChanges,
+		listOfDbInserts: listOfDbInserts,
 	}
 
 	wrapper := tview.NewFlex()
@@ -84,13 +91,14 @@ func NewResultsTable() *ResultsTable {
 		Loading:    loadingModal,
 		Pagination: pagination,
 		Editor:     nil,
+		Tree:       tree,
 	}
 
 	table.SetSelectable(true, true)
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
-	table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightGray).Foreground(tcell.ColorBlack.TrueColor()))
+	// table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightGray).Foreground(tcell.ColorBlack.TrueColor()))
 
 	return table
 }
@@ -162,6 +170,20 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 
 			table.SetCell(i, j, tableCell)
 		}
+	}
+}
+
+func (table *ResultsTable) InsertRow(cols []string, index int, UUID uuid.UUID) {
+	for i, cell := range cols {
+		tableCell := tview.NewTableCell(cell)
+		tableCell.SetExpansion(1)
+
+		if i == 0 {
+			tableCell.SetReference(UUID)
+		}
+		tableCell.SetTextColor(app.FocusTextColor)
+
+		table.SetCell(index, i, tableCell)
 	}
 }
 
@@ -297,50 +319,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		}
 		table.SetInputCapture(nil)
 	} else if event.Rune() == 'c' {
-		table.SetIsEditing(true)
-		go func() {
-			table.SetInputCapture(nil)
-			cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
-			inputField := tview.NewInputField()
-			inputField.SetText(cell.Text)
-			inputField.SetFieldBackgroundColor(app.ActiveTextColor)
-			inputField.SetFieldTextColor(tcell.ColorBlack)
-			oldBgColor := cell.BackgroundColor
-			oldTextColor := cell.Color
-			selectedRowId := table.GetCell(selectedRowIndex, 0).Text
-
-			selectedColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
-
-			inputField.SetDoneFunc(func(key tcell.Key) {
-				table.SetIsEditing(false)
-				currentValue := cell.Text
-				newValue := inputField.GetText()
-				if key == tcell.KeyEnter {
-					if currentValue != newValue {
-						cell.SetBackgroundColor(tcell.ColorYellow)
-						cell.SetTextColor(tcell.ColorBlack)
-
-						err := drivers.MySQL.UpdateRecord(table.GetDBReference(), selectedColumnName, newValue, selectedRowId)
-						if err != nil {
-							panic(err)
-						}
-						cell.SetBackgroundColor(oldBgColor)
-						cell.SetTextColor(oldTextColor)
-
-						cell.SetText(inputField.GetText())
-					}
-				}
-				table.SetInputCapture(table.tableInputCapture)
-				table.Page.RemovePage("edit")
-				App.SetFocus(table)
-			})
-
-			x, y, width := cell.GetLastPosition()
-			inputField.SetRect(x, y, width+1, 1)
-			table.Page.AddPage("edit", inputField, false, true)
-			App.SetFocus(inputField)
-			App.Draw()
-		}()
+		table.StartEditingCell(selectedRowIndex, selectedColumnIndex)
 	} else if event.Rune() == 'w' {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
@@ -370,17 +349,78 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
 	} else if event.Rune() == 'd' {
-		id := table.GetCell(selectedRowIndex, 0).Text
-		error := drivers.MySQL.DeleteRecord(table.GetDBReference(), id)
+		if table.Menu.GetSelectedOption() == 1 {
+			isAnInsertedRow := false
+			indexOfInsertedRow := -1
 
-		if error != nil {
-			table.SetError(error.Error(), nil)
-		} else {
-			records := table.GetRecords()
+			for i, insertedRow := range *table.state.listOfDbInserts {
+				cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
 
-			newRecords := append(records[:selectedRowIndex], records[selectedRowIndex+1:]...)
+				if cellReference != nil && insertedRow.RowId.String() == cellReference.(uuid.UUID).String() {
+					isAnInsertedRow = true
+					indexOfInsertedRow = i
+				}
+			}
 
-			table.SetRecords(newRecords)
+			if isAnInsertedRow {
+				*table.state.listOfDbInserts = append((*table.state.listOfDbInserts)[:indexOfInsertedRow], (*table.state.listOfDbInserts)[indexOfInsertedRow+1:]...)
+				table.RemoveRow(selectedRowIndex)
+				if selectedRowIndex-1 != 0 {
+					table.Select(selectedRowIndex-1, 0)
+				} else {
+					if selectedRowIndex+1 < rowCount {
+						table.Select(selectedRowIndex+1, 0)
+					}
+				}
+			} else {
+				id := table.GetCell(selectedRowIndex, 0).Text
+
+				for i := 0; i < table.GetColumnCount(); i++ {
+					table.GetCell(selectedRowIndex, i).SetBackgroundColor(tcell.ColorRed)
+				}
+
+				newChange := models.DbDmlChange{
+					Type:   "DELETE",
+					Table:  table.GetDBReference(),
+					Column: "",
+					Value:  "",
+					RowId:  id,
+				}
+
+				*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
+			}
+
+		}
+	} else if event.Rune() == 'o' {
+		if table.Menu.GetSelectedOption() == 1 {
+
+			newRow := make([]string, table.GetColumnCount())
+			newRowId := len(table.GetRecords()) + len(*table.state.listOfDbInserts)
+			newRowUuid := uuid.New()
+
+			for i := 0; i < table.GetColumnCount(); i++ {
+				newRow[i] = "Default"
+			}
+
+			table.InsertRow(newRow, newRowId, newRowUuid)
+
+			for i := 0; i < table.GetColumnCount(); i++ {
+				table.GetCell(newRowId, i).SetBackgroundColor(tcell.ColorDarkGreen)
+			}
+
+			newInsert := models.DbInsert{
+				Table:   table.GetDBReference(),
+				Columns: table.GetRecords()[0],
+				Values:  newRow,
+				RowId:   newRowUuid,
+			}
+
+			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
+
+			table.Select(newRowId, 1)
+			App.ForceDraw()
+			table.StartEditingCell(newRowId, 1)
+
 		}
 	}
 
@@ -635,6 +675,22 @@ func (table *ResultsTable) GetIsFiltering() bool {
 	return table.state.isFiltering
 }
 
+func (table *ResultsTable) GetListOfPendingQueries() *[]models.DbDmlChange {
+	return table.state.listOfDbChanges
+}
+
+func (table *ResultsTable) GetInsertedRows() []models.DbDmlChange {
+	insertedRows := make([]models.DbDmlChange, 5)
+
+	for _, change := range *table.state.listOfDbChanges {
+		if change.Type == "INSERT" {
+			insertedRows = append(insertedRows, change)
+		}
+	}
+
+	return insertedRows
+}
+
 // Setters
 
 func (table *ResultsTable) SetRecords(rows [][]string) {
@@ -805,4 +861,64 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	}
 
 	return [][]string{}
+}
+
+func (table *ResultsTable) StartEditingCell(row int, col int) {
+	table.SetIsEditing(true)
+	go func() {
+		table.SetInputCapture(nil)
+		cell := table.GetCell(row, col)
+		inputField := tview.NewInputField()
+		inputField.SetText(cell.Text)
+		inputField.SetFieldBackgroundColor(app.ActiveTextColor)
+		inputField.SetFieldTextColor(tcell.ColorBlack)
+		// oldBgColor := cell.BackgroundColor
+		// oldTextColor := cell.Color
+		selectedRowId := table.GetCell(row, 0).Text
+
+		selectedColumnName := table.GetColumnNameByIndex(col)
+
+		inputField.SetDoneFunc(func(key tcell.Key) {
+			table.SetIsEditing(false)
+			currentValue := cell.Text
+			newValue := inputField.GetText()
+			if key == tcell.KeyEnter {
+				if currentValue != newValue {
+					cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
+					cell.SetTextColor(tcell.ColorBlack.TrueColor())
+					table.Tree.GetCurrentNode().SetColor(tcell.ColorDarkOrange.TrueColor())
+
+					newChange := models.DbDmlChange{
+						Type:   "UPDATE",
+						Table:  table.GetDBReference(),
+						Column: selectedColumnName,
+						Value:  newValue,
+						RowId:  selectedRowId,
+					}
+
+					*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
+
+					cell.SetText(inputField.GetText())
+
+					// err := drivers.MySQL.UpdateRecord(table.GetDBReference(), selectedColumnName, newValue, selectedRowId)
+					// if err != nil {
+					// 	panic(err)
+					// }
+					// cell.SetBackgroundColor(oldBgColor)
+					// cell.SetTextColor(oldTextColor)
+					//
+					// cell.SetText(inputField.GetText())
+				}
+			}
+			table.SetInputCapture(table.tableInputCapture)
+			table.Page.RemovePage("edit")
+			App.SetFocus(table)
+		})
+
+		x, y, width := cell.GetLastPosition()
+		inputField.SetRect(x, y, width+1, 1)
+		table.Page.AddPage("edit", inputField, false, true)
+		App.SetFocus(inputField)
+		App.Draw()
+	}()
 }

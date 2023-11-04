@@ -3,6 +3,7 @@ package drivers
 import (
 	"database/sql"
 	"fmt"
+	"lazysql/models"
 	"strings"
 	"time"
 
@@ -398,6 +399,52 @@ func (db *MySql) ExecuteDMLQuery(query string) (result string, err error) {
 
 func (db *MySql) GetLastExecutedQuery() string {
 	return db.lastExecutedQuery
+}
+
+func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
+	tx, error := db.conn.Begin()
+
+	fmt.Println("starting transaction")
+	if error != nil {
+		return error
+	}
+
+	fmt.Println("transaction started")
+
+	for _, change := range changes {
+		statementType := ""
+		query := ""
+
+		switch change.Type {
+		case "INSERT":
+			statementType = "INSERT INTO"
+			query = fmt.Sprintf("%s %s (%s) VALUES (\"%s\")", statementType, change.Table, change.Column, change.Value)
+		case "UPDATE":
+			statementType = "UPDATE"
+			query = fmt.Sprintf("%s %s SET %s = \"%s\" WHERE id = \"%s\"", statementType, change.Table, change.Column, change.Value, change.RowId)
+		case "DELETE":
+			statementType = "DELETE FROM"
+			query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, change.Table, change.RowId)
+		}
+
+		fmt.Println("executing query", query)
+		_, err = tx.Exec(query)
+
+		if err != nil {
+			err := tx.Rollback()
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	err = tx.Commit()
+
+	return err
+}
+
+func (db *MySql) GetUpdateQuery(table string, column string, value string, whereCol string, whereVal string) string {
+	return fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = \"%s\"", table, column, value, whereCol, whereVal)
 }
 
 //export the database
