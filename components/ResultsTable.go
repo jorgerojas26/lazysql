@@ -45,7 +45,12 @@ type ResultsTable struct {
 	Tree        *Tree
 }
 
-var ErrorModal = tview.NewModal()
+var (
+	ErrorModal  = tview.NewModal()
+	ChangeColor = tcell.ColorDarkOrange.TrueColor()
+	InsertColor = tcell.ColorDarkGreen.TrueColor()
+	DeleteColor = tcell.ColorRed.TrueColor()
+)
 
 func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree) *ResultsTable {
 	state := &ResultsTableState{
@@ -173,6 +178,35 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 	}
 }
 
+func (table *ResultsTable) AddInsertedRows() {
+	inserts := *table.state.listOfDbInserts
+	rows := make([][]string, len(inserts))
+
+	if len(inserts) > 0 {
+		for i, insert := range inserts {
+			if insert.Table == table.GetDBReference() && insert.Option == table.Menu.GetSelectedOption() {
+				rows[i] = insert.Values
+			}
+		}
+	}
+
+	rowCount := table.GetRowCount()
+	for i, row := range rows {
+		rowIndex := rowCount + i
+
+		for j, cell := range row {
+			tableCell := tview.NewTableCell(cell)
+			tableCell.SetExpansion(1)
+			tableCell.SetReference(inserts[i].RowId)
+
+			tableCell.SetTextColor(app.FocusTextColor)
+			tableCell.SetBackgroundColor(InsertColor)
+
+			table.SetCell(rowIndex, j, tableCell)
+		}
+	}
+}
+
 func (table *ResultsTable) InsertRow(cols []string, index int, UUID uuid.UUID) {
 	for i, cell := range cols {
 		tableCell := tview.NewTableCell(cell)
@@ -192,35 +226,32 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	colCount := table.GetColumnCount()
 	rowCount := table.GetRowCount()
 
-	if event.Rune() == '1' || event.Rune() == '2' || event.Rune() == '3' || event.Rune() == '4' || event.Rune() == '5' {
+	rune := event.Rune()
+
+	if rune == '1' || event.Rune() == '2' || event.Rune() == '3' || event.Rune() == '4' || event.Rune() == '5' {
 		table.Select(1, 0)
 	}
 
 	if table.Menu != nil {
-		if event.Rune() == '1' {
+		if rune == '1' {
 			table.Menu.SetSelectedOption(1)
 			table.UpdateRows(table.GetRecords())
-			table.Select(1, 0)
-		} else if event.Rune() == '2' {
+		} else if rune == '2' {
 			table.Menu.SetSelectedOption(2)
 			table.UpdateRows(table.GetColumns())
-			table.Select(1, 0)
-		} else if event.Rune() == '3' {
+		} else if rune == '3' {
 			table.Menu.SetSelectedOption(3)
 			table.UpdateRows(table.GetConstraints())
-			table.Select(1, 0)
-		} else if event.Rune() == '4' {
+		} else if rune == '4' {
 			table.Menu.SetSelectedOption(4)
 			table.UpdateRows(table.GetForeignKeys())
-			table.Select(1, 0)
-		} else if event.Rune() == '5' {
+		} else if rune == '5' {
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
-			table.Select(1, 0)
 		}
 	}
 
-	if event.Rune() == '/' {
+	if rune == '/' {
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
 			table.Editor.Highlight()
@@ -318,37 +349,43 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 		table.SetInputCapture(nil)
-	} else if event.Rune() == 'c' {
-		table.StartEditingCell(selectedRowIndex, selectedColumnIndex)
-	} else if event.Rune() == 'w' {
+	} else if rune == 'c' {
+		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string) {
+			cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
+
+			if cellReference != nil {
+				table.MutateInsertedRowCell(cellReference.(uuid.UUID), 1, newValue)
+			}
+		})
+	} else if rune == 'w' {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
 		}
-	} else if event.Rune() == 'b' {
+	} else if rune == 'b' {
 		if selectedColumnIndex > 0 {
 			table.Select(selectedRowIndex, selectedColumnIndex-1)
 		}
-	} else if event.Rune() == '$' {
+	} else if rune == '$' {
 		table.Select(selectedRowIndex, colCount-1)
-	} else if event.Rune() == '0' {
+	} else if rune == '0' {
 		table.Select(selectedRowIndex, 0)
-	} else if event.Rune() == 'g' {
+	} else if rune == 'g' {
 		go table.Select(1, selectedColumnIndex)
-	} else if event.Rune() == 'G' {
+	} else if rune == 'G' {
 		go table.Select(rowCount-1, selectedColumnIndex)
-	} else if event.Rune() == 4 { // Ctrl + D
+	} else if rune == 4 { // Ctrl + D
 		if selectedRowIndex+7 > rowCount-1 {
 			go table.Select(rowCount-1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex+7, selectedColumnIndex)
 		}
-	} else if event.Rune() == 21 { // Ctrl + U
+	} else if rune == 21 { // Ctrl + U
 		if selectedRowIndex-7 < 1 {
 			go table.Select(1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
-	} else if event.Rune() == 'd' {
+	} else if rune == 'd' {
 		if table.Menu.GetSelectedOption() == 1 {
 			isAnInsertedRow := false
 			indexOfInsertedRow := -1
@@ -373,39 +410,25 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					}
 				}
 			} else {
-				id := table.GetCell(selectedRowIndex, 0).Text
-
-				for i := 0; i < table.GetColumnCount(); i++ {
-					table.GetCell(selectedRowIndex, i).SetBackgroundColor(tcell.ColorRed)
-				}
-
-				newChange := models.DbDmlChange{
-					Type:   "DELETE",
-					Table:  table.GetDBReference(),
-					Column: "",
-					Value:  "",
-					RowId:  id,
-				}
-
-				*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
+				table.AppendNewChange("DELETE", table.GetDBReference(), selectedRowIndex, -1, "")
 			}
 
 		}
-	} else if event.Rune() == 'o' {
+	} else if rune == 'o' {
 		if table.Menu.GetSelectedOption() == 1 {
 
 			newRow := make([]string, table.GetColumnCount())
-			newRowId := len(table.GetRecords()) + len(*table.state.listOfDbInserts)
+			newRowIndex := table.GetRowCount()
 			newRowUuid := uuid.New()
 
 			for i := 0; i < table.GetColumnCount(); i++ {
 				newRow[i] = "Default"
 			}
 
-			table.InsertRow(newRow, newRowId, newRowUuid)
+			table.InsertRow(newRow, newRowIndex, newRowUuid)
 
 			for i := 0; i < table.GetColumnCount(); i++ {
-				table.GetCell(newRowId, i).SetBackgroundColor(tcell.ColorDarkGreen)
+				table.GetCell(newRowIndex, i).SetBackgroundColor(tcell.ColorDarkGreen)
 			}
 
 			newInsert := models.DbInsert{
@@ -413,28 +436,38 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				Columns: table.GetRecords()[0],
 				Values:  newRow,
 				RowId:   newRowUuid,
+				Option:  1,
 			}
 
 			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
 
-			table.Select(newRowId, 1)
+			table.Tree.GetCurrentNode().SetColor(InsertColor)
+
+			table.Select(newRowIndex, 1)
+
 			App.ForceDraw()
-			table.StartEditingCell(newRowId, 1)
+			table.StartEditingCell(newRowIndex, 1, func(newValue string) {
+				cellReference := table.GetCell(newRowIndex, 0).GetReference()
+
+				if cellReference != nil {
+					table.MutateInsertedRowCell(cellReference.(uuid.UUID), 1, newValue)
+				}
+			})
 
 		}
 	}
 
 	if len(table.GetRecords()) > 0 {
-		if event.Rune() == 'J' {
+		if rune == 'J' {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "DESC")
 
-		} else if event.Rune() == 'K' {
+		} else if rune == 'K' {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
-		} else if event.Rune() == 'y' {
+		} else if rune == 'y' {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 
 			if selectedCell != nil {
@@ -457,7 +490,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.Clear()
 	table.AddRows(rows)
-	table.Select(0, 0)
+	table.AddInsertedRows()
+	table.Select(1, 0)
 	App.ForceDraw()
 }
 
@@ -675,22 +709,6 @@ func (table *ResultsTable) GetIsFiltering() bool {
 	return table.state.isFiltering
 }
 
-func (table *ResultsTable) GetListOfPendingQueries() *[]models.DbDmlChange {
-	return table.state.listOfDbChanges
-}
-
-func (table *ResultsTable) GetInsertedRows() []models.DbDmlChange {
-	insertedRows := make([]models.DbDmlChange, 5)
-
-	for _, change := range *table.state.listOfDbChanges {
-		if change.Type == "INSERT" {
-			insertedRows = append(insertedRows, change)
-		}
-	}
-
-	return insertedRows
-}
-
 // Setters
 
 func (table *ResultsTable) SetRecords(rows [][]string) {
@@ -863,7 +881,7 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	return [][]string{}
 }
 
-func (table *ResultsTable) StartEditingCell(row int, col int) {
+func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newValue string)) {
 	table.SetIsEditing(true)
 	go func() {
 		table.SetInputCapture(nil)
@@ -874,9 +892,6 @@ func (table *ResultsTable) StartEditingCell(row int, col int) {
 		inputField.SetFieldTextColor(tcell.ColorBlack)
 		// oldBgColor := cell.BackgroundColor
 		// oldTextColor := cell.Color
-		selectedRowId := table.GetCell(row, 0).Text
-
-		selectedColumnName := table.GetColumnNameByIndex(col)
 
 		inputField.SetDoneFunc(func(key tcell.Key) {
 			table.SetIsEditing(false)
@@ -884,21 +899,14 @@ func (table *ResultsTable) StartEditingCell(row int, col int) {
 			newValue := inputField.GetText()
 			if key == tcell.KeyEnter {
 				if currentValue != newValue {
-					cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
-					cell.SetTextColor(tcell.ColorBlack.TrueColor())
-					table.Tree.GetCurrentNode().SetColor(tcell.ColorDarkOrange.TrueColor())
-
-					newChange := models.DbDmlChange{
-						Type:   "UPDATE",
-						Table:  table.GetDBReference(),
-						Column: selectedColumnName,
-						Value:  newValue,
-						RowId:  selectedRowId,
-					}
-
-					*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
 
 					cell.SetText(inputField.GetText())
+
+					table.AppendNewChange("UPDATE", table.GetDBReference(), row, col, newValue)
+
+					if callback != nil {
+						callback(newValue)
+					}
 
 					// err := drivers.MySQL.UpdateRecord(table.GetDBReference(), selectedColumnName, newValue, selectedRowId)
 					// if err != nil {
@@ -921,4 +929,125 @@ func (table *ResultsTable) StartEditingCell(row int, col int) {
 		App.SetFocus(inputField)
 		App.Draw()
 	}()
+}
+
+func (table *ResultsTable) CheckIfRowIsInserted(rowId uuid.UUID) bool {
+	for _, insertedRow := range *table.state.listOfDbInserts {
+		if insertedRow.RowId == rowId {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (table *ResultsTable) MutateInsertedRowCell(rowId uuid.UUID, colIndex int, newValue string) {
+	for i, insertedRow := range *table.state.listOfDbInserts {
+		if insertedRow.RowId == rowId {
+			(*table.state.listOfDbInserts)[i].Values[colIndex] = newValue
+		}
+	}
+}
+
+// TODO: encapsulate logic for different changeType
+func (table *ResultsTable) AppendNewChange(changeType string, tableName string, rowIndex int, colIndex int, value string) {
+	// check if there is already a change row in the listOfDbChanges variable
+	// if there is, update the value
+	// if there isn't, append a new change row
+	// if the value is the same as the original value, remove the change row
+
+	selectedRowId := table.GetCell(rowIndex, 0).Text
+
+	cellReference := table.GetCell(rowIndex, 0).GetReference()
+
+	isInsertedRow := false
+
+	if cellReference != nil {
+		isInsertedRow = table.CheckIfRowIsInserted(cellReference.(uuid.UUID))
+	}
+
+	if !isInsertedRow {
+
+		alreadyExists := false
+		indexOfChange := -1
+
+		for i, change := range *table.state.listOfDbChanges {
+			if change.RowId == selectedRowId {
+				alreadyExists = true
+				indexOfChange = i
+			}
+		}
+
+		switch changeType {
+		case "UPDATE":
+			cell := table.GetCell(rowIndex, colIndex)
+			columnName := table.GetColumnNameByIndex(colIndex)
+			originalCellValue := table.GetRecords()[rowIndex][colIndex]
+
+			if alreadyExists {
+				if value == originalCellValue {
+					*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfChange], (*table.state.listOfDbChanges)[indexOfChange+1:]...)
+
+					cell.SetBackgroundColor(tcell.ColorDefault)
+					cell.SetTextColor(app.FocusTextColor)
+
+					if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
+						table.Tree.GetCurrentNode().SetColor(app.InactiveTextColor)
+					} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
+						table.Tree.GetCurrentNode().SetColor(InsertColor)
+					} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
+						table.Tree.GetCurrentNode().SetColor(ChangeColor)
+					}
+
+				} else {
+					cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
+					cell.SetTextColor(tcell.ColorBlack.TrueColor())
+					table.Tree.GetCurrentNode().SetColor(ChangeColor)
+
+					(*table.state.listOfDbChanges)[indexOfChange].Value = value
+				}
+			} else {
+				newChange := models.DbDmlChange{
+					Type:   changeType,
+					Table:  tableName,
+					Column: columnName,
+					Value:  value,
+					RowId:  selectedRowId,
+					Option: 1,
+				}
+
+				*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
+
+				cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
+				cell.SetTextColor(tcell.ColorBlack.TrueColor())
+				table.Tree.GetCurrentNode().SetColor(ChangeColor)
+			}
+		case "DELETE":
+			if alreadyExists {
+
+				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfChange], (*table.state.listOfDbChanges)[indexOfChange+1:]...)
+
+				for i := 0; i < table.GetColumnCount(); i++ {
+					table.GetCell(rowIndex, i).SetBackgroundColor(tcell.ColorDefault)
+				}
+
+			} else {
+
+				newChange := models.DbDmlChange{
+					Type:   changeType,
+					Table:  tableName,
+					Column: "",
+					Value:  "",
+					RowId:  selectedRowId,
+					Option: 1,
+				}
+
+				*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
+
+				for i := 0; i < table.GetColumnCount(); i++ {
+					table.GetCell(rowIndex, i).SetBackgroundColor(tcell.ColorRed)
+				}
+			}
+		}
+	}
 }

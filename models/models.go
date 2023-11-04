@@ -30,11 +30,13 @@ type DbDmlChange struct {
 	Column string
 	Value  string
 	RowId  string
+	Option int
 }
 
 type DbInsert struct {
 	Table   string
 	Columns []string
 	Values  []string
+	Option  int
 	RowId   uuid.UUID
 }

@@ -145,12 +145,21 @@ func (tree *Tree) RemoveHighlight() {
 	childrens := tree.GetRoot().GetChildren()
 
 	for _, children := range childrens {
-		children.SetColor(app.InactiveTextColor)
+		currentColor := children.GetColor()
+
+		if currentColor == app.FocusTextColor {
+			children.SetColor(app.InactiveTextColor)
+		}
 
 		childrenOfChildren := children.GetChildren()
 
 		for _, children := range childrenOfChildren {
-			children.SetColor(app.InactiveTextColor)
+			currentColor := children.GetColor()
+
+			if currentColor == app.ActiveTextColor {
+				children.SetColor(app.InactiveTextColor)
+			}
+
 		}
 
 	}
@@ -166,12 +175,21 @@ func (tree *Tree) Highlight() {
 	childrens := tree.GetRoot().GetChildren()
 
 	for _, children := range childrens {
-		children.SetColor(tcell.ColorWhite.TrueColor())
+		currentColor := children.GetColor()
 
-		childrenOfChildren := children.GetChildren()
+		if currentColor == app.InactiveTextColor {
+			children.SetColor(tcell.ColorWhite.TrueColor())
 
-		for _, children := range childrenOfChildren {
-			children.SetColor(app.ActiveTextColor)
+			childrenOfChildren := children.GetChildren()
+
+			for _, children := range childrenOfChildren {
+				currentColor := children.GetColor()
+
+				if currentColor == app.InactiveTextColor {
+					children.SetColor(app.ActiveTextColor)
+				}
+			}
+
 		}
 
 	}
