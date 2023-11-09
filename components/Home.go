@@ -260,7 +260,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			App.Stop()
 		}
 	} else if event.Rune() == 19 {
-		if home.ListOfDbChanges != nil && len(home.ListOfDbChanges) > 0 {
+		if (home.ListOfDbChanges != nil && len(home.ListOfDbChanges) > 0) || (home.ListOfDbInserts != nil && len(home.ListOfDbInserts) > 0) && !table.GetIsEditing() {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
@@ -268,12 +268,17 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				confirmationModal = nil
 
 				if buttonLabel == "Yes" {
-					err := drivers.MySQL.ExecutePendingChanges(home.ListOfDbChanges)
+					err := drivers.MySQL.ExecutePendingChanges(&home.ListOfDbChanges, &home.ListOfDbInserts)
 
 					if err != nil {
 						table.SetError(err.Error(), nil)
 					} else {
 						home.ListOfDbChanges = []models.DbDmlChange{}
+						home.ListOfDbInserts = []models.DbInsert{}
+
+						table.FetchRecords(table.GetDBReference())
+						home.Tree.ForceRemoveHighlight()
+
 					}
 
 				}

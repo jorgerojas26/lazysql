@@ -165,6 +165,27 @@ func (tree *Tree) RemoveHighlight() {
 	}
 }
 
+func (tree *Tree) ForceRemoveHighlight() {
+	tree.SetBorderColor(app.InactiveTextColor)
+	tree.SetGraphicsColor(app.InactiveTextColor)
+	tree.SetTitleColor(app.InactiveTextColor)
+	tree.GetRoot().SetColor(app.InactiveTextColor)
+
+	childrens := tree.GetRoot().GetChildren()
+
+	for _, children := range childrens {
+
+		children.SetColor(app.InactiveTextColor)
+
+		childrenOfChildren := children.GetChildren()
+
+		for _, children := range childrenOfChildren {
+			children.SetColor(app.InactiveTextColor)
+		}
+
+	}
+}
+
 // Focus func
 func (tree *Tree) Highlight() {
 	tree.SetBorderColor(tcell.ColorWhite.TrueColor())

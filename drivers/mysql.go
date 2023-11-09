@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"lazysql/models"
+	"strconv"
 	"strings"
 	"time"
 
@@ -401,24 +402,14 @@ func (db *MySql) GetLastExecutedQuery() string {
 	return db.lastExecutedQuery
 }
 
-func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
-	tx, error := db.conn.Begin()
+func (db *MySql) ExecutePendingChanges(changes *[]models.DbDmlChange, inserts *[]models.DbInsert) (err error) {
+	queries := make([]string, 0, len(*changes)+len(*inserts))
 
-	fmt.Println("starting transaction")
-	if error != nil {
-		return error
-	}
-
-	fmt.Println("transaction started")
-
-	for _, change := range changes {
+	for _, change := range *changes {
 		statementType := ""
 		query := ""
 
 		switch change.Type {
-		case "INSERT":
-			statementType = "INSERT INTO"
-			query = fmt.Sprintf("%s %s (%s) VALUES (\"%s\")", statementType, change.Table, change.Column, change.Value)
 		case "UPDATE":
 			statementType = "UPDATE"
 			query = fmt.Sprintf("%s %s SET %s = \"%s\" WHERE id = \"%s\"", statementType, change.Table, change.Column, change.Value, change.RowId)
@@ -427,18 +418,61 @@ func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 			query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, change.Table, change.RowId)
 		}
 
-		fmt.Println("executing query", query)
+		if query != "" {
+			queries = append(queries, query)
+		}
+	}
+
+	for _, insert := range *inserts {
+		values := make([]string, 0, len(insert.Values))
+
+		for _, value := range insert.Values {
+			_, error := strconv.ParseFloat(value, 64)
+
+			if strings.ToLower(value) != "default" && error != nil {
+				values = append(values, fmt.Sprintf("\"%s\"", value))
+			} else {
+				values = append(values, value)
+			}
+		}
+
+		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", insert.Table, strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
+
+		queries = append(queries, query)
+	}
+
+	tx, error := db.conn.Begin()
+	if error != nil {
+		return error
+	}
+
+	for _, query := range queries {
 		_, err = tx.Exec(query)
 
 		if err != nil {
-			err := tx.Rollback()
-			if err != nil {
-				return err
-			}
+			tx.Rollback()
+
+			return err
 		}
 	}
 
 	err = tx.Commit()
+
+	if err != nil {
+		return err
+	}
+
+	// fmt.Println("executing query", query)
+	// _, err = tx.Exec(query)
+	//
+	// if err != nil {
+	// 	err := tx.Rollback()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
+
+	// err = tx.Commit()
 
 	return err
 }

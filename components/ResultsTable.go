@@ -350,11 +350,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		}
 		table.SetInputCapture(nil)
 	} else if rune == 'c' {
-		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string) {
-			cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
+		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string, row, col int) {
+			cellReference := table.GetCell(row, 0).GetReference()
 
 			if cellReference != nil {
-				table.MutateInsertedRowCell(cellReference.(uuid.UUID), 1, newValue)
+				table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
 			}
 		})
 	} else if rune == 'w' {
@@ -409,6 +409,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 						table.Select(selectedRowIndex+1, 0)
 					}
 				}
+
+				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
+					table.Tree.ForceRemoveHighlight()
+				}
 			} else {
 				table.AppendNewChange("DELETE", table.GetDBReference(), selectedRowIndex, -1, "")
 			}
@@ -446,11 +450,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.Select(newRowIndex, 1)
 
 			App.ForceDraw()
-			table.StartEditingCell(newRowIndex, 1, func(newValue string) {
-				cellReference := table.GetCell(newRowIndex, 0).GetReference()
+			table.StartEditingCell(newRowIndex, 1, func(newValue string, row, col int) {
+				cellReference := table.GetCell(row, 0).GetReference()
 
 				if cellReference != nil {
-					table.MutateInsertedRowCell(cellReference.(uuid.UUID), 1, newValue)
+					table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
 				}
 			})
 
@@ -491,8 +495,8 @@ func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.Clear()
 	table.AddRows(rows)
 	table.AddInsertedRows()
-	table.Select(1, 0)
 	App.ForceDraw()
+	table.Select(1, 0)
 }
 
 func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tcell.Color) {
@@ -881,54 +885,65 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	return [][]string{}
 }
 
-func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newValue string)) {
+func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newValue string, row, col int)) {
 	table.SetIsEditing(true)
-	go func() {
-		table.SetInputCapture(nil)
-		cell := table.GetCell(row, col)
-		inputField := tview.NewInputField()
-		inputField.SetText(cell.Text)
-		inputField.SetFieldBackgroundColor(app.ActiveTextColor)
-		inputField.SetFieldTextColor(tcell.ColorBlack)
-		// oldBgColor := cell.BackgroundColor
-		// oldTextColor := cell.Color
+	table.SetInputCapture(nil)
 
-		inputField.SetDoneFunc(func(key tcell.Key) {
-			table.SetIsEditing(false)
-			currentValue := cell.Text
-			newValue := inputField.GetText()
-			if key == tcell.KeyEnter {
-				if currentValue != newValue {
+	cell := table.GetCell(row, col)
+	inputField := tview.NewInputField()
+	inputField.SetText(cell.Text)
+	inputField.SetFieldBackgroundColor(app.ActiveTextColor)
+	inputField.SetFieldTextColor(tcell.ColorBlack)
 
-					cell.SetText(inputField.GetText())
+	inputField.SetDoneFunc(func(key tcell.Key) {
+		table.SetIsEditing(false)
+		currentValue := cell.Text
+		newValue := inputField.GetText()
+		if key == tcell.KeyEnter {
+			if currentValue != newValue {
 
-					table.AppendNewChange("UPDATE", table.GetDBReference(), row, col, newValue)
+				cell.SetText(inputField.GetText())
 
-					if callback != nil {
-						callback(newValue)
-					}
+				table.AppendNewChange("UPDATE", table.GetDBReference(), row, col, newValue)
 
-					// err := drivers.MySQL.UpdateRecord(table.GetDBReference(), selectedColumnName, newValue, selectedRowId)
-					// if err != nil {
-					// 	panic(err)
-					// }
-					// cell.SetBackgroundColor(oldBgColor)
-					// cell.SetTextColor(oldTextColor)
-					//
-					// cell.SetText(inputField.GetText())
-				}
 			}
+		} else if key == tcell.KeyTab {
+			nextEditableColumnIndex := col + 1
+
+			if nextEditableColumnIndex <= table.GetColumnCount() {
+				cell.SetText(inputField.GetText())
+				table.Select(row, nextEditableColumnIndex)
+
+				table.StartEditingCell(row, nextEditableColumnIndex, callback)
+
+			}
+		} else if key == tcell.KeyBacktab {
+			nextEditableColumnIndex := col - 1
+
+			if nextEditableColumnIndex >= 0 {
+				cell.SetText(inputField.GetText())
+				table.Select(row, nextEditableColumnIndex)
+
+				table.StartEditingCell(row, nextEditableColumnIndex, callback)
+
+			}
+		}
+
+		if key == tcell.KeyEnter || key == tcell.KeyEscape {
 			table.SetInputCapture(table.tableInputCapture)
 			table.Page.RemovePage("edit")
 			App.SetFocus(table)
-		})
+		}
 
-		x, y, width := cell.GetLastPosition()
-		inputField.SetRect(x, y, width+1, 1)
-		table.Page.AddPage("edit", inputField, false, true)
-		App.SetFocus(inputField)
-		App.Draw()
-	}()
+		if callback != nil {
+			callback(newValue, row, col)
+		}
+	})
+
+	x, y, width := cell.GetLastPosition()
+	inputField.SetRect(x, y, width+1, 1)
+	table.Page.AddPage("edit", inputField, false, true)
+	App.SetFocus(inputField)
 }
 
 func (table *ResultsTable) CheckIfRowIsInserted(rowId uuid.UUID) bool {
