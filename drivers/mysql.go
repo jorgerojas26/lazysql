@@ -402,28 +402,57 @@ func (db *MySql) GetLastExecutedQuery() string {
 	return db.lastExecutedQuery
 }
 
-func (db *MySql) ExecutePendingChanges(changes *[]models.DbDmlChange, inserts *[]models.DbInsert) (err error) {
-	queries := make([]string, 0, len(*changes)+len(*inserts))
+func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
+	queries := make([]string, 0, len(changes)+len(inserts))
 
-	for _, change := range *changes {
+	// This will hold grouped changes by their RowId and Table
+	groupedUpdated := make(map[string][]models.DbDmlChange)
+	groupedDeletes := make([]models.DbDmlChange, 0, len(changes))
+
+	// Group changes by RowId and Table
+	for _, change := range changes {
+		if change.Type == "UPDATE" {
+			key := fmt.Sprintf("%s|%s", change.Table, change.RowId)
+			groupedUpdated[key] = append(groupedUpdated[key], change)
+		} else if change.Type == "DELETE" {
+			groupedDeletes = append(groupedDeletes, change)
+		}
+	}
+
+	// Combine individual changes to SQL statements
+	for key, changes := range groupedUpdated {
+		columns := []string{}
+
+		// Split key into table and rowId
+		splitted := strings.Split(key, "|")
+		table := splitted[0]
+		rowId := splitted[1]
+
+		for _, change := range changes {
+			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
+		}
+
+		// Merge all column updates
+		updateClause := strings.Join(columns, ", ")
+
+		query := fmt.Sprintf("UPDATE %s SET %s WHERE id = '%s';", table, updateClause, rowId)
+
+		queries = append(queries, query)
+	}
+
+	for _, delete := range groupedDeletes {
 		statementType := ""
 		query := ""
 
-		switch change.Type {
-		case "UPDATE":
-			statementType = "UPDATE"
-			query = fmt.Sprintf("%s %s SET %s = \"%s\" WHERE id = \"%s\"", statementType, change.Table, change.Column, change.Value, change.RowId)
-		case "DELETE":
-			statementType = "DELETE FROM"
-			query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, change.Table, change.RowId)
-		}
+		statementType = "DELETE FROM"
+		query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, delete.Table, delete.RowId)
 
 		if query != "" {
 			queries = append(queries, query)
 		}
 	}
 
-	for _, insert := range *inserts {
+	for _, insert := range inserts {
 		values := make([]string, 0, len(insert.Values))
 
 		for _, value := range insert.Values {

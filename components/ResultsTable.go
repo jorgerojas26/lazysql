@@ -49,7 +49,7 @@ var (
 	ErrorModal  = tview.NewModal()
 	ChangeColor = tcell.ColorDarkOrange.TrueColor()
 	InsertColor = tcell.ColorDarkGreen.TrueColor()
-	DeleteColor = tcell.ColorRed.TrueColor()
+	DeleteColor = tcell.ColorRed
 )
 
 func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree) *ResultsTable {
@@ -412,6 +412,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
 					table.Tree.ForceRemoveHighlight()
+				} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
+					table.Tree.GetCurrentNode().SetColor(InsertColor)
+				} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
+					table.Tree.GetCurrentNode().SetColor(ChangeColor)
 				}
 			} else {
 				table.AppendNewChange("DELETE", table.GetDBReference(), selectedRowIndex, -1, "")
@@ -445,7 +449,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
 
-			table.Tree.GetCurrentNode().SetColor(InsertColor)
+			if table.Tree.GetCurrentNode().GetColor() == app.InactiveTextColor || table.Tree.GetCurrentNode().GetColor() == app.FocusTextColor {
+				table.Tree.GetCurrentNode().SetColor(InsertColor)
+			} else if table.Tree.GetCurrentNode().GetColor() == DeleteColor {
+				table.Tree.GetCurrentNode().SetColor(ChangeColor)
+			}
 
 			table.Select(newRowIndex, 1)
 
@@ -910,7 +918,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		} else if key == tcell.KeyTab {
 			nextEditableColumnIndex := col + 1
 
-			if nextEditableColumnIndex <= table.GetColumnCount() {
+			if nextEditableColumnIndex <= table.GetColumnCount()-1 {
 				cell.SetText(inputField.GetText())
 				table.Select(row, nextEditableColumnIndex)
 
@@ -971,8 +979,6 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 	// if there isn't, append a new change row
 	// if the value is the same as the original value, remove the change row
 
-	selectedRowId := table.GetCell(rowIndex, 0).Text
-
 	cellReference := table.GetCell(rowIndex, 0).GetReference()
 
 	isInsertedRow := false
@@ -982,12 +988,13 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 	}
 
 	if !isInsertedRow {
+		selectedRowId := table.GetRecords()[rowIndex][0]
 
 		alreadyExists := false
 		indexOfChange := -1
 
 		for i, change := range *table.state.listOfDbChanges {
-			if change.RowId == selectedRowId {
+			if change.RowId == selectedRowId && change.Column == table.GetColumnNameByIndex(colIndex) {
 				alreadyExists = true
 				indexOfChange = i
 			}
@@ -1042,11 +1049,25 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 
 				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfChange], (*table.state.listOfDbChanges)[indexOfChange+1:]...)
 
+				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
+					table.Tree.GetCurrentNode().SetColor(app.InactiveTextColor)
+				} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
+					table.Tree.GetCurrentNode().SetColor(InsertColor)
+				} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
+					table.Tree.GetCurrentNode().SetColor(ChangeColor)
+				}
+
 				for i := 0; i < table.GetColumnCount(); i++ {
 					table.GetCell(rowIndex, i).SetBackgroundColor(tcell.ColorDefault)
 				}
 
 			} else {
+
+				if table.Tree.GetCurrentNode().GetColor() == app.InactiveTextColor || table.Tree.GetCurrentNode().GetColor() == app.FocusTextColor {
+					table.Tree.GetCurrentNode().SetColor(DeleteColor)
+				} else if table.Tree.GetCurrentNode().GetColor() == InsertColor {
+					table.Tree.GetCurrentNode().SetColor(ChangeColor)
+				}
 
 				newChange := models.DbDmlChange{
 					Type:   changeType,
@@ -1060,7 +1081,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 				*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
 
 				for i := 0; i < table.GetColumnCount(); i++ {
-					table.GetCell(rowIndex, i).SetBackgroundColor(tcell.ColorRed)
+					table.GetCell(rowIndex, i).SetBackgroundColor(DeleteColor)
 				}
 			}
 		}

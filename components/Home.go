@@ -268,7 +268,10 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				confirmationModal = nil
 
 				if buttonLabel == "Yes" {
-					err := drivers.MySQL.ExecutePendingChanges(&home.ListOfDbChanges, &home.ListOfDbInserts)
+
+					// fmt.Println("list of changes: ", home.ListOfDbChanges)
+					// fmt.Println("list of inserts: ", home.ListOfDbInserts)
+					err := drivers.MySQL.ExecutePendingChanges(home.ListOfDbChanges, home.ListOfDbInserts)
 
 					if err != nil {
 						table.SetError(err.Error(), nil)
