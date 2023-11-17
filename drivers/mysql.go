@@ -35,10 +35,6 @@ func (db *MySql) TestConnection() error {
 	return nil
 }
 
-func (db *MySql) ParseConnectionString(url string) (*dburl.URL, error) {
-	return dburl.Parse(url)
-}
-
 func (db *MySql) Connect() error {
 	var err error
 
@@ -509,6 +505,3 @@ func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 func (db *MySql) GetUpdateQuery(table string, column string, value string, whereCol string, whereVal string) string {
 	return fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = \"%s\"", table, column, value, whereCol, whereVal)
 }
-
-//export the database
-var MySQL MySql = MySql{}

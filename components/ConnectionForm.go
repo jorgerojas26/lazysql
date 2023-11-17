@@ -79,7 +79,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 
-			parsed, err := drivers.MySQL.ParseConnectionString(connectionString)
+			parsed, err := helpers.ParseConnectionString(connectionString)
 
 			if err != nil {
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))

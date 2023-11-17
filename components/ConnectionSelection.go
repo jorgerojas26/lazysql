@@ -129,16 +129,24 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		MainPages.SwitchToPage(connectionUrl)
 		App.Draw()
 	} else {
-		newHome := NewHomePage(connectionUrl)
-		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
-		App.ForceDraw()
+		newDbDriver := drivers.MySql{}
+		newDbDriver.SetConnectionString(connectionUrl)
 
-		drivers.MySQL.SetConnectionString(connectionUrl)
-		err := drivers.MySQL.Connect()
+		err := newDbDriver.Connect()
 
 		if err != nil {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 		} else {
+			newHome := NewHomePage(connectionUrl, newDbDriver)
+
+			cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
+			App.ForceDraw()
+
+			MainPages.AddAndSwitchToPage(connectionUrl, newHome, true)
+
+			cs.StatusText.SetText("")
+			App.ForceDraw()
+
 			selectedRow, selectedCol := ConnectionListTable.GetSelection()
 			cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
 			cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
@@ -149,9 +157,5 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
 		}
 
-		MainPages.AddAndSwitchToPage(connectionUrl, newHome, true)
-
-		cs.StatusText.SetText("")
-		App.ForceDraw()
 	}
 }

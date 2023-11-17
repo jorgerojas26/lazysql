@@ -15,13 +15,14 @@ type Home struct {
 	TabbedPane      *TabbedPane
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
+	DBDriver        drivers.MySql
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
 	ListOfDbInserts []models.DbInsert
 }
 
-func NewHomePage(name string) *Home {
-	tree := NewTree()
+func NewHomePage(name string, dbdriver drivers.MySql) *Home {
+	tree := NewTree(&dbdriver)
 	tabbedPane := NewTabbedPane()
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
@@ -34,6 +35,7 @@ func NewHomePage(name string) *Home {
 		RightWrapper:    rightWrapper,
 		ListOfDbChanges: []models.DbDmlChange{},
 		ListOfDbInserts: []models.DbInsert{},
+		DBDriver:        dbdriver,
 	}
 
 	go home.subscribeToTreeChanges()
@@ -80,7 +82,7 @@ func (home *Home) subscribeToTreeChanges() {
 				table = tab.Content
 				home.TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
-				table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree).WithFilter()
+				table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, &home.DBDriver).WithFilter()
 
 				home.TabbedPane.AppendTab(tableName, table)
 			}
@@ -239,7 +241,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		if tab != nil {
 			home.TabbedPane.SwitchToTabByName("Editor")
 		} else {
-			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree).WithEditor()
+			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, &home.DBDriver).WithEditor()
 			home.TabbedPane.AppendTab("Editor", tableWithEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
@@ -271,7 +273,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 					// fmt.Println("list of changes: ", home.ListOfDbChanges)
 					// fmt.Println("list of inserts: ", home.ListOfDbInserts)
-					err := drivers.MySQL.ExecutePendingChanges(home.ListOfDbChanges, home.ListOfDbInserts)
+					err := home.DBDriver.ExecutePendingChanges(home.ListOfDbChanges, home.ListOfDbInserts)
 
 					if err != nil {
 						table.SetError(err.Error(), nil)

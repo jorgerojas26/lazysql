@@ -18,10 +18,11 @@ type TreeState struct {
 type Tree struct {
 	*tview.TreeView
 	state       *TreeState
+	DBDriver    *drivers.MySql
 	subscribers []chan models.StateChange
 }
 
-func NewTree() *Tree {
+func NewTree(dbdriver *drivers.MySql) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
@@ -31,6 +32,7 @@ func NewTree() *Tree {
 		TreeView:    tview.NewTreeView(),
 		state:       state,
 		subscribers: []chan models.StateChange{},
+		DBDriver:    dbdriver,
 	}
 
 	tree.SetTopLevel(1)
@@ -45,9 +47,9 @@ func NewTree() *Tree {
 	tree.SetCurrentNode(rootNode)
 
 	tree.SetFocusFunc(func() {
-		databases, err := drivers.MySQL.GetDatabases()
+		databases, err := tree.DBDriver.GetDatabases()
 		if err != nil {
-			panic(err)
+			panic(err.Error())
 		}
 
 		if tree.GetSelectedDatabase() == "" {
@@ -63,7 +65,7 @@ func NewTree() *Tree {
 			} else {
 				tree.SetSelectedDatabase(node.GetText())
 
-				tables, err := drivers.MySQL.GetTables(tree.GetSelectedDatabase())
+				tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
 				if err != nil {
 					// TODO: Handle error
 					return
