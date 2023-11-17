@@ -50,10 +50,10 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
-	statusText.SetBorderPadding(0, 2, 0, 0)
+	statusText.SetBorderPadding(0, 1, 0, 0)
 
 	wrapper.AddItem(ConnectionListTable, 0, 1, true)
-	wrapper.AddItem(statusText, 1, 0, false)
+	wrapper.AddItem(statusText, 2, 0, false)
 	wrapper.AddItem(buttonsWrapper, 1, 0, false)
 
 	cs := &ConnectionSelection{
@@ -131,7 +131,7 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 	} else {
 		newHome := NewHomePage(connectionUrl)
 		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
-		App.Draw()
+		App.ForceDraw()
 
 		drivers.MySQL.SetConnectionString(connectionUrl)
 		err := drivers.MySQL.Connect()
@@ -152,6 +152,6 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		MainPages.AddAndSwitchToPage(connectionUrl, newHome, true)
 
 		cs.StatusText.SetText("")
-		App.Draw()
+		App.ForceDraw()
 	}
 }
