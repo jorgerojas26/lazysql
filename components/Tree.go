@@ -83,6 +83,25 @@ func NewTree(dbdriver *drivers.MySql) *Tree {
 		}
 	})
 
+	tree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Rune() {
+		case 'G':
+			childrens := tree.GetRoot().GetChildren()
+			lastNode := childrens[len(childrens)-1]
+
+			if lastNode.IsExpanded() {
+				childNodes := lastNode.GetChildren()
+				lastChildren := childNodes[len(childNodes)-1]
+				tree.SetCurrentNode(lastChildren)
+			} else {
+				tree.SetCurrentNode(lastNode)
+			}
+		case 'g':
+			tree.SetCurrentNode(rootNode)
+		}
+		return event
+	})
+
 	return tree
 }
 
