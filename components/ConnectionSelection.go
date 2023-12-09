@@ -155,6 +155,8 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 
 			MainPages.SwitchToPage(connectionUrl)
 			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
+			App.SetFocus(newHome.Tree)
+			App.Draw()
 		}
 
 	}
