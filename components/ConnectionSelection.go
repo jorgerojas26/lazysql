@@ -129,6 +129,9 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		MainPages.SwitchToPage(connectionUrl)
 		App.Draw()
 	} else {
+		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
+		App.Draw()
+
 		newDbDriver := drivers.MySql{}
 		newDbDriver.SetConnectionString(connectionUrl)
 
@@ -139,13 +142,10 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		} else {
 			newHome := NewHomePage(connectionUrl, newDbDriver)
 
-			cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
-			App.ForceDraw()
-
 			MainPages.AddAndSwitchToPage(connectionUrl, newHome, true)
 
 			cs.StatusText.SetText("")
-			App.ForceDraw()
+			App.Draw()
 
 			selectedRow, selectedCol := ConnectionListTable.GetSelection()
 			cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
