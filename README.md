@@ -93,6 +93,34 @@ For Windows, Mac OS or Linux, you can download a binary release [here](https://g
 
 <!-- USAGE EXAMPLES -->
 
+### Install with go package manager
+
+```bash
+go install github.com/jorgerojas26/lazysql@latest
+```
+
+### Install from package manager
+
+Archlinux users can install it from the AUR with:
+
+```bash
+paru -S lazysql
+
+```
+or
+
+```bash
+yay -S lazysql
+
+```
+or install it manuall with:
+
+```bash
+git clone https://aur.archlinux.org/lazysql.git
+cd lazysql
+makepkg -si
+```
+
 ## Usage
 
 ```bash
