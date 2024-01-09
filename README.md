@@ -130,8 +130,6 @@ $ lazysql
 | --- | ----------------- |
 | L   | Focus table panel |
 
-### Connection selection
-
 ## Configuration
 
 The location of the file depends on your OS:
@@ -195,15 +193,11 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 ## Contact
 
-Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
+Jorge Rojas - [Linkedin](https://www.linkedin.com/in/jorgerojas26/) - jorgeluisrojasb@gmail.com
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-<!-- ACKNOWLEDGMENTS -->
-
-## Acknowledgments
+## Alternatives
 
 - [Mitzasql](https://github.com/vladbalmos/mitzasql)
 - [Gobang](https://github.com/TaKO8Ki/gobang)
