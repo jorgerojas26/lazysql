@@ -103,6 +103,14 @@ $ lazysql
 
 ## Keybindings
 
+### Global
+
+| Key       | Action                         |
+| --------- | ------------------------------ |
+| q         | Quit                           |
+| CTRL + e  | Open SQL editor                |
+| Backspace | Return to connection selection |
+
 ### Table
 
 | Key      | Action                 |
@@ -120,7 +128,6 @@ $ lazysql
 | [        | Focus previous tab     |
 | ]        | Focus next tab         |
 | X        | Close current tab      |
-| CTRL + e | Open SQL editor        |
 
 ### Tree
 
