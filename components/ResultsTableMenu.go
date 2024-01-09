@@ -2,7 +2,8 @@ package components
 
 import (
 	"fmt"
-	"lazysql/app"
+
+	"github.com/jorgerojas26/lazysql/app"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"

@@ -1,9 +1,10 @@
 package helpers
 
 import (
-	"lazysql/models"
 	"os"
 	"path/filepath"
+
+	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/pelletier/go-toml/v2"
 )

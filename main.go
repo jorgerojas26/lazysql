@@ -2,9 +2,10 @@ package main
 
 import (
 	"io"
-	"lazysql/app"
-	"lazysql/components"
 	"log"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/components"
 
 	"github.com/go-sql-driver/mysql"
 )

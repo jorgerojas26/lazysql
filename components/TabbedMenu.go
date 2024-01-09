@@ -3,7 +3,7 @@ package components
 import (
 	"github.com/rivo/tview"
 
-	"lazysql/app"
+	"github.com/jorgerojas26/lazysql/app"
 )
 
 type Header struct {
@@ -108,11 +108,9 @@ func (t *TabbedPane) RemoveCurrentTab() {
 		}
 
 	}
-
 }
 
 func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
-
 	t.state.CurrentTab = tab
 	t.HighlightTabHeader(tab)
 

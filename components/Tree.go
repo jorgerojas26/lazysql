@@ -2,9 +2,10 @@ package components
 
 import (
 	"fmt"
-	"lazysql/app"
-	"lazysql/drivers"
-	"lazysql/models"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"

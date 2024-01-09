@@ -3,10 +3,11 @@ package drivers
 import (
 	"database/sql"
 	"fmt"
-	"lazysql/models"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jorgerojas26/lazysql/models"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/xo/dburl"

@@ -1,7 +1,7 @@
 package components
 
 import (
-	"lazysql/models"
+	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/rivo/tview"
 )
