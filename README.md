@@ -50,8 +50,8 @@
 
 ## About The Project
 
-[![Product Name Screen Shot][product-screenshot1]]
-[![Product Name Screen Shot][product-screenshot2]]
+![Product Name Screen Shot][product-screenshot1]
+![Product Name Screen Shot][product-screenshot2]
 
 This project is heavily inspired by [Lazygit](https://github.com/jesseduffield/lazygit), which i think is the best TUI client for Git.
 
