@@ -7,8 +7,6 @@
 [![MIT License][license-shield]][license-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
-
-
 <!-- PROJECT LOGO -->
 <div align="center">
   <!-- <a href="https://github.com/jorgerojas26/lazysql"> -->
@@ -21,8 +19,6 @@
         A cross-platform TUI database management tool written in Go.
   </p>
 </div>
-
-
 
 <!-- TABLE OF CONTENTS -->
 <details>
@@ -41,6 +37,7 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li><a href="#keybindings">Keybindings</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
@@ -49,51 +46,55 @@
   </ol>
 </details>
 
-
-
 <!-- ABOUT THE PROJECT -->
+
 ## About The Project
 
 [![Product Name Screen Shot][product-screenshot]](https://example.com)
 
+This project is heavily inspired by [Lazygit](https://github.com/jesseduffield/lazygit), which i think is the best TUI client for Git.
 
+I wanted to have a tool like that, but for SQL. I didn't find one that fits my needs so i created one myself.
 
+This is my first Open Source project, also, this is my first Golang project. I am not a brilliant programmer. I am just a typical Javascript developer that wanted to learn a new language, i also wanted a TUI SQL Client, so, white and bottled.
 
+This project is in ALPHA stage, please feel free to critize my spaghetti code.
+
+I use Lazysql daily in my ful time job as a fullstack javascript developer in it's current (buggy xD) state. So, the plan is to improve and fix my little boy as a side project in my free time.
 
 ### Built With
 
 ![Golang][golang-shield]
 ![Golang][tview-shield]
 
-
-
-
 <!-- GETTING STARTED -->
+
 ## Getting Started
 
 ### Installation
 
 #### MacOS
-   ```bash
+
+```bash
 $ brew install lazysql
-   ```
+```
+
 #### Debian
-   ```bash
+
+```bash
 $ apt install lazysql
-   ```
+```
+
 #### Windows
-   ```bash
+
+```bash
 $ scoop install lazysql
-   ```
-#### Binaries
-- Download the <a href="https://github.com/jorgerojas26/lazysql/releases">latest release binary</a> for your system
-- Set the `PATH` environment variable
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- USAGE EXAMPLES -->
+
 ## Usage
 
 ```bash
@@ -102,6 +103,34 @@ $ lazysql
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+## Keybindings
+
+### Table
+
+| Key      | Action                 |
+| -------- | ---------------------- |
+| c        | Edit table cell        |
+| d        | Delete row             |
+| o        | Add row                |
+| /        | Focus the filter input |
+| CTRL + s | Commit changes         |
+| >        | Next page              |
+| <        | Previous page          |
+| K        | Sort ASC               |
+| J        | Sort DESC              |
+| H        | Focus tree panel       |
+| [        | Focus previous tab     |
+| ]        | Focus next tab         |
+| X        | Close current tab      |
+| CTRL + e | Open SQL editor        |
+
+### Tree
+
+| Key | Action            |
+| --- | ----------------- |
+| L   | Focus table panel |
+
+### Connection selection
 
 ## Configuration
 
@@ -131,52 +160,39 @@ Host = 'localhost'
 Port = '3306'
 ```
 
-
 <!-- ROADMAP -->
+
 ## Roadmap
 
-- [x] Add Changelog
-- [x] Add back to top links
-- [ ] Add Additional Templates w/ Examples
-- [ ] Add "components" document to easily copy & paste sections of the readme
-- [ ] Multi-language Support
-    - [ ] Chinese
-    - [ ] Spanish
+- [ ] Support for NOSQL databases
+- [ ] Columns and indexes creation through TUI
+- [ ] Table tree input filter
+- [ ] Custom keybindings
+- [ ] Show keybindings on a modal
+- [ ] Rewrite row `create`, `update` and `delete` logic
 
 See the [open issues](https://github.com/jorgerojas26/lazysql/issues) for a full list of proposed features (and known issues).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- CONTRIBUTING -->
+
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Contributions, issues and pull requests are welcome!
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- LICENSE -->
+
 ## License
 
 Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- CONTACT -->
+
 ## Contact
 
 Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
@@ -185,28 +201,18 @@ Project Link: [https://github.com/your_username/repo_name](https://github.com/yo
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- ACKNOWLEDGMENTS -->
+
 ## Acknowledgments
 
-Use this space to list resources you find helpful and would like to give credit to. I've included a few of my favorites to kick things off!
-
-* [Choose an Open Source License](https://choosealicense.com)
-* [GitHub Emoji Cheat Sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet)
-* [Malven's Flexbox Cheatsheet](https://flexbox.malven.co/)
-* [Malven's Grid Cheatsheet](https://grid.malven.co/)
-* [Img Shields](https://shields.io)
-* [GitHub Pages](https://pages.github.com)
-* [Font Awesome](https://fontawesome.com)
-* [React Icons](https://react-icons.github.io/react-icons/search)
+- [Mitzasql](https://github.com/vladbalmos/mitzasql)
+- [Gobang](https://github.com/TaKO8Ki/gobang)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
+
 [contributors-shield]: https://img.shields.io/github/contributors/jorgerojas26/lazysql?style=for-the-badge
 [contributors-url]: https://github.com/jorgerojas26/lazysql/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/jorgerojas26/lazysql?style=for-the-badge
