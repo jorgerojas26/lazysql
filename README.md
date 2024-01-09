@@ -50,7 +50,8 @@
 
 ## About The Project
 
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
+[![Product Name Screen Shot][product-screenshot1]]
+[![Product Name Screen Shot][product-screenshot2]]
 
 This project is heavily inspired by [Lazygit](https://github.com/jesseduffield/lazygit), which i think is the best TUI client for Git.
 
@@ -219,6 +220,7 @@ Jorge Rojas - [Linkedin](https://www.linkedin.com/in/jorgerojas26/) - jorgeluisr
 [license-url]: https://github.com/jorgerojas26/lazysql/blob/main/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/jorgerojas26
-[product-screenshot]: images/lazysql.png
+[product-screenshot1]: images/lazysql-connection-selection.png
+[product-screenshot2]: images/lazysql.png
 [golang-shield]: https://img.shields.io/badge/Golang-gray?style=for-the-badge&logo=go
 [tview-shield]: https://img.shields.io/badge/tview-gray?style=for-the-badge&logo=go
