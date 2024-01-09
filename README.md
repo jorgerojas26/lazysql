@@ -135,34 +135,6 @@ $ lazysql
 | --- | ----------------- |
 | L   | Focus table panel |
 
-## Configuration
-
-The location of the file depends on your OS:
-
-- MacOS: `$HOME/.config/lazysql/config.toml`
-- Linux: `$HOME/.config/lazysql/config.toml`
-- Windows: `%APPDATA%/lazysql/config.toml`
-
-The following is a sample `config.toml` file:
-
-```toml
-[[database]]
-Name = 'Localhost'
-Provider = 'mysql'
-User = 'root'
-Password = 'password'
-Host = 'localhost'
-Port = '3306'
-
-[[database]]
-Name = 'Localhost'
-Provider = 'mysql'
-User = 'root'
-Password = 'password'
-Host = 'localhost'
-Port = '3306'
-```
-
 <!-- ROADMAP -->
 
 ## Roadmap
