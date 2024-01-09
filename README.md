@@ -30,6 +30,7 @@
         <li><a href="#built-with">Built With</a></li>
       </ul>
     </li>
+    <li><a href="#features">Features</a></li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
@@ -57,6 +58,8 @@ This project is heavily inspired by [Lazygit](https://github.com/jesseduffield/l
 
 I wanted to have a tool like that, but for SQL. I didn't find one that fits my needs so i created one myself.
 
+I live in the terminal, so if you are like me, this tool can become handy for you too.
+
 This is my first Open Source project, also, this is my first Golang project. I am not a brilliant programmer. I am just a typical Javascript developer that wanted to learn a new language, i also wanted a TUI SQL Client, so, white and bottled.
 
 This project is in ALPHA stage, please feel free to critize my spaghetti code.
@@ -67,6 +70,14 @@ I use Lazysql daily in my ful time job as a fullstack javascript developer in it
 
 ![Golang][golang-shield]
 ![Golang][tview-shield]
+
+## Features
+
+- [ ] Cross-platform (macOS, Windows, Linux)
+- [ ] VIM Keybindings
+- [ ] Can manage multiple connections (Backspace)
+- [ ] Tabs
+- [ ] SQL Editor (CTRL + e)
 
 <!-- GETTING STARTED -->
 
