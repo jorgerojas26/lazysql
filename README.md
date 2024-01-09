@@ -74,23 +74,9 @@ I use Lazysql daily in my ful time job as a fullstack javascript developer in it
 
 ### Installation
 
-#### MacOS
+#### Binary Releases
 
-```bash
-$ brew install lazysql
-```
-
-#### Debian
-
-```bash
-$ apt install lazysql
-```
-
-#### Windows
-
-```bash
-$ scoop install lazysql
-```
+For Windows, Mac OS or Linux, you can download a binary release [here](https://github.com/jorgerojas26/lazysql/releases)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
