@@ -89,6 +89,33 @@ I use Lazysql daily in my ful time job as a fullstack javascript developer in it
 
 For Windows, Mac OS or Linux, you can download a binary release [here](https://github.com/jorgerojas26/lazysql/releases)
 
+#### Install with go package manager
+
+```bash
+go install github.com/jorgerojas26/lazysql@latest
+```
+
+#### Install from package manager
+
+Archlinux users can install it from the AUR with:
+
+```bash
+paru -S lazysql
+
+```
+or
+
+```bash
+yay -S lazysql
+
+```
+or install it manual with:
+
+```bash
+git clone https://aur.archlinux.org/lazysql.git
+cd lazysql
+makepkg -si
+```
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- USAGE EXAMPLES -->
