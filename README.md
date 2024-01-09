@@ -73,11 +73,11 @@ I use Lazysql daily in my ful time job as a fullstack javascript developer in it
 
 ## Features
 
-- [ ] Cross-platform (macOS, Windows, Linux)
-- [ ] VIM Keybindings
-- [ ] Can manage multiple connections (Backspace)
-- [ ] Tabs
-- [ ] SQL Editor (CTRL + e)
+- [x] Cross-platform (macOS, Windows, Linux)
+- [x] VIM Keybindings
+- [x] Can manage multiple connections (Backspace)
+- [x] Tabs
+- [x] SQL Editor (CTRL + e)
 
 <!-- GETTING STARTED -->
 
