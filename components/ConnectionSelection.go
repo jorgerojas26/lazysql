@@ -133,7 +133,7 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
 		App.Draw()
 
-		newDbDriver := drivers.MySQL{}
+		newDbDriver := drivers.MySql{}
 		newDbDriver.SetConnectionString(connectionUrl)
 
 		err := newDbDriver.Connect()

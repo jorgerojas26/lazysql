@@ -29,7 +29,7 @@ type DbDmlChange struct {
 	Table  string
 	Column string
 	Value  string
-	RowID  string
+	RowId  string
 	Option int
 }
 
@@ -38,5 +38,5 @@ type DbInsert struct {
 	Columns []string
 	Values  []string
 	Option  int
-	RowID   uuid.UUID
+	RowId   uuid.UUID
 }
