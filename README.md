@@ -103,12 +103,14 @@ Archlinux users can install it from the AUR with:
 paru -S lazysql
 
 ```
+
 or
 
 ```bash
 yay -S lazysql
 
 ```
+
 or install it manual with:
 
 ```bash
@@ -116,6 +118,7 @@ git clone https://aur.archlinux.org/lazysql.git
 cd lazysql
 makepkg -si
 ```
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- USAGE EXAMPLES -->
@@ -127,6 +130,16 @@ $ lazysql
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Support
+
+- [x] MySQL
+- [ ] Postgres
+- [ ] SQLite
+- [ ] MSSQL
+- [ ] MongoDB
+
+Support for multiple RDBMS is a work in progress.
 
 ## Keybindings
 
@@ -140,27 +153,33 @@ $ lazysql
 
 ### Table
 
-| Key      | Action                 |
-| -------- | ---------------------- |
-| c        | Edit table cell        |
-| d        | Delete row             |
-| o        | Add row                |
-| /        | Focus the filter input |
-| CTRL + s | Commit changes         |
-| >        | Next page              |
-| <        | Previous page          |
-| K        | Sort ASC               |
-| J        | Sort DESC              |
-| H        | Focus tree panel       |
-| [        | Focus previous tab     |
-| ]        | Focus next tab         |
-| X        | Close current tab      |
+| Key      | Action                               |
+| -------- | ------------------------------------ |
+| c        | Edit table cell                      |
+| d        | Delete row                           |
+| o        | Add row                              |
+| /        | Focus the filter input or SQL editor |
+| CTRL + s | Commit changes                       |
+| >        | Next page                            |
+| <        | Previous page                        |
+| K        | Sort ASC                             |
+| J        | Sort DESC                            |
+| H        | Focus tree panel                     |
+| [        | Focus previous tab                   |
+| ]        | Focus next tab                       |
+| X        | Close current tab                    |
 
 ### Tree
 
 | Key | Action            |
 | --- | ----------------- |
 | L   | Focus table panel |
+
+### SQL Editor
+
+| Key      | Action                |
+| -------- | --------------------- |
+| CTRL + R | Run the SQL statement |
 
 <!-- ROADMAP -->
 
