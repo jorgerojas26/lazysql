@@ -144,7 +144,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 func (form *ConnectionForm) testConnection(connectionString string) {
 	form.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()))
 
-	db := drivers.MySQL{}
+	db := drivers.MySql{}
 	db.SetConnectionString(connectionString)
 
 	err := db.TestConnection()
