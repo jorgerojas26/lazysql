@@ -8,6 +8,7 @@ linters-settings:
     sections:
       - standard
       - default
+      - prefix(github.com/jorgerojas26/lazysql)
   goconst:
     min-len: 2
     min-occurrences: 2
