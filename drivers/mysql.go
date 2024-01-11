@@ -13,13 +13,13 @@ import (
 	"github.com/xo/dburl"
 )
 
-type MySql struct {
+type MySQL struct {
 	conn              *sql.DB
 	connectionString  string
 	lastExecutedQuery string
 }
 
-func (db *MySql) TestConnection() error {
+func (db *MySQL) TestConnection() error {
 	var err error
 
 	db.conn, err = dburl.Open(db.connectionString)
@@ -36,7 +36,7 @@ func (db *MySql) TestConnection() error {
 	return nil
 }
 
-func (db *MySql) Connect() error {
+func (db *MySQL) Connect() error {
 	var err error
 
 	db.conn, err = dburl.Open(db.connectionString)
@@ -63,15 +63,15 @@ func (db *MySql) Connect() error {
 	return nil
 }
 
-func (db *MySql) SetConnectionString(connectionString string) {
+func (db *MySQL) SetConnectionString(connectionString string) {
 	db.connectionString = connectionString
 }
 
-func (db *MySql) GetConnectionString() string {
+func (db *MySQL) GetConnectionString() string {
 	return db.connectionString
 }
 
-func (db *MySql) GetDatabases() ([]string, error) {
+func (db *MySQL) GetDatabases() ([]string, error) {
 	var databases []string
 
 	rows, err := db.conn.Query("SHOW DATABASES")
@@ -90,7 +90,7 @@ func (db *MySql) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *MySql) GetTables(database string) ([]string, error) {
+func (db *MySQL) GetTables(database string) ([]string, error) {
 	var tables []string
 
 	rows, err := db.conn.Query("SHOW TABLES FROM " + database)
@@ -107,7 +107,7 @@ func (db *MySql) GetTables(database string) ([]string, error) {
 	return tables, nil
 }
 
-func (db *MySql) DescribeTable(table string) (results [][]string) {
+func (db *MySQL) DescribeTable(table string) (results [][]string) {
 	rows, _ := db.conn.Query("DESCRIBE " + table)
 	defer rows.Close()
 
@@ -134,7 +134,7 @@ func (db *MySql) DescribeTable(table string) (results [][]string) {
 	return
 }
 
-func (db *MySql) GetTableConstraints(table string) (results [][]string) {
+func (db *MySQL) GetTableConstraints(table string) (results [][]string) {
 	splitTableString := strings.Split(table, ".")
 	database := splitTableString[0]
 	tableName := splitTableString[1]
@@ -166,7 +166,7 @@ func (db *MySql) GetTableConstraints(table string) (results [][]string) {
 	return
 }
 
-func (db *MySql) GetTableForeignKeys(table string) (results [][]string) {
+func (db *MySQL) GetTableForeignKeys(table string) (results [][]string) {
 	splitTableString := strings.Split(table, ".")
 	database := splitTableString[0]
 	tableName := splitTableString[1]
@@ -197,7 +197,7 @@ func (db *MySql) GetTableForeignKeys(table string) (results [][]string) {
 	return
 }
 
-func (db *MySql) GetTableIndexes(table string) (results [][]string) {
+func (db *MySQL) GetTableIndexes(table string) (results [][]string) {
 	rows, _ := db.conn.Query("SHOW INDEX FROM " + table) // TODO: handle error
 	defer rows.Close()
 
@@ -224,7 +224,7 @@ func (db *MySql) GetTableIndexes(table string) (results [][]string) {
 	return
 }
 
-func (db *MySql) GetRecords(table string, where string, sort string, offset int, limit int, appendColumns bool) (results [][]string, err error) {
+func (db *MySQL) GetRecords(table string, where string, sort string, offset int, limit int, appendColumns bool) (results [][]string, err error) {
 	defaultLimit := 100
 
 	if limit != 0 {
@@ -276,7 +276,7 @@ func (db *MySql) GetRecords(table string, where string, sort string, offset int,
 }
 
 // Get paginated records
-func (db *MySql) GetPaginatedRecords(table string, where string, sort string, offset int, limit int, appendColumns bool) (paginatedResults [][]string, totalRecords int, err error) {
+func (db *MySQL) GetPaginatedRecords(table string, where string, sort string, offset int, limit int, appendColumns bool) (paginatedResults [][]string, totalRecords int, err error) {
 	defaultLimit := 300
 
 	if limit != 0 {
@@ -337,7 +337,7 @@ func (db *MySql) GetPaginatedRecords(table string, where string, sort string, of
 	return
 }
 
-func (db *MySql) QueryPaginatedRecords(query string) (results [][]string, err error) {
+func (db *MySQL) QueryPaginatedRecords(query string) (results [][]string, err error) {
 	rows, err := db.conn.Query(query)
 	if err != nil {
 		return results, err
@@ -369,21 +369,21 @@ func (db *MySql) QueryPaginatedRecords(query string) (results [][]string, err er
 	return
 }
 
-func (db *MySql) UpdateRecord(table string, column string, value string, id string) error {
+func (db *MySQL) UpdateRecord(table string, column string, value string, id string) error {
 	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE id = \"%s\"", table, column, value, id)
 	_, err := db.conn.Exec(query)
 
 	return err
 }
 
-func (db *MySql) DeleteRecord(table string, id string) error {
+func (db *MySQL) DeleteRecord(table string, id string) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id = \"%s\"", table, id)
 	_, err := db.conn.Exec(query)
 
 	return err
 }
 
-func (db *MySql) ExecuteDMLQuery(query string) (result string, err error) {
+func (db *MySQL) ExecuteDMLQuery(query string) (result string, err error) {
 	res, error := db.conn.Exec(query)
 
 	if error != nil {
@@ -395,11 +395,11 @@ func (db *MySql) ExecuteDMLQuery(query string) (result string, err error) {
 	}
 }
 
-func (db *MySql) GetLastExecutedQuery() string {
+func (db *MySQL) GetLastExecutedQuery() string {
 	return db.lastExecutedQuery
 }
 
-func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
+func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
 	queries := make([]string, 0, len(changes)+len(inserts))
 
 	// This will hold grouped changes by their RowId and Table
@@ -409,7 +409,7 @@ func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 	// Group changes by RowId and Table
 	for _, change := range changes {
 		if change.Type == "UPDATE" {
-			key := fmt.Sprintf("%s|%s", change.Table, change.RowId)
+			key := fmt.Sprintf("%s|%s", change.Table, change.RowID)
 			groupedUpdated[key] = append(groupedUpdated[key], change)
 		} else if change.Type == "DELETE" {
 			groupedDeletes = append(groupedDeletes, change)
@@ -423,7 +423,7 @@ func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		// Split key into table and rowId
 		splitted := strings.Split(key, "|")
 		table := splitted[0]
-		rowId := splitted[1]
+		rowID := splitted[1]
 
 		for _, change := range changes {
 			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
@@ -432,7 +432,7 @@ func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		// Merge all column updates
 		updateClause := strings.Join(columns, ", ")
 
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE id = '%s';", table, updateClause, rowId)
+		query := fmt.Sprintf("UPDATE %s SET %s WHERE id = '%s';", table, updateClause, rowID)
 
 		queries = append(queries, query)
 	}
@@ -442,7 +442,7 @@ func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		query := ""
 
 		statementType = "DELETE FROM"
-		query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, delete.Table, delete.RowId)
+		query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, delete.Table, delete.RowID)
 
 		if query != "" {
 			queries = append(queries, query)
@@ -503,6 +503,6 @@ func (db *MySql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 	return err
 }
 
-func (db *MySql) GetUpdateQuery(table string, column string, value string, whereCol string, whereVal string) string {
+func (db *MySQL) GetUpdateQuery(table string, column string, value string, whereCol string, whereVal string) string {
 	return fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = \"%s\"", table, column, value, whereCol, whereVal)
 }
