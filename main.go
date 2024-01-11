@@ -11,7 +11,9 @@ import (
 )
 
 func main() {
-	mysql.SetLogger(log.New(io.Discard, "", 0))
+	if err := mysql.SetLogger(log.New(io.Discard, "", 0)); err != nil {
+		panic(err)
+	}
 
 	if err := app.App.SetRoot(components.MainPages, true).Run(); err != nil {
 		panic(err)
