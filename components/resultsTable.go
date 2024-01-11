@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/drivers"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
 	"github.com/rivo/tview"
 	"golang.design/x/clipboard"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type ResultsTableState struct {
@@ -55,7 +54,12 @@ var (
 	DeleteColor = tcell.ColorRed
 )
 
-func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree, dbdriver *drivers.MySQL) *ResultsTable {
+func NewResultsTable(
+	listOfDbChanges *[]models.DbDmlChange,
+	listOfDbInserts *[]models.DbInsert,
+	tree *Tree,
+	dbdriver *drivers.MySQL,
+) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -211,16 +215,16 @@ func (table *ResultsTable) AddInsertedRows() {
 	}
 }
 
-func (table *ResultsTable) InsertRow(cols []string, index int, UUID uuid.UUID) {
+func (table *ResultsTable) InsertRow(cols []string, index int, id uuid.UUID) {
 	for i, cell := range cols {
 		tableCell := tview.NewTableCell(cell)
 		tableCell.SetExpansion(1)
 
 		if i == 0 {
-			tableCell.SetReference(UUID)
+			tableCell.SetReference(id)
 		}
-		tableCell.SetTextColor(app.FocusTextColor)
 
+		tableCell.SetTextColor(app.FocusTextColor)
 		table.SetCell(index, i, tableCell)
 	}
 }
@@ -230,130 +234,135 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	colCount := table.GetColumnCount()
 	rowCount := table.GetRowCount()
 
-	rune := event.Rune()
+	eventRune := event.Rune()
 
-	if rune == '1' || event.Rune() == '2' || event.Rune() == '3' || event.Rune() == '4' || event.Rune() == '5' {
+	if eventRune == '1' || eventRune == '2' || eventRune == '3' || eventRune == '4' || eventRune == '5' {
 		table.Select(1, 0)
 	}
 
 	if table.Menu != nil {
-		if rune == '1' {
+		switch eventRune {
+		case '1':
 			table.Menu.SetSelectedOption(1)
 			table.UpdateRows(table.GetRecords())
-		} else if rune == '2' {
+		case '2':
 			table.Menu.SetSelectedOption(2)
 			table.UpdateRows(table.GetColumns())
-		} else if rune == '3' {
+		case '3':
 			table.Menu.SetSelectedOption(3)
 			table.UpdateRows(table.GetConstraints())
-		} else if rune == '4' {
+		case '4':
 			table.Menu.SetSelectedOption(4)
 			table.UpdateRows(table.GetForeignKeys())
-		} else if rune == '5' {
+		case '5':
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
 		}
 	}
 
-	if rune == '/' {
+	switch eventRune {
+	case '/':
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
 			table.Editor.Highlight()
 			table.RemoveHighlightTable()
 			table.SetIsFiltering(true)
+
 			return nil
-		} else {
-			App.SetFocus(table.Filter.Input)
-			table.RemoveHighlightTable()
-			table.Filter.HighlightLocal()
-			table.SetIsFiltering(true)
+		}
 
-			if table.Filter.Input.GetText() == "/" {
-				go table.Filter.Input.SetText("")
-			}
+		App.SetFocus(table.Filter.Input)
+		table.RemoveHighlightTable()
+		table.Filter.HighlightLocal()
+		table.SetIsFiltering(true)
 
-			table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
-				split := strings.Split(currentText, " ")
-				comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
+		if table.Filter.Input.GetText() == "/" {
+			go table.Filter.Input.SetText("")
+		}
 
-				if len(split) == 1 {
-					columns := table.GetColumns()
-					columnNames := []string{}
+		table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
+			split := strings.Split(currentText, " ")
+			comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
 
-					for i, col := range columns {
-						if i > 0 {
-							columnNames = append(columnNames, col[0])
-						}
+			switch len(split) {
+			case 1:
+				columns := table.GetColumns()
+				columnNames := []string{}
+
+				for i, col := range columns {
+					if i > 0 {
+						columnNames = append(columnNames, col[0])
 					}
+				}
 
-					return columnNames
-				} else if len(split) == 2 {
+				return columnNames
+			case 2:
 
+				for i, comparator := range comparators {
+					comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
+				}
+
+				return comparators
+			case 3:
+
+				ret := true
+
+				if split[1] == "not" {
+					comparators = []string{"between", "in", "like"}
+				} else if split[1] == "is" {
+					comparators = []string{"not", "null"}
+				} else {
+					ret = false
+				}
+
+				if ret {
 					for i, comparator := range comparators {
-						comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
+						comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
+					}
+					return comparators
+				}
+			case 4:
+				ret := true
+
+				switch split[2] {
+				case "not":
+					comparators = []string{"null"}
+				case "is":
+					comparators = []string{"not", "null"}
+				default:
+					ret = false
+				}
+
+				if ret {
+					for i, comparator := range comparators {
+						comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
 					}
 
 					return comparators
-				} else if len(split) == 3 {
+				}
+			}
 
-					ret := true
+			return []string{}
+		})
 
-					if split[1] == "not" {
-						comparators = []string{"between", "in", "like"}
-					} else if split[1] == "is" {
-						comparators = []string{"not", "null"}
-					} else {
-						ret = false
-					}
+		table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
+			if source != tview.AutocompletedNavigate {
+				inputText := strings.Split(table.Filter.Input.GetText(), " ")
 
-					if ret {
-						for i, comparator := range comparators {
-							comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
-						}
-						return comparators
-					}
-
-				} else if len(split) == 4 {
-					ret := true
-
-					if split[2] == "not" {
-						comparators = []string{"null"}
-					} else if split[2] == "is" {
-						comparators = []string{"not", "null"}
-					} else {
-						ret = false
-					}
-
-					if ret {
-						for i, comparator := range comparators {
-							comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
-						}
-
-						return comparators
-					}
+				switch len(inputText) {
+				case 1:
+					table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
+				case 2:
+					table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
 				}
 
-				return []string{}
-			})
+				table.Filter.Input.SetText(text)
+			}
+			return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
+		})
 
-			table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
-				if source != tview.AutocompletedNavigate {
-					inputText := strings.Split(table.Filter.Input.GetText(), " ")
-
-					if len(inputText) == 1 {
-						table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
-					} else if len(inputText) == 2 {
-						table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
-					}
-
-					table.Filter.Input.SetText(text)
-				}
-				return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
-			})
-
-		}
 		table.SetInputCapture(nil)
-	} else if rune == 'c' {
+	case 'c':
 		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string, row, col int) {
 			cellReference := table.GetCell(row, 0).GetReference()
 
@@ -361,35 +370,35 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
 			}
 		})
-	} else if rune == 'w' {
+	case 'w':
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
 		}
-	} else if rune == 'b' {
+	case 'b':
 		if selectedColumnIndex > 0 {
 			table.Select(selectedRowIndex, selectedColumnIndex-1)
 		}
-	} else if rune == '$' {
+	case '$':
 		table.Select(selectedRowIndex, colCount-1)
-	} else if rune == '0' {
+	case '0':
 		table.Select(selectedRowIndex, 0)
-	} else if rune == 'g' {
+	case 'g':
 		go table.Select(1, selectedColumnIndex)
-	} else if rune == 'G' {
+	case 'G':
 		go table.Select(rowCount-1, selectedColumnIndex)
-	} else if rune == 4 { // Ctrl + D
+	case 4: // Ctrl + D
 		if selectedRowIndex+7 > rowCount-1 {
 			go table.Select(rowCount-1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex+7, selectedColumnIndex)
 		}
-	} else if rune == 21 { // Ctrl + U
+	case 21: // Ctrl + U
 		if selectedRowIndex-7 < 1 {
 			go table.Select(1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
-	} else if rune == 'd' {
+	case 'd':
 		if table.Menu.GetSelectedOption() == 1 {
 			isAnInsertedRow := false
 			indexOfInsertedRow := -1
@@ -404,40 +413,41 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 
 			if isAnInsertedRow {
-				*table.state.listOfDbInserts = append((*table.state.listOfDbInserts)[:indexOfInsertedRow], (*table.state.listOfDbInserts)[indexOfInsertedRow+1:]...)
+				*table.state.listOfDbInserts = append(
+					(*table.state.listOfDbInserts)[:indexOfInsertedRow],
+					(*table.state.listOfDbInserts)[indexOfInsertedRow+1:]...,
+				)
 				table.RemoveRow(selectedRowIndex)
+
 				if selectedRowIndex-1 != 0 {
 					table.Select(selectedRowIndex-1, 0)
-				} else {
-					if selectedRowIndex+1 < rowCount {
-						table.Select(selectedRowIndex+1, 0)
-					}
+				} else if selectedRowIndex+1 < rowCount {
+					table.Select(selectedRowIndex+1, 0)
 				}
 
-				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
+				switch {
+				case len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0:
 					table.Tree.ForceRemoveHighlight()
-				} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
+				case len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0:
 					table.Tree.GetCurrentNode().SetColor(InsertColor)
-				} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
+				case len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0:
 					table.Tree.GetCurrentNode().SetColor(ChangeColor)
 				}
 			} else {
 				table.AppendNewChange("DELETE", table.GetDBReference(), selectedRowIndex, -1, "")
 			}
-
 		}
-	} else if rune == 'o' {
+	case 'o':
 		if table.Menu.GetSelectedOption() == 1 {
-
 			newRow := make([]string, table.GetColumnCount())
 			newRowIndex := table.GetRowCount()
-			newRowUuid := uuid.New()
+			newRowUUID := uuid.New()
 
 			for i := 0; i < table.GetColumnCount(); i++ {
 				newRow[i] = "Default"
 			}
 
-			table.InsertRow(newRow, newRowIndex, newRowUuid)
+			table.InsertRow(newRow, newRowIndex, newRowUUID)
 
 			for i := 0; i < table.GetColumnCount(); i++ {
 				table.GetCell(newRowIndex, i).SetBackgroundColor(tcell.ColorDarkGreen)
@@ -447,7 +457,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				Table:   table.GetDBReference(),
 				Columns: table.GetRecords()[0],
 				Values:  newRow,
-				RowID:   newRowUuid,
+				RowID:   newRowUUID,
 				Option:  1,
 			}
 
@@ -469,33 +479,28 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
 				}
 			})
-
 		}
 	}
 
 	if len(table.GetRecords()) > 0 {
-		if rune == 'J' {
+		switch eventRune {
+		case 'J':
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "DESC")
 
-		} else if rune == 'K' {
+		case 'K':
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
-		} else if rune == 'y' {
+		case 'y':
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+			if selectedCell == nil || clipboard.Init() != nil {
+				break
+			}
 
-			if selectedCell != nil {
-				err := clipboard.Init()
-
-				if err == nil {
-					text := []byte(selectedCell.Text)
-
-					if text != nil {
-						clipboard.Write(clipboard.FmtText, text)
-					}
-				}
+			if text := []byte(selectedCell.Text); text != nil {
+				clipboard.Write(clipboard.FmtText, text)
 			}
 		}
 	}
@@ -511,7 +516,7 @@ func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.Select(1, 0)
 }
 
-func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tcell.Color) {
+func (table *ResultsTable) UpdateRowsColor(headerColor, rowColor tcell.Color) {
 	for i := 0; i < table.GetRowCount(); i++ {
 		for j := 0; j < table.GetColumnCount(); j++ {
 			cell := table.GetCell(i, j)
@@ -533,9 +538,11 @@ func (table *ResultsTable) RemoveHighlightTable() {
 
 func (table *ResultsTable) RemoveHighlightAll() {
 	table.RemoveHighlightTable()
+
 	if table.Menu != nil {
 		table.Menu.SetBlur()
 	}
+
 	if table.Filter != nil {
 		table.Filter.RemoveHighlight()
 	}
@@ -550,9 +557,11 @@ func (table *ResultsTable) HighlightTable() {
 
 func (table *ResultsTable) HighlightAll() {
 	table.HighlightTable()
+
 	if table.Menu != nil {
 		table.Menu.SetFocus()
 	}
+
 	if table.Filter != nil {
 		table.Filter.Highlight()
 	}
@@ -562,8 +571,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 	ch := table.Filter.Subscribe()
 
 	for stateChange := range ch {
-		switch stateChange.Key {
-		case "Filter":
+		if stateChange.Key == "Filter" {
 			if stateChange.Value != "" {
 				rows := table.FetchRecords(table.GetDBReference())
 
@@ -582,16 +590,13 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 					table.SetIsFiltering(true)
 					App.ForceDraw()
 				}
-
 			} else {
 				table.FetchRecords(table.GetDBReference())
-
 				table.SetInputCapture(table.tableInputCapture)
 				App.SetFocus(table)
 				table.HighlightTable()
 				table.Filter.HighlightLocal()
 				App.ForceDraw()
-
 			}
 		}
 	}
@@ -610,7 +615,9 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				if strings.Contains(queryLower, "select") {
 					table.SetLoading(true)
 					App.Draw()
+
 					rows, err := table.DBDriver.QueryPaginatedRecords(query)
+
 					table.Pagination.SetTotalRecords(len(rows))
 					table.Pagination.SetLimit(len(rows))
 
@@ -638,6 +645,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						}
 						table.SetLoading(false)
 					}
+
 					table.EditorPages.SwitchToPage("Table")
 					App.Draw()
 				} else {
@@ -646,7 +654,6 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					App.Draw()
 
 					result, err := table.DBDriver.ExecuteDMLQuery(query)
-
 					if err != nil {
 						table.SetLoading(false)
 						App.Draw()
@@ -810,7 +817,7 @@ func (table *ResultsTable) SetCurrentSort(sort string) {
 	table.state.currentSort = sort
 }
 
-func (table *ResultsTable) SetSortedBy(column string, direction string) {
+func (table *ResultsTable) SetSortedBy(column, direction string) {
 	sort := fmt.Sprintf("%s %s", column, direction)
 
 	if table.GetCurrentSort() != sort {
@@ -818,8 +825,17 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 		if table.Filter != nil {
 			where = table.Filter.GetCurrentFilter()
 		}
+
 		table.SetLoading(true)
-		records, err := table.DBDriver.GetRecords(table.GetDBReference(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
+		records, err := table.DBDriver.GetRecords(
+			table.GetDBReference(),
+			where,
+			sort,
+			table.Pagination.GetOffset(),
+			table.Pagination.GetLimit(),
+			true,
+		)
+
 		table.SetLoading(false)
 
 		if err != nil {
@@ -839,18 +855,20 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 		}
 
 		for i, col := range columns {
-			if i > 0 {
-				tableCell := tview.NewTableCell(col[0])
-				tableCell.SetSelectable(false)
-				tableCell.SetExpansion(1)
-				tableCell.SetTextColor(app.ActiveTextColor)
+			if i == 0 {
+				continue
+			}
 
-				if col[0] == column {
-					tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
-					table.SetCell(0, i-1, tableCell)
-				} else {
-					table.SetCell(0, i-1, tableCell)
-				}
+			tableCell := tview.NewTableCell(col[0])
+			tableCell.SetSelectable(false)
+			tableCell.SetExpansion(1)
+			tableCell.SetTextColor(app.ActiveTextColor)
+
+			if col[0] == column {
+				tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
+				table.SetCell(0, i-1, tableCell)
+			} else {
+				table.SetCell(0, i-1, tableCell)
 			}
 		}
 	}
@@ -863,9 +881,17 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	if table.Filter != nil {
 		where = table.Filter.GetCurrentFilter()
 	}
+
 	sort := table.GetCurrentSort()
 
-	records, totalRecords, err := table.DBDriver.GetPaginatedRecords(tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
+	records, totalRecords, err := table.DBDriver.GetPaginatedRecords(
+		tableName,
+		where,
+		sort,
+		table.Pagination.GetOffset(),
+		table.Pagination.GetLimit(),
+		true,
+	)
 
 	if err != nil {
 		table.SetError(err.Error(), nil)
@@ -874,6 +900,7 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 		if table.GetIsFiltering() {
 			table.SetIsFiltering(false)
 		}
+
 		columns := table.DBDriver.DescribeTable(tableName)
 		constraints := table.DBDriver.GetTableConstraints(tableName)
 		foreignKeys := table.DBDriver.GetTableForeignKeys(tableName)
@@ -897,7 +924,7 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	return [][]string{}
 }
 
-func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newValue string, row, col int)) {
+func (table *ResultsTable) StartEditingCell(row, col int, callback func(newValue string, row, col int)) {
 	table.SetIsEditing(true)
 	table.SetInputCapture(nil)
 
@@ -911,33 +938,28 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		table.SetIsEditing(false)
 		currentValue := cell.Text
 		newValue := inputField.GetText()
-		if key == tcell.KeyEnter {
+
+		switch key {
+		case tcell.KeyEnter:
 			if currentValue != newValue {
-
 				cell.SetText(inputField.GetText())
-
 				table.AppendNewChange("UPDATE", table.GetDBReference(), row, col, newValue)
-
 			}
-		} else if key == tcell.KeyTab {
+		case tcell.KeyTab:
 			nextEditableColumnIndex := col + 1
 
 			if nextEditableColumnIndex <= table.GetColumnCount()-1 {
 				cell.SetText(inputField.GetText())
 				table.Select(row, nextEditableColumnIndex)
-
 				table.StartEditingCell(row, nextEditableColumnIndex, callback)
-
 			}
-		} else if key == tcell.KeyBacktab {
+		case tcell.KeyBacktab:
 			nextEditableColumnIndex := col - 1
 
 			if nextEditableColumnIndex >= 0 {
 				cell.SetText(inputField.GetText())
 				table.Select(row, nextEditableColumnIndex)
-
 				table.StartEditingCell(row, nextEditableColumnIndex, callback)
-
 			}
 		}
 
@@ -977,7 +999,7 @@ func (table *ResultsTable) MutateInsertedRowCell(rowID uuid.UUID, colIndex int, 
 }
 
 // TODO: encapsulate logic for different changeType
-func (table *ResultsTable) AppendNewChange(changeType string, tableName string, rowIndex int, colIndex int, value string) {
+func (table *ResultsTable) AppendNewChange(changeType, tableName string, rowIndex, colIndex int, value string) {
 	// check if there is already a change row in the listOfDbChanges variable
 	// if there is, update the value
 	// if there isn't, append a new change row
@@ -1024,7 +1046,6 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 					} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
 						table.Tree.GetCurrentNode().SetColor(ChangeColor)
 					}
-
 				} else {
 					cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
 					cell.SetTextColor(tcell.ColorBlack.TrueColor())
@@ -1050,7 +1071,6 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 			}
 		case "DELETE":
 			if alreadyExists {
-
 				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfChange], (*table.state.listOfDbChanges)[indexOfChange+1:]...)
 
 				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
@@ -1066,7 +1086,6 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 				}
 
 			} else {
-
 				if table.Tree.GetCurrentNode().GetColor() == app.InactiveTextColor || table.Tree.GetCurrentNode().GetColor() == app.FocusTextColor {
 					table.Tree.GetCurrentNode().SetColor(DeleteColor)
 				} else if table.Tree.GetCurrentNode().GetColor() == InsertColor {

@@ -1,13 +1,32 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/models"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/models"
+)
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+const (
+	wrapperLeftSide  = "left"
+	wrapperRightSide = "right"
+
+	previousTabSwitch  = '['
+	nextTabSwitch      = ']'
+	firstTabSwitch     = '{'
+	lastTabSwitch      = '}'
+	removeTabSwitch    = 'X'
+	previousPageSwitch = '<'
+	nextPageSwitch     = '>'
+
+	quitSwitch         = 'q'
+	leftWrapperSwitch  = 'H'
+	rightWrapperSwitch = 'L'
+	editorSwitch       = 5
+	connectionsSwitch  = 127
+	confirmationSwitch = 19
 )
 
 type Home struct {
@@ -57,7 +76,7 @@ func NewHomePage(name string, dbdriver drivers.MySQL) *Home {
 	home.SetInputCapture(home.homeInputCapture)
 
 	home.SetFocusFunc(func() {
-		if home.FocusedWrapper == "left" || home.FocusedWrapper == "" {
+		if home.FocusedWrapper == wrapperLeftSide || home.FocusedWrapper == "" {
 			home.focusLeftWrapper()
 		} else {
 			home.focusRightWrapper()
@@ -65,6 +84,7 @@ func NewHomePage(name string, dbdriver drivers.MySQL) *Home {
 	})
 
 	MainPages.AddPage(name, home, true, false)
+
 	return home
 }
 
@@ -72,69 +92,68 @@ func (home *Home) subscribeToTreeChanges() {
 	ch := home.Tree.Subscribe()
 
 	for stateChange := range ch {
-		switch stateChange.Key {
-		case "SelectedTable":
-			tableName := stateChange.Value.(string)
-
-			tab := home.TabbedPane.GetTabByName(tableName)
-			var table *ResultsTable = nil
-
-			if tab != nil {
-				table = tab.Content
-				home.TabbedPane.SwitchToTabByName(tab.Name)
-			} else {
-				table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, &home.DBDriver).WithFilter()
-
-				home.TabbedPane.AppendTab(tableName, table)
-			}
-
-			home.focusRightWrapper()
-
-			table.FetchRecords(tableName)
-
-			app.App.ForceDraw()
+		if stateChange.Key != "SelectedTable" {
+			continue
 		}
+
+		tableName := stateChange.Value.(string)
+		tab := home.TabbedPane.GetTabByName(tableName)
+
+		var table *ResultsTable
+
+		if tab != nil {
+			table = tab.Content
+			home.TabbedPane.SwitchToTabByName(tab.Name)
+		} else {
+			table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, &home.DBDriver).WithFilter()
+			home.TabbedPane.AppendTab(tableName, table)
+		}
+
+		home.focusRightWrapper()
+		table.FetchRecords(tableName)
+		app.App.ForceDraw()
 	}
 }
 
 func (home *Home) focusRightWrapper() {
 	home.Tree.RemoveHighlight()
-
 	home.RightWrapper.SetBorderColor(app.FocusTextColor)
 	home.LeftWrapper.SetBorderColor(app.InactiveTextColor)
 	home.TabbedPane.Highlight()
-	tab := home.TabbedPane.GetCurrentTab()
 
+	tab := home.TabbedPane.GetCurrentTab()
 	if tab != nil {
 		focusTab(tab)
 	}
 
-	home.FocusedWrapper = "right"
+	home.FocusedWrapper = wrapperRightSide
 }
 
 func focusTab(tab *Tab) {
-	if tab != nil {
-		table := tab.Content
-		table.HighlightAll()
+	if tab == nil {
+		return
+	}
 
-		if table.GetIsFiltering() {
-			go func() {
-				if table.Filter != nil {
-					App.SetFocus(table.Filter.Input)
-					table.Filter.HighlightLocal()
-				} else if table.Editor != nil {
-					App.SetFocus(table.Editor)
-					table.Editor.Highlight()
-				}
+	table := tab.Content
+	table.HighlightAll()
 
-				table.RemoveHighlightTable()
-				App.Draw()
-			}()
-		} else {
-			App.SetFocus(table)
+	if !table.GetIsFiltering() {
+		App.SetFocus(table)
+		return
+	}
+
+	go func() {
+		if table.Filter != nil {
+			App.SetFocus(table.Filter.Input)
+			table.Filter.HighlightLocal()
+		} else if table.Editor != nil {
+			App.SetFocus(table.Editor)
+			table.Editor.Highlight()
 		}
 
-	}
+		table.RemoveHighlightTable()
+		App.Draw()
+	}()
 }
 
 func (home *Home) focusLeftWrapper() {
@@ -144,40 +163,34 @@ func (home *Home) focusLeftWrapper() {
 	home.LeftWrapper.SetBorderColor(app.FocusTextColor)
 
 	tab := home.TabbedPane.GetCurrentTab()
-
 	if tab != nil {
 		table := tab.Content
-
 		table.RemoveHighlightAll()
-
 	}
 
 	home.TabbedPane.SetBlur()
 
 	App.SetFocus(home.Tree)
 
-	home.FocusedWrapper = "left"
+	home.FocusedWrapper = wrapperLeftSide
 }
 
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
-	var tab *Tab
-
-	if event.Rune() == '[' {
+	switch event.Rune() {
+	case previousTabSwitch:
 		focusTab(home.TabbedPane.SwitchToPreviousTab())
 		return nil
-	} else if event.Rune() == ']' {
+	case nextTabSwitch:
 		focusTab(home.TabbedPane.SwitchToNextTab())
 		return nil
-	} else if event.Rune() == '{' {
+	case firstTabSwitch:
 		focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
-	} else if event.Rune() == '}' {
+	case lastTabSwitch:
 		focusTab(home.TabbedPane.SwitchToLastTab())
 		return nil
-	} else if event.Rune() == 'X' {
-		tab = home.TabbedPane.GetCurrentTab()
-
-		if tab != nil {
+	case removeTabSwitch:
+		if tab := home.TabbedPane.GetCurrentTab(); tab != nil {
 			table := tab.Content
 
 			if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
@@ -189,27 +202,22 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 				}
 			}
 		}
-	} else if event.Rune() == '<' {
-		tab = home.TabbedPane.GetCurrentTab()
-
-		if tab != nil {
+	case previousPageSwitch:
+		if tab := home.TabbedPane.GetCurrentTab(); tab != nil {
 			table := tab.Content
 
-			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
+			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) &&
+				!table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
 				table.FetchRecords(table.GetDBReference())
-
 			}
-
 		}
-
-	} else if event.Rune() == '>' {
-		tab = home.TabbedPane.GetCurrentTab()
-
-		if tab != nil {
+	case nextPageSwitch:
+		if tab := home.TabbedPane.GetCurrentTab(); tab != nil {
 			table := tab.Content
 
-			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
+			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) &&
+				!table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
 				table.FetchRecords(table.GetDBReference())
 			}
@@ -220,50 +228,48 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 }
 
 func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
+	var table *ResultsTable
+
 	tab := home.TabbedPane.GetCurrentTab()
-
-	var table *ResultsTable = nil
-
 	if tab != nil {
 		table = tab.Content
+	} else if event.Rune() == quitSwitch {
+		App.Stop()
+		return event
 	}
 
-	if event.Rune() == 'H' {
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "right" {
+	switch event.Rune() {
+	case leftWrapperSwitch:
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == wrapperRightSide {
 			home.focusLeftWrapper()
 		}
-	} else if event.Rune() == 'L' {
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "left" {
+	case rightWrapperSwitch:
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == wrapperLeftSide {
 			home.focusRightWrapper()
 		}
-	} else if event.Rune() == 5 {
-		tab := home.TabbedPane.GetTabByName("Editor")
-
-		if tab != nil {
+	case editorSwitch:
+		editorTab := home.TabbedPane.GetTabByName("Editor")
+		if editorTab != nil {
 			home.TabbedPane.SwitchToTabByName("Editor")
 		} else {
 			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, &home.DBDriver).WithEditor()
 			home.TabbedPane.AppendTab("Editor", tableWithEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
+
 		home.focusRightWrapper()
 		App.ForceDraw()
-	} else if event.Rune() == 127 {
+	case connectionsSwitch:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
 			MainPages.SwitchToPage("Connections")
 		}
-	} else if event.Rune() == 'q' {
-		if tab != nil {
-			table := tab.Content
-
-			if !table.GetIsFiltering() && !table.GetIsEditing() {
-				App.Stop()
-			}
-		} else {
+	case quitSwitch:
+		if table != nil && !table.GetIsFiltering() && !table.GetIsEditing() {
 			App.Stop()
 		}
-	} else if event.Rune() == 19 {
-		if (home.ListOfDbChanges != nil && len(home.ListOfDbChanges) > 0) || (home.ListOfDbInserts != nil && len(home.ListOfDbInserts) > 0) && !table.GetIsEditing() {
+	case confirmationSwitch:
+		if (home.ListOfDbChanges != nil && len(home.ListOfDbChanges) > 0) ||
+			(home.ListOfDbInserts != nil && len(home.ListOfDbInserts) > 0) && !table.GetIsEditing() {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
@@ -271,7 +277,6 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				confirmationModal = nil
 
 				if buttonLabel == "Yes" {
-
 					// fmt.Println("list of changes: ", home.ListOfDbChanges)
 					// fmt.Println("list of inserts: ", home.ListOfDbInserts)
 					err := home.DBDriver.ExecutePendingChanges(home.ListOfDbChanges, home.ListOfDbInserts)

@@ -1,12 +1,11 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/jorgerojas26/lazysql/app"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type ResultsTableFilter struct {
@@ -52,6 +51,7 @@ func NewResultsFilter() *ResultsTableFilter {
 
 		}
 	})
+
 	recordsFilter.Input.SetAutocompleteStyles(tcell.ColorBlack, tcell.StyleDefault.Foreground(app.FocusTextColor).Background(tcell.ColorBlack), tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorBlack))
 
 	recordsFilter.AddItem(recordsFilter.Label, 6, 0, false)
@@ -63,6 +63,7 @@ func NewResultsFilter() *ResultsTableFilter {
 func (filter *ResultsTableFilter) Subscribe() chan models.StateChange {
 	subscriber := make(chan models.StateChange)
 	filter.subscribers = append(filter.subscribers, subscriber)
+
 	return subscriber
 }
 

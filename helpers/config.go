@@ -4,8 +4,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jorgerojas26/lazysql/models"
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 const configDirPerm = 0o755

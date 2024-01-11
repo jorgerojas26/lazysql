@@ -3,13 +3,13 @@ package components
 import (
 	"fmt"
 
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 type ConnectionSelection struct {
@@ -65,23 +65,32 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	wrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		connections := ConnectionListTable.GetConnections()
 
+		eventRune := event.Rune()
+
 		if len(connections) != 0 {
 			row, _ := ConnectionListTable.GetSelection()
 			selectedConnection := connections[row]
-			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+			connectionURL := fmt.Sprintf(
+				"%s://%s:%s@%s:%s",
+				selectedConnection.Provider,
+				selectedConnection.User,
+				selectedConnection.Password,
+				selectedConnection.Host,
+				selectedConnection.Port,
+			)
 
-			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
-				go cs.connect(connectionUrl)
-			} else if event.Rune() == 'e' {
+			switch {
+			case eventRune == 'c' || event.Key() == tcell.KeyEnter:
+				go cs.connect(connectionURL)
+			case eventRune == 'e':
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
-				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionUrl)
+				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionURL)
 				connectionForm.StatusText.SetText("")
-
 				connectionForm.SetAction("edit")
-				return nil
 
-			} else if event.Rune() == 'd' {
+				return nil
+			case eventRune == 'd':
 				confirmationModal := NewConfirmationModal("")
 
 				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
@@ -97,7 +106,6 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 						} else {
 							ConnectionListTable.SetConnections(newConnections)
 						}
-
 					}
 				})
 
@@ -107,13 +115,13 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			}
 		}
 
-		if event.Rune() == 'n' {
+		if eventRune == 'n' {
 			connectionForm.SetAction("create")
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			connectionForm.StatusText.SetText("")
 			connectionPages.SwitchToPage("ConnectionForm")
-		} else if event.Rune() == 'q' {
+		} else if eventRune == 'q' {
 			if wrapper.HasFocus() {
 				app.App.Stop()
 			}
@@ -125,40 +133,42 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	return cs
 }
 
-func (cs *ConnectionSelection) connect(connectionUrl string) {
-	if MainPages.HasPage(connectionUrl) {
-		MainPages.SwitchToPage(connectionUrl)
-		App.Draw()
-	} else {
-		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
+func (cs *ConnectionSelection) connect(connectionURL string) {
+	if MainPages.HasPage(connectionURL) {
+		MainPages.SwitchToPage(connectionURL)
 		App.Draw()
 
-		newDbDriver := drivers.MySQL{}
-		newDbDriver.SetConnectionString(connectionUrl)
-
-		err := newDbDriver.Connect()
-
-		if err != nil {
-			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-		} else {
-			newHome := NewHomePage(connectionUrl, newDbDriver)
-
-			MainPages.AddAndSwitchToPage(connectionUrl, newHome, true)
-
-			cs.StatusText.SetText("")
-			App.Draw()
-
-			selectedRow, selectedCol := ConnectionListTable.GetSelection()
-			cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
-			cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
-
-			ConnectionListTable.SetCell(selectedRow, selectedCol, cell)
-
-			MainPages.SwitchToPage(connectionUrl)
-			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
-			App.SetFocus(newHome.Tree)
-			App.Draw()
-		}
-
+		return
 	}
+
+	cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
+	App.Draw()
+
+	newDbDriver := drivers.MySQL{}
+	newDbDriver.SetConnectionString(connectionURL)
+
+	err := newDbDriver.Connect()
+
+	if err != nil {
+		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return
+	}
+
+	newHome := NewHomePage(connectionURL, newDbDriver)
+
+	MainPages.AddAndSwitchToPage(connectionURL, newHome, true)
+
+	cs.StatusText.SetText("")
+	App.Draw()
+
+	selectedRow, selectedCol := ConnectionListTable.GetSelection()
+	cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
+	cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
+
+	ConnectionListTable.SetCell(selectedRow, selectedCol, cell)
+
+	MainPages.SwitchToPage(connectionURL)
+	newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
+	App.SetFocus(newHome.Tree)
+	App.Draw()
 }

@@ -1,12 +1,12 @@
 package components
 
 import (
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 type ConnectionsTable struct {
@@ -73,8 +73,8 @@ func (ct *ConnectionsTable) SetConnections(connections []models.Connection) {
 	App.ForceDraw()
 }
 
-func (ct *ConnectionsTable) SetError(error string) {
-	ct.error = error
+func (ct *ConnectionsTable) SetError(msg string) {
+	ct.error = msg
 
-	ct.errorTextView.SetText(error)
+	ct.errorTextView.SetText(msg)
 }

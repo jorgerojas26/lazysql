@@ -1,12 +1,12 @@
 package components
 
 import (
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 type ConnectionForm struct {
@@ -21,7 +21,12 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	wrapper.SetDirection(tview.FlexColumnCSS)
 
-	addForm := tview.NewForm().SetFieldBackgroundColor(tcell.ColorWhite).SetButtonBackgroundColor(tcell.ColorWhite).SetLabelColor(tcell.ColorWhite.TrueColor()).SetFieldTextColor(tcell.ColorBlack)
+	addForm := tview.NewForm().
+		SetFieldBackgroundColor(tcell.ColorWhite).
+		SetButtonBackgroundColor(tcell.ColorWhite).
+		SetLabelColor(tcell.ColorWhite.TrueColor()).
+		SetFieldTextColor(tcell.ColorBlack)
+
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 
@@ -67,9 +72,10 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages) func(event *tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEsc {
+		switch event.Key() {
+		case tcell.KeyEsc:
 			connectionPages.SwitchToPage("Connections")
-		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
+		case tcell.KeyF1, tcell.KeyEnter:
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
 			if connectionName == "" {
@@ -80,63 +86,65 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
-
 			if err != nil {
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
-			} else {
-
-				password, _ := parsed.User.Password()
-				databases, _ := helpers.LoadConnections()
-				newDatabases := make([]models.Connection, len(databases))
-
-				if form.Action == "create" {
-					database := models.Connection{
-						Name:     connectionName,
-						Provider: parsed.Driver,
-						User:     parsed.User.Username(),
-						Password: password,
-						Host:     parsed.Hostname(),
-						Port:     parsed.Port(),
-					}
-
-					newDatabases = append(databases, database)
-					err := helpers.SaveConnectionConfig(newDatabases)
-					if err != nil {
-						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-						return event
-					}
-				} else if form.Action == "edit" {
-					newDatabases = make([]models.Connection, len(databases))
-					row, _ := ConnectionListTable.GetSelection()
-					for i, database := range databases {
-						if i == row {
-							newDatabases[i].Name = connectionName
-							newDatabases[i].Provider = database.Provider
-							newDatabases[i].User = parsed.User.Username()
-							newDatabases[i].Password, _ = parsed.User.Password()
-							newDatabases[i].Host = parsed.Hostname()
-							newDatabases[i].Port = parsed.Port()
-
-						} else {
-							newDatabases[i] = database
-						}
-					}
-
-					err := helpers.SaveConnectionConfig(newDatabases)
-					if err != nil {
-						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-						return event
-					}
-
-				}
-				ConnectionListTable.SetConnections(newDatabases)
-				connectionPages.SwitchToPage("Connections")
 			}
-		} else if event.Key() == tcell.KeyF2 {
+
+			password, _ := parsed.User.Password()
+			databases, _ := helpers.LoadConnections()
+			newDatabases := make([]models.Connection, len(databases))
+
+			switch form.Action {
+			case "create":
+				database := models.Connection{
+					Name:     connectionName,
+					Provider: parsed.Driver,
+					User:     parsed.User.Username(),
+					Password: password,
+					Host:     parsed.Hostname(),
+					Port:     parsed.Port(),
+				}
+
+				newDatabases = append(databases, database)
+
+				err := helpers.SaveConnectionConfig(newDatabases)
+				if err != nil {
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					return event
+				}
+			case "edit":
+				newDatabases = make([]models.Connection, len(databases))
+
+				row, _ := ConnectionListTable.GetSelection()
+				for i, database := range databases {
+					if i == row {
+						newDatabases[i].Name = connectionName
+						newDatabases[i].Provider = database.Provider
+						newDatabases[i].User = parsed.User.Username()
+						newDatabases[i].Password, _ = parsed.User.Password()
+						newDatabases[i].Host = parsed.Hostname()
+						newDatabases[i].Port = parsed.Port()
+					} else {
+						newDatabases[i] = database
+					}
+				}
+
+				err := helpers.SaveConnectionConfig(newDatabases)
+				if err != nil {
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					return event
+				}
+			}
+
+			ConnectionListTable.SetConnections(newDatabases)
+			connectionPages.SwitchToPage("Connections")
+		case tcell.KeyF2:
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 			go form.testConnection(connectionString)
+		default:
 		}
+
 		return event
 	}
 }
@@ -154,6 +162,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	} else {
 		form.StatusText.SetText("Connection success").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()))
 	}
+
 	App.ForceDraw()
 }
 

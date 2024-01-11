@@ -86,6 +86,7 @@ func (t *TabbedPane) RemoveCurrentTab() {
 			t.state.FirstTab = nil
 			t.state.LastTab = nil
 			t.state.CurrentTab = nil
+
 			return
 		}
 
@@ -106,10 +107,10 @@ func (t *TabbedPane) RemoveCurrentTab() {
 			currentTab.NextTab.PreviousTab = currentTab.PreviousTab
 			t.SetCurrentTab(currentTab.NextTab)
 		}
-
 	}
 }
 
+// TODO: rewrite to (*Tab, bool)
 func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
 	t.state.CurrentTab = tab
 	t.HighlightTabHeader(tab)
@@ -121,16 +122,19 @@ func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
 	return tab
 }
 
+// TODO: rewrite to (*Tab, bool)
 func (t *TabbedPane) GetCurrentTab() *Tab {
 	return t.state.CurrentTab
 }
 
+// TODO: rewrite to (*Tab, bool)
 func (t *TabbedPane) GetTabByName(name string) *Tab {
 	tab := t.state.FirstTab
 	for i := 0; tab != nil && i < t.state.Length; i++ {
 		if tab.Name == name {
 			break
 		}
+
 		tab = tab.NextTab
 	}
 
@@ -145,10 +149,8 @@ func (t *TabbedPane) SwitchToNextTab() *Tab {
 	if t.state.CurrentTab != nil {
 		if t.state.CurrentTab == t.state.LastTab {
 			t.SetCurrentTab(t.state.FirstTab)
-		} else {
-			if t.state.CurrentTab.NextTab != nil {
-				t.SetCurrentTab(t.state.CurrentTab.NextTab)
-			}
+		} else if t.state.CurrentTab.NextTab != nil {
+			t.SetCurrentTab(t.state.CurrentTab.NextTab)
 		}
 	}
 
@@ -159,10 +161,8 @@ func (t *TabbedPane) SwitchToPreviousTab() *Tab {
 	if t.state.CurrentTab != nil {
 		if t.state.CurrentTab == t.state.FirstTab {
 			t.SetCurrentTab(t.state.LastTab)
-		} else {
-			if t.state.CurrentTab.PreviousTab != nil {
-				t.SetCurrentTab(t.state.CurrentTab.PreviousTab)
-			}
+		} else if t.state.CurrentTab.PreviousTab != nil {
+			t.SetCurrentTab(t.state.CurrentTab.PreviousTab)
 		}
 	}
 
@@ -192,6 +192,7 @@ func (t *TabbedPane) SwitchToTabByName(name string) *Tab {
 		if tab.Name == name {
 			break
 		}
+
 		tab = tab.NextTab
 	}
 
@@ -212,6 +213,7 @@ func (t *TabbedPane) HighlightTabHeader(tab *Tab) {
 		} else {
 			tabToHighlight.Header.SetTextColor(app.FocusTextColor)
 		}
+
 		tabToHighlight = tabToHighlight.NextTab
 	}
 }
@@ -225,6 +227,7 @@ func (t *TabbedPane) Highlight() {
 		} else {
 			tab.Header.SetTextColor(app.FocusTextColor)
 		}
+
 		tab = tab.NextTab
 	}
 }

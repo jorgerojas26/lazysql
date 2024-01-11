@@ -4,10 +4,10 @@ import (
 	"io"
 	"log"
 
+	"github.com/go-sql-driver/mysql"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/components"
-
-	"github.com/go-sql-driver/mysql"
 )
 
 func main() {
