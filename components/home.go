@@ -16,13 +16,13 @@ type Home struct {
 	TabbedPane      *TabbedPane
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
-	DBDriver        drivers.MySql
+	DBDriver        drivers.MySQL
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
 	ListOfDbInserts []models.DbInsert
 }
 
-func NewHomePage(name string, dbdriver drivers.MySql) *Home {
+func NewHomePage(name string, dbdriver drivers.MySQL) *Home {
 	tree := NewTree(&dbdriver)
 	tabbedPane := NewTabbedPane()
 	leftWrapper := tview.NewFlex()
