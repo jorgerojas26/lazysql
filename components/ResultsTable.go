@@ -45,7 +45,7 @@ type ResultsTable struct {
 	EditorPages *tview.Pages
 	ResultsInfo *tview.TextView
 	Tree        *Tree
-	DBDriver    *drivers.MySQL
+	DBDriver    *drivers.MySql
 }
 
 var (
@@ -55,7 +55,7 @@ var (
 	DeleteColor = tcell.ColorRed
 )
 
-func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree, dbdriver *drivers.MySQL) *ResultsTable {
+func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree, dbdriver *drivers.MySql) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -201,7 +201,7 @@ func (table *ResultsTable) AddInsertedRows() {
 		for j, cell := range row {
 			tableCell := tview.NewTableCell(cell)
 			tableCell.SetExpansion(1)
-			tableCell.SetReference(inserts[i].RowID)
+			tableCell.SetReference(inserts[i].RowId)
 
 			tableCell.SetTextColor(app.FocusTextColor)
 			tableCell.SetBackgroundColor(InsertColor)
@@ -397,7 +397,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			for i, insertedRow := range *table.state.listOfDbInserts {
 				cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
 
-				if cellReference != nil && insertedRow.RowID.String() == cellReference.(uuid.UUID).String() {
+				if cellReference != nil && insertedRow.RowId.String() == cellReference.(uuid.UUID).String() {
 					isAnInsertedRow = true
 					indexOfInsertedRow = i
 				}
@@ -447,7 +447,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				Table:   table.GetDBReference(),
 				Columns: table.GetRecords()[0],
 				Values:  newRow,
-				RowID:   newRowUuid,
+				RowId:   newRowUuid,
 				Option:  1,
 			}
 
@@ -958,9 +958,9 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	App.SetFocus(inputField)
 }
 
-func (table *ResultsTable) CheckIfRowIsInserted(rowID uuid.UUID) bool {
+func (table *ResultsTable) CheckIfRowIsInserted(rowId uuid.UUID) bool {
 	for _, insertedRow := range *table.state.listOfDbInserts {
-		if insertedRow.RowID == rowID {
+		if insertedRow.RowId == rowId {
 			return true
 		}
 	}
@@ -968,9 +968,9 @@ func (table *ResultsTable) CheckIfRowIsInserted(rowID uuid.UUID) bool {
 	return false
 }
 
-func (table *ResultsTable) MutateInsertedRowCell(rowID uuid.UUID, colIndex int, newValue string) {
+func (table *ResultsTable) MutateInsertedRowCell(rowId uuid.UUID, colIndex int, newValue string) {
 	for i, insertedRow := range *table.state.listOfDbInserts {
-		if insertedRow.RowID == rowID {
+		if insertedRow.RowId == rowId {
 			(*table.state.listOfDbInserts)[i].Values[colIndex] = newValue
 		}
 	}
@@ -992,13 +992,13 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 	}
 
 	if !isInsertedRow {
-		selectedRowID := table.GetRecords()[rowIndex][0]
+		selectedRowId := table.GetRecords()[rowIndex][0]
 
 		alreadyExists := false
 		indexOfChange := -1
 
 		for i, change := range *table.state.listOfDbChanges {
-			if change.RowID == selectedRowID && change.Column == table.GetColumnNameByIndex(colIndex) {
+			if change.RowId == selectedRowId && change.Column == table.GetColumnNameByIndex(colIndex) {
 				alreadyExists = true
 				indexOfChange = i
 			}
@@ -1038,7 +1038,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 					Table:  tableName,
 					Column: columnName,
 					Value:  value,
-					RowID:  selectedRowID,
+					RowId:  selectedRowId,
 					Option: 1,
 				}
 
@@ -1078,7 +1078,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 					Table:  tableName,
 					Column: "",
 					Value:  "",
-					RowID:  selectedRowID,
+					RowId:  selectedRowId,
 					Option: 1,
 				}
 

@@ -19,11 +19,11 @@ type TreeState struct {
 type Tree struct {
 	*tview.TreeView
 	state       *TreeState
-	DBDriver    *drivers.MySQL
+	DBDriver    *drivers.MySql
 	subscribers []chan models.StateChange
 }
 
-func NewTree(dbdriver *drivers.MySQL) *Tree {
+func NewTree(dbdriver *drivers.MySql) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
