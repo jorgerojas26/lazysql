@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 
 	"github.com/jorgerojas26/lazysql/models"
-
 	"github.com/pelletier/go-toml/v2"
 )
+
+const configDirPerm = 0o755
 
 type Config struct {
 	Connections []models.Connection `toml:"database"`
@@ -41,7 +42,7 @@ func SaveConnectionConfig(connections []models.Connection) (err error) {
 	directoriesPath := filepath.Join(os.Getenv("HOME"), ".config", "lazysql")
 	configFilePath := filepath.Join(directoriesPath, "config.toml")
 
-	err = os.MkdirAll(directoriesPath, 0755)
+	err = os.MkdirAll(directoriesPath, configDirPerm)
 
 	if err != nil {
 		return err
