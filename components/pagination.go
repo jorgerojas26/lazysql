@@ -40,7 +40,6 @@ func NewPagination() *Pagination {
 			TotalRecords: 0,
 		},
 	}
-
 }
 
 func (pagination *Pagination) GetOffset() int {
@@ -60,7 +59,10 @@ func (pagination *Pagination) GetIsFirstPage() bool {
 }
 
 func (pagination *Pagination) GetIsLastPage() bool {
-	return pagination.state.Offset >= pagination.state.TotalRecords-1 || pagination.state.Offset+pagination.state.Limit >= pagination.state.TotalRecords
+	isLastPage := pagination.state.Offset >= pagination.state.TotalRecords-1 ||
+		pagination.state.Offset+pagination.state.Limit >= pagination.state.TotalRecords
+
+	return isLastPage
 }
 
 func (pagination *Pagination) SetTotalRecords(total int) {

@@ -1,11 +1,11 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/models"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type SQLEditorState struct {
@@ -49,10 +49,11 @@ func NewSQLEditor() *SQLEditor {
 func (s *SQLEditor) Subscribe() chan models.StateChange {
 	subscriber := make(chan models.StateChange)
 	s.subscribers = append(s.subscribers, subscriber)
+
 	return subscriber
 }
 
-func (s *SQLEditor) Publish(key string, message string) {
+func (s *SQLEditor) Publish(key, message string) {
 	for _, sub := range s.subscribers {
 		sub <- models.StateChange{
 			Key:   key,

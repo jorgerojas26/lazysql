@@ -3,12 +3,17 @@ package components
 import (
 	"fmt"
 
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
+)
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+const (
+	rootLevel  = 1
+	childLevel = 2
 )
 
 type TreeState struct {
@@ -19,11 +24,11 @@ type TreeState struct {
 type Tree struct {
 	*tview.TreeView
 	state       *TreeState
-	DBDriver    *drivers.MySql
+	DBDriver    *drivers.MySQL
 	subscribers []chan models.StateChange
 }
 
-func NewTree(dbdriver *drivers.MySql) *Tree {
+func NewTree(dbdriver *drivers.MySQL) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
@@ -60,7 +65,7 @@ func NewTree(dbdriver *drivers.MySql) *Tree {
 	})
 
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
-		if node.GetLevel() == 1 {
+		if node.GetLevel() == rootLevel {
 			if node.IsExpanded() {
 				node.SetExpanded(false)
 			} else {
@@ -79,7 +84,7 @@ func NewTree(dbdriver *drivers.MySql) *Tree {
 				node.SetExpanded(true)
 
 			}
-		} else if node.GetLevel() == 2 {
+		} else if node.GetLevel() == childLevel {
 			tree.SetSelectedTable(fmt.Sprintf("%s.%s", node.GetReference(), node.GetText()))
 		}
 	})

@@ -3,10 +3,10 @@ package components
 import (
 	"fmt"
 
-	"github.com/jorgerojas26/lazysql/app"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/app"
 )
 
 type ResultsTableMenuState struct {
@@ -77,7 +77,6 @@ func (menu *ResultsTableMenu) GetSelectedOption() int {
 
 func (menu *ResultsTableMenu) SetSelectedOption(option int) {
 	if menu.state.SelectedOption != option {
-
 		menu.state.SelectedOption = option
 
 		itemCount := menu.GetItemCount()
