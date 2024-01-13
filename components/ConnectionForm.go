@@ -98,6 +98,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 						Password: password,
 						Host:     parsed.Hostname(),
 						Port:     parsed.Port(),
+						Query:    parsed.Query().Encode(),
 					}
 
 					newDatabases = append(databases, database)
@@ -117,6 +118,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 							newDatabases[i].Password, _ = parsed.User.Password()
 							newDatabases[i].Host = parsed.Hostname()
 							newDatabases[i].Port = parsed.Port()
+							newDatabases[i].Query = parsed.Query().Encode()
 
 						} else {
 							newDatabases[i] = database
@@ -144,10 +146,9 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 func (form *ConnectionForm) testConnection(connectionString string) {
 	form.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()))
 
-	db := drivers.MySql{}
-	db.SetConnectionString(connectionString)
+	db := drivers.MySQL{}
 
-	err := db.TestConnection()
+	err := db.TestConnection(connectionString)
 
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))

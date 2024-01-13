@@ -12,6 +12,7 @@ type Connection struct {
 	Password string
 	Host     string
 	Port     string
+	Query    string
 }
 
 type StateChange struct {

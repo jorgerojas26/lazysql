@@ -68,7 +68,15 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 		if len(connections) != 0 {
 			row, _ := ConnectionListTable.GetSelection()
 			selectedConnection := connections[row]
-			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+			queryParams := selectedConnection.Query
+
+			connectionUrl := ""
+
+			if queryParams != "" {
+				connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s?%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port, selectedConnection.Query)
+			} else {
+				connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+			}
 
 			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
 				go cs.connect(connectionUrl)
@@ -126,6 +134,8 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 }
 
 func (cs *ConnectionSelection) connect(connectionUrl string) {
+	parsed, _ := helpers.ParseConnectionString(connectionUrl)
+
 	if MainPages.HasPage(connectionUrl) {
 		MainPages.SwitchToPage(connectionUrl)
 		App.Draw()
@@ -133,10 +143,16 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
 		App.Draw()
 
-		newDbDriver := drivers.MySql{}
-		newDbDriver.SetConnectionString(connectionUrl)
+		var newDbDriver drivers.Driver
 
-		err := newDbDriver.Connect()
+		switch parsed.Driver {
+		case "mysql":
+			newDbDriver = &drivers.MySQL{}
+		case "postgres":
+			newDbDriver = &drivers.Postgres{}
+		}
+
+		err := newDbDriver.Connect(connectionUrl)
 
 		if err != nil {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
