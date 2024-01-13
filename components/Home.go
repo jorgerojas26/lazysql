@@ -16,14 +16,14 @@ type Home struct {
 	TabbedPane      *TabbedPane
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
-	DBDriver        drivers.MySql
+	DBDriver        drivers.Driver
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
 	ListOfDbInserts []models.DbInsert
 }
 
-func NewHomePage(name string, dbdriver drivers.MySql) *Home {
-	tree := NewTree(&dbdriver)
+func NewHomePage(name string, dbdriver drivers.Driver) *Home {
+	tree := NewTree(dbdriver)
 	tabbedPane := NewTabbedPane()
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
@@ -83,7 +83,7 @@ func (home *Home) subscribeToTreeChanges() {
 				table = tab.Content
 				home.TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
-				table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, &home.DBDriver).WithFilter()
+				table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, home.DBDriver).WithFilter()
 
 				home.TabbedPane.AppendTab(tableName, table)
 			}
@@ -242,7 +242,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		if tab != nil {
 			home.TabbedPane.SwitchToTabByName("Editor")
 		} else {
-			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, &home.DBDriver).WithEditor()
+			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, home.DBDriver).WithEditor()
 			home.TabbedPane.AppendTab("Editor", tableWithEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
@@ -272,8 +272,6 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 				if buttonLabel == "Yes" {
 
-					// fmt.Println("list of changes: ", home.ListOfDbChanges)
-					// fmt.Println("list of inserts: ", home.ListOfDbInserts)
 					err := home.DBDriver.ExecutePendingChanges(home.ListOfDbChanges, home.ListOfDbInserts)
 
 					if err != nil {
