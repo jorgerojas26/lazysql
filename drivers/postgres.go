@@ -55,16 +55,22 @@ func (p *Postgres) GetDatabases() (databases []string, err error) {
 }
 
 // TODO: Implement GetSchemas function
-func (p *Postgres) GetTables(database string) (tables []string, err error) {
-	rows, err := p.Connection.Query(fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_catalog = '%s'", database))
+func (p *Postgres) GetTables(database string) (tables map[string][]string, err error) {
+	tables = make(map[string][]string)
+
+	rows, err := p.Connection.Query(fmt.Sprintf("SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = '%s'", database))
 	if err != nil {
 		return tables, err
 	}
 
 	for rows.Next() {
-		var table string
-		rows.Scan(&table)
-		tables = append(tables, table)
+		var tableName string
+		var tableSchema string
+
+		rows.Scan(&tableName, &tableSchema)
+
+		tables[tableSchema] = append(tables[tableSchema], tableName)
+
 	}
 
 	return tables, nil
