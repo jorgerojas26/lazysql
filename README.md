@@ -134,7 +134,7 @@ $ lazysql
 ## Support
 
 - [x] MySQL
-- [ ] Postgres
+- [x] Postgres
 - [ ] SQLite
 - [ ] MSSQL
 - [ ] MongoDB
