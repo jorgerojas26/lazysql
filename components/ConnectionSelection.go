@@ -140,7 +140,7 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 		MainPages.SwitchToPage(connectionUrl)
 		App.Draw()
 	} else {
-		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
+		cs.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
 		App.Draw()
 
 		var newDbDriver drivers.Driver
