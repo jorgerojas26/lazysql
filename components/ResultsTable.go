@@ -45,7 +45,7 @@ type ResultsTable struct {
 	EditorPages *tview.Pages
 	ResultsInfo *tview.TextView
 	Tree        *Tree
-	DBDriver    *drivers.MySql
+	DBDriver    drivers.Driver
 }
 
 var (
@@ -55,7 +55,7 @@ var (
 	DeleteColor = tcell.ColorRed
 )
 
-func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree, dbdriver *drivers.MySql) *ResultsTable {
+func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]models.DbInsert, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -610,7 +610,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				if strings.Contains(queryLower, "select") {
 					table.SetLoading(true)
 					App.Draw()
-					rows, err := table.DBDriver.QueryPaginatedRecords(query)
+					rows, err := table.DBDriver.ExecuteQuery(query)
 					table.Pagination.SetTotalRecords(len(rows))
 					table.Pagination.SetLimit(len(rows))
 
@@ -645,7 +645,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					table.SetLoading(true)
 					App.Draw()
 
-					result, err := table.DBDriver.ExecuteDMLQuery(query)
+					result, err := table.DBDriver.ExecuteDMLStatement(query)
 
 					if err != nil {
 						table.SetLoading(false)
@@ -819,7 +819,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 			where = table.Filter.GetCurrentFilter()
 		}
 		table.SetLoading(true)
-		records, err := table.DBDriver.GetRecords(table.GetDBReference(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
+		records, _, err := table.DBDriver.GetRecords(table.GetDBReference(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 		table.SetLoading(false)
 
 		if err != nil {
@@ -865,7 +865,7 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 	}
 	sort := table.GetCurrentSort()
 
-	records, totalRecords, err := table.DBDriver.GetPaginatedRecords(tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit(), true)
+	records, totalRecords, err := table.DBDriver.GetRecords(tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 
 	if err != nil {
 		table.SetError(err.Error(), nil)
@@ -874,10 +874,10 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 		if table.GetIsFiltering() {
 			table.SetIsFiltering(false)
 		}
-		columns := table.DBDriver.DescribeTable(tableName)
-		constraints := table.DBDriver.GetTableConstraints(tableName)
-		foreignKeys := table.DBDriver.GetTableForeignKeys(tableName)
-		indexes := table.DBDriver.GetTableIndexes(tableName)
+		columns, _ := table.DBDriver.GetTableColumns(table.Tree.GetSelectedDatabase(), tableName)
+		constraints, _ := table.DBDriver.GetConstraints(tableName)
+		foreignKeys, _ := table.DBDriver.GetForeignKeys(tableName)
+		indexes, _ := table.DBDriver.GetIndexes(tableName)
 
 		table.SetRecords(records)
 		table.SetColumns(columns)

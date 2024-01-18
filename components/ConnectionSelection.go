@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
@@ -68,10 +69,18 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 		if len(connections) != 0 {
 			row, _ := ConnectionListTable.GetSelection()
 			selectedConnection := connections[row]
-			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+			queryParams := selectedConnection.Query
+
+			connectionUrl := ""
+
+			if queryParams != "" {
+				connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s?%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port, selectedConnection.Query)
+			} else {
+				connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+			}
 
 			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
-				go cs.connect(connectionUrl)
+				go cs.connect(connectionUrl, selectedConnection.Name)
 			} else if event.Rune() == 'e' {
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
@@ -125,18 +134,26 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	return cs
 }
 
-func (cs *ConnectionSelection) connect(connectionUrl string) {
+func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle string) {
+	parsed, _ := helpers.ParseConnectionString(connectionUrl)
+
 	if MainPages.HasPage(connectionUrl) {
 		MainPages.SwitchToPage(connectionUrl)
 		App.Draw()
 	} else {
-		cs.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor))
+		cs.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
 		App.Draw()
 
-		newDbDriver := drivers.MySql{}
-		newDbDriver.SetConnectionString(connectionUrl)
+		var newDbDriver drivers.Driver
 
-		err := newDbDriver.Connect()
+		switch parsed.Driver {
+		case "mysql":
+			newDbDriver = &drivers.MySQL{}
+		case "postgres":
+			newDbDriver = &drivers.Postgres{}
+		}
+
+		err := newDbDriver.Connect(connectionUrl)
 
 		if err != nil {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
@@ -156,6 +173,7 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 
 			MainPages.SwitchToPage(connectionUrl)
 			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
+			newHome.Tree.SetTitle(fmt.Sprintf("%s (%s)", connectionTitle, strings.ToUpper(parsed.UnaliasedDriver)))
 			App.SetFocus(newHome.Tree)
 			App.Draw()
 		}
