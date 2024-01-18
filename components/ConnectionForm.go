@@ -47,7 +47,6 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
-	statusText.SetBackgroundColor(tcell.ColorDefault)
 	statusText.SetBorderPadding(0, 1, 0, 0)
 
 	wrapper.AddItem(addForm, 0, 1, true)
@@ -144,7 +143,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 }
 
 func (form *ConnectionForm) testConnection(connectionString string) {
-	form.StatusText.SetText("Connecting...").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()))
+	form.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
 
 	db := drivers.MySQL{}
 
@@ -153,7 +152,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 	} else {
-		form.StatusText.SetText("Connection success").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorKhaki.TrueColor()))
+		form.StatusText.SetText("Connection success").SetTextColor(tcell.ColorGreen)
 	}
 	App.ForceDraw()
 }
