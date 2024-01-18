@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
@@ -79,7 +80,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			}
 
 			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
-				go cs.connect(connectionUrl)
+				go cs.connect(connectionUrl, selectedConnection.Name)
 			} else if event.Rune() == 'e' {
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
@@ -133,7 +134,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	return cs
 }
 
-func (cs *ConnectionSelection) connect(connectionUrl string) {
+func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle string) {
 	parsed, _ := helpers.ParseConnectionString(connectionUrl)
 
 	if MainPages.HasPage(connectionUrl) {
@@ -172,6 +173,7 @@ func (cs *ConnectionSelection) connect(connectionUrl string) {
 
 			MainPages.SwitchToPage(connectionUrl)
 			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
+			newHome.Tree.SetTitle(fmt.Sprintf("%s (%s)", connectionTitle, strings.ToUpper(parsed.UnaliasedDriver)))
 			App.SetFocus(newHome.Tree)
 			App.Draw()
 		}
