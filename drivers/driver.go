@@ -8,7 +8,7 @@ type Driver interface {
 	Connect(urlstr string) error
 	TestConnection(urlstr string) error
 	GetDatabases() ([]string, error)
-	GetTables(database string) ([]string, error)
+	GetTables(database string) (map[string][]string, error)
 	GetTableColumns(database, table string) ([][]string, error)
 	GetConstraints(table string) ([][]string, error)
 	GetForeignKeys(table string) ([][]string, error)

@@ -56,10 +56,11 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *MySQL) GetTables(database string) ([]string, error) {
-	var tables []string
-
+func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	rows, err := db.Connection.Query("SHOW TABLES FROM " + database)
+
+	tables := make(map[string][]string)
+
 	if err != nil {
 		return tables, err
 	}
@@ -67,7 +68,8 @@ func (db *MySQL) GetTables(database string) ([]string, error) {
 	for rows.Next() {
 		var table string
 		rows.Scan(&table)
-		tables = append(tables, table)
+
+		tables[database] = append(tables[database], table)
 	}
 
 	return tables, nil
