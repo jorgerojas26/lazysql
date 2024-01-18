@@ -19,11 +19,11 @@ type TreeState struct {
 type Tree struct {
 	*tview.TreeView
 	state       *TreeState
-	DBDriver    *drivers.MySql
+	DBDriver    drivers.Driver
 	subscribers []chan models.StateChange
 }
 
-func NewTree(dbdriver *drivers.MySql) *Tree {
+func NewTree(dbdriver drivers.Driver) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
@@ -54,7 +54,13 @@ func NewTree(dbdriver *drivers.MySql) *Tree {
 		}
 
 		if tree.GetSelectedDatabase() == "" {
-			tree.updateNodes(databases, rootNode, false)
+			for _, child := range databases {
+				childNode := tview.NewTreeNode(child)
+				childNode.SetExpanded(false)
+				childNode.SetReference(child)
+				childNode.SetColor(tcell.ColorWhite.TrueColor())
+				rootNode.AddChild(childNode)
+			}
 		}
 		tree.SetFocusFunc(nil)
 	})
@@ -66,20 +72,25 @@ func NewTree(dbdriver *drivers.MySql) *Tree {
 			} else {
 				tree.SetSelectedDatabase(node.GetText())
 
-				tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
-				if err != nil {
-					// TODO: Handle error
-					return
-				}
+				if node.GetChildren() == nil {
+					tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
+					if err != nil {
+						// TODO: Handle error
+						return
+					}
 
-				tree.updateNodes(tables, node, true)
-				for _, node := range node.GetChildren() {
-					node.SetColor(app.ActiveTextColor)
+					tree.updateNodes(tables, node, true)
 				}
 				node.SetExpanded(true)
 
 			}
 		} else if node.GetLevel() == 2 {
+			if node.GetChildren() == nil {
+				tree.SetSelectedTable(fmt.Sprintf("%s.%s", node.GetReference(), node.GetText()))
+			} else {
+				node.SetExpanded(!node.IsExpanded())
+			}
+		} else if node.GetLevel() == 3 {
 			tree.SetSelectedTable(fmt.Sprintf("%s.%s", node.GetReference(), node.GetText()))
 		}
 	})
@@ -106,15 +117,31 @@ func NewTree(dbdriver *drivers.MySql) *Tree {
 	return tree
 }
 
-func (tree *Tree) updateNodes(children []string, node *tview.TreeNode, defaultExpanded bool) {
+func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
 	node.ClearChildren()
 
-	for _, child := range children {
-		childNode := tview.NewTreeNode(child)
-		childNode.SetExpanded(defaultExpanded)
-		childNode.SetReference(node.GetText())
-		childNode.SetColor(tcell.ColorWhite.TrueColor())
-		node.AddChild(childNode)
+	for key, values := range children {
+		var rootNode *tview.TreeNode
+
+		if key != node.GetReference().(string) {
+			rootNode = tview.NewTreeNode(key)
+			rootNode.SetExpanded(false)
+			rootNode.SetReference(key)
+			rootNode.SetColor(tcell.ColorWhite)
+			node.AddChild(rootNode)
+		}
+
+		for _, child := range values {
+			childNode := tview.NewTreeNode(child)
+			childNode.SetExpanded(defaultExpanded)
+			childNode.SetReference(node.GetText())
+			childNode.SetColor(app.ActiveTextColor)
+			if rootNode != nil {
+				rootNode.AddChild(childNode)
+			} else {
+				node.AddChild(childNode)
+			}
+		}
 	}
 }
 
