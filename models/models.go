@@ -13,6 +13,7 @@ type Connection struct {
 	Host     string
 	Port     string
 	Query    string
+	DBName   string
 }
 
 type StateChange struct {

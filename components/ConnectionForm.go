@@ -84,12 +84,13 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
 			} else {
-
 				password, _ := parsed.User.Password()
 				databases, _ := helpers.LoadConnections()
 				newDatabases := make([]models.Connection, len(databases))
 
-				if form.Action == "create" {
+				switch form.Action {
+				case "create":
+
 					database := models.Connection{
 						Name:     connectionName,
 						Provider: parsed.Driver,
@@ -98,6 +99,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 						Host:     parsed.Hostname(),
 						Port:     parsed.Port(),
 						Query:    parsed.Query().Encode(),
+						DBName:   parsed.Path,
 					}
 
 					newDatabases = append(databases, database)
@@ -106,7 +108,8 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 						return event
 					}
-				} else if form.Action == "edit" {
+
+				case "edit":
 					newDatabases = make([]models.Connection, len(databases))
 					row, _ := ConnectionListTable.GetSelection()
 					for i, database := range databases {
@@ -118,7 +121,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 							newDatabases[i].Host = parsed.Hostname()
 							newDatabases[i].Port = parsed.Port()
 							newDatabases[i].Query = parsed.Query().Encode()
-
+							newDatabases[i].DBName = parsed.Path
 						} else {
 							newDatabases[i] = database
 						}
@@ -128,8 +131,8 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 					if err != nil {
 						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 						return event
-					}
 
+					}
 				}
 				ConnectionListTable.SetConnections(newDatabases)
 				connectionPages.SwitchToPage("Connections")
