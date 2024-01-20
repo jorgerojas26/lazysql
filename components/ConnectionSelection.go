@@ -73,10 +73,14 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 			connectionUrl := ""
 
-			if queryParams != "" {
-				connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s?%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port, selectedConnection.Query)
+			if selectedConnection.Provider == "sqlite3" {
+				connectionUrl = fmt.Sprintf("file:%s", selectedConnection.DSN)
 			} else {
-				connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+				if queryParams != "" {
+					connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s?%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port, selectedConnection.Query)
+				} else {
+					connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+				}
 			}
 
 			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
@@ -151,6 +155,8 @@ func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle str
 			newDbDriver = &drivers.MySQL{}
 		case "postgres":
 			newDbDriver = &drivers.Postgres{}
+		case "sqlite3":
+			newDbDriver = &drivers.SQLite{}
 		}
 
 		err := newDbDriver.Connect(connectionUrl)

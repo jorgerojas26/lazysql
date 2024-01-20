@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -14,6 +15,7 @@ import (
 
 type MySQL struct {
 	Connection *sql.DB
+	Provider   string
 }
 
 func (db *MySQL) TestConnection(urlstr string) (err error) {
@@ -21,6 +23,10 @@ func (db *MySQL) TestConnection(urlstr string) (err error) {
 }
 
 func (db *MySQL) Connect(urlstr string) (err error) {
+	parsed, _ := helpers.ParseConnectionString(urlstr)
+
+	db.SetProvider(parsed.Driver)
+
 	db.Connection, err = dburl.Open(urlstr)
 	if err != nil {
 		return err
@@ -430,6 +436,10 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 	return err
 }
 
-func (db *MySQL) GetUpdateQuery(table string, column string, value string, whereCol string, whereVal string) string {
-	return fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = \"%s\"", table, column, value, whereCol, whereVal)
+func (db *MySQL) SetProvider(provider string) {
+	db.Provider = provider
+}
+
+func (db *MySQL) GetProvider() string {
+	return db.Provider
 }
