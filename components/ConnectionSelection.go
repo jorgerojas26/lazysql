@@ -70,17 +70,16 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			row, _ := ConnectionListTable.GetSelection()
 			selectedConnection := connections[row]
 			queryParams := selectedConnection.Query
+			dbNamePath := selectedConnection.DBName
 
-			connectionUrl := ""
+			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
 
-			if selectedConnection.Provider == "sqlite3" {
-				connectionUrl = fmt.Sprintf("file:%s", selectedConnection.DSN)
-			} else {
-				if queryParams != "" {
-					connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s?%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port, selectedConnection.Query)
-				} else {
-					connectionUrl = fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
-				}
+			if dbNamePath != "" {
+				connectionUrl = fmt.Sprintf("%s/%s", connectionUrl, dbNamePath)
+			}
+
+			if queryParams != "" {
+				connectionUrl = fmt.Sprintf("%s?%s", connectionUrl, queryParams)
 			}
 
 			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
