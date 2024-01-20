@@ -208,9 +208,9 @@ func (t *TabbedPane) HighlightTabHeader(tab *Tab) {
 
 	for i := 0; tabToHighlight != nil && i < t.state.Length; i++ {
 		if tabToHighlight.Header == tab.Header {
-			tabToHighlight.Header.SetTextColor(app.ActiveTextColor)
+			tabToHighlight.Header.SetTextColor(tview.Styles.SecondaryTextColor)
 		} else {
-			tabToHighlight.Header.SetTextColor(app.FocusTextColor)
+			tabToHighlight.Header.SetTextColor(tview.Styles.PrimaryTextColor)
 		}
 		tabToHighlight = tabToHighlight.NextTab
 	}
@@ -221,9 +221,9 @@ func (t *TabbedPane) Highlight() {
 
 	for i := 0; tab != nil && i < t.state.Length; i++ {
 		if tab == t.state.CurrentTab {
-			tab.Header.SetTextColor(app.ActiveTextColor)
+			tab.Header.SetTextColor(tview.Styles.SecondaryTextColor)
 		} else {
-			tab.Header.SetTextColor(app.FocusTextColor)
+			tab.Header.SetTextColor(tview.Styles.PrimaryTextColor)
 		}
 		tab = tab.NextTab
 	}
@@ -233,7 +233,7 @@ func (t *TabbedPane) SetBlur() {
 	tab := t.state.FirstTab
 
 	for i := 0; tab != nil && i < t.state.Length; i++ {
-		tab.Header.SetTextColor(app.InactiveTextColor)
+		tab.Header.SetTextColor(tview.Styles.InverseTextColor)
 		tab = tab.NextTab
 	}
 }

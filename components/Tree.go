@@ -3,7 +3,6 @@ package components
 import (
 	"fmt"
 
-	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 
@@ -37,7 +36,7 @@ func NewTree(dbdriver drivers.Driver) *Tree {
 	}
 
 	tree.SetTopLevel(1)
-	tree.SetGraphicsColor(app.ActiveTextColor)
+	tree.SetGraphicsColor(tview.Styles.SecondaryTextColor)
 	tree.SetBorder(true)
 	tree.SetTitle("Databases")
 	tree.SetTitleAlign(tview.AlignLeft)
@@ -139,7 +138,7 @@ func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode
 			rootNode = tview.NewTreeNode(key)
 			rootNode.SetExpanded(false)
 			rootNode.SetReference(key)
-			rootNode.SetColor(tcell.ColorWhite)
+			rootNode.SetColor(tview.Styles.PrimaryTextColor)
 			node.AddChild(rootNode)
 		}
 
@@ -147,7 +146,7 @@ func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode
 			childNode := tview.NewTreeNode(child)
 			childNode.SetExpanded(defaultExpanded)
 			childNode.SetReference(node.GetText())
-			childNode.SetColor(app.ActiveTextColor)
+			childNode.SetColor(tview.Styles.SecondaryTextColor)
 			if rootNode != nil {
 				rootNode.AddChild(childNode)
 			} else {
@@ -198,18 +197,18 @@ func (tree *Tree) SetSelectedTable(table string) {
 
 // Blur func
 func (tree *Tree) RemoveHighlight() {
-	tree.SetBorderColor(app.InactiveTextColor)
-	tree.SetGraphicsColor(app.InactiveTextColor)
-	tree.SetTitleColor(app.InactiveTextColor)
-	tree.GetRoot().SetColor(app.InactiveTextColor)
+	tree.SetBorderColor(tview.Styles.InverseTextColor)
+	tree.SetGraphicsColor(tview.Styles.InverseTextColor)
+	tree.SetTitleColor(tview.Styles.InverseTextColor)
+	tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
 	for _, children := range childrens {
 		currentColor := children.GetColor()
 
-		if currentColor == app.FocusTextColor {
-			children.SetColor(app.InactiveTextColor)
+		if currentColor == tview.Styles.PrimaryTextColor {
+			children.SetColor(tview.Styles.InverseTextColor)
 		}
 
 		childrenOfChildren := children.GetChildren()
@@ -217,8 +216,8 @@ func (tree *Tree) RemoveHighlight() {
 		for _, children := range childrenOfChildren {
 			currentColor := children.GetColor()
 
-			if currentColor == app.ActiveTextColor {
-				children.SetColor(app.InactiveTextColor)
+			if currentColor == tview.Styles.PrimaryTextColor {
+				children.SetColor(tview.Styles.InverseTextColor)
 			}
 
 		}
@@ -227,21 +226,21 @@ func (tree *Tree) RemoveHighlight() {
 }
 
 func (tree *Tree) ForceRemoveHighlight() {
-	tree.SetBorderColor(app.InactiveTextColor)
-	tree.SetGraphicsColor(app.InactiveTextColor)
-	tree.SetTitleColor(app.InactiveTextColor)
-	tree.GetRoot().SetColor(app.InactiveTextColor)
+	tree.SetBorderColor(tview.Styles.InverseTextColor)
+	tree.SetGraphicsColor(tview.Styles.InverseTextColor)
+	tree.SetTitleColor(tview.Styles.InverseTextColor)
+	tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
 	for _, children := range childrens {
 
-		children.SetColor(app.InactiveTextColor)
+		children.SetColor(tview.Styles.InverseTextColor)
 
 		childrenOfChildren := children.GetChildren()
 
 		for _, children := range childrenOfChildren {
-			children.SetColor(app.InactiveTextColor)
+			children.SetColor(tview.Styles.InverseTextColor)
 		}
 
 	}
@@ -249,26 +248,26 @@ func (tree *Tree) ForceRemoveHighlight() {
 
 // Focus func
 func (tree *Tree) Highlight() {
-	tree.SetBorderColor(tcell.ColorWhite.TrueColor())
-	tree.SetGraphicsColor(app.ActiveTextColor)
-	tree.SetTitleColor(tcell.ColorWhite.TrueColor())
-	tree.GetRoot().SetColor(tcell.ColorWhite.TrueColor())
+	tree.SetBorderColor(tview.Styles.PrimaryTextColor)
+	tree.SetGraphicsColor(tview.Styles.SecondaryTextColor)
+	tree.SetTitleColor(tview.Styles.PrimaryTextColor)
+	tree.GetRoot().SetColor(tview.Styles.PrimaryTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
 	for _, children := range childrens {
 		currentColor := children.GetColor()
 
-		if currentColor == app.InactiveTextColor {
-			children.SetColor(tcell.ColorWhite.TrueColor())
+		if currentColor == tview.Styles.InverseTextColor {
+			children.SetColor(tview.Styles.PrimaryTextColor)
 
 			childrenOfChildren := children.GetChildren()
 
 			for _, children := range childrenOfChildren {
 				currentColor := children.GetColor()
 
-				if currentColor == app.InactiveTextColor {
-					children.SetColor(app.ActiveTextColor)
+				if currentColor == tview.Styles.InverseTextColor {
+					children.SetColor(tview.Styles.SecondaryTextColor)
 				}
 			}
 

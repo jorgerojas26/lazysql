@@ -1,7 +1,6 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/gdamore/tcell/v2"
@@ -70,8 +69,8 @@ func (s *SQLEditor) SetIsFocused(isFocused bool) {
 }
 
 func (s *SQLEditor) Highlight() {
-	s.SetBorderColor(app.FocusTextColor)
-	s.SetTextStyle(tcell.StyleDefault.Foreground(app.FocusTextColor))
+	s.SetBorderColor(tview.Styles.PrimaryTextColor)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor))
 }
 
 func (s *SQLEditor) SetBlur() {

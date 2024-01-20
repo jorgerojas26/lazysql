@@ -163,6 +163,7 @@ func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle str
 
 		if err != nil {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+			App.Draw()
 		} else {
 			newHome := NewHomePage(connectionUrl, newDbDriver)
 
