@@ -135,7 +135,7 @@ $ lazysql
 
 - [x] MySQL
 - [x] Postgres
-- [ ] SQLite
+- [x] SQLite
 - [ ] MSSQL
 - [ ] MongoDB
 
