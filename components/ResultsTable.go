@@ -6,7 +6,6 @@ import (
 
 	"github.com/jorgerojas26/lazysql/models"
 
-	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 
 	"github.com/gdamore/tcell/v2"
@@ -76,12 +75,13 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]m
 	errorModal.SetText("An error occurred")
 	errorModal.SetBackgroundColor(tcell.ColorRed)
 	errorModal.SetTextColor(tcell.ColorBlack)
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(tcell.ColorBlack))
 	errorModal.SetFocus(0)
 
 	loadingModal := tview.NewModal()
 	loadingModal.SetText("Loading...")
-	loadingModal.SetBackgroundColor(tcell.ColorBlack)
-	loadingModal.SetTextColor(tcell.ColorWhite.TrueColor())
+	loadingModal.SetBackgroundColor(tview.Styles.SecondaryTextColor)
+	loadingModal.SetTextColor(tview.Styles.PrimaryTextColor)
 
 	pages := tview.NewPages()
 	pages.AddPage("table", wrapper, true, true)
@@ -107,7 +107,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]m
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
-	// table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightGray).Foreground(tcell.ColorBlack.TrueColor()))
+	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tcell.ColorBlack.TrueColor()))
 
 	return table
 }
@@ -147,8 +147,8 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	resultsInfoWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	resultsInfoText := tview.NewTextView()
 	resultsInfoText.SetBorder(true)
-	resultsInfoText.SetBorderColor(app.FocusTextColor)
-	resultsInfoText.SetTextColor(app.FocusTextColor)
+	resultsInfoText.SetBorderColor(tview.Styles.PrimaryTextColor)
+	resultsInfoText.SetTextColor(tview.Styles.PrimaryTextColor)
 	resultsInfoWrapper.AddItem(resultsInfoText, 3, 0, false)
 
 	editorPages.AddPage("Table", tableWrapper, true, false)
@@ -172,9 +172,9 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 			tableCell.SetExpansion(1)
 
 			if i == 0 {
-				tableCell.SetTextColor(app.ActiveTextColor)
+				tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
 			} else {
-				tableCell.SetTextColor(app.FocusTextColor)
+				tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
 			}
 
 			table.SetCell(i, j, tableCell)
@@ -203,7 +203,7 @@ func (table *ResultsTable) AddInsertedRows() {
 			tableCell.SetExpansion(1)
 			tableCell.SetReference(inserts[i].RowId)
 
-			tableCell.SetTextColor(app.FocusTextColor)
+			tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
 			tableCell.SetBackgroundColor(InsertColor)
 
 			table.SetCell(rowIndex, j, tableCell)
@@ -219,7 +219,7 @@ func (table *ResultsTable) InsertRow(cols []string, index int, UUID uuid.UUID) {
 		if i == 0 {
 			tableCell.SetReference(UUID)
 		}
-		tableCell.SetTextColor(app.FocusTextColor)
+		tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
 
 		table.SetCell(index, i, tableCell)
 	}
@@ -453,7 +453,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
 
-			if table.Tree.GetCurrentNode().GetColor() == app.InactiveTextColor || table.Tree.GetCurrentNode().GetColor() == app.FocusTextColor {
+			if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
 				table.Tree.GetCurrentNode().SetColor(InsertColor)
 			} else if table.Tree.GetCurrentNode().GetColor() == DeleteColor {
 				table.Tree.GetCurrentNode().SetColor(ChangeColor)
@@ -525,10 +525,10 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 }
 
 func (table *ResultsTable) RemoveHighlightTable() {
-	table.SetBorderColor(app.InactiveTextColor)
-	table.SetBordersColor(app.InactiveTextColor)
-	table.SetTitleColor(app.InactiveTextColor)
-	table.UpdateRowsColor(app.InactiveTextColor, app.InactiveTextColor)
+	table.SetBorderColor(tview.Styles.InverseTextColor)
+	table.SetBordersColor(tview.Styles.InverseTextColor)
+	table.SetTitleColor(tview.Styles.InverseTextColor)
+	table.UpdateRowsColor(tview.Styles.InverseTextColor, tview.Styles.InverseTextColor)
 }
 
 func (table *ResultsTable) RemoveHighlightAll() {
@@ -542,10 +542,10 @@ func (table *ResultsTable) RemoveHighlightAll() {
 }
 
 func (table *ResultsTable) HighlightTable() {
-	table.SetBorderColor(app.FocusTextColor)
-	table.SetBordersColor(app.FocusTextColor)
-	table.SetTitleColor(app.FocusTextColor)
-	table.UpdateRowsColor(app.ActiveTextColor, app.FocusTextColor)
+	table.SetBorderColor(tview.Styles.PrimaryTextColor)
+	table.SetBordersColor(tview.Styles.PrimaryTextColor)
+	table.SetTitleColor(tview.Styles.PrimaryTextColor)
+	table.UpdateRowsColor(tview.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 }
 
 func (table *ResultsTable) HighlightAll() {
@@ -843,7 +843,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 				tableCell := tview.NewTableCell(col[0])
 				tableCell.SetSelectable(false)
 				tableCell.SetExpansion(1)
-				tableCell.SetTextColor(app.ActiveTextColor)
+				tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
 
 				if col[0] == column {
 					tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
@@ -909,7 +909,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	cell := table.GetCell(row, col)
 	inputField := tview.NewInputField()
 	inputField.SetText(cell.Text)
-	inputField.SetFieldBackgroundColor(app.ActiveTextColor)
+	inputField.SetFieldBackgroundColor(tview.Styles.PrimaryTextColor)
 	inputField.SetFieldTextColor(tcell.ColorBlack)
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
@@ -1020,10 +1020,10 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 					*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfChange], (*table.state.listOfDbChanges)[indexOfChange+1:]...)
 
 					cell.SetBackgroundColor(tcell.ColorDefault)
-					cell.SetTextColor(app.FocusTextColor)
+					cell.SetTextColor(tview.Styles.PrimaryTextColor)
 
 					if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
-						table.Tree.GetCurrentNode().SetColor(app.InactiveTextColor)
+						table.Tree.GetCurrentNode().SetColor(tview.Styles.InverseTextColor)
 					} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
 						table.Tree.GetCurrentNode().SetColor(InsertColor)
 					} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
@@ -1059,7 +1059,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfChange], (*table.state.listOfDbChanges)[indexOfChange+1:]...)
 
 				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
-					table.Tree.GetCurrentNode().SetColor(app.InactiveTextColor)
+					table.Tree.GetCurrentNode().SetColor(tview.Styles.InverseTextColor)
 				} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
 					table.Tree.GetCurrentNode().SetColor(InsertColor)
 				} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
@@ -1072,7 +1072,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 
 			} else {
 
-				if table.Tree.GetCurrentNode().GetColor() == app.InactiveTextColor || table.Tree.GetCurrentNode().GetColor() == app.FocusTextColor {
+				if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
 					table.Tree.GetCurrentNode().SetColor(DeleteColor)
 				} else if table.Tree.GetCurrentNode().GetColor() == InsertColor {
 					table.Tree.GetCurrentNode().SetColor(ChangeColor)
