@@ -84,13 +84,14 @@ func (home *Home) subscribeToTreeChanges() {
 				home.TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
 				table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, home.DBDriver).WithFilter()
+				table.SetDBReference(tableName)
 
 				home.TabbedPane.AppendTab(tableName, table)
 			}
 
-			home.focusRightWrapper()
+			table.FetchRecords()
 
-			table.FetchRecords(tableName)
+			home.focusRightWrapper()
 
 			app.App.ForceDraw()
 		}
@@ -131,6 +132,7 @@ func focusTab(tab *Tab) {
 				App.Draw()
 			}()
 		} else {
+			table.SetInputCapture(table.tableInputCapture)
 			App.SetFocus(table)
 		}
 
@@ -197,7 +199,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
-				table.FetchRecords(table.GetDBReference())
+				table.FetchRecords()
 
 			}
 
@@ -211,7 +213,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
-				table.FetchRecords(table.GetDBReference())
+				table.FetchRecords()
 			}
 		}
 	}
@@ -280,7 +282,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 						home.ListOfDbChanges = []models.DbDmlChange{}
 						home.ListOfDbInserts = []models.DbInsert{}
 
-						table.FetchRecords(table.GetDBReference())
+						table.FetchRecords()
 						home.Tree.ForceRemoveHighlight()
 
 					}
