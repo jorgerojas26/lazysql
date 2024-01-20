@@ -1,6 +1,8 @@
 package components
 
 import (
+	"github.com/gdamore/tcell/v2"
+
 	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/rivo/tview"
@@ -15,6 +17,7 @@ func NewConnectionPages() *models.ConnectionPages {
 	wrapper.SetDirection(tview.FlexRowCSS)
 
 	pages.SetBorder(true)
+	pages.SetBackgroundColor(tcell.ColorDefault)
 
 	container.AddItem(nil, 0, 1, false)
 	container.AddItem(pages, 0, 1, true)

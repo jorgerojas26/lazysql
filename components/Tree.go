@@ -42,6 +42,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	tree.SetTitle("Databases")
 	tree.SetTitleAlign(tview.AlignLeft)
 	tree.SetBorderPadding(0, 0, 1, 1)
+	tree.SetBackgroundColor(tcell.ColorDefault)
 
 	rootNode := tview.NewTreeNode("-")
 	tree.SetRoot(rootNode)

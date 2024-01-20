@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -24,10 +25,12 @@ func NewPagination() *Pagination {
 	wrapper := tview.NewFlex()
 	wrapper.SetBorderPadding(0, 0, 1, 1)
 	wrapper.SetBorder(true)
+	wrapper.SetBackgroundColor(tcell.ColorDefault)
 
 	textView := tview.NewTextView()
 	textView.SetText(fmt.Sprintf("%s-%s of %s rows", "0", "0", "0"))
 	textView.SetTextAlign(tview.AlignCenter)
+	textView.SetBackgroundColor(tcell.ColorDefault)
 
 	wrapper.AddItem(textView, 0, 1, false)
 

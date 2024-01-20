@@ -50,6 +50,7 @@ func NewHomePage(name string, dbdriver drivers.Driver) *Home {
 	go home.subscribeToTreeChanges()
 
 	leftWrapper.SetBorderColor(app.InactiveTextColor)
+	leftWrapper.SetBackgroundColor(tcell.ColorDefault)
 	leftWrapper.AddItem(tree, 0, 1, true)
 
 	rightWrapper.SetBorderColor(app.InactiveTextColor)
@@ -58,9 +59,11 @@ func NewHomePage(name string, dbdriver drivers.Driver) *Home {
 	rightWrapper.SetInputCapture(home.rightWrapperInputCapture)
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
+	rightWrapper.SetBackgroundColor(tcell.ColorDefault)
 
 	home.AddItem(leftWrapper, 30, 1, false)
 	home.AddItem(rightWrapper, 0, 5, false)
+	home.SetBackgroundColor(tcell.ColorDefault)
 
 	home.SetInputCapture(home.homeInputCapture)
 

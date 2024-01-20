@@ -38,6 +38,7 @@ func NewResultsTableMenu() *ResultsTableMenu {
 	}
 
 	menu.SetBorder(true)
+	menu.SetBackgroundColor(tcell.ColorDefault)
 
 	for i, item := range menuItems {
 		separator := " | "
@@ -47,6 +48,7 @@ func NewResultsTableMenu() *ResultsTableMenu {
 
 		text := fmt.Sprintf("%s [%d] %s", item, i+1, separator)
 		textview := tview.NewTextView().SetText(text)
+		textview.SetBackgroundColor(tcell.ColorDefault)
 
 		if i == 0 {
 			textview.SetTextColor(app.ActiveTextColor)

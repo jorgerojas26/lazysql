@@ -74,16 +74,17 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]m
 	errorModal := tview.NewModal()
 	errorModal.AddButtons([]string{"Ok"})
 	errorModal.SetText("An error occurred")
-	errorModal.SetBackgroundColor(tcell.ColorRed)
-	errorModal.SetTextColor(tcell.ColorBlack)
+	errorModal.SetBackgroundColor(tcell.ColorDefault)
+	errorModal.SetTextColor(tcell.ColorRed)
 	errorModal.SetFocus(0)
 
 	loadingModal := tview.NewModal()
 	loadingModal.SetText("Loading...")
-	loadingModal.SetBackgroundColor(tcell.ColorBlack)
+	loadingModal.SetBackgroundColor(tcell.ColorDefault)
 	loadingModal.SetTextColor(tcell.ColorWhite.TrueColor())
 
 	pages := tview.NewPages()
+	pages.SetBackgroundColor(tcell.ColorDefault)
 	pages.AddPage("table", wrapper, true, true)
 	pages.AddPage("error", errorModal, true, false)
 	pages.AddPage("loading", loadingModal, false, false)
@@ -107,6 +108,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]m
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
+	table.SetBackgroundColor(tcell.ColorDefault)
 	// table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightGray).Foreground(tcell.ColorBlack.TrueColor()))
 
 	return table
@@ -139,6 +141,7 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 
 	table.Wrapper.AddItem(editor, 12, 0, true)
 	table.SetBorder(true)
+	table.SetBackgroundColor(tcell.ColorDefault)
 
 	tableWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	tableWrapper.AddItem(table, 0, 1, false)
@@ -149,6 +152,7 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	resultsInfoText.SetBorder(true)
 	resultsInfoText.SetBorderColor(app.FocusTextColor)
 	resultsInfoText.SetTextColor(app.FocusTextColor)
+	resultsInfoText.SetBackgroundColor(tcell.ColorDefault)
 	resultsInfoWrapper.AddItem(resultsInfoText, 3, 0, false)
 
 	editorPages.AddPage("Table", tableWrapper, true, false)

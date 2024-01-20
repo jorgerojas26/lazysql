@@ -30,6 +30,7 @@ func NewConnectionsTable() *ConnectionsTable {
 	}
 
 	table.SetSelectedStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorGray))
+	table.SetBackgroundColor(tcell.ColorDefault)
 
 	wrapper.AddItem(table, 0, 1, true)
 

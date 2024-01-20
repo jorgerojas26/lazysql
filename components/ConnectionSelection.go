@@ -53,6 +53,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 	statusText := tview.NewTextView()
 	statusText.SetBorderPadding(0, 1, 0, 0)
+	statusText.SetBackgroundColor(tcell.ColorDefault)
 
 	wrapper.AddItem(ConnectionListTable, 0, 1, true)
 	wrapper.AddItem(statusText, 2, 0, false)
@@ -133,7 +134,6 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 		return event
 	})
-
 	return cs
 }
 

@@ -24,6 +24,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	addForm := tview.NewForm().SetFieldBackgroundColor(tcell.ColorWhite).SetButtonBackgroundColor(tcell.ColorWhite).SetLabelColor(tcell.ColorWhite.TrueColor()).SetFieldTextColor(tcell.ColorBlack)
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
+	addForm.SetBackgroundColor(tcell.ColorDefault)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
@@ -48,6 +49,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	statusText := tview.NewTextView()
 	statusText.SetBorderPadding(0, 1, 0, 0)
+	statusText.SetBackgroundColor(tcell.ColorDefault)
 
 	wrapper.AddItem(addForm, 0, 1, true)
 	wrapper.AddItem(statusText, 2, 0, false)

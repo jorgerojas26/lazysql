@@ -28,9 +28,11 @@ func NewResultsFilter() *ResultsTableFilter {
 	recordsFilter.SetDirection(tview.FlexRowCSS)
 	recordsFilter.SetTitleAlign(tview.AlignCenter)
 	recordsFilter.SetBorderPadding(0, 0, 1, 1)
+	recordsFilter.SetBackgroundColor(tcell.ColorDefault)
 
 	recordsFilter.Label.SetTextColor(tcell.ColorOrange)
 	recordsFilter.Label.SetText("WHERE")
+	recordsFilter.Label.SetBackgroundColor(tcell.ColorDefault)
 	recordsFilter.Label.SetBorderPadding(0, 0, 0, 1)
 
 	recordsFilter.Input.SetPlaceholder("Enter a WHERE clause to filter the results")

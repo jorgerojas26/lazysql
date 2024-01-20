@@ -24,6 +24,7 @@ func NewSQLEditor() *SQLEditor {
 	textarea.SetBorder(true)
 	textarea.SetTitleAlign(tview.AlignLeft)
 	textarea.SetPlaceholder("Enter your SQL query here...")
+	textarea.SetBackgroundColor(tcell.ColorDefault)
 
 	sqlEditor := &SQLEditor{
 		TextArea: textarea,

@@ -1,6 +1,7 @@
 package components
 
 import (
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -34,6 +35,7 @@ type TabbedPane struct {
 func NewTabbedPane() *TabbedPane {
 	container := tview.NewFlex()
 	container.SetBorderPadding(0, 0, 1, 1)
+	container.SetBackgroundColor(tcell.ColorDefault)
 
 	return &TabbedPane{
 		Pages:           tview.NewPages(),
@@ -45,6 +47,7 @@ func NewTabbedPane() *TabbedPane {
 func (t *TabbedPane) AppendTab(name string, content *ResultsTable) {
 	textView := tview.NewTextView()
 	textView.SetText(name)
+	textView.SetBackgroundColor(tcell.ColorDefault)
 	item := &Header{textView}
 
 	newTab := &Tab{
@@ -122,6 +125,7 @@ func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
 }
 
 func (t *TabbedPane) GetCurrentTab() *Tab {
+	t.SetBackgroundColor(tcell.ColorDefault)
 	return t.state.CurrentTab
 }
 
