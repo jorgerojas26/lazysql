@@ -30,7 +30,7 @@ func NewResultsFilter() *ResultsTableFilter {
 	recordsFilter.SetBorderPadding(0, 0, 1, 1)
 	recordsFilter.SetBackgroundColor(tcell.ColorDefault)
 
-	recordsFilter.Label.SetTextColor(tcell.ColorOrange)
+	recordsFilter.Label.SetTextColor(tcell.ColorYellow)
 	recordsFilter.Label.SetText("WHERE")
 	recordsFilter.Label.SetBackgroundColor(tcell.ColorDefault)
 	recordsFilter.Label.SetBorderPadding(0, 0, 0, 1)
@@ -99,21 +99,21 @@ func (filter *ResultsTableFilter) RemoveHighlight() {
 
 func (filter *ResultsTableFilter) RemoveLocalHighlight() {
 	filter.SetBorderColor(tcell.ColorWhite)
-	filter.Label.SetTextColor(tcell.ColorOrange)
+	filter.Label.SetTextColor(tcell.ColorYellow)
 	filter.Input.SetPlaceholderTextColor(app.InactiveTextColor)
 	filter.Input.SetFieldTextColor(app.InactiveTextColor)
 }
 
 func (filter *ResultsTableFilter) Highlight() {
 	filter.SetBorderColor(tcell.ColorWhite)
-	filter.Label.SetTextColor(tcell.ColorOrange)
+	filter.Label.SetTextColor(tcell.ColorYellow)
 	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
 	filter.Input.SetFieldTextColor(app.FocusTextColor)
 }
 
 func (filter *ResultsTableFilter) HighlightLocal() {
 	filter.SetBorderColor(app.FocusTextColor)
-	filter.Label.SetTextColor(tcell.ColorOrange)
+	filter.Label.SetTextColor(tcell.ColorYellow)
 	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
 	filter.Input.SetFieldTextColor(app.FocusTextColor)
 }

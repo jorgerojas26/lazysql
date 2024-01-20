@@ -18,8 +18,10 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	} else {
 		modal.SetText("Are you sure?")
 	}
-	modal.AddButtons([]string{"Yes", "No"})
+	modal.AddButtons([]string{"[green]Enter [white]Yes", "[green]Esc [white]No"})
+	modal.SetButtonBackgroundColor(tcell.ColorDefault)
 	modal.SetBackgroundColor(tcell.ColorDefault)
+	modal.SetButtonActivatedStyle(tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorDefault))
 	modal.SetTextColor(app.ActiveTextColor)
 
 	return &ConfirmationModal{

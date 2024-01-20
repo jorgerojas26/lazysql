@@ -1030,7 +1030,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 					}
 
 				} else {
-					cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
+					cell.SetBackgroundColor(tcell.ColorYellow.TrueColor())
 					cell.SetTextColor(tcell.ColorBlack.TrueColor())
 					table.Tree.GetCurrentNode().SetColor(ChangeColor)
 
@@ -1048,7 +1048,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 
 				*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newChange)
 
-				cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
+				cell.SetBackgroundColor(tcell.ColorYellow.TrueColor())
 				cell.SetTextColor(tcell.ColorBlack.TrueColor())
 				table.Tree.GetCurrentNode().SetColor(ChangeColor)
 			}

@@ -27,28 +27,29 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexRowCSS)
 
-	newButton := tview.NewButton("[darkred]N[black]ew")
-	newButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	newButton := tview.NewButton("[red]N[white]ew")
+	newButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
+
 	buttonsWrapper.AddItem(newButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[darkred]C[black]onnect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	connectButton := tview.NewButton("[red]C[white]onnect")
+	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	editButton := tview.NewButton("[darkred]E[black]dit")
-	editButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	editButton := tview.NewButton("[red]E[white]dit")
+	editButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(editButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	deleteButton := tview.NewButton("[darkred]D[black]elete")
-	deleteButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	deleteButton := tview.NewButton("[red]D[white]elete")
+	deleteButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(deleteButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	quitButton := tview.NewButton("[darkred]Q[black]uit")
-	quitButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	quitButton := tview.NewButton("[red]Q[white]uit")
+	quitButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
 
 	statusText := tview.NewTextView()

@@ -37,7 +37,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	}
 
 	tree.SetTopLevel(1)
-	tree.SetGraphicsColor(app.ActiveTextColor)
+	tree.SetGraphicsColor(tcell.ColorWhite)
 	tree.SetBorder(true)
 	tree.SetTitle("Databases")
 	tree.SetTitleAlign(tview.AlignLeft)
@@ -67,7 +67,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 				childNode := tview.NewTreeNode(child)
 				childNode.SetExpanded(false)
 				childNode.SetReference(child)
-				childNode.SetColor(tcell.ColorWhite.TrueColor())
+				childNode.SetColor(tcell.ColorBlue)
 				rootNode.AddChild(childNode)
 			}
 		}
@@ -247,7 +247,7 @@ func (tree *Tree) ForceRemoveHighlight() {
 // Focus func
 func (tree *Tree) Highlight() {
 	tree.SetBorderColor(tcell.ColorWhite.TrueColor())
-	tree.SetGraphicsColor(app.ActiveTextColor)
+	tree.SetGraphicsColor(tcell.ColorWhite)
 	tree.SetTitleColor(tcell.ColorWhite.TrueColor())
 	tree.GetRoot().SetColor(tcell.ColorWhite.TrueColor())
 

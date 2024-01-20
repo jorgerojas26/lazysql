@@ -21,30 +21,35 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	wrapper.SetDirection(tview.FlexColumnCSS)
 
-	addForm := tview.NewForm().SetFieldBackgroundColor(tcell.ColorWhite).SetButtonBackgroundColor(tcell.ColorWhite).SetLabelColor(tcell.ColorWhite.TrueColor()).SetFieldTextColor(tcell.ColorBlack)
+	addForm := tview.NewForm().
+		SetFieldBackgroundColor(tcell.ColorGray).
+		SetButtonBackgroundColor(tcell.ColorDefault).
+		SetLabelColor(tcell.ColorWhite.TrueColor()).
+		SetFieldTextColor(tcell.ColorWhite.TrueColor())
+
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 	addForm.SetBackgroundColor(tcell.ColorDefault)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	saveButton := tview.NewButton("[darkred]F1 [black]Save")
-	saveButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	saveButton := tview.NewButton("[red]F1 [white]Save")
+	saveButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	testButton := tview.NewButton("[darkred]F2 [black]Test")
-	testButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	testButton := tview.NewButton("[red]F2 [white]Test")
+	testButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[darkred]F3 [black]Connect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	connectButton := tview.NewButton("[red]F3 [white]Connect")
+	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	cancelButton := tview.NewButton("[darkred]Esc [black]Cancel")
-	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	cancelButton := tview.NewButton("[red]Esc [white]Cancel")
+	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
