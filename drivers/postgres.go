@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 	"github.com/xo/dburl"
 
@@ -14,16 +15,21 @@ import (
 
 type Postgres struct {
 	Connection *sql.DB
+	Provider   string
 }
 
-func (p *Postgres) Connect(urlstr string) (err error) {
-	p.Connection, err = dburl.Open(urlstr)
+func (db *Postgres) Connect(urlstr string) (err error) {
+	parsed, _ := helpers.ParseConnectionString(urlstr)
+
+	db.SetProvider(parsed.Driver)
+
+	db.Connection, err = dburl.Open(urlstr)
 
 	if err != nil {
 		return err
 	}
 
-	err = p.Connection.Ping()
+	err = db.Connection.Ping()
 
 	if err != nil {
 		return err
@@ -32,12 +38,12 @@ func (p *Postgres) Connect(urlstr string) (err error) {
 	return nil
 }
 
-func (p *Postgres) TestConnection(urlstr string) error {
-	return p.Connect(urlstr)
+func (db *Postgres) TestConnection(urlstr string) error {
+	return db.Connect(urlstr)
 }
 
-func (p *Postgres) GetDatabases() (databases []string, err error) {
-	rows, err := p.Connection.Query("SELECT datname FROM pg_database;")
+func (db *Postgres) GetDatabases() (databases []string, err error) {
+	rows, err := db.Connection.Query("SELECT datname FROM pg_database;")
 	if err != nil {
 		return databases, err
 	}
@@ -55,10 +61,10 @@ func (p *Postgres) GetDatabases() (databases []string, err error) {
 }
 
 // TODO: Implement GetSchemas function
-func (p *Postgres) GetTables(database string) (tables map[string][]string, err error) {
+func (db *Postgres) GetTables(database string) (tables map[string][]string, err error) {
 	tables = make(map[string][]string)
 
-	rows, err := p.Connection.Query(fmt.Sprintf("SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = '%s'", database))
+	rows, err := db.Connection.Query(fmt.Sprintf("SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = '%s'", database))
 	if err != nil {
 		return tables, err
 	}
@@ -76,9 +82,9 @@ func (p *Postgres) GetTables(database string) (tables map[string][]string, err e
 	return tables, nil
 }
 
-func (p *Postgres) GetTableColumns(database, table string) (results [][]string, error error) {
+func (db *Postgres) GetTableColumns(database, table string) (results [][]string, error error) {
 	tableName := strings.Split(table, ".")[1]
-	rows, err := p.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_name = '%s'", database, tableName))
+	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_name = '%s'", database, tableName))
 	if err != nil {
 		return results, err
 	}
@@ -110,11 +116,11 @@ func (p *Postgres) GetTableColumns(database, table string) (results [][]string, 
 	return
 }
 
-func (p *Postgres) GetConstraints(table string) (constraints [][]string, error error) {
+func (db *Postgres) GetConstraints(table string) (constraints [][]string, error error) {
 	splitTableString := strings.Split(table, ".")
 	tableName := splitTableString[1]
 
-	rows, err := p.Connection.Query(fmt.Sprintf(`
+	rows, err := db.Connection.Query(fmt.Sprintf(`
   SELECT
             tc.constraint_name,
             kcu.column_name
@@ -160,11 +166,11 @@ func (p *Postgres) GetConstraints(table string) (constraints [][]string, error e
 	return
 }
 
-func (p *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error error) {
+func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error error) {
 	splitTableString := strings.Split(table, ".")
 	tableName := splitTableString[1]
 
-	rows, err := p.Connection.Query(fmt.Sprintf(`
+	rows, err := db.Connection.Query(fmt.Sprintf(`
   SELECT
             tc.constraint_name,
             kcu.column_name,
@@ -212,8 +218,8 @@ func (p *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error e
 	return
 }
 
-func (p *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
-	rows, err := p.Connection.Query(fmt.Sprintf(`
+func (db *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
+	rows, err := db.Connection.Query(fmt.Sprintf(`
   SELECT
             i.relname AS index_name,
             a.attname AS column_name,
@@ -264,7 +270,7 @@ func (p *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
 	return
 }
 
-func (p *Postgres) GetRecords(table, where, sort string, offset, limit int) (records [][]string, totalRecords int, err error) {
+func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (records [][]string, totalRecords int, err error) {
 	defaultLimit := 300
 
 	splitTableString := strings.Split(table, ".")
@@ -286,7 +292,7 @@ func (p *Postgres) GetRecords(table, where, sort string, offset, limit int) (rec
 		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d OFFSET %d", tableName, where, sort, defaultLimit, offset)
 	}
 
-	paginatedRows, err := p.Connection.Query(query)
+	paginatedRows, err := db.Connection.Query(query)
 	if err != nil {
 		return records, totalRecords, err
 	}
@@ -294,7 +300,7 @@ func (p *Postgres) GetRecords(table, where, sort string, offset, limit int) (rec
 	if isPaginationEnabled {
 		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", tableName, where)
 
-		rows := p.Connection.QueryRow(queryWithoutLimit)
+		rows := db.Connection.QueryRow(queryWithoutLimit)
 
 		if err != nil {
 			return records, totalRecords, err
@@ -330,23 +336,23 @@ func (p *Postgres) GetRecords(table, where, sort string, offset, limit int) (rec
 }
 
 // TODO: Rewrites this logic to use the primary key instead of the id
-func (p *Postgres) UpdateRecord(table, column, value, id string) (err error) {
+func (db *Postgres) UpdateRecord(table, column, value, id string) (err error) {
 	query := fmt.Sprintf("UPDATE %s SET %s = '%s' WHERE id = '%s'", table, column, value, id)
-	_, err = p.Connection.Exec(query)
+	_, err = db.Connection.Exec(query)
 
 	return err
 }
 
 // TODO: Rewrites this logic to use the primary key instead of the id
-func (p *Postgres) DeleteRecord(table, id string) (err error) {
+func (db *Postgres) DeleteRecord(table, id string) (err error) {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id = '%s'", table, id)
-	_, err = p.Connection.Exec(query)
+	_, err = db.Connection.Exec(query)
 
 	return err
 }
 
-func (p *Postgres) ExecuteDMLStatement(query string) (result string, err error) {
-	res, error := p.Connection.Exec(query)
+func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error) {
+	res, error := db.Connection.Exec(query)
 
 	if error != nil {
 		return result, error
@@ -357,8 +363,8 @@ func (p *Postgres) ExecuteDMLStatement(query string) (result string, err error) 
 	}
 }
 
-func (p *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
-	rows, err := p.Connection.Query(query)
+func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
+	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return results, err
 	}
@@ -389,7 +395,7 @@ func (p *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 	return
 }
 
-func (p *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
+func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
 	queries := make([]string, 0, len(changes)+len(inserts))
 
 	// This will hold grouped changes by their RowId and Table
@@ -460,7 +466,7 @@ func (p *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts [
 		queries = append(queries, query)
 	}
 
-	tx, error := p.Connection.Begin()
+	tx, error := db.Connection.Begin()
 	if error != nil {
 		return error
 	}
@@ -482,4 +488,12 @@ func (p *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts [
 	}
 
 	return err
+}
+
+func (db *Postgres) SetProvider(provider string) {
+	db.Provider = provider
+}
+
+func (db *Postgres) GetProvider() string {
+	return db.Provider
 }

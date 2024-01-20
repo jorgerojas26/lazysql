@@ -19,4 +19,6 @@ type Driver interface {
 	ExecuteDMLStatement(query string) (string, error)
 	ExecuteQuery(query string) ([][]string, error)
 	ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) error
+	SetProvider(provider string)
+	GetProvider() string
 }
