@@ -569,7 +569,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 		switch stateChange.Key {
 		case "Filter":
 			if stateChange.Value != "" {
-				rows := table.FetchRecords(table.GetDBReference())
+				rows := table.FetchRecords()
 
 				if len(rows) > 1 {
 					table.Menu.SetSelectedOption(1)
@@ -588,7 +588,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 				}
 
 			} else {
-				table.FetchRecords(table.GetDBReference())
+				table.FetchRecords()
 
 				table.SetInputCapture(table.tableInputCapture)
 				App.SetFocus(table)
@@ -860,7 +860,9 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	}
 }
 
-func (table *ResultsTable) FetchRecords(tableName string) [][]string {
+func (table *ResultsTable) FetchRecords() [][]string {
+	tableName := table.GetDBReference()
+
 	table.SetLoading(true)
 
 	where := ""
@@ -883,7 +885,10 @@ func (table *ResultsTable) FetchRecords(tableName string) [][]string {
 		foreignKeys, _ := table.DBDriver.GetForeignKeys(tableName)
 		indexes, _ := table.DBDriver.GetIndexes(tableName)
 
-		table.SetRecords(records)
+		if len(records) > 0 {
+			table.SetRecords(records)
+		}
+
 		table.SetColumns(columns)
 		table.SetConstraints(constraints)
 		table.SetForeignKeys(foreignKeys)

@@ -155,6 +155,8 @@ func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle str
 			newDbDriver = &drivers.MySQL{}
 		case "postgres":
 			newDbDriver = &drivers.Postgres{}
+		case "sqlite3":
+			newDbDriver = &drivers.SQLite{}
 		}
 
 		err := newDbDriver.Connect(connectionUrl)

@@ -95,12 +95,24 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			}
 		} else if node.GetLevel() == 2 {
 			if node.GetChildren() == nil {
-				tree.SetSelectedTable(fmt.Sprintf("%s.%s", node.GetReference(), node.GetText()))
+				tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
+
+				if tree.DBDriver.GetProvider() == "sqlite3" || tree.DBDriver.GetProvider() == "postgres" {
+					tableName = node.GetText()
+				}
+
+				tree.SetSelectedTable(tableName)
 			} else {
 				node.SetExpanded(!node.IsExpanded())
 			}
 		} else if node.GetLevel() == 3 {
-			tree.SetSelectedTable(fmt.Sprintf("%s.%s", node.GetReference(), node.GetText()))
+			tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
+
+			if tree.DBDriver.GetProvider() == "sqlite3" || tree.DBDriver.GetProvider() == "postgres" {
+				tableName = node.GetText()
+			}
+
+			tree.SetSelectedTable(tableName)
 		}
 	})
 
