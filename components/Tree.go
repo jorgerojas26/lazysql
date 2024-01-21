@@ -48,7 +48,6 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	tree.SetCurrentNode(rootNode)
 
 	tree.SetFocusFunc(func() {
-
 		var databases []string
 
 		if dbName == "" {
@@ -96,7 +95,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			if node.GetChildren() == nil {
 				tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
 
-				if tree.DBDriver.GetProvider() == "sqlite3" || tree.DBDriver.GetProvider() == "postgres" {
+				if tree.DBDriver.GetProvider() == "sqlite3" {
 					tableName = node.GetText()
 				}
 
@@ -107,7 +106,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		} else if node.GetLevel() == 3 {
 			tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
 
-			if tree.DBDriver.GetProvider() == "sqlite3" || tree.DBDriver.GetProvider() == "postgres" {
+			if tree.DBDriver.GetProvider() == "sqlite3" {
 				tableName = node.GetText()
 			}
 
