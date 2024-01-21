@@ -100,6 +100,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 						Port:     parsed.Port(),
 						Query:    parsed.Query().Encode(),
 						DBName:   helpers.ParsedDBName(parsed.Path),
+						DSN:      parsed.DSN,
 					}
 
 					newDatabases = append(databases, database)
@@ -123,6 +124,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 							newDatabases[i].Port = parsed.Port()
 							newDatabases[i].Query = parsed.Query().Encode()
 							newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
+							newDatabases[i].DSN = parsed.DSN
 						} else {
 							newDatabases[i] = database
 						}

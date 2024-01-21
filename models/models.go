@@ -14,6 +14,7 @@ type Connection struct {
 	Port     string
 	Query    string
 	DBName   string
+	DSN      string
 }
 
 type StateChange struct {
