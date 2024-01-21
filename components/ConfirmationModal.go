@@ -1,8 +1,6 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/app"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -20,7 +18,7 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	}
 	modal.AddButtons([]string{"Yes", "No"})
 	modal.SetBackgroundColor(tcell.ColorBlack)
-	modal.SetTextColor(app.ActiveTextColor)
+	modal.SetTextColor(tview.Styles.PrimaryTextColor)
 
 	return &ConfirmationModal{
 		Modal: modal,

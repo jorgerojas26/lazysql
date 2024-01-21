@@ -3,8 +3,6 @@ package components
 import (
 	"fmt"
 
-	"github.com/jorgerojas26/lazysql/app"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -49,7 +47,7 @@ func NewResultsTableMenu() *ResultsTableMenu {
 		textview := tview.NewTextView().SetText(text)
 
 		if i == 0 {
-			textview.SetTextColor(app.ActiveTextColor)
+			textview.SetTextColor(tview.Styles.PrimaryTextColor)
 		}
 
 		size := 15
@@ -83,10 +81,10 @@ func (menu *ResultsTableMenu) SetSelectedOption(option int) {
 		itemCount := menu.GetItemCount()
 
 		for i := 0; i < itemCount; i++ {
-			menu.GetItem(i).(*tview.TextView).SetTextColor(app.FocusTextColor)
+			menu.GetItem(i).(*tview.TextView).SetTextColor(tview.Styles.PrimaryTextColor)
 		}
 
-		menu.GetItem(option - 1).(*tview.TextView).SetTextColor(app.ActiveTextColor)
+		menu.GetItem(option - 1).(*tview.TextView).SetTextColor(tview.Styles.SecondaryTextColor)
 	}
 }
 
@@ -94,18 +92,18 @@ func (menu *ResultsTableMenu) SetBlur() {
 	menu.SetBorderColor(tcell.ColorDarkGray)
 
 	for _, item := range menu.MenuItems {
-		item.SetTextColor(app.InactiveTextColor)
+		item.SetTextColor(tview.Styles.InverseTextColor)
 	}
 }
 
 func (menu *ResultsTableMenu) SetFocus() {
-	menu.SetBorderColor(tcell.ColorWhite)
+	menu.SetBorderColor(tview.Styles.PrimaryTextColor)
 
 	for i, item := range menu.MenuItems {
 		if i+1 == menu.GetSelectedOption() {
-			item.SetTextColor(app.ActiveTextColor)
+			item.SetTextColor(tview.Styles.SecondaryTextColor)
 		} else {
-			item.SetTextColor(tcell.ColorWhite)
+			item.SetTextColor(tview.Styles.PrimaryTextColor)
 		}
 	}
 }

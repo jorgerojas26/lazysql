@@ -49,10 +49,10 @@ func NewHomePage(name string, dbdriver drivers.Driver) *Home {
 
 	go home.subscribeToTreeChanges()
 
-	leftWrapper.SetBorderColor(app.InactiveTextColor)
+	leftWrapper.SetBorderColor(tview.Styles.InverseTextColor)
 	leftWrapper.AddItem(tree, 0, 1, true)
 
-	rightWrapper.SetBorderColor(app.InactiveTextColor)
+	rightWrapper.SetBorderColor(tview.Styles.InverseTextColor)
 	rightWrapper.SetBorder(true)
 	rightWrapper.SetDirection(tview.FlexColumnCSS)
 	rightWrapper.SetInputCapture(home.rightWrapperInputCapture)
@@ -109,8 +109,8 @@ func (home *Home) subscribeToTreeChanges() {
 func (home *Home) focusRightWrapper() {
 	home.Tree.RemoveHighlight()
 
-	home.RightWrapper.SetBorderColor(app.FocusTextColor)
-	home.LeftWrapper.SetBorderColor(app.InactiveTextColor)
+	home.RightWrapper.SetBorderColor(tview.Styles.PrimaryTextColor)
+	home.LeftWrapper.SetBorderColor(tview.Styles.InverseTextColor)
 	home.TabbedPane.Highlight()
 	tab := home.TabbedPane.GetCurrentTab()
 
@@ -150,8 +150,8 @@ func focusTab(tab *Tab) {
 func (home *Home) focusLeftWrapper() {
 	home.Tree.Highlight()
 
-	home.RightWrapper.SetBorderColor(app.InactiveTextColor)
-	home.LeftWrapper.SetBorderColor(app.FocusTextColor)
+	home.RightWrapper.SetBorderColor(tview.Styles.InverseTextColor)
+	home.LeftWrapper.SetBorderColor(tview.Styles.PrimaryTextColor)
 
 	tab := home.TabbedPane.GetCurrentTab()
 
