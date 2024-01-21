@@ -3,8 +3,6 @@ package components
 import (
 	"github.com/jorgerojas26/lazysql/models"
 
-	"github.com/jorgerojas26/lazysql/app"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -52,7 +50,7 @@ func NewResultsFilter() *ResultsTableFilter {
 
 		}
 	})
-	recordsFilter.Input.SetAutocompleteStyles(tcell.ColorBlack, tcell.StyleDefault.Foreground(app.FocusTextColor).Background(tcell.ColorBlack), tcell.StyleDefault.Foreground(app.ActiveTextColor).Background(tcell.ColorBlack))
+	recordsFilter.Input.SetAutocompleteStyles(tcell.ColorBlack, tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorBlack), tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorBlack))
 
 	recordsFilter.AddItem(recordsFilter.Label, 6, 0, false)
 	recordsFilter.AddItem(recordsFilter.Input, 0, 1, false)
@@ -89,29 +87,29 @@ func (filter *ResultsTableFilter) SetIsFiltering(filtering bool) {
 
 // Function to blur
 func (filter *ResultsTableFilter) RemoveHighlight() {
-	filter.SetBorderColor(app.InactiveTextColor)
-	filter.Label.SetTextColor(app.InactiveTextColor)
-	filter.Input.SetPlaceholderTextColor(app.InactiveTextColor)
-	filter.Input.SetFieldTextColor(app.InactiveTextColor)
+	filter.SetBorderColor(tview.Styles.InverseTextColor)
+	filter.Label.SetTextColor(tview.Styles.InverseTextColor)
+	filter.Input.SetPlaceholderTextColor(tview.Styles.InverseTextColor)
+	filter.Input.SetFieldTextColor(tview.Styles.InverseTextColor)
 }
 
 func (filter *ResultsTableFilter) RemoveLocalHighlight() {
 	filter.SetBorderColor(tcell.ColorWhite)
 	filter.Label.SetTextColor(tcell.ColorOrange)
-	filter.Input.SetPlaceholderTextColor(app.InactiveTextColor)
-	filter.Input.SetFieldTextColor(app.InactiveTextColor)
+	filter.Input.SetPlaceholderTextColor(tview.Styles.InverseTextColor)
+	filter.Input.SetFieldTextColor(tview.Styles.InverseTextColor)
 }
 
 func (filter *ResultsTableFilter) Highlight() {
 	filter.SetBorderColor(tcell.ColorWhite)
 	filter.Label.SetTextColor(tcell.ColorOrange)
 	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
-	filter.Input.SetFieldTextColor(app.FocusTextColor)
+	filter.Input.SetFieldTextColor(tview.Styles.PrimaryTextColor)
 }
 
 func (filter *ResultsTableFilter) HighlightLocal() {
-	filter.SetBorderColor(app.FocusTextColor)
+	filter.SetBorderColor(tview.Styles.PrimaryTextColor)
 	filter.Label.SetTextColor(tcell.ColorOrange)
 	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
-	filter.Input.SetFieldTextColor(app.FocusTextColor)
+	filter.Input.SetFieldTextColor(tview.Styles.PrimaryTextColor)
 }
