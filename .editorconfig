@@ -1,0 +1,16 @@
+# top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+end_of_line = lf
+insert_final_newline = true
+
+# Use tabs for indentation on go files
+[*.{go,Makefile}]
+indent_style = tab
+
+# Use 2 space indentation for markdown and json
+[*.{md,json}]
+indent_style = space
+indent_size = 2
