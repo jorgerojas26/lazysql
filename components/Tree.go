@@ -22,7 +22,7 @@ type Tree struct {
 	subscribers []chan models.StateChange
 }
 
-func NewTree(dbdriver drivers.Driver) *Tree {
+func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
@@ -47,9 +47,16 @@ func NewTree(dbdriver drivers.Driver) *Tree {
 	tree.SetCurrentNode(rootNode)
 
 	tree.SetFocusFunc(func() {
-		databases, err := tree.DBDriver.GetDatabases()
-		if err != nil {
-			panic(err.Error())
+		var databases []string
+
+		if dbName == "" {
+			dbs, err := tree.DBDriver.GetDatabases()
+			if err != nil {
+				panic(err.Error())
+			}
+			databases = dbs
+		} else {
+			databases = []string{dbName}
 		}
 
 		if tree.GetSelectedDatabase() == "" {
@@ -87,7 +94,7 @@ func NewTree(dbdriver drivers.Driver) *Tree {
 			if node.GetChildren() == nil {
 				tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
 
-				if tree.DBDriver.GetProvider() == "sqlite3" || tree.DBDriver.GetProvider() == "postgres" {
+				if tree.DBDriver.GetProvider() == "sqlite3" {
 					tableName = node.GetText()
 				}
 
@@ -98,7 +105,7 @@ func NewTree(dbdriver drivers.Driver) *Tree {
 		} else if node.GetLevel() == 3 {
 			tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
 
-			if tree.DBDriver.GetProvider() == "sqlite3" || tree.DBDriver.GetProvider() == "postgres" {
+			if tree.DBDriver.GetProvider() == "sqlite3" {
 				tableName = node.GetText()
 			}
 

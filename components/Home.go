@@ -1,6 +1,7 @@
 package components
 
 import (
+	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -23,7 +24,14 @@ type Home struct {
 }
 
 func NewHomePage(name string, dbdriver drivers.Driver) *Home {
-	tree := NewTree(dbdriver)
+	parsed, err := helpers.ParseConnectionString(name)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	dbName := helpers.ParsedDBName(parsed.Path)
+
+	tree := NewTree(dbName, dbdriver)
 	tabbedPane := NewTabbedPane()
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
