@@ -50,7 +50,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	statusText.SetBorderPadding(0, 1, 0, 0)
 
 	wrapper.AddItem(addForm, 0, 1, true)
-	wrapper.AddItem(statusText, 2, 0, false)
+	wrapper.AddItem(statusText, 3, 0, false)
 	wrapper.AddItem(buttonsWrapper, 1, 0, false)
 
 	form := &ConnectionForm{
@@ -149,11 +149,26 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 }
 
 func (form *ConnectionForm) testConnection(connectionString string) {
+	parsed, err := helpers.ParseConnectionString(connectionString)
+	if err != nil {
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return
+	}
+
 	form.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
 
-	db := drivers.MySQL{}
+	var db drivers.Driver
 
-	err := db.TestConnection(connectionString)
+	switch parsed.Driver {
+	case "mysql":
+		db = &drivers.MySQL{}
+	case "postgres":
+		db = &drivers.Postgres{}
+	case "sqlite3":
+		db = &drivers.SQLite{}
+	}
+
+	err = db.TestConnection(connectionString)
 
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
