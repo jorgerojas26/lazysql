@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -70,15 +69,30 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 		if len(connections) != 0 {
 			row, _ := ConnectionListTable.GetSelection()
 			selectedConnection := connections[row]
+			queryParams := selectedConnection.Query
+			dbNamePath := selectedConnection.DBName
 
-			connectionURL := helpers.ConnectionToURL(&selectedConnection)
+			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
+
+			if selectedConnection.Provider == "sqlite3" {
+				connectionUrl = fmt.Sprintf("file:%s", selectedConnection.DSN)
+			} else {
+				if dbNamePath != "" {
+					connectionUrl = fmt.Sprintf("%s/%s", connectionUrl, dbNamePath)
+				}
+
+				if queryParams != "" {
+					connectionUrl = fmt.Sprintf("%s?%s", connectionUrl, queryParams)
+				}
+
+			}
 
 			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
-				go cs.connect(selectedConnection)
+				go cs.connect(connectionUrl, selectedConnection.Name)
 			} else if event.Rune() == 'e' {
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
-				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionURL)
+				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionUrl)
 				connectionForm.StatusText.SetText("")
 
 				connectionForm.SetAction("edit")
@@ -128,16 +142,11 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	return cs
 }
 
-func (cs *ConnectionSelection) connect(connection models.Connection) {
-	connectionURL := helpers.ConnectionToURL(&connection)
-	cs.StatusText.SetText("")
+func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle string) {
+	parsed, _ := helpers.ParseConnectionString(connectionUrl)
 
-	selectedRow, selectedCol := ConnectionListTable.GetSelection()
-	cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
-	cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
-
-	if MainPages.HasPage(connectionURL) {
-		MainPages.SwitchToPage(connectionURL)
+	if MainPages.HasPage(connectionUrl) {
+		MainPages.SwitchToPage(connectionUrl)
 		App.Draw()
 	} else {
 		cs.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
@@ -145,7 +154,7 @@ func (cs *ConnectionSelection) connect(connection models.Connection) {
 
 		var newDbDriver drivers.Driver
 
-		switch connection.Provider {
+		switch parsed.Driver {
 		case "mysql":
 			newDbDriver = &drivers.MySQL{}
 		case "postgres":
@@ -154,38 +163,28 @@ func (cs *ConnectionSelection) connect(connection models.Connection) {
 			newDbDriver = &drivers.SQLite{}
 		}
 
-		escapedConnection := models.Connection{
-			Name:     connection.Name,
-			Provider: connection.Provider,
-			User:     url.PathEscape(connection.User),
-			Password: url.PathEscape(connection.Password),
-			Host:     connection.Host,
-			Port:     connection.Port,
-			DBName:   connection.DBName,
-			Query:    connection.Query,
-			DSN:      connection.DSN,
-		}
-
-		escapedConnectionString := helpers.ConnectionToURL(&escapedConnection)
-
-		err := newDbDriver.Connect(escapedConnectionString)
+		err := newDbDriver.Connect(connectionUrl)
 
 		if err != nil {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 			App.Draw()
 		} else {
-			newHome := NewHomePage(escapedConnectionString, newDbDriver)
+			newHome := NewHomePage(connectionUrl, newDbDriver)
 
-			MainPages.AddAndSwitchToPage(connectionURL, newHome, true)
+			MainPages.AddAndSwitchToPage(connectionUrl, newHome, true)
 
 			cs.StatusText.SetText("")
 			App.Draw()
 
+			selectedRow, selectedCol := ConnectionListTable.GetSelection()
+			cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
+			cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
+
 			ConnectionListTable.SetCell(selectedRow, selectedCol, cell)
 
-			MainPages.SwitchToPage(connectionURL)
+			MainPages.SwitchToPage(connectionUrl)
 			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
-			newHome.Tree.SetTitle(fmt.Sprintf("%s (%s)", connection.Name, strings.ToUpper(connection.Provider)))
+			newHome.Tree.SetTitle(fmt.Sprintf("%s (%s)", connectionTitle, strings.ToUpper(parsed.UnaliasedDriver)))
 			App.SetFocus(newHome.Tree)
 			App.Draw()
 		}
