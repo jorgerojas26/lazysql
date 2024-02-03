@@ -55,7 +55,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	statusText.SetBorderPadding(0, 1, 0, 0)
 
 	wrapper.AddItem(ConnectionListTable, 0, 1, true)
-	wrapper.AddItem(statusText, 2, 0, false)
+	wrapper.AddItem(statusText, 3, 0, false)
 	wrapper.AddItem(buttonsWrapper, 1, 0, false)
 
 	cs := &ConnectionSelection{
@@ -143,7 +143,12 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 }
 
 func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle string) {
-	parsed, _ := helpers.ParseConnectionString(connectionUrl)
+	parsed, err := helpers.ParseConnectionString(connectionUrl)
+	if err != nil {
+		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		App.Draw()
+		return
+	}
 
 	if MainPages.HasPage(connectionUrl) {
 		MainPages.SwitchToPage(connectionUrl)
