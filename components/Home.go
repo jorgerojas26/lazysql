@@ -24,7 +24,12 @@ type Home struct {
 }
 
 func NewHomePage(name string, dbdriver drivers.Driver) *Home {
-	dbName := helpers.GetDBName(name)
+	parsed, err := helpers.ParseConnectionString(name)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	dbName := helpers.ParsedDBName(parsed.Path)
 
 	tree := NewTree(dbName, dbdriver)
 	tabbedPane := NewTabbedPane()

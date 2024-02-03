@@ -1,8 +1,6 @@
 package components
 
 import (
-	"net/url"
-
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
@@ -78,7 +76,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				return event
 			}
 
-			connectionString := helpers.EscapeConnectionString(form.GetFormItem(1).(*tview.InputField).GetText())
+			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
 
@@ -153,31 +151,9 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 func (form *ConnectionForm) testConnection(connectionString string) {
 	form.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
 
-	parsed, err := helpers.ParseConnectionString(connectionString)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	password, _ := parsed.User.Password()
-	DBName := helpers.ParsedDBName(parsed.Path)
-
-	escapedConnection := models.Connection{
-		Name:     "",
-		Provider: parsed.Driver,
-		User:     url.QueryEscape(parsed.User.Username()),
-		Password: password,
-		Host:     parsed.Host,
-		Port:     parsed.Port(),
-		DBName:   DBName,
-		Query:    url.QueryEscape(parsed.Query().Encode()),
-		DSN:      url.QueryEscape(parsed.DSN),
-	}
-
-	escapedConnectionString := helpers.ConnectionToURL(&escapedConnection)
-
 	db := drivers.MySQL{}
 
-	err = db.TestConnection(escapedConnectionString)
+	err := db.TestConnection(connectionString)
 
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
