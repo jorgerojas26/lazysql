@@ -1,8 +1,6 @@
 package components
 
 import (
-	"net/url"
-
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
@@ -52,7 +50,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	statusText.SetBorderPadding(0, 1, 0, 0)
 
 	wrapper.AddItem(addForm, 0, 1, true)
-	wrapper.AddItem(statusText, 2, 0, false)
+	wrapper.AddItem(statusText, 3, 0, false)
 	wrapper.AddItem(buttonsWrapper, 1, 0, false)
 
 	form := &ConnectionForm{
@@ -78,7 +76,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				return event
 			}
 
-			connectionString := helpers.EscapeConnectionString(form.GetFormItem(1).(*tview.InputField).GetText())
+			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
 
@@ -86,26 +84,21 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
 			} else {
-				password, _ := parsed.User.Password()
+
 				databases, _ := helpers.LoadConnections()
 				newDatabases := make([]models.Connection, len(databases))
+
+				parsedDatabaseData := models.Connection{
+					Name:     connectionName,
+					Provider: parsed.Driver,
+					DBName:   helpers.ParsedDBName(parsed.Path),
+					URL:      connectionString,
+				}
 
 				switch form.Action {
 				case "create":
 
-					database := models.Connection{
-						Name:     connectionName,
-						Provider: parsed.Driver,
-						User:     parsed.User.Username(),
-						Password: password,
-						Host:     parsed.Hostname(),
-						Port:     parsed.Port(),
-						Query:    parsed.Query().Encode(),
-						DBName:   helpers.ParsedDBName(parsed.Path),
-						DSN:      parsed.DSN,
-					}
-
-					newDatabases = append(databases, database)
+					newDatabases = append(databases, parsedDatabaseData)
 					err := helpers.SaveConnectionConfig(newDatabases)
 					if err != nil {
 						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
@@ -115,18 +108,20 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				case "edit":
 					newDatabases = make([]models.Connection, len(databases))
 					row, _ := ConnectionListTable.GetSelection()
+
 					for i, database := range databases {
 						if i == row {
+							newDatabases[i] = parsedDatabaseData
 
-							newDatabases[i].Name = connectionName
-							newDatabases[i].Provider = database.Provider
-							newDatabases[i].User = parsed.User.Username()
-							newDatabases[i].Password, _ = parsed.User.Password()
-							newDatabases[i].Host = parsed.Hostname()
-							newDatabases[i].Port = parsed.Port()
-							newDatabases[i].Query = parsed.Query().Encode()
-							newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
-							newDatabases[i].DSN = parsed.DSN
+							// newDatabases[i].Name = connectionName
+							// newDatabases[i].Provider = database.Provider
+							// newDatabases[i].User = parsed.User.Username()
+							// newDatabases[i].Password, _ = parsed.User.Password()
+							// newDatabases[i].Host = parsed.Hostname()
+							// newDatabases[i].Port = parsed.Port()
+							// newDatabases[i].Query = parsed.Query().Encode()
+							// newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
+							// newDatabases[i].DSN = parsed.DSN
 						} else {
 							newDatabases[i] = database
 						}
@@ -139,6 +134,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 					}
 				}
+
 				ConnectionListTable.SetConnections(newDatabases)
 				connectionPages.SwitchToPage("Connections")
 			}
@@ -151,33 +147,26 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 }
 
 func (form *ConnectionForm) testConnection(connectionString string) {
-	form.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
-
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
-		panic(err.Error())
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return
 	}
 
-	password, _ := parsed.User.Password()
-	DBName := helpers.ParsedDBName(parsed.Path)
+	form.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
 
-	escapedConnection := models.Connection{
-		Name:     "",
-		Provider: parsed.Driver,
-		User:     url.QueryEscape(parsed.User.Username()),
-		Password: password,
-		Host:     parsed.Host,
-		Port:     parsed.Port(),
-		DBName:   DBName,
-		Query:    url.QueryEscape(parsed.Query().Encode()),
-		DSN:      url.QueryEscape(parsed.DSN),
+	var db drivers.Driver
+
+	switch parsed.Driver {
+	case "mysql":
+		db = &drivers.MySQL{}
+	case "postgres":
+		db = &drivers.Postgres{}
+	case "sqlite3":
+		db = &drivers.SQLite{}
 	}
 
-	escapedConnectionString := helpers.ConnectionToURL(&escapedConnection)
-
-	db := drivers.MySQL{}
-
-	err = db.TestConnection(escapedConnectionString)
+	err = db.TestConnection(connectionString)
 
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))

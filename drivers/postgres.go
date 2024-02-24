@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 	"github.com/xo/dburl"
 
@@ -19,9 +18,7 @@ type Postgres struct {
 }
 
 func (db *Postgres) Connect(urlstr string) (err error) {
-	parsed, _ := helpers.ParseConnectionString(urlstr)
-
-	db.SetProvider(parsed.Driver)
+	db.SetProvider("postgres")
 
 	db.Connection, err = dburl.Open(urlstr)
 
