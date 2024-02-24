@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xo/dburl"
@@ -22,9 +21,7 @@ func (db *SQLite) TestConnection(urlstr string) (err error) {
 }
 
 func (db *SQLite) Connect(urlstr string) (err error) {
-	parsed, _ := helpers.ParseConnectionString(urlstr)
-
-	db.SetProvider(parsed.Driver)
+	db.SetProvider("sqlite3")
 
 	db.Connection, err = dburl.Open(urlstr)
 
