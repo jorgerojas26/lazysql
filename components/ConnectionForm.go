@@ -84,26 +84,21 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
 			} else {
-				password, _ := parsed.User.Password()
+
 				databases, _ := helpers.LoadConnections()
 				newDatabases := make([]models.Connection, len(databases))
+
+				parsedDatabaseData := models.Connection{
+					Name:     connectionName,
+					Provider: parsed.Driver,
+					DBName:   helpers.ParsedDBName(parsed.Path),
+					URL:      connectionString,
+				}
 
 				switch form.Action {
 				case "create":
 
-					database := models.Connection{
-						Name:     connectionName,
-						Provider: parsed.Driver,
-						User:     parsed.User.Username(),
-						Password: password,
-						Host:     parsed.Hostname(),
-						Port:     parsed.Port(),
-						Query:    parsed.Query().Encode(),
-						DBName:   helpers.ParsedDBName(parsed.Path),
-						DSN:      parsed.DSN,
-					}
-
-					newDatabases = append(databases, database)
+					newDatabases = append(databases, parsedDatabaseData)
 					err := helpers.SaveConnectionConfig(newDatabases)
 					if err != nil {
 						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
@@ -113,18 +108,20 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				case "edit":
 					newDatabases = make([]models.Connection, len(databases))
 					row, _ := ConnectionListTable.GetSelection()
+
 					for i, database := range databases {
 						if i == row {
+							newDatabases[i] = parsedDatabaseData
 
-							newDatabases[i].Name = connectionName
-							newDatabases[i].Provider = database.Provider
-							newDatabases[i].User = parsed.User.Username()
-							newDatabases[i].Password, _ = parsed.User.Password()
-							newDatabases[i].Host = parsed.Hostname()
-							newDatabases[i].Port = parsed.Port()
-							newDatabases[i].Query = parsed.Query().Encode()
-							newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
-							newDatabases[i].DSN = parsed.DSN
+							// newDatabases[i].Name = connectionName
+							// newDatabases[i].Provider = database.Provider
+							// newDatabases[i].User = parsed.User.Username()
+							// newDatabases[i].Password, _ = parsed.User.Password()
+							// newDatabases[i].Host = parsed.Hostname()
+							// newDatabases[i].Port = parsed.Port()
+							// newDatabases[i].Query = parsed.Query().Encode()
+							// newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
+							// newDatabases[i].DSN = parsed.DSN
 						} else {
 							newDatabases[i] = database
 						}
@@ -137,6 +134,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 					}
 				}
+
 				ConnectionListTable.SetConnections(newDatabases)
 				connectionPages.SwitchToPage("Connections")
 			}

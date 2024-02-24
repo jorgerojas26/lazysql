@@ -69,30 +69,13 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 		if len(connections) != 0 {
 			row, _ := ConnectionListTable.GetSelection()
 			selectedConnection := connections[row]
-			queryParams := selectedConnection.Query
-			dbNamePath := selectedConnection.DBName
-
-			connectionUrl := fmt.Sprintf("%s://%s:%s@%s:%s", selectedConnection.Provider, selectedConnection.User, selectedConnection.Password, selectedConnection.Host, selectedConnection.Port)
-
-			if selectedConnection.Provider == "sqlite3" {
-				connectionUrl = fmt.Sprintf("file:%s", selectedConnection.DSN)
-			} else {
-				if dbNamePath != "" {
-					connectionUrl = fmt.Sprintf("%s/%s", connectionUrl, dbNamePath)
-				}
-
-				if queryParams != "" {
-					connectionUrl = fmt.Sprintf("%s?%s", connectionUrl, queryParams)
-				}
-
-			}
 
 			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
-				go cs.connect(connectionUrl, selectedConnection.Name)
+				go cs.Connect(selectedConnection)
 			} else if event.Rune() == 'e' {
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
-				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(connectionUrl)
+				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(selectedConnection.URL)
 				connectionForm.StatusText.SetText("")
 
 				connectionForm.SetAction("edit")
@@ -142,16 +125,9 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	return cs
 }
 
-func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle string) {
-	parsed, err := helpers.ParseConnectionString(connectionUrl)
-	if err != nil {
-		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-		App.Draw()
-		return
-	}
-
-	if MainPages.HasPage(connectionUrl) {
-		MainPages.SwitchToPage(connectionUrl)
+func (cs *ConnectionSelection) Connect(connection models.Connection) {
+	if MainPages.HasPage(connection.URL) {
+		MainPages.SwitchToPage(connection.URL)
 		App.Draw()
 	} else {
 		cs.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
@@ -159,7 +135,7 @@ func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle str
 
 		var newDbDriver drivers.Driver
 
-		switch parsed.Driver {
+		switch connection.Provider {
 		case "mysql":
 			newDbDriver = &drivers.MySQL{}
 		case "postgres":
@@ -168,15 +144,15 @@ func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle str
 			newDbDriver = &drivers.SQLite{}
 		}
 
-		err := newDbDriver.Connect(connectionUrl)
+		err := newDbDriver.Connect(connection.URL)
 
 		if err != nil {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 			App.Draw()
 		} else {
-			newHome := NewHomePage(connectionUrl, newDbDriver)
+			newHome := NewHomePage(connection.URL, newDbDriver)
 
-			MainPages.AddAndSwitchToPage(connectionUrl, newHome, true)
+			MainPages.AddAndSwitchToPage(connection.URL, newHome, true)
 
 			cs.StatusText.SetText("")
 			App.Draw()
@@ -187,9 +163,9 @@ func (cs *ConnectionSelection) connect(connectionUrl string, connectionTitle str
 
 			ConnectionListTable.SetCell(selectedRow, selectedCol, cell)
 
-			MainPages.SwitchToPage(connectionUrl)
+			MainPages.SwitchToPage(connection.URL)
 			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
-			newHome.Tree.SetTitle(fmt.Sprintf("%s (%s)", connectionTitle, strings.ToUpper(parsed.UnaliasedDriver)))
+			newHome.Tree.SetTitle(fmt.Sprintf("%s (%s)", connection.Name, strings.ToUpper(connection.Provider)))
 			App.SetFocus(newHome.Tree)
 			App.Draw()
 		}

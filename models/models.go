@@ -8,13 +8,8 @@ import (
 type Connection struct {
 	Name     string
 	Provider string
-	User     string
-	Password string
-	Host     string
-	Port     string
-	Query    string
 	DBName   string
-	DSN      string
+	URL      string
 }
 
 type StateChange struct {
