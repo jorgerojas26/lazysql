@@ -13,8 +13,9 @@ import (
 )
 
 type MySQL struct {
-	Connection *sql.DB
-	Provider   string
+	Connection  *sql.DB
+	Provider    string
+	PrimaryKeys map[string]string
 }
 
 func (db *MySQL) TestConnection(urlstr string) (err error) {
@@ -55,6 +56,8 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 			databases = append(databases, database)
 		}
 	}
+
+	db.PrimaryKeys = make(map[string]string, len(databases))
 
 	return databases, nil
 }
@@ -311,17 +314,17 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 	return
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
 func (db *MySQL) UpdateRecord(table, column, value, id string) error {
-	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE id = \"%s\"", table, column, value, id)
+	primaryKey := db.GetPrimaryKey(table)
+	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = \"%s\"", table, column, value, primaryKey, id)
 	_, err := db.Connection.Exec(query)
 
 	return err
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
 func (db *MySQL) DeleteRecord(table, id string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = \"%s\"", table, id)
+	primaryKey := db.GetPrimaryKey(table)
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = \"%s\"", table, primaryKey, id)
 	_, err := db.Connection.Exec(query)
 
 	return err
@@ -372,8 +375,8 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		// Merge all column updates
 		updateClause := strings.Join(columns, ", ")
 
-		// TODO: Rewrites this logic to use the primary key instead of the id
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE id = '%s';", table, updateClause, rowId)
+		primaryKey := db.GetPrimaryKey(table)
+		query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s';", table, updateClause, primaryKey, rowId)
 
 		queries = append(queries, query)
 	}
@@ -383,8 +386,8 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		query := ""
 
 		statementType = "DELETE FROM"
-		// TODO: Rewrites this logic to use the primary key instead of the id
-		query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, delete.Table, delete.RowId)
+		primaryKey := db.GetPrimaryKey(delete.Table)
+		query = fmt.Sprintf("%s %s WHERE %s = \"%s\"", statementType, delete.Table, primaryKey, delete.RowId)
 
 		if query != "" {
 			queries = append(queries, query)
@@ -439,4 +442,41 @@ func (db *MySQL) SetProvider(provider string) {
 
 func (db *MySQL) GetProvider() string {
 	return db.Provider
+}
+
+func (db *MySQL) GetPrimaryKey(table string) string {
+	primaryKey, ok := db.PrimaryKeys[table]
+	if ok {
+		return primaryKey
+	}
+
+	type Row struct {
+		Field   string
+		Type    string
+		Null    string
+		Key     string
+		Default sql.NullString
+		Extra   string
+	}
+
+	query := fmt.Sprintf("show columns from %s where `Key` = \"PRI\";", table)
+
+	var row Row
+	queryRow := db.Connection.QueryRow(query)
+	err := queryRow.Scan(
+		&row.Field,
+		&row.Type,
+		&row.Null,
+		&row.Key,
+		&row.Default,
+		&row.Extra,
+	)
+
+	if err == nil {
+		db.PrimaryKeys[table] = row.Field
+
+		return row.Field
+	}
+
+	return "id"
 }
