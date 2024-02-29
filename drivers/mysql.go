@@ -57,8 +57,6 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 		}
 	}
 
-	db.PrimaryKeys = make(map[string]string, len(databases))
-
 	return databases, nil
 }
 
@@ -77,6 +75,8 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 
 		tables[database] = append(tables[database], table)
 	}
+
+	db.PrimaryKeys = make(map[string]string, len(tables))
 
 	return tables, nil
 }
