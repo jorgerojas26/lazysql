@@ -3,3 +3,4 @@ tmp/build-errors.log
 tmp/main
 
 dist/
+test.db
