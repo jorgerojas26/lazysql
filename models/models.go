@@ -23,18 +23,28 @@ type ConnectionPages struct {
 }
 
 type DbDmlChange struct {
-	Type   string
-	Table  string
-	Column string
-	Value  string
-	RowId  string
-	Option int
+	Type                 string
+	Table                string
+	Column               string
+	Value                string
+	PrimaryKeyColumnName string
+	PrimaryKeyValue      string
+	Option               int
 }
 
 type DbInsert struct {
-	Table   string
-	Columns []string
-	Values  []string
-	Option  int
-	RowId   uuid.UUID
+	Table           string
+	Columns         []string
+	Values          []string
+	Option          int
+	PrimaryKeyValue uuid.UUID
+}
+
+type DatabaseTableColumn struct {
+	Field   string
+	Type    string
+	Null    string
+	Key     string
+	Default string
+	Extra   string
 }

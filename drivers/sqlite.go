@@ -105,7 +105,11 @@ func (db *SQLite) GetTableColumns(database, table string) (results [][]string, e
 		var row []string
 
 		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+			if col == nil {
+				row = append(row, "NULL")
+			} else {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
 		}
 
 		results = append(results, row[1:])
@@ -139,7 +143,11 @@ func (db *SQLite) GetConstraints(table string) (results [][]string, err error) {
 
 		var row []string
 		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+			if col == nil {
+				row = append(row, "NULL")
+			} else {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
 		}
 
 		results = append(results, row)
@@ -173,7 +181,11 @@ func (db *SQLite) GetForeignKeys(table string) (results [][]string, err error) {
 
 		var row []string
 		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+			if col == nil {
+				row = append(row, "NULL")
+			} else {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
 		}
 
 		results = append(results, row)
@@ -203,7 +215,11 @@ func (db *SQLite) GetIndexes(table string) (results [][]string, err error) {
 
 		var row []string
 		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+			if col == nil {
+				row = append(row, "NULL")
+			} else {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
 		}
 
 		results = append(results, row)
@@ -264,7 +280,11 @@ func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (pagi
 
 		var row []string
 		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+			if col == nil {
+				row = append(row, "NULL")
+			} else {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
 		}
 
 		paginatedResults = append(paginatedResults, row)
@@ -296,7 +316,11 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 
 		var row []string
 		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+			if col == nil {
+				row = append(row, "NULL")
+			} else {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
 		}
 
 		results = append(results, row)
@@ -306,17 +330,15 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 	return
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
-func (db *SQLite) UpdateRecord(table, column, value, id string) error {
-	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE id = %s;", table, column, value, id)
+func (db *SQLite) UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = %s;", table, column, value, primaryKeyColumnName, primaryKeyValue)
 	_, err := db.Connection.Exec(query)
 
 	return err
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
-func (db *SQLite) DeleteRecord(table, id string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = \"%s\"", table, id)
+func (db *SQLite) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue string) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = \"%s\"", table, primaryKeyColumnName, primaryKeyValue)
 	_, err := db.Connection.Exec(query)
 
 	return err
@@ -344,7 +366,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 	// Group changes by RowId and Table
 	for _, change := range changes {
 		if change.Type == "UPDATE" {
-			key := fmt.Sprintf("%s|%s", change.Table, change.RowId)
+			key := fmt.Sprintf("%s|%s|%s", change.Table, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
 			groupedUpdated[key] = append(groupedUpdated[key], change)
 		} else if change.Type == "DELETE" {
 			groupedDeletes = append(groupedDeletes, change)
@@ -358,7 +380,8 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 		// Split key into table and rowId
 		splitted := strings.Split(key, "|")
 		table := splitted[0]
-		rowId := splitted[1]
+		primaryKeyColumnName := splitted[1]
+		primaryKeyValue := splitted[2]
 
 		for _, change := range changes {
 			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
@@ -367,8 +390,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 		// Merge all column updates
 		updateClause := strings.Join(columns, ", ")
 
-		// TODO: Rewrites this logic to use the primary key instead of the id
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE id = '%s';", table, updateClause, rowId)
+		query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s';", table, updateClause, primaryKeyColumnName, primaryKeyValue)
 
 		queries = append(queries, query)
 	}
@@ -378,34 +400,30 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 		query := ""
 
 		statementType = "DELETE FROM"
-		// TODO: Rewrites this logic to use the primary key instead of the id
-		query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, delete.Table, delete.RowId)
+
+		query = fmt.Sprintf("%s %s WHERE %s = \"%s\"", statementType, delete.Table, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
 
 		if query != "" {
 			queries = append(queries, query)
 		}
 	}
 
-	for i, insert := range inserts {
+	for _, insert := range inserts {
 		values := make([]string, 0, len(insert.Values))
+
+		columnsToBeInserted := insert.Columns
 
 		for _, value := range insert.Values {
 			_, error := strconv.ParseFloat(value, 64)
-			lowerCaseValue := strings.ToLower(value)
 
-			if lowerCaseValue == "default" || lowerCaseValue == "null" {
-				insert.Columns = append(insert.Columns[:i], insert.Columns[i+1:]...)
-				continue
-			}
-
-			if lowerCaseValue != "default" && lowerCaseValue != "null" && error != nil {
+			if error != nil {
 				values = append(values, fmt.Sprintf("\"%s\"", value))
 			} else {
 				values = append(values, value)
 			}
 		}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", insert.Table, strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
+		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", insert.Table, strings.Join(columnsToBeInserted, ", "), strings.Join(values, ", "))
 
 		queries = append(queries, query)
 	}
@@ -416,6 +434,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 	}
 
 	for _, query := range queries {
+		fmt.Printf("LS -> drivers/sqlite.go:440 -> query: %+v\n", query)
 		_, err = tx.Exec(query)
 
 		if err != nil {

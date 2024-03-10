@@ -14,8 +14,8 @@ type Driver interface {
 	GetForeignKeys(table string) ([][]string, error)
 	GetIndexes(table string) ([][]string, error)
 	GetRecords(table, where, sort string, offset, limit int) ([][]string, int, error)
-	UpdateRecord(table, column, value, id string) error
-	DeleteRecord(table string, id string) error
+	UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) error
+	DeleteRecord(table string, primaryKeyColumnName, primaryKeyValue string) error
 	ExecuteDMLStatement(query string) (string, error)
 	ExecuteQuery(query string) ([][]string, error)
 	ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) error
