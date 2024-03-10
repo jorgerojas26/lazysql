@@ -57,7 +57,6 @@ func (db *Postgres) GetDatabases() (databases []string, err error) {
 	return databases, nil
 }
 
-// TODO: Implement GetSchemas function
 func (db *Postgres) GetTables(database string) (tables map[string][]string, err error) {
 	tables = make(map[string][]string)
 
@@ -81,7 +80,7 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 
 func (db *Postgres) GetTableColumns(database, table string) (results [][]string, error error) {
 	tableName := strings.Split(table, ".")[1]
-	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_name = '%s'", database, tableName))
+	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_name = '%s' ORDER by ordinal_position", database, tableName))
 	if err != nil {
 		return results, err
 	}
@@ -332,17 +331,15 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 	return
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
-func (db *Postgres) UpdateRecord(table, column, value, id string) (err error) {
-	query := fmt.Sprintf("UPDATE %s SET %s = '%s' WHERE id = '%s'", table, column, value, id)
+func (db *Postgres) UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) (err error) {
+	query := fmt.Sprintf("UPDATE %s SET %s = '%s' WHERE '%s' = '%s'", table, column, value, primaryKeyColumnName, primaryKeyValue)
 	_, err = db.Connection.Exec(query)
 
 	return err
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
-func (db *Postgres) DeleteRecord(table, id string) (err error) {
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = '%s'", table, id)
+func (db *Postgres) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue string) (err error) {
+	query := fmt.Sprintf("DELETE FROM %s WHERE '%s' = '%s'", table, primaryKeyColumnName, primaryKeyValue)
 	_, err = db.Connection.Exec(query)
 
 	return err
@@ -403,7 +400,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 	for _, change := range changes {
 		if change.Type == "UPDATE" {
 			tableName := strings.Split(change.Table, ".")[1]
-			key := fmt.Sprintf("%s|%s", tableName, change.RowId)
+			key := fmt.Sprintf("%s|%s|%s", tableName, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
 			groupedUpdated[key] = append(groupedUpdated[key], change)
 		} else if change.Type == "DELETE" {
 			groupedDeletes = append(groupedDeletes, change)
@@ -417,7 +414,8 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 		// Split key into table and rowId
 		splitted := strings.Split(key, "|")
 		table := splitted[0]
-		rowId := splitted[1]
+		PrimaryKeyColumnName := splitted[1]
+		primaryKeyValue := splitted[2]
 
 		for _, change := range changes {
 			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
@@ -426,7 +424,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 		// Merge all column updates
 		updateClause := strings.Join(columns, ", ")
 
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE id = '%s';", table, updateClause, rowId)
+		query := fmt.Sprintf("UPDATE %s SET %s WHERE '%s' = '%s';", table, updateClause, PrimaryKeyColumnName, primaryKeyValue)
 
 		queries = append(queries, query)
 	}
@@ -437,7 +435,8 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 
 		statementType = "DELETE FROM"
 		tableName := strings.Split(delete.Table, ".")[1]
-		query = fmt.Sprintf("%s %s WHERE id = \"%s\"", statementType, tableName, delete.RowId)
+
+		query = fmt.Sprintf("%s %s WHERE \"%s\" = '%s'", statementType, tableName, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
 
 		if query != "" {
 			queries = append(queries, query)
