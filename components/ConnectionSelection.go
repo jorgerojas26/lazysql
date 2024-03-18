@@ -150,7 +150,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 			App.Draw()
 		} else {
-			newHome := NewHomePage(connection.URL, newDbDriver)
+			newHome := NewHomePage(connection, newDbDriver)
 
 			MainPages.AddAndSwitchToPage(connection.URL, newHome, true)
 
