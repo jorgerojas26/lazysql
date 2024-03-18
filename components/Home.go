@@ -1,7 +1,6 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -23,10 +22,8 @@ type Home struct {
 	ListOfDbInserts []models.DbInsert
 }
 
-func NewHomePage(name string, dbdriver drivers.Driver) *Home {
-	dbName := helpers.ParsedDBName(name)
-
-	tree := NewTree(dbName, dbdriver)
+func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
+	tree := NewTree(connection.DBName, dbdriver)
 	tabbedPane := NewTabbedPane()
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
@@ -67,7 +64,7 @@ func NewHomePage(name string, dbdriver drivers.Driver) *Home {
 		}
 	})
 
-	MainPages.AddPage(name, home, true, false)
+	MainPages.AddPage(connection.URL, home, true, false)
 	return home
 }
 

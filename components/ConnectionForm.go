@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
@@ -88,10 +90,16 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				databases, _ := helpers.LoadConnections()
 				newDatabases := make([]models.Connection, len(databases))
 
+				DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
+
+				if DBName == "NULL" {
+					DBName = ""
+				}
+
 				parsedDatabaseData := models.Connection{
 					Name:     connectionName,
 					Provider: parsed.Driver,
-					DBName:   helpers.ParsedDBName(parsed.Path),
+					DBName:   DBName,
 					URL:      connectionString,
 				}
 
