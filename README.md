@@ -181,6 +181,23 @@ Support for multiple RDBMS is a work in progress.
 | -------- | --------------------- |
 | CTRL + R | Run the SQL statement |
 
+## Example connection URLs
+
+```
+postgres://user:pass@localhost/dbname
+pg://user:pass@localhost/dbname?sslmode=disable
+mysql://user:pass@localhost/dbname
+mysql:/var/run/mysqld/mysqld.sock
+sqlserver://user:pass@remote-host.com/dbname
+mssql://user:pass@remote-host.com/instance/dbname
+ms://user:pass@remote-host.com:port/instance/dbname?keepAlive=10
+oracle://user:pass@somehost.com/sid
+sap://user:pass@localhost/dbname
+sqlite:/path/to/file.db
+file:myfile.sqlite3?loc=auto
+odbc+postgres://user:pass@localhost:port/dbname?option1=
+```
+
 <!-- ROADMAP -->
 
 ## Roadmap
