@@ -21,13 +21,11 @@ func (db *Postgres) Connect(urlstr string) (err error) {
 	db.SetProvider("postgres")
 
 	db.Connection, err = dburl.Open(urlstr)
-
 	if err != nil {
 		return err
 	}
 
 	err = db.Connection.Ping()
-
 	if err != nil {
 		return err
 	}
@@ -79,8 +77,9 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 }
 
 func (db *Postgres) GetTableColumns(database, table string) (results [][]string, error error) {
-	tableName := strings.Split(table, ".")[1]
-	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_name = '%s' ORDER by ordinal_position", database, tableName))
+	tableSchema := strings.Split(table, ".")[1]
+	tableName := strings.Split(table, ".")[2]
+	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_schema = '%s' AND table_name = '%s' ORDER by ordinal_position", database, tableSchema, tableName))
 	if err != nil {
 		return results, err
 	}
@@ -114,12 +113,14 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 
 func (db *Postgres) GetConstraints(table string) (constraints [][]string, error error) {
 	splitTableString := strings.Split(table, ".")
-	tableName := splitTableString[1]
+	tableSchema := splitTableString[1]
+	tableName := splitTableString[2]
 
 	rows, err := db.Connection.Query(fmt.Sprintf(`
   SELECT
             tc.constraint_name,
-            kcu.column_name
+            kcu.column_name,
+            tc.constraint_type
         FROM
             information_schema.table_constraints AS tc
             JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
@@ -128,8 +129,9 @@ func (db *Postgres) GetConstraints(table string) (constraints [][]string, error 
             AND ccu.table_schema = tc.table_schema
         WHERE
             NOT tc.constraint_type = 'FOREIGN KEY'
+			AND tc.table_schema = '%s'
             AND tc.table_name = '%s'
-            `, tableName))
+            `, tableSchema, tableName))
 	if err != nil {
 		return constraints, err
 	}
@@ -164,7 +166,8 @@ func (db *Postgres) GetConstraints(table string) (constraints [][]string, error 
 
 func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error error) {
 	splitTableString := strings.Split(table, ".")
-	tableName := splitTableString[1]
+	tableSchema := splitTableString[1]
+	tableName := splitTableString[2]
 
 	rows, err := db.Connection.Query(fmt.Sprintf(`
   SELECT
@@ -180,8 +183,9 @@ func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error 
             AND ccu.table_schema = tc.table_schema
         WHERE
             tc.constraint_type = 'FOREIGN KEY'
+          	AND tc.table_schema = '%s'
             AND tc.table_name = '%s'
-  `, tableName))
+  `, tableSchema, tableName))
 	if err != nil {
 		return foreignKeys, err
 	}
@@ -215,12 +219,17 @@ func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error 
 }
 
 func (db *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
+	splitTableString := strings.Split(table, ".")
+	tableSchema := splitTableString[1]
+	tableName := splitTableString[2]
+
 	rows, err := db.Connection.Query(fmt.Sprintf(`
   SELECT
             i.relname AS index_name,
             a.attname AS column_name,
             am.amname AS type
         FROM
+            pg_namespace n,
             pg_class t,
             pg_class i,
             pg_index ix,
@@ -233,11 +242,13 @@ func (db *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
             and a.attnum = ANY(ix.indkey)
             and t.relkind = 'r'
             and am.oid = i.relam
+          	and n.oid = t.relnamespace
+            and n.nspname = '%s'
             and t.relname = '%s'
         ORDER BY
             t.relname,
             i.relname
-  `, table))
+  `, tableSchema, tableName))
 	if err != nil {
 		return indexes, err
 	}
@@ -270,7 +281,7 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 	defaultLimit := 300
 
 	splitTableString := strings.Split(table, ".")
-	tableName := splitTableString[1]
+	tableName := strings.Join(splitTableString[1:], ".")
 
 	isPaginationEnabled := offset >= 0 && limit >= 0
 
@@ -399,7 +410,8 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 	// Group changes by RowId and Table
 	for _, change := range changes {
 		if change.Type == "UPDATE" {
-			tableName := strings.Split(change.Table, ".")[1]
+			splitTableString := strings.Split(change.Table, ".")
+			tableName := strings.Join(splitTableString[1:], ".")
 			key := fmt.Sprintf("%s|%s|%s", tableName, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
 			groupedUpdated[key] = append(groupedUpdated[key], change)
 		} else if change.Type == "DELETE" {
@@ -424,19 +436,20 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 		// Merge all column updates
 		updateClause := strings.Join(columns, ", ")
 
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE '%s' = '%s';", table, updateClause, PrimaryKeyColumnName, primaryKeyValue)
+		query := fmt.Sprintf("UPDATE %s SET %s WHERE \"%s\" = '%s';", table, updateClause, PrimaryKeyColumnName, primaryKeyValue)
 
 		queries = append(queries, query)
 	}
 
-	for _, delete := range groupedDeletes {
+	for _, del := range groupedDeletes {
 		statementType := ""
 		query := ""
 
 		statementType = "DELETE FROM"
-		tableName := strings.Split(delete.Table, ".")[1]
+		splitTableString := strings.Split(del.Table, ".")
+		tableName := strings.Join(splitTableString[1:], ".")
 
-		query = fmt.Sprintf("%s %s WHERE \"%s\" = '%s'", statementType, tableName, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
+		query = fmt.Sprintf("%s %s WHERE \"%s\" = '%s'", statementType, tableName, del.PrimaryKeyColumnName, del.PrimaryKeyValue)
 
 		if query != "" {
 			queries = append(queries, query)
@@ -447,29 +460,29 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 		values := make([]string, 0, len(insert.Values))
 
 		for _, value := range insert.Values {
-			_, error := strconv.ParseFloat(value, 64)
+			_, err := strconv.ParseFloat(value, 64)
 
-			if strings.ToLower(value) != "default" && error != nil {
+			if strings.ToLower(value) != "default" && err != nil {
 				values = append(values, fmt.Sprintf("'%s'", value))
 			} else {
 				values = append(values, value)
 			}
 		}
 
-		tableName := strings.Split(insert.Table, ".")[1]
+		splitTableString := strings.Split(insert.Table, ".")
+		tableName := strings.Join(splitTableString[1:], ".")
 		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
 
 		queries = append(queries, query)
 	}
 
-	tx, error := db.Connection.Begin()
-	if error != nil {
-		return error
+	tx, err := db.Connection.Begin()
+	if err != nil {
+		return err
 	}
 
 	for _, query := range queries {
 		_, err = tx.Exec(query)
-
 		if err != nil {
 			tx.Rollback()
 
@@ -478,7 +491,6 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 	}
 
 	err = tx.Commit()
-
 	if err != nil {
 		return err
 	}
