@@ -152,7 +152,7 @@ func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode
 		for _, child := range values {
 			childNode := tview.NewTreeNode(child)
 			childNode.SetExpanded(defaultExpanded)
-			childNode.SetReference(node.GetText())
+			childNode.SetReference(key)
 			childNode.SetColor(tview.Styles.SecondaryTextColor)
 			if rootNode != nil {
 				rootNode.AddChild(childNode)
