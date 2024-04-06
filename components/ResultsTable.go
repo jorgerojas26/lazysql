@@ -1103,6 +1103,7 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 	provider := table.DBDriver.GetProvider()
 	columns := table.GetColumns()
+	constraints := table.GetConstraints()
 
 	primaryKeyColumnName := ""
 	primaryKeyValue := ""
@@ -1131,18 +1132,39 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 
 	case "postgres":
 		keyColumnIndex := -1
+		constraintTypeColumnIndex := -1
+		constraintNameColumnIndex := -1
+		pKeyName := ""
 		primaryKeyColumnIndex := -1
 
+		for i, constraint := range constraints[0] {
+			if constraint == "constraint_type" {
+				constraintTypeColumnIndex = i
+			}
+			if constraint == "column_name" {
+				constraintNameColumnIndex = i
+			}
+		}
+
+		for _, col := range constraints {
+			if col[constraintTypeColumnIndex] == "PRIMARY KEY" {
+				pKeyName = col[constraintNameColumnIndex]
+				break
+			}
+		}
+
+		primaryKeyColumnName = pKeyName
 		for i, col := range columns[0] {
-			if col == "column_default" {
+			if col == "column_name" {
 				keyColumnIndex = i
+				break
 			}
 		}
 
 		for i, col := range columns {
-			if strings.Contains(col[keyColumnIndex], "nextval") {
+			if col[keyColumnIndex] == pKeyName {
 				primaryKeyColumnIndex = i - 1
-				primaryKeyColumnName = col[0]
+				break
 			}
 		}
 
