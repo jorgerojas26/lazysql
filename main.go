@@ -13,7 +13,10 @@ import (
 func main() {
 	mysql.SetLogger(log.New(io.Discard, "", 0))
 
-	if err := app.App.SetRoot(components.MainPages, true).Run(); err != nil {
+	if err := app.App.
+		SetRoot(components.MainPages, true).
+		EnableMouse(true).
+		Run(); err != nil {
 		panic(err)
 	}
 }
