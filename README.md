@@ -174,6 +174,8 @@ Support for multiple RDBMS is a work in progress.
 | Key | Action            |
 | --- | ----------------- |
 | L   | Focus table panel |
+| G   | Focus root tree node |
+| g   | Focus last tree node |
 
 ### SQL Editor
 
