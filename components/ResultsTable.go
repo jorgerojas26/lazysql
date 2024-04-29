@@ -230,13 +230,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	colCount := table.GetColumnCount()
 	rowCount := table.GetRowCount()
 
-	if rowCount == 1 || colCount == 0 {
-		return nil
-	}
-
 	eventKey := event.Rune()
 
-	if eventKey == '1' || event.Rune() == '2' || event.Rune() == '3' || event.Rune() == '4' || event.Rune() == '5' {
+	if eventKey == '1' || eventKey == '2' || eventKey == '3' || eventKey == '4' || eventKey == '5' {
 		table.Select(1, 0)
 	}
 
@@ -257,6 +253,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
 		}
+	}
+	if rowCount == 1 || colCount == 0 {
+		return nil
 	}
 
 	if eventKey == '/' {
