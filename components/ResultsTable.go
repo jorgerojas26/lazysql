@@ -230,32 +230,35 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	colCount := table.GetColumnCount()
 	rowCount := table.GetRowCount()
 
-	rune := event.Rune()
+	eventKey := event.Rune()
 
-	if rune == '1' || event.Rune() == '2' || event.Rune() == '3' || event.Rune() == '4' || event.Rune() == '5' {
+	if eventKey == '1' || eventKey == '2' || eventKey == '3' || eventKey == '4' || eventKey == '5' {
 		table.Select(1, 0)
 	}
 
 	if table.Menu != nil {
-		if rune == '1' {
+		if eventKey == '1' {
 			table.Menu.SetSelectedOption(1)
 			table.UpdateRows(table.GetRecords())
-		} else if rune == '2' {
+		} else if eventKey == '2' {
 			table.Menu.SetSelectedOption(2)
 			table.UpdateRows(table.GetColumns())
-		} else if rune == '3' {
+		} else if eventKey == '3' {
 			table.Menu.SetSelectedOption(3)
 			table.UpdateRows(table.GetConstraints())
-		} else if rune == '4' {
+		} else if eventKey == '4' {
 			table.Menu.SetSelectedOption(4)
 			table.UpdateRows(table.GetForeignKeys())
-		} else if rune == '5' {
+		} else if eventKey == '5' {
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
 		}
 	}
+	if rowCount == 1 || colCount == 0 {
+		return nil
+	}
 
-	if rune == '/' {
+	if eventKey == '/' {
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
 			table.Editor.Highlight()
@@ -353,7 +356,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 		table.SetInputCapture(nil)
-	} else if rune == 'c' {
+	} else if eventKey == 'c' {
 		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string, row, col int) {
 			cellReference := table.GetCell(row, 0).GetReference()
 
@@ -361,35 +364,35 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
 			}
 		})
-	} else if rune == 'w' {
+	} else if eventKey == 'w' {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
 		}
-	} else if rune == 'b' {
+	} else if eventKey == 'b' {
 		if selectedColumnIndex > 0 {
 			table.Select(selectedRowIndex, selectedColumnIndex-1)
 		}
-	} else if rune == '$' {
+	} else if eventKey == '$' {
 		table.Select(selectedRowIndex, colCount-1)
-	} else if rune == '0' {
+	} else if eventKey == '0' {
 		table.Select(selectedRowIndex, 0)
-	} else if rune == 'g' {
+	} else if eventKey == 'g' {
 		go table.Select(1, selectedColumnIndex)
-	} else if rune == 'G' {
+	} else if eventKey == 'G' {
 		go table.Select(rowCount-1, selectedColumnIndex)
-	} else if rune == 4 { // Ctrl + D
+	} else if eventKey == 4 { // Ctrl + D
 		if selectedRowIndex+7 > rowCount-1 {
 			go table.Select(rowCount-1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex+7, selectedColumnIndex)
 		}
-	} else if rune == 21 { // Ctrl + U
+	} else if eventKey == 21 { // Ctrl + U
 		if selectedRowIndex-7 < 1 {
 			go table.Select(1, selectedColumnIndex)
 		} else {
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
-	} else if rune == 'd' {
+	} else if eventKey == 'd' {
 		if table.Menu.GetSelectedOption() == 1 {
 			isAnInsertedRow := false
 			indexOfInsertedRow := -1
@@ -426,7 +429,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 
 		}
-	} else if rune == 'o' {
+	} else if eventKey == 'o' {
 		if table.Menu.GetSelectedOption() == 1 {
 
 			newRow := make([]string, table.GetColumnCount())
@@ -474,16 +477,16 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if len(table.GetRecords()) > 0 {
-		if rune == 'J' {
+		if eventKey == 'J' {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "DESC")
 
-		} else if rune == 'K' {
+		} else if eventKey == 'K' {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
-		} else if rune == 'y' {
+		} else if eventKey == 'y' {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 
 			if selectedCell != nil {
