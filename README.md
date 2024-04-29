@@ -171,9 +171,11 @@ Support for multiple RDBMS is a work in progress.
 
 ### Tree
 
-| Key | Action            |
-| --- | ----------------- |
-| L   | Focus table panel |
+| Key | Action                         |
+| --- | ------------------------------ |
+| L   | Focus table panel              |
+| G   | Focus last database tree node  |
+| g   | Focus first database tree node |
 
 ### SQL Editor
 
