@@ -1,6 +1,8 @@
 package components
 
 import (
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/gdamore/tcell/v2"
@@ -32,10 +34,12 @@ func NewSQLEditor() *SQLEditor {
 	}
 
 	sqlEditor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 18 { // Ctrl + R
+		command := app.Keymaps.Group("editor").Resolve(event)
+
+		if command == commands.Execute {
 			sqlEditor.Publish("Query", sqlEditor.GetText())
 			return nil
-		} else if event.Key() == tcell.KeyEscape {
+		} else if command == commands.Quit {
 			sqlEditor.Publish("Escape", "")
 		}
 
