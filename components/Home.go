@@ -1,6 +1,7 @@
 package components
 
 import (
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -164,19 +165,21 @@ func (home *Home) focusLeftWrapper() {
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	var tab *Tab
 
-	if event.Rune() == '[' {
+	command := app.Keymaps.Group("table").Resolve(event)
+
+	if command == commands.TabPrev {
 		focusTab(home.TabbedPane.SwitchToPreviousTab())
 		return nil
-	} else if event.Rune() == ']' {
+	} else if command == commands.TabNext {
 		focusTab(home.TabbedPane.SwitchToNextTab())
 		return nil
-	} else if event.Rune() == '{' {
+	} else if command == commands.TabFirst {
 		focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
-	} else if event.Rune() == '}' {
+	} else if command == commands.TabLast {
 		focusTab(home.TabbedPane.SwitchToLastTab())
 		return nil
-	} else if event.Rune() == 'X' {
+	} else if command == commands.TabClose {
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
@@ -191,7 +194,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 				}
 			}
 		}
-	} else if event.Rune() == '<' {
+	} else if command == commands.PagePrev {
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
@@ -205,7 +208,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 		}
 
-	} else if event.Rune() == '>' {
+	} else if command == commands.PageNext {
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
@@ -230,15 +233,17 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		table = tab.Content
 	}
 
-	if event.Rune() == 'H' {
+	command := app.Keymaps.Resolve(event)
+
+	if command == commands.MoveLeft {
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "right" {
 			home.focusLeftWrapper()
 		}
-	} else if event.Rune() == 'L' {
+	} else if command == commands.MoveRight {
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "left" {
 			home.focusRightWrapper()
 		}
-	} else if event.Rune() == 5 {
+	} else if command == commands.SwitchToEditorView {
 		tab := home.TabbedPane.GetTabByName("Editor")
 
 		if tab != nil {
@@ -250,11 +255,11 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 		home.focusRightWrapper()
 		App.ForceDraw()
-	} else if event.Rune() == 127 {
+	} else if command == commands.SwitchToConnectionsView {
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
 			MainPages.SwitchToPage("Connections")
 		}
-	} else if event.Rune() == 'q' {
+	} else if command == commands.Quit {
 		if tab != nil {
 			table := tab.Content
 
@@ -264,7 +269,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		} else {
 			App.Stop()
 		}
-	} else if event.Rune() == 19 {
+	} else if command == commands.Save {
 		if (home.ListOfDbChanges != nil && len(home.ListOfDbChanges) > 0) || (home.ListOfDbInserts != nil && len(home.ListOfDbInserts) > 0) && !table.GetIsEditing() {
 			confirmationModal := NewConfirmationModal("")
 

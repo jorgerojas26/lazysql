@@ -3,6 +3,8 @@ package components
 import (
 	"fmt"
 
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 
@@ -114,8 +116,10 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	})
 
 	tree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Rune() {
-		case 'G':
+		command := app.Keymaps.Group("tree").Resolve(event)
+
+		switch command {
+		case commands.GotoTop:
 			childrens := tree.GetRoot().GetChildren()
 			lastNode := childrens[len(childrens)-1]
 
@@ -126,10 +130,18 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			} else {
 				tree.SetCurrentNode(lastNode)
 			}
-		case 'g':
+		case commands.GotoBottom:
 			tree.SetCurrentNode(rootNode)
+		case commands.MoveDown:
+			tree.Move(1)
+		case commands.MoveUp:
+			tree.Move(-1)
+		case commands.Execute:
+			// Can't "select" the current node via TreeView api.
+			// So fake it by sending it a Enter key event
+			return tcell.NewEventKey(tcell.KeyEnter, 0, 0)
 		}
-		return event
+		return nil
 	})
 
 	return tree

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/models"
 
 	"github.com/jorgerojas26/lazysql/drivers"
@@ -258,7 +260,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		return nil
 	}
 
-	if eventKey == '/' {
+	command := app.Keymaps.Group("table").Resolve(event)
+
+	if command == commands.Search {
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
 			table.Editor.Highlight()
@@ -356,7 +360,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 		table.SetInputCapture(nil)
-	} else if eventKey == 'c' {
+	} else if command == commands.Edit {
 		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string, row, col int) {
 			cellReference := table.GetCell(row, 0).GetReference()
 
@@ -364,21 +368,21 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
 			}
 		})
-	} else if eventKey == 'w' {
+	} else if command == commands.GotoNext {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
 		}
-	} else if eventKey == 'b' {
+	} else if command == commands.GotoPrev {
 		if selectedColumnIndex > 0 {
 			table.Select(selectedRowIndex, selectedColumnIndex-1)
 		}
-	} else if eventKey == '$' {
+	} else if command == commands.GotoEnd {
 		table.Select(selectedRowIndex, colCount-1)
-	} else if eventKey == '0' {
+	} else if command == commands.GotoStart {
 		table.Select(selectedRowIndex, 0)
-	} else if eventKey == 'g' {
+	} else if command == commands.GotoBottom {
 		go table.Select(1, selectedColumnIndex)
-	} else if eventKey == 'G' {
+	} else if command == commands.GotoTop {
 		go table.Select(rowCount-1, selectedColumnIndex)
 	} else if eventKey == 4 { // Ctrl + D
 		if selectedRowIndex+7 > rowCount-1 {
@@ -392,7 +396,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		} else {
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
-	} else if eventKey == 'd' {
+	} else if command == commands.Delete {
 		if table.Menu.GetSelectedOption() == 1 {
 			isAnInsertedRow := false
 			indexOfInsertedRow := -1
@@ -486,7 +490,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
-		} else if eventKey == 'y' {
+		} else if command == commands.Copy {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 
 			if selectedCell != nil {
