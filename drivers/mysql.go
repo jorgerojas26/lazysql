@@ -115,6 +115,9 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 
 func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) != 2 {
+		return results, fmt.Errorf("invalid table parameter. Expected format: database.table")
+	}
 	database := splitTableString[0]
 	tableName := splitTableString[1]
 
@@ -153,6 +156,9 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 
 func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
 	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) != 2 {
+		return results, fmt.Errorf("invalid table parameter. Expected format: database.table")
+	}
 	database := splitTableString[0]
 	tableName := splitTableString[1]
 
