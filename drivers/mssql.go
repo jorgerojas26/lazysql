@@ -75,7 +75,11 @@ func (db *MsSql) GetTables(database string) (map[string][]string, error) {
 			return nil, err
 		}
 
-		tables[table] = []string{}
+		if _, ok := tables[database]; !ok {
+			tables[database] = make([]string, 0)
+		}
+
+		tables[database] = append(tables[database], table)
 	}
 
 	return tables, nil
