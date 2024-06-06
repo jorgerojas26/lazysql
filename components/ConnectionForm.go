@@ -172,6 +172,8 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		db = &drivers.Postgres{}
 	case "sqlite3":
 		db = &drivers.SQLite{}
+	case "sqlserver", "mssql":
+		db = &drivers.MsSql{}
 	}
 
 	err = db.TestConnection(connectionString)

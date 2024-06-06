@@ -11,6 +11,8 @@ import (
 	"github.com/xo/dburl"
 )
 
+var _ Driver = &SQLite{}
+
 type SQLite struct {
 	Connection *sql.DB
 	Provider   string

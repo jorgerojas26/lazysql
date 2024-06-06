@@ -12,6 +12,8 @@ import (
 	_ "github.com/lib/pq"
 )
 
+var _ Driver = &Postgres{}
+
 type Postgres struct {
 	Connection *sql.DB
 	Provider   string

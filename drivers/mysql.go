@@ -12,6 +12,8 @@ import (
 	"github.com/xo/dburl"
 )
 
+var _ Driver = &MySQL{}
+
 type MySQL struct {
 	Connection *sql.DB
 	Provider   string
