@@ -3,6 +3,8 @@ package drivers
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/jorgerojas26/lazysql/models"
 	_ "github.com/microsoft/go-mssqldb"
@@ -361,8 +363,71 @@ func (db *MsSql) ExecuteDMLStatement(query string) (string, error) {
 }
 
 func (db *MsSql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) error {
-	// TODO: Implement this method
-	return nil
+	return withTransaction(db.Connection, func(tx *sql.Tx) error {
+		// Group changes
+		groupedUpdated := make(map[string][]models.DbDmlChange)
+		groupedDeletes := make([]models.DbDmlChange, 0, len(changes))
+		for _, change := range changes {
+			if change.Type == "UPDATE" {
+				key := fmt.Sprintf("%s|%s|%s", change.Table, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
+				groupedUpdated[key] = append(groupedUpdated[key], change)
+			} else if change.Type == "DELETE" {
+				groupedDeletes = append(groupedDeletes, change)
+			}
+		}
+
+		// Execute updates
+		for key, changes := range groupedUpdated {
+			columns := []string{}
+
+			// Split key into table and rowId
+			splitted := strings.Split(key, "|")
+			table := splitted[0]
+			primaryKeyColumnName := splitted[1]
+			primaryKeyValue := splitted[2]
+
+			for _, change := range changes {
+				columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
+			}
+			updateClause := strings.Join(columns, ", ")
+
+			query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s';", table, updateClause, primaryKeyColumnName, primaryKeyValue)
+			_, err := tx.Exec(query)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Execute deletes
+		for _, delete := range groupedDeletes {
+			query := fmt.Sprintf("DELETE FROM %s WHERE %s = '%s';", delete.Table, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
+			_, err := tx.Exec(query)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Execute inserts
+		for _, insert := range inserts {
+			values := make([]string, 0, len(insert.Values))
+			for _, value := range insert.Values {
+				_, err := strconv.ParseFloat(value, 64)
+				if err != nil {
+					values = append(values, fmt.Sprintf("'%s'", value))
+				} else {
+					values = append(values, value)
+				}
+			}
+
+			query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);", insert.Table, strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
+			_, err := tx.Exec(query)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 func (db *MsSql) SetProvider(provider string) {
