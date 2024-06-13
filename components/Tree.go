@@ -119,7 +119,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		command := app.Keymaps.Group("tree").Resolve(event)
 
 		switch command {
-		case commands.GotoTop:
+		case commands.GotoBottom:
 			childrens := tree.GetRoot().GetChildren()
 			lastNode := childrens[len(childrens)-1]
 
@@ -130,7 +130,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			} else {
 				tree.SetCurrentNode(lastNode)
 			}
-		case commands.GotoBottom:
+		case commands.GotoTop:
 			tree.SetCurrentNode(rootNode)
 		case commands.MoveDown:
 			tree.Move(1)
