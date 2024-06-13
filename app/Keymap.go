@@ -63,6 +63,7 @@ var Keymaps KeymapSystem = KeymapSystem{
 			Bind{Key: Key{Char: 'b'}, Cmd: GotoPrev},
 			Bind{Key: Key{Char: '$'}, Cmd: GotoEnd},
 			Bind{Key: Key{Char: '0'}, Cmd: GotoStart},
+			Bind{Key: Key{Char: 'y'}, Cmd: Copy},
 			// Tabs
 			Bind{Key: Key{Char: '['}, Cmd: TabPrev},
 			Bind{Key: Key{Char: ']'}, Cmd: TabNext},
