@@ -185,6 +185,7 @@ Support for multiple RDBMS is a work in progress.
 | CTRL + Space | Open external editor(Linux only)  |
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.
+
 Specific terminal for opening editor can be set by `$SQL_TERMINAL`
 
 ## Example connection URLs
