@@ -92,8 +92,8 @@ func (s *SQLEditor) SetBlur() {
 */
 
 func openExternalEditor(s *SQLEditor) string {
-	// Path of temporary file
-	path := "/tmp/lazysql.sql"
+	// Current folder as path of temporary file
+	path := "./lazysql.sql"
 
 	editor := getEditor()
 	terminal := getTerminal()
@@ -113,6 +113,9 @@ func openExternalEditor(s *SQLEditor) string {
 		return s.TextArea.GetText()
 	}
 
+	// Remove the temporary file with the end of function
+	defer os.Remove(path)
+
 	// Setup command
 	cmd := exec.Command(terminal, "-e", editor, path)
 	cmd.Stdin = os.Stdin
@@ -129,13 +132,6 @@ func openExternalEditor(s *SQLEditor) string {
 	updatedContent, err := os.ReadFile(path)
 	if err != nil {
 		return s.TextArea.GetText()
-	}
-
-	// Remove the temporary file
-	err = os.Remove(path)
-
-	if err != nil {
-		// TODO: Handle error
 	}
 
 	// Convert to string before returning
@@ -167,9 +163,17 @@ func getTerminal() string {
 	if terminal == "" {
 		terminal = os.Getenv("TERMINAL")
 	}
+	
+	// Check if x-terminal-emulator exists.
+	x_term_emu, err := exec.LookPath("x-terminal-emulator")
+
+	// If exists then set terminal as x-terminal-emulator
+	if err == nil {
+		terminal = x_term_emu
+	}
 
 	if terminal == "" {
-		terminal = "xterm"		// use "xterm" if $TERMINAL not set
+		terminal = "xterm"			// use "xterm" if none of the above exists
 	}
 
 	return terminal
