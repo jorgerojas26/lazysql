@@ -182,7 +182,7 @@ Support for multiple RDBMS is a work in progress.
 | Key          | Action                            |
 | ------------ | --------------------------------- |
 | CTRL + R     | Run the SQL statement             |
-| CTRL + Space | Open external editor(Linux only)  |
+| CTRL + Space | Open external editor (Linux only)  |
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.
 
