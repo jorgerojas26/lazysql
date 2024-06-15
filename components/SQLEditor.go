@@ -126,7 +126,9 @@ func openExternalEditor(s *SQLEditor) string {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 
+	// ----
 	// cmd.Stderr = os.Stderr
+	// ----
 
 	err = cmd.Run()
 	if err != nil {
@@ -155,7 +157,7 @@ func getEditor() string {
 	}
 
 	if editor == "" {
-		editor = "vi" 		// use "vi" if $EDITOR not set
+		editor = "vi" 			// use "vi" if $EDITOR not set
 	}
 
 	return editor
@@ -169,16 +171,16 @@ func getTerminal() string {
 		terminal = os.Getenv("TERMINAL")
 	}
 	
-	// Check if x-terminal-emulator exists.
-	x_term_emu, err := exec.LookPath("x-terminal-emulator")
+	if terminal == "" {
+		terminal = "xterm"
+	}
+
+	// Check if x-terminal-emulator exists
+	terminalEmulator, err := exec.LookPath("x-terminal-emulator")
 
 	// If exists then set terminal as x-terminal-emulator
 	if err == nil {
-		terminal = x_term_emu
-	}
-
-	if terminal == "" {
-		terminal = "xterm"			// use "xterm" if none of the above exists
+		terminal = terminalEmulator			// overload `terminal` if terminalEmulator exists
 	}
 
 	return terminal
