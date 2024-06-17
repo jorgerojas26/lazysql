@@ -8,9 +8,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/jorgerojas26/lazysql/models"
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type SQLEditorState struct {
@@ -42,7 +42,7 @@ func NewSQLEditor() *SQLEditor {
 			return nil
 		} else if command == commands.Quit {
 			sqlEditor.Publish("Escape", "")
-		} else if event.Key() == tcell.KeyCtrlSpace && runtime.GOOS == "linux" { 
+		} else if command == commands.OpenInExternalEditor && runtime.GOOS == "linux" {
 			// ----- THIS IS A LINUX-ONLY FEATURE, for now
 
 			text := openExternalEditor(sqlEditor)
@@ -88,7 +88,6 @@ func (s *SQLEditor) SetBlur() {
 	s.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
 }
 
-
 /*
 	THIS FUNCTION OPENS EXTERNAL EDITOR.
 
@@ -107,10 +106,10 @@ func openExternalEditor(s *SQLEditor) string {
 	content := []byte(s.TextArea.GetText())
 
 	/*
-	0644 Permission
-	* User: read & write
-	* Group: read
-	* Other: read
+		0644 Permission
+		* User: read & write
+		* Group: read
+		* Other: read
 	*/
 
 	err := os.WriteFile(path, content, 0644)
@@ -157,7 +156,7 @@ func getEditor() string {
 	}
 
 	if editor == "" {
-		editor = "vi" 			// use "vi" if $EDITOR not set
+		editor = "vi" // use "vi" if $EDITOR not set
 	}
 
 	return editor
@@ -170,7 +169,7 @@ func getTerminal() string {
 	if terminal == "" {
 		terminal = os.Getenv("TERMINAL")
 	}
-	
+
 	if terminal == "" {
 		terminal = "xterm"
 	}
@@ -180,7 +179,7 @@ func getTerminal() string {
 
 	// If exists then set terminal as x-terminal-emulator
 	if err == nil {
-		terminal = terminalEmulator			// overload `terminal` if terminalEmulator exists
+		terminal = terminalEmulator // overload `terminal` if terminalEmulator exists
 	}
 
 	return terminal

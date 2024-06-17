@@ -77,6 +77,7 @@ var Keymaps KeymapSystem = KeymapSystem{
 		"editor": {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: Execute},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: Quit},
+			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: OpenInExternalEditor},
 		},
 	},
 }
