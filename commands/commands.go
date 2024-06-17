@@ -41,6 +41,7 @@ const (
 	Search
 	Quit
 	Execute
+	OpenInExternalEditor
 )
 
 func (c Command) String() string {
@@ -109,6 +110,8 @@ func (c Command) String() string {
 		return "Quit"
 	case Execute:
 		return "Execute"
+	case OpenInExternalEditor:
+		return "OpenInExternalEditor"
 	}
 	return "Unknown"
 }
