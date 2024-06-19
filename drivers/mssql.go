@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jorgerojas26/lazysql/helpers/log"
 	"github.com/jorgerojas26/lazysql/models"
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/xo/dburl"
@@ -16,6 +17,11 @@ var _ Driver = &MsSql{}
 type MsSql struct {
 	Connection *sql.DB
 	Provider   string
+
+	// Used to store the last database used
+	// todo: i think the interface should be altered, so that always the database of question is passed
+	// this is more like a quick and dirty. The driver _assumes_ that the last database viewed is the one to be used
+	lastDatabase string
 }
 
 func (db *MsSql) TestConnection(urlstr string) (err error) {
@@ -61,7 +67,9 @@ func (db *MsSql) GetDatabases() ([]string, error) {
 }
 
 func (db *MsSql) GetTables(database string) (map[string][]string, error) {
-	rows, err := db.Connection.Query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_CATALOG = @database", sql.Named("database", database))
+	log.Debug("Getting tables", map[string]any{"driver": db.Provider, "database": database})
+	db.lastDatabase = database
+	rows, err := db.Connection.Query(fmt.Sprintf("USE %s; SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_CATALOG = @database", database), sql.Named("database", database))
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +94,9 @@ func (db *MsSql) GetTables(database string) (map[string][]string, error) {
 }
 
 func (db *MsSql) GetTableColumns(database, table string) (results [][]string, err error) {
-	query := `
+	log.Debug("Getting columns", map[string]any{"driver": db.Provider, "table": table, "database": database})
+	query := fmt.Sprintf(`
+		USE %s;
 		SELECT 
 			COLUMN_NAME, 
 			DATA_TYPE, 
@@ -101,10 +111,11 @@ func (db *MsSql) GetTableColumns(database, table string) (results [][]string, er
 			TABLE_NAME = @table 
 			AND TABLE_CATALOG = @database 
 			AND TABLE_SCHEMA = 'dbo';
-	`
+	`, database)
 
 	rows, err := db.Connection.Query(query, sql.Named("table", table), sql.Named("database", database))
 	if err != nil {
+		log.Error("failed to get columns", map[string]any{"driver": db.Provider, "table": table, "database": database, "error": err})
 		return results, err
 	}
 	defer rows.Close()
@@ -142,7 +153,24 @@ func (db *MsSql) GetTableColumns(database, table string) (results [][]string, er
 }
 
 func (db *MsSql) GetConstraints(table string) ([][]string, error) {
-	query := `
+	log.Debug("Getting constraints", map[string]any{"driver": db.Provider, "table": table})
+
+	// todo: the database should be passed as a parameter
+	var database string
+	if strings.Contains(table, ".") {
+		splitted := strings.Split(table, ".")
+		database = splitted[0]
+		table = splitted[1]
+	}
+
+	query := ""
+
+	if database != "" {
+		db.lastDatabase = database
+		query = fmt.Sprintf("USE %s;\n", database)
+	}
+
+	query += `
 	SELECT 
 		tc.CONSTRAINT_NAME, 
 		tc.CONSTRAINT_TYPE, 
@@ -159,6 +187,7 @@ func (db *MsSql) GetConstraints(table string) ([][]string, error) {
 `
 	rows, err := db.Connection.Query(query, sql.Named("table", table))
 	if err != nil {
+		log.Error("failed to get constraints", map[string]any{"driver": db.Provider, "table": table, "error": err})
 		return nil, err
 	}
 	defer rows.Close()
@@ -178,8 +207,38 @@ func (db *MsSql) GetConstraints(table string) ([][]string, error) {
 }
 
 func (db *MsSql) GetForeignKeys(table string) ([][]string, error) {
-	rows, err := db.Connection.Query("SELECT FK.name, C.name, T.name FROM sys.foreign_keys FK JOIN sys.tables T ON FK.parent_object_id = T.object_id JOIN sys.columns C ON FK.parent_object_id = C.object_id WHERE T.name = @table", sql.Named("table", table))
+	log.Debug("Getting foreign keys", map[string]any{"driver": db.Provider, "table": table})
+
+	// todo: the database should be passed as a parameter
+	var database string
+	if strings.Contains(table, ".") {
+		splitted := strings.Split(table, ".")
+		database = splitted[0]
+		table = splitted[1]
+	}
+
+	query := ""
+
+	if database != "" {
+		db.lastDatabase = database
+		query = fmt.Sprintf("USE %s;\n", database)
+	}
+
+	query += `
+		SELECT 
+			FK.name, 
+			C.name, 
+			T.name 
+		FROM sys.foreign_keys FK 
+		JOIN sys.tables T 
+		ON FK.parent_object_id = T.object_id 
+		JOIN sys.columns C 
+		ON FK.parent_object_id = C.object_id 
+		WHERE T.name = @table;`
+
+	rows, err := db.Connection.Query(query, sql.Named("table", table))
 	if err != nil {
+		log.Error("failed to get foreign keys", map[string]any{"driver": db.Provider, "table": table, "error": err})
 		return nil, err
 	}
 	defer rows.Close()
@@ -199,8 +258,28 @@ func (db *MsSql) GetForeignKeys(table string) ([][]string, error) {
 }
 
 func (db *MsSql) GetIndexes(table string) ([][]string, error) {
-	rows, err := db.Connection.Query("SELECT name, type_desc FROM sys.indexes WHERE object_id = OBJECT_ID(@table)", sql.Named("table", table))
+	log.Debug("Getting indexes", map[string]any{"driver": db.Provider, "table": table})
+
+	// todo: the database should be passed as a parameter
+	var database string
+	if strings.Contains(table, ".") {
+		splitted := strings.Split(table, ".")
+		database = splitted[0]
+		table = splitted[1]
+	}
+
+	query := ""
+
+	if database != "" {
+		db.lastDatabase = database
+		query = fmt.Sprintf("USE %s;\n", database)
+	}
+
+	query += "SELECT name, type_desc FROM sys.indexes WHERE object_id = OBJECT_ID(@table);"
+
+	rows, err := db.Connection.Query(query, sql.Named("table", table))
 	if err != nil {
+		log.Error("failed to get indexes", map[string]any{"driver": db.Provider, "table": table, "error": err})
 		return nil, err
 	}
 	defer rows.Close()
@@ -220,11 +299,27 @@ func (db *MsSql) GetIndexes(table string) ([][]string, error) {
 }
 
 func (db *MsSql) GetRecords(table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
+	log.Debug("Getting records", map[string]any{"driver": db.Provider, "table": table, "where": where, "sort": sort, "offset": offset, "limit": limit})
 	defaultLimit := 300
 
 	isPaginationEnabled := offset >= 0 && limit >= 0
 
-	query := fmt.Sprintf("SELECT * FROM %s", table)
+	// todo: the database should be passed as a parameter
+	var database string
+	if strings.Contains(table, ".") {
+		splitted := strings.Split(table, ".")
+		database = splitted[0]
+		table = splitted[1]
+	}
+
+	query := ""
+
+	if database != "" {
+		db.lastDatabase = database
+		query = fmt.Sprintf("USE %s;\n", database)
+	}
+
+	query += fmt.Sprintf("SELECT * FROM %s", table)
 	if where != "" {
 		query += fmt.Sprintf(" WHERE %s", where)
 	}
@@ -244,22 +339,25 @@ func (db *MsSql) GetRecords(table, where, sort string, offset, limit int) (pagin
 
 	paginatedRows, err := db.Connection.Query(query)
 	if err != nil {
+		log.Error("failed to get records", map[string]any{"driver": db.Provider, "table": table, "where": where, "sort": sort, "offset": offset, "limit": limit, "error": err, "sql": query})
 		return paginatedResults, totalRecords, err
 	}
 	defer paginatedRows.Close()
 
 	if isPaginationEnabled {
-		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
+		queryWithoutLimit := fmt.Sprintf("USE %s; SELECT COUNT(*) FROM %s", database, table)
 		if where != "" {
 			queryWithoutLimit += fmt.Sprintf(" WHERE %s", where)
 		}
 
 		rows := db.Connection.QueryRow(queryWithoutLimit)
 		if err != nil {
+			log.Error("failed to get total records", map[string]any{"driver": db.Provider, "table": table, "where": where, "sort": sort, "offset": offset, "limit": limit, "error": err, "sql": queryWithoutLimit})
 			return paginatedResults, totalRecords, err
 		}
 
 		if err := rows.Scan(&totalRecords); err != nil {
+			log.Error("failed to scan total records", map[string]any{"driver": db.Provider, "table": table, "where": where, "sort": sort, "offset": offset, "limit": limit, "error": err})
 			return paginatedResults, totalRecords, err
 		}
 	}
@@ -297,8 +395,12 @@ func (db *MsSql) GetRecords(table, where, sort string, offset, limit int) (pagin
 }
 
 func (db *MsSql) ExecuteQuery(query string) ([][]string, error) {
+	log.Debug("Executing query", map[string]any{"driver": db.Provider, "query": query})
+
+	query = fmt.Sprintf("USE %s; %s", db.lastDatabase, query)
 	rows, err := db.Connection.Query(query)
 	if err != nil {
+		log.Error("failed to execute query", map[string]any{"driver": db.Provider, "query": query, "error": err})
 		return nil, err
 	}
 	defer rows.Close()
@@ -333,7 +435,7 @@ func (db *MsSql) ExecuteQuery(query string) ([][]string, error) {
 }
 
 func (db *MsSql) UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
-	query := fmt.Sprintf("UPDATE %s SET %s = @value WHERE %s = @primaryKeyValue", table, column, primaryKeyColumnName)
+	query := fmt.Sprintf("USE %s; UPDATE %s SET %s = @value WHERE %s = @primaryKeyValue", db.lastDatabase, table, column, primaryKeyColumnName)
 	_, err := db.Connection.Exec(query, sql.Named("value", value), sql.Named("primaryKeyValue", primaryKeyValue))
 	if err != nil {
 		return err
@@ -343,7 +445,17 @@ func (db *MsSql) UpdateRecord(table, column, value, primaryKeyColumnName, primar
 }
 
 func (db *MsSql) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s = @primaryKeyValue", table, primaryKeyColumnName)
+	var database string
+	if strings.Contains(table, ".") {
+		splitted := strings.Split(table, ".")
+		database = splitted[0]
+		table = splitted[1]
+	}
+	if database != "" {
+		db.lastDatabase = database
+	}
+
+	query := fmt.Sprintf("USE %s; DELETE FROM %s WHERE %s = @primaryKeyValue", db.lastDatabase, table, primaryKeyColumnName)
 	_, err := db.Connection.Exec(query, sql.Named("primaryKeyValue", primaryKeyValue))
 	if err != nil {
 		return err
@@ -353,6 +465,8 @@ func (db *MsSql) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue strin
 }
 
 func (db *MsSql) ExecuteDMLStatement(query string) (string, error) {
+	log.Debug("Executing DML statement", map[string]any{"driver": db.Provider, "query": query})
+	query = fmt.Sprintf("USE %s; %s", db.lastDatabase, query)
 	res, err := db.Connection.Exec(query)
 	if err != nil {
 		return "", err
@@ -395,7 +509,7 @@ func (db *MsSql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 			}
 			updateClause := strings.Join(columns, ", ")
 
-			query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s';", table, updateClause, primaryKeyColumnName, primaryKeyValue)
+			query := fmt.Sprintf("USE %s; UPDATE %s SET %s WHERE %s = '%s';", db.lastDatabase, table, updateClause, primaryKeyColumnName, primaryKeyValue)
 			_, err := tx.Exec(query)
 			if err != nil {
 				return err
@@ -404,7 +518,7 @@ func (db *MsSql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 
 		// Execute deletes
 		for _, delete := range groupedDeletes {
-			query := fmt.Sprintf("DELETE FROM %s WHERE %s = '%s';", delete.Table, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
+			query := fmt.Sprintf("USE %s; DELETE FROM %s WHERE %s = '%s';", db.lastDatabase, delete.Table, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
 			_, err := tx.Exec(query)
 			if err != nil {
 				return err
@@ -423,7 +537,7 @@ func (db *MsSql) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 				}
 			}
 
-			query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);", insert.Table, strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
+			query := fmt.Sprintf("USE %s; INSERT INTO %s (%s) VALUES (%s);", db.lastDatabase, insert.Table, strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
 			_, err := tx.Exec(query)
 			if err != nil {
 				return err

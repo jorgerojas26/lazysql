@@ -6,3 +6,8 @@ dist/
 test.db
 
 .env
+__debug_*
+
+# logs
+*.jsonl
+*.log
