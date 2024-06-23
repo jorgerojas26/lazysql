@@ -95,8 +95,22 @@ func (db *MsSql) GetTables(database string) (map[string][]string, error) {
 
 func (db *MsSql) GetTableColumns(database, table string) (results [][]string, err error) {
 	log.Debug("Getting columns", map[string]any{"driver": db.Provider, "table": table, "database": database})
-	query := fmt.Sprintf(`
-		USE %s;
+
+	// todo: the database should be passed as a parameter
+	if strings.Contains(table, ".") {
+		splitted := strings.Split(table, ".")
+		database = splitted[0]
+		table = splitted[1]
+	}
+
+	query := ""
+
+	if database != "" {
+		db.lastDatabase = database
+		query = fmt.Sprintf("USE %s;\n", database)
+	}
+
+	query += `
 		SELECT 
 			COLUMN_NAME, 
 			DATA_TYPE, 
@@ -111,7 +125,7 @@ func (db *MsSql) GetTableColumns(database, table string) (results [][]string, er
 			TABLE_NAME = @table 
 			AND TABLE_CATALOG = @database 
 			AND TABLE_SCHEMA = 'dbo';
-	`, database)
+	`
 
 	rows, err := db.Connection.Query(query, sql.Named("table", table), sql.Named("database", database))
 	if err != nil {

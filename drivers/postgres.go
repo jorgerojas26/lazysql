@@ -115,6 +115,9 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 
 func (db *Postgres) GetConstraints(table string) (constraints [][]string, error error) {
 	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) != 2 {
+		return constraints, fmt.Errorf("invalid table parameter. Expected format is schema.table")
+	}
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
@@ -168,6 +171,9 @@ func (db *Postgres) GetConstraints(table string) (constraints [][]string, error 
 
 func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error error) {
 	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) != 2 {
+		return foreignKeys, fmt.Errorf("invalid table parameter. Expected format is schema.table")
+	}
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
@@ -222,6 +228,9 @@ func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error 
 
 func (db *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
 	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) != 2 {
+		return indexes, fmt.Errorf("invalid table parameter. Expected format is schema.table")
+	}
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
