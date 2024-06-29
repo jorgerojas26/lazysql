@@ -433,7 +433,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 
 		}
-	} else if eventKey == 'o' {
+	} else if command == commands.AppendNewRow {
 		if table.Menu.GetSelectedOption() == 1 {
 
 			newRow := make([]string, table.GetColumnCount())
