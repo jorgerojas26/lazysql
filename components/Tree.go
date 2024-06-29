@@ -66,7 +66,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 				childNode := tview.NewTreeNode(child)
 				childNode.SetExpanded(false)
 				childNode.SetReference(child)
-				childNode.SetColor(tcell.ColorWhite.TrueColor())
+				childNode.SetColor(tview.Styles.PrimaryTextColor)
 				rootNode.AddChild(childNode)
 			}
 		}
