@@ -28,7 +28,7 @@ func NewConnectionsTable() *ConnectionsTable {
 		errorTextView: errorTextView,
 	}
 
-	table.SetSelectedStyle(tcell.StyleDefault.Foreground(tview.Styles.SecondaryTextColor).Background(tcell.ColorGray))
+	table.SetSelectedStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tview.Styles.SecondaryTextColor))
 
 	wrapper.AddItem(table, 0, 1, true)
 
