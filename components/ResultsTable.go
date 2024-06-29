@@ -884,10 +884,22 @@ func (table *ResultsTable) FetchRecords() [][]string {
 			table.SetIsFiltering(false)
 		}
 
-		columns, _ := table.DBDriver.GetTableColumns(table.Tree.GetSelectedDatabase(), tableName)
-		constraints, _ := table.DBDriver.GetConstraints(tableName)
-		foreignKeys, _ := table.DBDriver.GetForeignKeys(tableName)
-		indexes, _ := table.DBDriver.GetIndexes(tableName)
+		columns, err := table.DBDriver.GetTableColumns(table.Tree.GetSelectedDatabase(), tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+		constraints, err := table.DBDriver.GetConstraints(tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+		foreignKeys, err := table.DBDriver.GetForeignKeys(tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+		indexes, err := table.DBDriver.GetIndexes(tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
 
 		if len(records) > 0 {
 			table.SetRecords(records)
