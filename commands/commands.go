@@ -42,6 +42,7 @@ const (
 	Quit
 	Execute
 	OpenInExternalEditor
+	AppendNewRow
 )
 
 func (c Command) String() string {
@@ -112,6 +113,8 @@ func (c Command) String() string {
 		return "Execute"
 	case OpenInExternalEditor:
 		return "OpenInExternalEditor"
+	case AppendNewRow:
+		return "AppendNewRow"
 	}
 	return "Unknown"
 }
