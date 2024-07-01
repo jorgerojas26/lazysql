@@ -8,7 +8,7 @@ const (
 	// Views
 	SwitchToEditorView
 	SwitchToConnectionsView
-	OpenKeyMapMenu
+	OpenKeymapMenu
 
 	// Movement: Basic
 	MoveUp

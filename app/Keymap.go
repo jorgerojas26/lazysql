@@ -44,6 +44,7 @@ var Keymaps KeymapSystem = KeymapSystem{
 		Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: Save},
 		Bind{Key: Key{Char: 'q'}, Cmd: Quit},
 		Bind{Key: Key{Code: tcell.KeyBackspace2}, Cmd: SwitchToConnectionsView},
+		Bind{Key: Key{Code: '?'}, Cmd: OpenKeymapMenu},
 	},
 	Groups: map[string]Map{
 		"tree": {
