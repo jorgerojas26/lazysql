@@ -17,6 +17,7 @@ type Home struct {
 	TabbedPane      *TabbedPane
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
+	BottomText      *tview.TextView
 	DBDriver        drivers.Driver
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
@@ -29,18 +30,24 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
+	//This would need to update based on context
+	buttomtext := tview.NewTextView().SetText("KeyBindings: ?").SetTextColor(tcell.ColorBlue)
+
 	home := &Home{
-		Flex:            tview.NewFlex(),
+		Flex:            tview.NewFlex().SetDirection(tview.FlexRow),
 		Tree:            tree,
 		TabbedPane:      tabbedPane,
 		LeftWrapper:     leftWrapper,
 		RightWrapper:    rightWrapper,
+		BottomText:      buttomtext,
 		ListOfDbChanges: []models.DbDmlChange{},
 		ListOfDbInserts: []models.DbInsert{},
 		DBDriver:        dbdriver,
 	}
 
 	go home.subscribeToTreeChanges()
+
+	maincontent := tview.NewFlex()
 
 	leftWrapper.SetBorderColor(tview.Styles.InverseTextColor)
 	leftWrapper.AddItem(tree, 0, 1, true)
@@ -52,8 +59,11 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	home.AddItem(leftWrapper, 30, 1, false)
-	home.AddItem(rightWrapper, 0, 5, false)
+	maincontent.AddItem(leftWrapper, 30, 1, false)
+	maincontent.AddItem(rightWrapper, 0, 5, false)
+
+	home.AddItem(maincontent, 0, 1, false)
+	home.AddItem(buttomtext, 1, 1, false)
 
 	home.SetInputCapture(home.homeInputCapture)
 
@@ -296,6 +306,11 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			})
 
 			MainPages.AddPage("Confirmation", confirmationModal, true, true)
+		}
+	} else if command == commands.OpenKeymapMenu {
+
+		if !table.GetIsEditing() {
+
 		}
 	}
 
