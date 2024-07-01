@@ -18,6 +18,7 @@ type Home struct {
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
 	BottomText      *tview.TextView
+	HelpModal       *HelpModal
 	DBDriver        drivers.Driver
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
@@ -31,7 +32,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper := tview.NewFlex()
 
 	//This would need to update based on context
-	buttomtext := tview.NewTextView().SetText("KeyBindings: ?").SetTextColor(tcell.ColorBlue)
+	buttomtext := tview.NewTextView().SetText("Help: ?").SetTextColor(tcell.ColorBlue)
 
 	home := &Home{
 		Flex:            tview.NewFlex().SetDirection(tview.FlexRow),
@@ -309,8 +310,21 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	} else if command == commands.OpenKeymapMenu {
 
-		if !table.GetIsEditing() {
+		ok := true
+		if table != nil {
+			if table.GetIsEditing() {
+				ok = false
+			}
+		}
 
+		if ok {
+			home.HelpModal = NewHelpModal()
+
+			home.HelpModal.SetDoneFunc(func(_ int, buttonLabel string) {
+				MainPages.RemovePage("Help")
+
+			})
+			MainPages.AddPage("Help", home.HelpModal, false, true)
 		}
 	}
 
