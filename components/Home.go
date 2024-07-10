@@ -320,9 +320,15 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		if ok {
 			home.HelpModal = NewHelpModal()
 
-			home.HelpModal.SetDoneFunc(func(_ int, buttonLabel string) {
-				MainPages.RemovePage("Help")
+			home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 
+				command := app.Keymaps.Resolve(event)
+				if command == commands.Quit {
+					App.Stop()
+				} else if event.Key() == tcell.KeyEsc {
+					MainPages.RemovePage("Help")
+				}
+				return event
 			})
 			MainPages.AddPage("Help", home.HelpModal, false, true)
 		}
