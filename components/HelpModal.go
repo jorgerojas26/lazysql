@@ -13,14 +13,18 @@ type HelpModal struct {
 
 func NewHelpModal() *HelpModal {
 
-	list := tview.NewList().SetSelectedBackgroundColor(tcell.ColorBlue)
+	//Colors
+	BorderColor := tcell.ColorGreen
+	SelectedColor := tcell.ColorBlue
+
+	list := tview.NewList().SetSelectedBackgroundColor(SelectedColor)
 
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(list, 0, 5, true)
 
 	flex.SetBorder(true)
-	flex.SetTitle("Help")
-	flex.SetBorderColor(tcell.ColorGreen)
+	flex.SetTitleColor(BorderColor).SetTitle("Help")
+	flex.SetBorderColor(BorderColor)
 
 	//Magic Number gain from trial and error
 	screenWidth, screenHeight := 145, 30
