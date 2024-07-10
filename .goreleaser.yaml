@@ -51,3 +51,5 @@ brews:
     repository:
       owner: jorgerojas26
       name: homebrew-lazysql
+    test: |
+      system "#{bin}/lazysql version"
