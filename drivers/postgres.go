@@ -13,8 +13,10 @@ import (
 )
 
 type Postgres struct {
-	Connection *sql.DB
-	Provider   string
+	Connection      *sql.DB
+	Provider        string
+	CurrentDatabase string
+	Urlstr          string
 }
 
 func (db *Postgres) Connect(urlstr string) (err error) {
@@ -26,6 +28,17 @@ func (db *Postgres) Connect(urlstr string) (err error) {
 	}
 
 	err = db.Connection.Ping()
+	if err != nil {
+		return err
+	}
+
+	db.Urlstr = urlstr
+
+	// get current database
+
+	rows := db.Connection.QueryRow("SELECT current_database();")
+
+	err = rows.Scan(&db.CurrentDatabase)
 	if err != nil {
 		return err
 	}
@@ -57,6 +70,36 @@ func (db *Postgres) GetDatabases() (databases []string, err error) {
 
 func (db *Postgres) GetTables(database string) (tables map[string][]string, err error) {
 	tables = make(map[string][]string)
+
+	if database != db.CurrentDatabase {
+		parsedConn, err := dburl.Parse(db.Urlstr)
+		if err != nil {
+			return tables, err
+		}
+
+		user := parsedConn.User.Username()
+		password, _ := parsedConn.User.Password()
+		host := parsedConn.Host
+		port := parsedConn.Port()
+		dbname := parsedConn.Path
+
+		if port == "" {
+			port = "5432"
+		}
+
+		if dbname == "" {
+			dbname = database
+		}
+
+		db.Connection.Close()
+
+		db.Connection, err = sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname='%s' sslmode=disable", host, port, user, password, dbname))
+		if err != nil {
+			return tables, err
+		}
+
+		db.CurrentDatabase = database
+	}
 
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = '%s'", database))
 	if err != nil {
