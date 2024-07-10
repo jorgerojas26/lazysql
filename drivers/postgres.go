@@ -324,14 +324,20 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 		defaultLimit = limit
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s s LIMIT %d OFFSET %d", table, defaultLimit, offset)
+	splittedTableName := strings.Split(table, ".")
+	schema := splittedTableName[0]
+	tableName := splittedTableName[1]
+
+	formattedTableName := fmt.Sprintf("\"%s\".\"%s\"", schema, tableName)
+
+	query := fmt.Sprintf("SELECT * FROM %s s LIMIT %d OFFSET %d", formattedTableName, defaultLimit, offset)
 
 	if where != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s LIMIT %d OFFSET %d", table, where, defaultLimit, offset)
+		query = fmt.Sprintf("SELECT * FROM %s %s LIMIT %d OFFSET %d", formattedTableName, where, defaultLimit, offset)
 	}
 
 	if sort != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d OFFSET %d", table, where, sort, defaultLimit, offset)
+		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d OFFSET %d", formattedTableName, where, sort, defaultLimit, offset)
 	}
 
 	paginatedRows, err := db.Connection.Query(query)
@@ -340,7 +346,7 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 	}
 
 	if isPaginationEnabled {
-		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", table, where)
+		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", formattedTableName, where)
 
 		rows := db.Connection.QueryRow(queryWithoutLimit)
 
