@@ -572,7 +572,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 		switch stateChange.Key {
 		case "Filter":
 			if stateChange.Value != "" {
-				rows := table.FetchRecords()
+				rows := table.FetchRecords(nil)
 
 				if len(rows) > 1 {
 					table.Menu.SetSelectedOption(1)
@@ -591,7 +591,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 				}
 
 			} else {
-				table.FetchRecords()
+				table.FetchRecords(nil)
 
 				table.SetInputCapture(table.tableInputCapture)
 				App.SetFocus(table)
@@ -863,7 +863,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	}
 }
 
-func (table *ResultsTable) FetchRecords() [][]string {
+func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 	tableName := table.GetDBReference()
 
 	table.SetLoading(true)
@@ -877,7 +877,7 @@ func (table *ResultsTable) FetchRecords() [][]string {
 	records, totalRecords, err := table.DBDriver.GetRecords(tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 
 	if err != nil {
-		table.SetError(err.Error(), nil)
+		table.SetError(err.Error(), onError)
 		table.SetLoading(false)
 	} else {
 		if table.GetIsFiltering() {

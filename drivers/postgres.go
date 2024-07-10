@@ -13,9 +13,16 @@ import (
 )
 
 type Postgres struct {
-	Connection *sql.DB
-	Provider   string
+	Connection       *sql.DB
+	Provider         string
+	CurrentDatabase  string
+	PreviousDatabase string
+	Urlstr           string
 }
+
+const (
+	DEFAULT_PORT = "5432"
+)
 
 func (db *Postgres) Connect(urlstr string) (err error) {
 	db.SetProvider("postgres")
@@ -26,6 +33,22 @@ func (db *Postgres) Connect(urlstr string) (err error) {
 	}
 
 	err = db.Connection.Ping()
+	if err != nil {
+		return err
+	}
+
+	db.Urlstr = urlstr
+
+	// get current database
+
+	rows := db.Connection.QueryRow("SELECT current_database();")
+
+	database := ""
+
+	err = rows.Scan(&database)
+
+	db.CurrentDatabase = database
+	db.PreviousDatabase = database
 	if err != nil {
 		return err
 	}
@@ -58,8 +81,24 @@ func (db *Postgres) GetDatabases() (databases []string, err error) {
 func (db *Postgres) GetTables(database string) (tables map[string][]string, err error) {
 	tables = make(map[string][]string)
 
+	switchDatabase := false
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return tables, err
+		}
+		switchDatabase = true
+	}
+
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = '%s'", database))
 	if err != nil {
+		if switchDatabase {
+			err = db.SwitchDatabase(db.PreviousDatabase)
+			if err != nil {
+				return tables, err
+			}
+		}
 		return tables, err
 	}
 
@@ -278,6 +317,7 @@ func (db *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
 }
 
 func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (records [][]string, totalRecords int, err error) {
+	table = db.formatTableName(table)
 	defaultLimit := 300
 	isPaginationEnabled := offset >= 0 && limit >= 0
 
@@ -342,6 +382,7 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 }
 
 func (db *Postgres) UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) (err error) {
+	table = db.formatTableName(table)
 	query := fmt.Sprintf("UPDATE %s SET %s = '%s' WHERE \"%s\" = '%s'", table, column, value, primaryKeyColumnName, primaryKeyValue)
 	_, err = db.Connection.Exec(query)
 
@@ -349,6 +390,7 @@ func (db *Postgres) UpdateRecord(table, column, value, primaryKeyColumnName, pri
 }
 
 func (db *Postgres) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue string) (err error) {
+	table = db.formatTableName(table)
 	query := fmt.Sprintf("DELETE FROM %s WHERE \"%s\" = '%s'", table, primaryKeyColumnName, primaryKeyValue)
 	_, err = db.Connection.Exec(query)
 
@@ -412,7 +454,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 	// Group changes by RowId and Table
 	for _, change := range changes {
 		if change.Type == "UPDATE" {
-			key := fmt.Sprintf("%s|%s|%s", change.Table, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
+			key := fmt.Sprintf("%s|%s|%s", db.formatTableName(change.Table), change.PrimaryKeyColumnName, change.PrimaryKeyValue)
 			groupedUpdated[key] = append(groupedUpdated[key], change)
 		} else if change.Type == "DELETE" {
 			groupedDeletes = append(groupedDeletes, change)
@@ -425,7 +467,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 
 		// Split key into table and rowId
 		splitted := strings.Split(key, "|")
-		table := splitted[0]
+		table := db.formatTableName(splitted[0])
 		PrimaryKeyColumnName := splitted[1]
 		primaryKeyValue := splitted[2]
 
@@ -446,7 +488,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 		query := ""
 
 		statementType = "DELETE FROM"
-		query = fmt.Sprintf("%s %s WHERE \"%s\" = '%s'", statementType, del.Table, del.PrimaryKeyColumnName, del.PrimaryKeyValue)
+		query = fmt.Sprintf("%s %s WHERE \"%s\" = '%s'", statementType, db.formatTableName(del.Table), del.PrimaryKeyColumnName, del.PrimaryKeyValue)
 
 		if query != "" {
 			queries = append(queries, query)
@@ -466,7 +508,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 			}
 		}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", insert.Table, strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
+		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", db.formatTableName(insert.Table), strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
 		queries = append(queries, query)
 	}
 
@@ -498,4 +540,52 @@ func (db *Postgres) SetProvider(provider string) {
 
 func (db *Postgres) GetProvider() string {
 	return db.Provider
+}
+
+func (db *Postgres) SwitchDatabase(database string) error {
+	parsedConn, err := dburl.Parse(db.Urlstr)
+	if err != nil {
+		return err
+	}
+
+	user := parsedConn.User.Username()
+	password, _ := parsedConn.User.Password()
+	host := parsedConn.Host
+	port := parsedConn.Port()
+	dbname := parsedConn.Path
+
+	if port == "" {
+		port = DEFAULT_PORT
+	}
+
+	if dbname == "" {
+		dbname = database
+	}
+
+	connection, err := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname='%s' sslmode=disable", host, port, user, password, dbname))
+	if err != nil {
+		return err
+	}
+
+	db.Connection.Close()
+	db.Connection = connection
+	db.PreviousDatabase = db.CurrentDatabase
+	db.CurrentDatabase = database
+
+	return nil
+}
+
+func (db *Postgres) formatTableName(table string) string {
+	splittedTableName := strings.Split(table, ".")
+
+	if len(splittedTableName) == 1 {
+		return table
+	}
+
+	schema := splittedTableName[0]
+	tableName := splittedTableName[1]
+
+	formattedTableName := fmt.Sprintf("\"%s\".\"%s\"", schema, tableName)
+
+	return formattedTableName
 }

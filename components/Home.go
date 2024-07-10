@@ -90,9 +90,13 @@ func (home *Home) subscribeToTreeChanges() {
 				home.TabbedPane.AppendTab(tableName, table)
 			}
 
-			table.FetchRecords()
+			table.FetchRecords(func() {
+				home.focusLeftWrapper()
+			})
 
-			home.focusRightWrapper()
+			if table.state.error == "" {
+				home.focusRightWrapper()
+			}
 
 			app.App.ForceDraw()
 		}
@@ -202,7 +206,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
-				table.FetchRecords()
+				table.FetchRecords(nil)
 
 			}
 
@@ -216,7 +220,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
-				table.FetchRecords()
+				table.FetchRecords(nil)
 			}
 		}
 	}
@@ -287,7 +291,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 						home.ListOfDbChanges = []models.DbDmlChange{}
 						home.ListOfDbInserts = []models.DbInsert{}
 
-						table.FetchRecords()
+						table.FetchRecords(nil)
 						home.Tree.ForceRemoveHighlight()
 
 					}
