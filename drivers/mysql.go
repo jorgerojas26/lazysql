@@ -12,6 +12,8 @@ import (
 	"github.com/xo/dburl"
 )
 
+var _ Driver = &MySQL{}
+
 type MySQL struct {
 	Connection *sql.DB
 	Provider   string
@@ -117,6 +119,9 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 	table = db.formatTableName(table)
 
 	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) != 2 {
+		return results, fmt.Errorf("invalid table parameter. Expected format: database.table")
+	}
 	database := splitTableString[0]
 	tableName := splitTableString[1]
 
@@ -156,6 +161,9 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
 	table = db.formatTableName(table)
 	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) != 2 {
+		return results, fmt.Errorf("invalid table parameter. Expected format: database.table")
+	}
 	database := splitTableString[0]
 	tableName := splitTableString[1]
 
