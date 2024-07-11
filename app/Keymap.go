@@ -79,7 +79,7 @@ var Keymaps KeymapSystem = KeymapSystem{
 		"editor": {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: Execute, Description: "Run Sql Statment"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: Quit, Description: "Quit"},
-			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: OpenInExternalEditor, Description: "Open extranl editer(Linux Only)"},
+			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: OpenInExternalEditor, Description: "Open external editor (Linux Only)"},
 		},
 	},
 }
