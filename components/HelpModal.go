@@ -64,6 +64,7 @@ func NewHelpModal() *HelpModal {
 		r.drawgroup(list, k, v)
 	}
 
+	list.SetCurrentItem(1)
 	return r
 }
 func (modal HelpModal) drawgroup(outtext *tview.List, groupname string, keys Map) {
