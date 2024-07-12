@@ -3,6 +3,7 @@ package components
 import (
 	"github.com/gdamore/tcell/v2"
 	app "github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	. "github.com/jorgerojas26/lazysql/keymap"
 	"github.com/rivo/tview"
 )
@@ -18,6 +19,26 @@ func NewHelpModal() *HelpModal {
 	SelectedColor := tcell.ColorBlue
 
 	list := tview.NewList().SetSelectedBackgroundColor(SelectedColor)
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+
+		command := app.Keymaps.Group("tree").Resolve(event)
+
+		if command == commands.MoveUp {
+			current := list.GetCurrentItem()
+
+			if current-1 >= 0 {
+				list.SetCurrentItem(current - 1)
+			}
+		} else if command == commands.MoveDown {
+
+			current := list.GetCurrentItem()
+
+			if current+1 < list.GetItemCount() {
+				list.SetCurrentItem(current + 1)
+			}
+		}
+		return event
+	})
 
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(list, 0, 5, true)
@@ -42,6 +63,7 @@ func NewHelpModal() *HelpModal {
 	for k, v := range app.Keymaps.Groups {
 		r.drawgroup(list, k, v)
 	}
+
 	return r
 }
 func (modal HelpModal) drawgroup(outtext *tview.List, groupname string, keys Map) {
