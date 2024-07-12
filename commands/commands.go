@@ -55,7 +55,8 @@ func (c Command) String() string {
 		return "SwitchToEditorView"
 	case SwitchToConnectionsView:
 		return "SwitchToConnectionsView"
-
+	case OpenKeymapMenu:
+		return "Help" //This is Help and not OpenKeymapMenu because HelpStatus uses this string
 	// Movement: Basic
 	case MoveUp:
 		return "MoveUp"
