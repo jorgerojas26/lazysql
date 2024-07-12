@@ -46,3 +46,9 @@ func (status *HelpStatus) UpdateText(binds []keymap.Bind) {
 func (status *HelpStatus) SetStatusOnTree() {
 	status.UpdateText(app.Keymaps.Global)
 }
+func (status *HelpStatus) SetStatusOnEditorView() {
+	status.UpdateText(app.Keymaps.Group("editor"))
+}
+func (status *HelpStatus) SetStatusOnTableView() {
+	status.UpdateText(app.Keymaps.Group("table"))
+}
