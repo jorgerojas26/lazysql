@@ -17,7 +17,7 @@ type Home struct {
 	TabbedPane      *TabbedPane
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
-	BottomText      *tview.TextView
+	HelpStatus      HelpStatus
 	HelpModal       *HelpModal
 	DBDriver        drivers.Driver
 	FocusedWrapper  string
@@ -31,16 +31,13 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
-	//This would need to update based on context
-	buttomtext := tview.NewTextView().SetText("Help: ?").SetTextColor(tcell.ColorBlue)
-
 	home := &Home{
 		Flex:            tview.NewFlex().SetDirection(tview.FlexRow),
 		Tree:            tree,
 		TabbedPane:      tabbedPane,
 		LeftWrapper:     leftWrapper,
 		RightWrapper:    rightWrapper,
-		BottomText:      buttomtext,
+		HelpStatus:      NewHelpStatus(),
 		ListOfDbChanges: []models.DbDmlChange{},
 		ListOfDbInserts: []models.DbInsert{},
 		DBDriver:        dbdriver,
@@ -64,7 +61,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
-	home.AddItem(buttomtext, 1, 1, false)
+	home.AddItem(home.HelpStatus, 1, 1, false)
 
 	home.SetInputCapture(home.homeInputCapture)
 
