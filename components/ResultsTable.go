@@ -256,11 +256,59 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.UpdateRows(table.GetIndexes())
 		}
 	}
+
+	command := app.Keymaps.Group("table").Resolve(event)
+
+	if command == commands.AppendNewRow {
+		if table.Menu.GetSelectedOption() == 1 {
+
+			newRow := make([]string, table.GetColumnCount())
+			newRowIndex := table.GetRowCount()
+			newRowUuid := uuid.New()
+
+			for i := 0; i < table.GetColumnCount(); i++ {
+				newRow[i] = "Default"
+			}
+
+			table.InsertRow(newRow, newRowIndex, newRowUuid)
+
+			for i := 0; i < table.GetColumnCount(); i++ {
+				table.GetCell(newRowIndex, i).SetBackgroundColor(tcell.ColorDarkGreen)
+			}
+
+			newInsert := models.DbInsert{
+				Table:           table.GetDBReference(),
+				Columns:         table.GetRecords()[0],
+				Values:          newRow,
+				PrimaryKeyValue: newRowUuid,
+				Option:          1,
+			}
+
+			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
+
+			if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
+				table.Tree.GetCurrentNode().SetColor(InsertColor)
+			} else if table.Tree.GetCurrentNode().GetColor() == DeleteColor {
+				table.Tree.GetCurrentNode().SetColor(ChangeColor)
+			}
+
+			table.Select(newRowIndex, 0)
+
+			App.ForceDraw()
+			table.StartEditingCell(newRowIndex, 0, func(newValue string, row, col int) {
+				cellReference := table.GetCell(row, 0).GetReference()
+
+				if cellReference != nil {
+					table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
+				}
+			})
+
+		}
+	}
+
 	if rowCount == 1 || colCount == 0 {
 		return nil
 	}
-
-	command := app.Keymaps.Group("table").Resolve(event)
 
 	if command == commands.Search {
 		if table.Editor != nil {
@@ -431,51 +479,6 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			} else {
 				table.AppendNewChange("DELETE", table.GetDBReference(), selectedRowIndex, -1, "")
 			}
-
-		}
-	} else if command == commands.AppendNewRow {
-		if table.Menu.GetSelectedOption() == 1 {
-
-			newRow := make([]string, table.GetColumnCount())
-			newRowIndex := table.GetRowCount()
-			newRowUuid := uuid.New()
-
-			for i := 0; i < table.GetColumnCount(); i++ {
-				newRow[i] = "Default"
-			}
-
-			table.InsertRow(newRow, newRowIndex, newRowUuid)
-
-			for i := 0; i < table.GetColumnCount(); i++ {
-				table.GetCell(newRowIndex, i).SetBackgroundColor(tcell.ColorDarkGreen)
-			}
-
-			newInsert := models.DbInsert{
-				Table:           table.GetDBReference(),
-				Columns:         table.GetRecords()[0],
-				Values:          newRow,
-				PrimaryKeyValue: newRowUuid,
-				Option:          1,
-			}
-
-			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
-
-			if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
-				table.Tree.GetCurrentNode().SetColor(InsertColor)
-			} else if table.Tree.GetCurrentNode().GetColor() == DeleteColor {
-				table.Tree.GetCurrentNode().SetColor(ChangeColor)
-			}
-
-			table.Select(newRowIndex, 1)
-
-			App.ForceDraw()
-			table.StartEditingCell(newRowIndex, 1, func(newValue string, row, col int) {
-				cellReference := table.GetCell(row, 0).GetReference()
-
-				if cellReference != nil {
-					table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
-				}
-			})
 
 		}
 	}
