@@ -317,14 +317,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	} else if command == commands.OpenKeymapMenu {
 
-		ok := true
-		if table != nil {
-			if table.GetIsEditing() {
-				ok = false
-			}
-		}
-
-		if ok {
+		if table == nil || !table.GetIsEditing() {
 			home.HelpModal = NewHelpModal()
 
 			home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
