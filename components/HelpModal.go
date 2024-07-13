@@ -14,7 +14,7 @@ type HelpModal struct {
 
 func NewHelpModal() *HelpModal {
 
-	//Colors
+	// Colors
 	BorderColor := tcell.ColorGreen
 	SelectedColor := tcell.ColorBlue
 
