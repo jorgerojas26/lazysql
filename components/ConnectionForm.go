@@ -23,29 +23,29 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	wrapper.SetDirection(tview.FlexColumnCSS)
 
-	addForm := tview.NewForm().SetFieldBackgroundColor(tcell.ColorWhite).SetButtonBackgroundColor(tcell.ColorWhite).SetLabelColor(tcell.ColorWhite.TrueColor()).SetFieldTextColor(tcell.ColorBlack)
+	addForm := tview.NewForm().SetFieldBackgroundColor(tview.Styles.InverseTextColor).SetButtonBackgroundColor(tview.Styles.InverseTextColor).SetLabelColor(tview.Styles.PrimaryTextColor).SetFieldTextColor(tview.Styles.ContrastSecondaryTextColor)
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
 	saveButton := tview.NewButton("[darkred]F1 [black]Save")
-	saveButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	saveButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	testButton := tview.NewButton("[darkred]F2 [black]Test")
-	testButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	testButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	connectButton := tview.NewButton("[darkred]F3 [black]Connect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	cancelButton := tview.NewButton("[darkred]Esc [black]Cancel")
-	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(tview.Styles.PrimaryTextColor)))
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
@@ -161,7 +161,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		return
 	}
 
-	form.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
+	form.StatusText.SetText("Connecting...").SetTextColor(tview.Styles.TertiaryTextColor)
 
 	var db drivers.Driver
 
@@ -179,7 +179,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 	} else {
-		form.StatusText.SetText("Connection success").SetTextColor(tcell.ColorGreen)
+		form.StatusText.SetText("Connection success").SetTextColor(tview.Styles.TertiaryTextColor)
 	}
 	App.ForceDraw()
 }
