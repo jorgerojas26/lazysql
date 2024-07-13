@@ -8,8 +8,9 @@ import (
 
 // Struct that holds a key and a command
 type Bind struct {
-	Key Key
-	Cmd commands.Command
+	Key         Key
+	Cmd         commands.Command
+	Description string
 }
 
 func (b Bind) String() string {
