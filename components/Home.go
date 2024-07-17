@@ -1,14 +1,13 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/commands"
-	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/drivers"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type Home struct {
@@ -78,7 +77,7 @@ func (home *Home) subscribeToTreeChanges() {
 			tableName := stateChange.Value.(string)
 
 			tab := home.TabbedPane.GetTabByName(tableName)
-			var table *ResultsTable = nil
+			var table *ResultsTable
 
 			if tab != nil {
 				table = tab.Content
@@ -231,7 +230,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	tab := home.TabbedPane.GetCurrentTab()
 
-	var table *ResultsTable = nil
+	var table *ResultsTable
 
 	if tab != nil {
 		table = tab.Content

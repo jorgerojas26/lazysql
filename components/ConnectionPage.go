@@ -1,9 +1,9 @@
 package components
 
 import (
-	"github.com/jorgerojas26/lazysql/models"
-
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 func NewConnectionPages() *models.ConnectionPages {
