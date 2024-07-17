@@ -84,7 +84,7 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 }
 
 func (db *SQLite) GetTableColumns(database, table string) (results [][]string, err error) {
-	rows, err := db.Connection.Query("PRAGMA table_info(" + table + ")")
+	rows, err := db.Connection.Query(fmt.Sprintf("PRAGMA %s.table_info(%s)", database, table))
 	if err != nil {
 		return nil, err
 	}

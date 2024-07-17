@@ -84,7 +84,7 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 func (db *MySQL) GetTableColumns(database, table string) (results [][]string, err error) {
 	table = db.formatTableName(table)
 
-	rows, err := db.Connection.Query("DESCRIBE " + table)
+	rows, err := db.Connection.Query(fmt.Sprintf("DESCRIBE %s.%s", database, table))
 	if err != nil {
 		return nil, err
 	}
