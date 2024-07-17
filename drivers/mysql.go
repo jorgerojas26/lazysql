@@ -42,14 +42,14 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 
 	rows, err := db.Connection.Query("SHOW DATABASES")
 	if err != nil {
-		return databases, err
+		return nil, err
 	}
 
 	for rows.Next() {
 		var database string
 		err := rows.Scan(&database)
 		if err != nil {
-			return databases, err
+			return nil, err
 		}
 		if database != "information_schema" && database != "mysql" && database != "performance_schema" && database != "sys" {
 			databases = append(databases, database)
@@ -65,7 +65,7 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	tables := make(map[string][]string)
 
 	if err != nil {
-		return tables, err
+		return nil, err
 	}
 
 	for rows.Next() {
@@ -83,13 +83,13 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 
 	rows, err := db.Connection.Query("DESCRIBE " + table)
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -122,14 +122,14 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'", database, tableName))
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -161,14 +161,14 @@ func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
 
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_SCHEMA = '%s' AND REFERENCED_TABLE_NAME = '%s'", database, tableName))
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -196,7 +196,7 @@ func (db *MySQL) GetIndexes(table string) (results [][]string, err error) {
 	table = db.formatTableName(table)
 	rows, err := db.Connection.Query("SHOW INDEX FROM " + table)
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -245,7 +245,7 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 
 	paginatedRows, err := db.Connection.Query(query)
 	if err != nil {
-		return paginatedResults, totalRecords, err
+		return nil, 0, err
 	}
 
 	if isPaginationEnabled {
@@ -254,7 +254,7 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 		rows := db.Connection.QueryRow(queryWithoutLimit)
 
 		if err != nil {
-			return paginatedResults, totalRecords, err
+			return nil, 0, err
 		}
 
 		rows.Scan(&totalRecords)
@@ -289,7 +289,7 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
@@ -438,8 +438,7 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 	if err != nil {
 		return err
 	}
-
-	return err
+	return nil
 }
 
 func (db *MySQL) SetProvider(provider string) {

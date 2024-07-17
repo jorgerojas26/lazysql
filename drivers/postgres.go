@@ -63,14 +63,14 @@ func (db *Postgres) TestConnection(urlstr string) error {
 func (db *Postgres) GetDatabases() (databases []string, err error) {
 	rows, err := db.Connection.Query("SELECT datname FROM pg_database;")
 	if err != nil {
-		return databases, err
+		return nil, err
 	}
 
 	for rows.Next() {
 		var database string
 		err := rows.Scan(&database)
 		if err != nil {
-			return databases, err
+			return nil, err
 		}
 		databases = append(databases, database)
 	}
@@ -86,7 +86,7 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 	if database != db.CurrentDatabase {
 		err = db.SwitchDatabase(database)
 		if err != nil {
-			return tables, err
+			return nil, err
 		}
 		switchDatabase = true
 	}
@@ -96,10 +96,10 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 		if switchDatabase {
 			err = db.SwitchDatabase(db.PreviousDatabase)
 			if err != nil {
-				return tables, err
+				return nil, err
 			}
 		}
-		return tables, err
+		return tables, nil
 	}
 
 	for rows.Next() {
@@ -120,13 +120,13 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 	tableName := strings.Split(table, ".")[1]
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_schema = '%s' AND table_name = '%s' ORDER by ordinal_position", database, tableSchema, tableName))
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -172,14 +172,14 @@ func (db *Postgres) GetConstraints(table string) (constraints [][]string, error 
             AND tc.table_name = '%s'
             `, tableSchema, tableName))
 	if err != nil {
-		return constraints, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return constraints, err
+		return nil, err
 	}
 
 	constraints = append(constraints, columns)
@@ -226,14 +226,14 @@ func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error 
             AND tc.table_name = '%s'
   `, tableSchema, tableName))
 	if err != nil {
-		return foreignKeys, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return foreignKeys, err
+		return nil, err
 	}
 
 	foreignKeys = append(foreignKeys, columns)
@@ -289,7 +289,7 @@ func (db *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
             i.relname
   `, tableSchema, tableName))
 	if err != nil {
-		return indexes, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -337,7 +337,7 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 
 	paginatedRows, err := db.Connection.Query(query)
 	if err != nil {
-		return records, totalRecords, err
+		return nil, 0, err
 	}
 
 	if isPaginationEnabled {
@@ -346,7 +346,7 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 		rows := db.Connection.QueryRow(queryWithoutLimit)
 
 		if err != nil {
-			return records, totalRecords, err
+			return nil, 0, err
 		}
 
 		err = rows.Scan(&totalRecords)
@@ -412,7 +412,7 @@ func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error)
 func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
@@ -531,7 +531,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 		return err
 	}
 
-	return err
+	return nil
 }
 
 func (db *Postgres) SetProvider(provider string) {

@@ -24,7 +24,6 @@ func (db *SQLite) Connect(urlstr string) (err error) {
 	db.SetProvider("sqlite3")
 
 	db.Connection, err = dburl.Open(urlstr)
-
 	if err != nil {
 		return err
 	}
@@ -42,14 +41,14 @@ func (db *SQLite) GetDatabases() ([]string, error) {
 
 	rows, err := db.Connection.Query("SELECT file FROM pragma_database_list WHERE name='main'")
 	if err != nil {
-		return databases, err
+		return nil, err
 	}
 
 	for rows.Next() {
 		var database string
 		err := rows.Scan(&database)
 		if err != nil {
-			return databases, err
+			return nil, err
 		}
 
 		split := strings.Split(database, "/")
@@ -67,7 +66,7 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 	tables := make(map[string][]string)
 
 	if err != nil {
-		return tables, err
+		return nil, err
 	}
 
 	for rows.Next() {
@@ -83,13 +82,13 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 func (db *SQLite) GetTableColumns(database, table string) (results [][]string, err error) {
 	rows, err := db.Connection.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns[1:])
@@ -121,14 +120,14 @@ func (db *SQLite) GetTableColumns(database, table string) (results [][]string, e
 func (db *SQLite) GetConstraints(table string) (results [][]string, err error) {
 	rows, err := db.Connection.Query("SELECT sql FROM sqlite_master WHERE type='table' AND name = '" + table + "'")
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -159,14 +158,14 @@ func (db *SQLite) GetConstraints(table string) (results [][]string, err error) {
 func (db *SQLite) GetForeignKeys(table string) (results [][]string, err error) {
 	rows, err := db.Connection.Query("PRAGMA foreign_key_list(" + table + ")")
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -197,7 +196,7 @@ func (db *SQLite) GetForeignKeys(table string) (results [][]string, err error) {
 func (db *SQLite) GetIndexes(table string) (results [][]string, err error) {
 	rows, err := db.Connection.Query("PRAGMA index_list(" + table + ")")
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -249,16 +248,15 @@ func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (pagi
 
 	paginatedRows, err := db.Connection.Query(query)
 	if err != nil {
-		return paginatedResults, totalRecords, err
+		return nil, 0, err
 	}
 
 	if isPaginationEnabled {
 		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", table, where)
 
 		rows := db.Connection.QueryRow(queryWithoutLimit)
-
 		if err != nil {
-			return paginatedResults, totalRecords, err
+			return nil, 0, err
 		}
 
 		rows.Scan(&totalRecords)
@@ -297,7 +295,7 @@ func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (pagi
 func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
@@ -436,7 +434,6 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 	for _, query := range queries {
 		fmt.Printf("LS -> drivers/sqlite.go:440 -> query: %+v\n", query)
 		_, err = tx.Exec(query)
-
 		if err != nil {
 			tx.Rollback()
 
@@ -445,12 +442,10 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 	}
 
 	err = tx.Commit()
-
 	if err != nil {
 		return err
 	}
-
-	return err
+	return nil
 }
 
 func (db *SQLite) SetProvider(provider string) {
