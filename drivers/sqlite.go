@@ -213,7 +213,10 @@ func (db *SQLite) GetIndexes(table string) (results [][]string, err error) {
 	}
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	results = append(results, columns)
 
@@ -283,7 +286,10 @@ func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (pagi
 		defer paginatedRows.Close()
 	}
 
-	columns, _ := paginatedRows.Columns()
+	columns, err := paginatedRows.Columns()
+	if err != nil {
+		return nil, 0, err
+	}
 
 	paginatedResults = append(paginatedResults, columns)
 
@@ -322,7 +328,10 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	results = append(results, columns)
 
@@ -369,14 +378,16 @@ func (db *SQLite) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue stri
 
 func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 	res, err := db.Connection.Exec(query)
-
 	if err != nil {
-		return result, err
-	} else {
-		rowsAffected, _ := res.RowsAffected()
-
-		return fmt.Sprintf("%d rows affected", rowsAffected), err
+		return "", err
 	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
 func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {

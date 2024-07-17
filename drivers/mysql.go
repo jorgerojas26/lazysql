@@ -213,7 +213,10 @@ func (db *MySQL) GetIndexes(table string) (results [][]string, err error) {
 	}
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	results = append(results, columns)
 
@@ -281,7 +284,10 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 		defer paginatedRows.Close()
 	}
 
-	columns, _ := paginatedRows.Columns()
+	columns, err := paginatedRows.Columns()
+	if err != nil {
+		return nil, 0, err
+	}
 
 	paginatedResults = append(paginatedResults, columns)
 
@@ -316,7 +322,10 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	results = append(results, columns)
 
@@ -363,14 +372,16 @@ func (db *MySQL) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue strin
 
 func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	res, err := db.Connection.Exec(query)
-
 	if err != nil {
-		return result, err
-	} else {
-		rowsAffected, _ := res.RowsAffected()
-
-		return fmt.Sprintf("%d rows affected", rowsAffected), err
+		return "", err
 	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
 func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {

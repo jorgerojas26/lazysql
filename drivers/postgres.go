@@ -306,7 +306,10 @@ func (db *Postgres) GetIndexes(table string) (indexes [][]string, err error) {
 	}
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	indexes = append(indexes, columns)
 
@@ -373,7 +376,10 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 		defer paginatedRows.Close()
 	}
 
-	columns, _ := paginatedRows.Columns()
+	columns, err := paginatedRows.Columns()
+	if err != nil {
+		return nil, 0, err
+	}
 
 	records = append(records, columns)
 
@@ -418,14 +424,15 @@ func (db *Postgres) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue st
 
 func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error) {
 	res, err := db.Connection.Exec(query)
-
 	if err != nil {
 		return result, err
-	} else {
-		rowsAffected, _ := res.RowsAffected()
-
-		return fmt.Sprintf("%d rows affected", rowsAffected), err
 	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return result, err
+	}
+
+	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
 func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
@@ -436,7 +443,10 @@ func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	results = append(results, columns)
 
