@@ -3,8 +3,15 @@ package app
 import (
 	"github.com/gdamore/tcell/v2"
 
-	. "github.com/jorgerojas26/lazysql/commands"
-	. "github.com/jorgerojas26/lazysql/keymap"
+	cmd "github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/keymap"
+)
+
+// local alias added for clarity purpose
+type (
+	Bind = keymap.Bind
+	Key  = keymap.Key
+	Map  = keymap.Map
 )
 
 // KeymapSystem is the actual key mapping system.
@@ -32,54 +39,54 @@ func (c KeymapSystem) Group(name string) Map {
 
 // Resolve translates a tcell.EventKey into a command based on the mappings in
 // the global group
-func (c KeymapSystem) Resolve(event *tcell.EventKey) Command {
+func (c KeymapSystem) Resolve(event *tcell.EventKey) cmd.Command {
 	return c.Global.Resolve(event)
 }
 
 // Define a global KeymapSystem object with default keybinds
-var Keymaps KeymapSystem = KeymapSystem{
+var Keymaps = KeymapSystem{
 	Global: Map{
-		Bind{Key: Key{Char: 'L'}, Cmd: MoveRight},
-		Bind{Key: Key{Char: 'H'}, Cmd: MoveLeft},
-		Bind{Key: Key{Code: tcell.KeyCtrlE}, Cmd: SwitchToEditorView},
-		Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: Save},
-		Bind{Key: Key{Char: 'q'}, Cmd: Quit},
-		Bind{Key: Key{Code: tcell.KeyBackspace2}, Cmd: SwitchToConnectionsView},
+		Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight},
+		Bind{Key: Key{Char: 'H'}, Cmd: cmd.MoveLeft},
+		Bind{Key: Key{Code: tcell.KeyCtrlE}, Cmd: cmd.SwitchToEditorView},
+		Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: cmd.Save},
+		Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit},
+		Bind{Key: Key{Code: tcell.KeyBackspace2}, Cmd: cmd.SwitchToConnectionsView},
 	},
 	Groups: map[string]Map{
 		"tree": {
-			Bind{Key: Key{Char: 'g'}, Cmd: GotoTop},
-			Bind{Key: Key{Char: 'G'}, Cmd: GotoBottom},
-			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: Execute},
-			Bind{Key: Key{Char: 'j'}, Cmd: MoveDown},
-			Bind{Key: Key{Code: tcell.KeyDown}, Cmd: MoveDown},
-			Bind{Key: Key{Char: 'k'}, Cmd: MoveUp},
-			Bind{Key: Key{Code: tcell.KeyUp}, Cmd: MoveUp},
+			Bind{Key: Key{Char: 'g'}, Cmd: cmd.GotoTop},
+			Bind{Key: Key{Char: 'G'}, Cmd: cmd.GotoBottom},
+			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.Execute},
+			Bind{Key: Key{Char: 'j'}, Cmd: cmd.MoveDown},
+			Bind{Key: Key{Code: tcell.KeyDown}, Cmd: cmd.MoveDown},
+			Bind{Key: Key{Char: 'k'}, Cmd: cmd.MoveUp},
+			Bind{Key: Key{Code: tcell.KeyUp}, Cmd: cmd.MoveUp},
 		},
 		"table": {
-			Bind{Key: Key{Char: '/'}, Cmd: Search},
-			Bind{Key: Key{Char: 'c'}, Cmd: Edit},
-			Bind{Key: Key{Char: 'd'}, Cmd: Delete},
-			Bind{Key: Key{Char: 'w'}, Cmd: GotoNext},
-			Bind{Key: Key{Char: 'b'}, Cmd: GotoPrev},
-			Bind{Key: Key{Char: '$'}, Cmd: GotoEnd},
-			Bind{Key: Key{Char: '0'}, Cmd: GotoStart},
-			Bind{Key: Key{Char: 'y'}, Cmd: Copy},
-			Bind{Key: Key{Char: 'o'}, Cmd: AppendNewRow},
+			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search},
+			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit},
+			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete},
+			Bind{Key: Key{Char: 'w'}, Cmd: cmd.GotoNext},
+			Bind{Key: Key{Char: 'b'}, Cmd: cmd.GotoPrev},
+			Bind{Key: Key{Char: '$'}, Cmd: cmd.GotoEnd},
+			Bind{Key: Key{Char: '0'}, Cmd: cmd.GotoStart},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy},
+			Bind{Key: Key{Char: 'o'}, Cmd: cmd.AppendNewRow},
 			// Tabs
-			Bind{Key: Key{Char: '['}, Cmd: TabPrev},
-			Bind{Key: Key{Char: ']'}, Cmd: TabNext},
-			Bind{Key: Key{Char: '{'}, Cmd: TabFirst},
-			Bind{Key: Key{Char: '}'}, Cmd: TabLast},
-			Bind{Key: Key{Char: 'X'}, Cmd: TabClose},
+			Bind{Key: Key{Char: '['}, Cmd: cmd.TabPrev},
+			Bind{Key: Key{Char: ']'}, Cmd: cmd.TabNext},
+			Bind{Key: Key{Char: '{'}, Cmd: cmd.TabFirst},
+			Bind{Key: Key{Char: '}'}, Cmd: cmd.TabLast},
+			Bind{Key: Key{Char: 'X'}, Cmd: cmd.TabClose},
 			// Pages
-			Bind{Key: Key{Char: '>'}, Cmd: PageNext},
-			Bind{Key: Key{Char: '<'}, Cmd: PagePrev},
+			Bind{Key: Key{Char: '>'}, Cmd: cmd.PageNext},
+			Bind{Key: Key{Char: '<'}, Cmd: cmd.PagePrev},
 		},
 		"editor": {
-			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: Execute},
-			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: Quit},
-			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: OpenInExternalEditor},
+			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute},
+			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.Quit},
+			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: cmd.OpenInExternalEditor},
 		},
 	},
 }
