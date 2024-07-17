@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/models"
