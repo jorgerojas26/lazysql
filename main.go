@@ -6,11 +6,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/go-sql-driver/mysql"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/components"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
-
-	"github.com/go-sql-driver/mysql"
 )
 
 var version = "dev"
@@ -20,15 +20,22 @@ func main() {
 	logFile := flag.String("logfile", "", "Log file")
 	flag.Parse()
 
-	logLvl, err := logger.ParseLogLevel(*rawLogLvl)
-	if err != nil {
-		panic(err)
+	logLvl, parseError := logger.ParseLogLevel(*rawLogLvl)
+	if parseError != nil {
+		panic(parseError)
 	}
 	logger.SetLevel(logLvl)
-	logger.SetFile(*logFile)
+	fileError := logger.SetFile(*logFile)
+	if fileError != nil {
+		panic(fileError)
+	}
+
 	logger.Info("Starting LazySQL...", nil)
 
-	mysql.SetLogger(log.New(io.Discard, "", 0))
+	mysqlError := mysql.SetLogger(log.New(io.Discard, "", 0))
+	if mysqlError != nil {
+		panic(mysqlError)
+	}
 
 	// check if "version" arg is passed
 	argsWithProg := os.Args

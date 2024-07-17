@@ -2,6 +2,7 @@ package keymap
 
 import (
 	"github.com/gdamore/tcell/v2"
+
 	"github.com/jorgerojas26/lazysql/commands"
 )
 
