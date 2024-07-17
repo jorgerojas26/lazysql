@@ -85,67 +85,67 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			if err != nil {
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
-			} else {
-
-				databases, _ := helpers.LoadConnections()
-				newDatabases := make([]models.Connection, len(databases))
-
-				DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
-
-				if DBName == "NULL" {
-					DBName = ""
-				}
-
-				parsedDatabaseData := models.Connection{
-					Name:     connectionName,
-					Provider: parsed.Driver,
-					DBName:   DBName,
-					URL:      connectionString,
-				}
-
-				switch form.Action {
-				case "create":
-
-					newDatabases = append(databases, parsedDatabaseData)
-					err := helpers.SaveConnectionConfig(newDatabases)
-					if err != nil {
-						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-						return event
-					}
-
-				case "edit":
-					newDatabases = make([]models.Connection, len(databases))
-					row, _ := ConnectionListTable.GetSelection()
-
-					for i, database := range databases {
-						if i == row {
-							newDatabases[i] = parsedDatabaseData
-
-							// newDatabases[i].Name = connectionName
-							// newDatabases[i].Provider = database.Provider
-							// newDatabases[i].User = parsed.User.Username()
-							// newDatabases[i].Password, _ = parsed.User.Password()
-							// newDatabases[i].Host = parsed.Hostname()
-							// newDatabases[i].Port = parsed.Port()
-							// newDatabases[i].Query = parsed.Query().Encode()
-							// newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
-							// newDatabases[i].DSN = parsed.DSN
-						} else {
-							newDatabases[i] = database
-						}
-					}
-
-					err := helpers.SaveConnectionConfig(newDatabases)
-					if err != nil {
-						form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-						return event
-
-					}
-				}
-
-				ConnectionListTable.SetConnections(newDatabases)
-				connectionPages.SwitchToPage("Connections")
 			}
+
+			databases, _ := helpers.LoadConnections()
+			newDatabases := make([]models.Connection, len(databases))
+
+			DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
+
+			if DBName == "NULL" {
+				DBName = ""
+			}
+
+			parsedDatabaseData := models.Connection{
+				Name:     connectionName,
+				Provider: parsed.Driver,
+				DBName:   DBName,
+				URL:      connectionString,
+			}
+
+			switch form.Action {
+			case "create":
+
+				newDatabases = append(databases, parsedDatabaseData)
+				err := helpers.SaveConnectionConfig(newDatabases)
+				if err != nil {
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					return event
+				}
+
+			case "edit":
+				newDatabases = make([]models.Connection, len(databases))
+				row, _ := ConnectionListTable.GetSelection()
+
+				for i, database := range databases {
+					if i == row {
+						newDatabases[i] = parsedDatabaseData
+
+						// newDatabases[i].Name = connectionName
+						// newDatabases[i].Provider = database.Provider
+						// newDatabases[i].User = parsed.User.Username()
+						// newDatabases[i].Password, _ = parsed.User.Password()
+						// newDatabases[i].Host = parsed.Hostname()
+						// newDatabases[i].Port = parsed.Port()
+						// newDatabases[i].Query = parsed.Query().Encode()
+						// newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
+						// newDatabases[i].DSN = parsed.DSN
+					} else {
+						newDatabases[i] = database
+					}
+				}
+
+				err := helpers.SaveConnectionConfig(newDatabases)
+				if err != nil {
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					return event
+
+				}
+			}
+
+			ConnectionListTable.SetConnections(newDatabases)
+			connectionPages.SwitchToPage("Connections")
+
 		} else if event.Key() == tcell.KeyF2 {
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 			go form.testConnection(connectionString)
