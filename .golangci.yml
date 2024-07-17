@@ -1,0 +1,28 @@
+---
+# golangci-lint configuration file made by @ccoVeille
+# Source: https://github.com/ccoVeille/golangci-lint-config-examples/
+# Author: @ccoVeille
+# License: MIT
+# Variant: 01-defaults
+# Version: v1.0.0
+#
+linters:
+  # some linters are enabled by default
+  # https://golangci-lint.run/usage/linters/
+  #
+  # enable some extra linters
+  enable:
+    # Errcheck is a program for checking for unchecked errors in Go code.
+    - errcheck
+
+    # Linter for Go source code that specializes in simplifying code.
+    - gosimple
+
+    # Vet examines Go source code and reports suspicious constructs.
+    - govet
+
+    # Detects when assignments to existing variables are not used.
+    - ineffassign
+
+    # It's a set of rules from staticcheck. See https://staticcheck.io/
+    - staticcheck
