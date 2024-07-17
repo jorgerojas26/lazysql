@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/models"
-
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/xo/dburl"
+
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type MySQL struct {

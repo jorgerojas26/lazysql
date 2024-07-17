@@ -4,16 +4,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/commands"
-	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/jorgerojas26/lazysql/drivers"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
 	"github.com/rivo/tview"
 	"golang.design/x/clipboard"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type ResultsTableState struct {

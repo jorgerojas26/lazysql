@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/models"
+	_ "github.com/lib/pq"
 	"github.com/xo/dburl"
 
-	_ "github.com/lib/pq"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type Postgres struct {

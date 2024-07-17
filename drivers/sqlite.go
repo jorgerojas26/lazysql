@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/models"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xo/dburl"
+
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type SQLite struct {
