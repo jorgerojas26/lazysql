@@ -22,7 +22,7 @@ type Postgres struct {
 }
 
 const (
-	DEFAULT_PORT = "5432"
+	defaultPort = "5432"
 )
 
 func (db *Postgres) Connect(urlstr string) (err error) {
@@ -582,7 +582,7 @@ func (db *Postgres) SwitchDatabase(database string) error {
 	dbname := parsedConn.Path
 
 	if port == "" {
-		port = DEFAULT_PORT
+		port = defaultPort
 	}
 
 	if dbname == "" {
