@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -70,7 +71,10 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 
 	for rows.Next() {
 		var table string
-		rows.Scan(&table)
+		err = rows.Scan(&table)
+		if err != nil {
+			return nil, err
+		}
 
 		tables[database] = append(tables[database], table)
 	}
@@ -100,7 +104,10 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -140,7 +147,10 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -179,7 +189,10 @@ func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -210,7 +223,10 @@ func (db *MySQL) GetIndexes(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -257,7 +273,10 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 			return nil, 0, err
 		}
 
-		rows.Scan(&totalRecords)
+		err = rows.Scan(&totalRecords)
+		if err != nil {
+			return nil, 0, err
+		}
 
 		defer paginatedRows.Close()
 	}
@@ -272,7 +291,10 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		paginatedRows.Scan(rowValues...)
+		err = paginatedRows.Scan(rowValues...)
+		if err != nil {
+			return nil, 0, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -304,7 +326,10 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -428,9 +453,7 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 
 		_, err = tx.Exec(query)
 		if err != nil {
-			tx.Rollback()
-
-			return err
+			return errors.Join(err, tx.Rollback())
 		}
 	}
 

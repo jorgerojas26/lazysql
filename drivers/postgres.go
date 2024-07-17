@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -106,7 +107,10 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 		var tableName string
 		var tableSchema string
 
-		rows.Scan(&tableName, &tableSchema)
+		err = rows.Scan(&tableName, &tableSchema)
+		if err != nil {
+			return nil, err
+		}
 
 		tables[tableSchema] = append(tables[tableSchema], tableName)
 
@@ -137,7 +141,10 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -190,7 +197,10 @@ func (db *Postgres) GetConstraints(table string) (constraints [][]string, err er
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -244,7 +254,10 @@ func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, err er
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -303,7 +316,10 @@ func (db *Postgres) GetIndexes(table string) (indexes [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -367,7 +383,10 @@ func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (re
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		paginatedRows.Scan(rowValues...)
+		err = paginatedRows.Scan(rowValues...)
+		if err != nil {
+			return nil, 0, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -520,9 +539,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts 
 	for _, query := range queries {
 		_, err = tx.Exec(query)
 		if err != nil {
-			tx.Rollback()
-
-			return err
+			return errors.Join(err, tx.Rollback())
 		}
 	}
 

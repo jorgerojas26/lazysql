@@ -14,7 +14,10 @@ import (
 var version = "dev"
 
 func main() {
-	mysql.SetLogger(log.New(io.Discard, "", 0))
+	err := mysql.SetLogger(log.New(io.Discard, "", 0))
+	if err != nil {
+		panic(err)
+	}
 
 	// check if "version" arg is passed
 	argsWithProg := os.Args

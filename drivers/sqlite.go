@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -71,7 +72,10 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 
 	for rows.Next() {
 		var table string
-		rows.Scan(&table)
+		err = rows.Scan(&table)
+		if err != nil {
+			return nil, err
+		}
 
 		tables[database] = append(tables[database], table)
 	}
@@ -99,7 +103,10 @@ func (db *SQLite) GetTableColumns(database, table string) (results [][]string, e
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 
@@ -138,7 +145,10 @@ func (db *SQLite) GetConstraints(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -176,7 +186,10 @@ func (db *SQLite) GetForeignKeys(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -210,7 +223,10 @@ func (db *SQLite) GetIndexes(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -259,7 +275,10 @@ func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (pagi
 			return nil, 0, err
 		}
 
-		rows.Scan(&totalRecords)
+		err = rows.Scan(&totalRecords)
+		if err != nil {
+			return nil, 0, err
+		}
 
 		defer paginatedRows.Close()
 	}
@@ -274,7 +293,10 @@ func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (pagi
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		paginatedRows.Scan(rowValues...)
+		err = paginatedRows.Scan(rowValues...)
+		if err != nil {
+			return nil, 0, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -310,7 +332,10 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -435,9 +460,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 		fmt.Printf("LS -> drivers/sqlite.go:440 -> query: %+v\n", query)
 		_, err = tx.Exec(query)
 		if err != nil {
-			tx.Rollback()
-
-			return err
+			return errors.Join(err, tx.Rollback())
 		}
 	}
 
