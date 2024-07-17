@@ -337,14 +337,14 @@ func (db *MySQL) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue strin
 }
 
 func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
-	res, error := db.Connection.Exec(query)
+	res, err := db.Connection.Exec(query)
 
-	if error != nil {
-		return result, error
+	if err != nil {
+		return result, err
 	} else {
 		rowsAffected, _ := res.RowsAffected()
 
-		return fmt.Sprintf("%d rows affected", rowsAffected), error
+		return fmt.Sprintf("%d rows affected", rowsAffected), err
 	}
 }
 
@@ -405,9 +405,9 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		values := make([]string, 0, len(insert.Values))
 
 		for _, value := range insert.Values {
-			_, error := strconv.ParseFloat(value, 64)
+			_, err := strconv.ParseFloat(value, 64)
 
-			if strings.ToLower(value) != "default" && error != nil {
+			if strings.ToLower(value) != "default" && err != nil {
 				values = append(values, fmt.Sprintf("\"%s\"", value))
 			} else {
 				values = append(values, value)
@@ -419,9 +419,9 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		queries = append(queries, query)
 	}
 
-	tx, error := db.Connection.Begin()
-	if error != nil {
-		return error
+	tx, err := db.Connection.Begin()
+	if err != nil {
+		return err
 	}
 
 	for _, query := range queries {

@@ -115,7 +115,7 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 	return tables, nil
 }
 
-func (db *Postgres) GetTableColumns(database, table string) (results [][]string, error error) {
+func (db *Postgres) GetTableColumns(database, table string) (results [][]string, err error) {
 	tableSchema := strings.Split(table, ".")[0]
 	tableName := strings.Split(table, ".")[1]
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_schema = '%s' AND table_name = '%s' ORDER by ordinal_position", database, tableSchema, tableName))
@@ -150,7 +150,7 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 	return
 }
 
-func (db *Postgres) GetConstraints(table string) (constraints [][]string, error error) {
+func (db *Postgres) GetConstraints(table string) (constraints [][]string, err error) {
 	splitTableString := strings.Split(table, ".")
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
@@ -203,7 +203,7 @@ func (db *Postgres) GetConstraints(table string) (constraints [][]string, error 
 	return
 }
 
-func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error error) {
+func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, err error) {
 	splitTableString := strings.Split(table, ".")
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
@@ -257,7 +257,7 @@ func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, error 
 	return
 }
 
-func (db *Postgres) GetIndexes(table string) (indexes [][]string, error error) {
+func (db *Postgres) GetIndexes(table string) (indexes [][]string, err error) {
 	splitTableString := strings.Split(table, ".")
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]

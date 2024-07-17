@@ -343,14 +343,14 @@ func (db *SQLite) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue stri
 }
 
 func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
-	res, error := db.Connection.Exec(query)
+	res, err := db.Connection.Exec(query)
 
-	if error != nil {
-		return result, error
+	if err != nil {
+		return result, err
 	} else {
 		rowsAffected, _ := res.RowsAffected()
 
-		return fmt.Sprintf("%d rows affected", rowsAffected), error
+		return fmt.Sprintf("%d rows affected", rowsAffected), err
 	}
 }
 
@@ -412,9 +412,9 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 		columnsToBeInserted := insert.Columns
 
 		for _, value := range insert.Values {
-			_, error := strconv.ParseFloat(value, 64)
+			_, err := strconv.ParseFloat(value, 64)
 
-			if error != nil {
+			if err != nil {
 				values = append(values, fmt.Sprintf("\"%s\"", value))
 			} else {
 				values = append(values, value)
@@ -426,9 +426,9 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 		queries = append(queries, query)
 	}
 
-	tx, error := db.Connection.Begin()
-	if error != nil {
-		return error
+	tx, err := db.Connection.Begin()
+	if err != nil {
+		return err
 	}
 
 	for _, query := range queries {
