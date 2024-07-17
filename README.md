@@ -54,17 +54,17 @@
 ![Product Name Screen Shot][product-screenshot1]
 ![Product Name Screen Shot][product-screenshot2]
 
-This project is heavily inspired by [Lazygit](https://github.com/jesseduffield/lazygit), which i think is the best TUI client for Git.
+This project is heavily inspired by [Lazygit](https://github.com/jesseduffield/lazygit), which I think is the best TUI client for Git.
 
-I wanted to have a tool like that, but for SQL. I didn't find one that fits my needs so i created one myself.
+I wanted to have a tool like that, but for SQL. I didn't find one that fits my needs, so I created one myself.
 
 I live in the terminal, so if you are like me, this tool can become handy for you too.
 
-This is my first Open Source project, also, this is my first Golang project. I am not a brilliant programmer. I am just a typical Javascript developer that wanted to learn a new language, i also wanted a TUI SQL Client, so, white and bottled.
+This is my first Open Source project, also, this is my first Go project. I am not a brilliant programmer. I am just a typical JavaScript developer that wanted to learn a new language, I also wanted a TUI SQL Client, so white and bottled.
 
-This project is in ALPHA stage, please feel free to critize my spaghetti code.
+This project is in ALPHA stage, please feel free to complain about my spaghetti code.
 
-I use Lazysql daily in my ful time job as a fullstack javascript developer in it's current (buggy xD) state. So, the plan is to improve and fix my little boy as a side project in my free time.
+I use Lazysql daily in my full-time job as a full-stack javascript developer in its current (buggy xD) state. So, the plan is to improve and fix my little boy as a side-project in my free time.
 
 ### Built With
 
@@ -74,7 +74,7 @@ I use Lazysql daily in my ful time job as a fullstack javascript developer in it
 ## Features
 
 - [x] Cross-platform (macOS, Windows, Linux)
-- [x] VIM Keybindings
+- [x] Vim Keybindings
 - [x] Can manage multiple connections (Backspace)
 - [x] Tabs
 - [x] SQL Editor (CTRL + e)
@@ -100,11 +100,11 @@ go install github.com/jorgerojas26/lazysql@latest
 
 #### Binary Releases
 
-For Windows, Mac OS or Linux, you can download a binary release [here](https://github.com/jorgerojas26/lazysql/releases)
+For Windows, macOS or Linux, you can download a binary release [here](https://github.com/jorgerojas26/lazysql/releases)
 
 #### Third party (maintained by the community)
 
-Archlinux users can install it from the AUR with:
+Arch Linux users can install it from the AUR with:
 
 ```bash
 paru -S lazysql
@@ -141,7 +141,7 @@ $ lazysql
 ## Support
 
 - [x] MySQL
-- [x] Postgres
+- [x] PostgreSQL
 - [x] SQLite
 - [ ] MSSQL
 - [ ] MongoDB
@@ -216,7 +216,7 @@ odbc+postgres://user:pass@localhost:port/dbname?option1=
 
 ## Roadmap
 
-- [ ] Support for NOSQL databases
+- [ ] Support for NoSQL databases
 - [ ] Columns and indexes creation through TUI
 - [ ] Table tree input filter
 - [ ] Custom keybindings
@@ -231,7 +231,7 @@ See the [open issues](https://github.com/jorgerojas26/lazysql/issues) for a full
 
 ## Contributing
 
-Contributions, issues and pull requests are welcome!
+Contributions, issues, and pull requests are welcome!
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -247,7 +247,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 ## Contact
 
-Jorge Rojas - [Linkedin](https://www.linkedin.com/in/jorgerojas26/) - jorgeluisrojasb@gmail.com
+Jorge Rojas - [LinkedIn](https://www.linkedin.com/in/jorgerojas26/) - jorgeluisrojasb@gmail.com
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
