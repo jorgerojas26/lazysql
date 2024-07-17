@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	// import postgresql driver
+	_ "github.com/lib/pq"
 	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/models"
