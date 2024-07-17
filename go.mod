@@ -6,8 +6,6 @@ require (
 	github.com/gdamore/tcell/v2 v2.7.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/google/uuid v1.5.0
-	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.19
 	github.com/pelletier/go-toml/v2 v2.1.1
 	github.com/rivo/tview v0.0.0-20240101144852-b3bd1aa5e9f2
 	github.com/xo/dburl v0.20.2

@@ -2,14 +2,14 @@ package drivers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/models"
-
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/xo/dburl"
+
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type MySQL struct {
@@ -42,14 +42,14 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 
 	rows, err := db.Connection.Query("SHOW DATABASES")
 	if err != nil {
-		return databases, err
+		return nil, err
 	}
 
 	for rows.Next() {
 		var database string
 		err := rows.Scan(&database)
 		if err != nil {
-			return databases, err
+			return nil, err
 		}
 		if database != "information_schema" && database != "mysql" && database != "performance_schema" && database != "sys" {
 			databases = append(databases, database)
@@ -65,12 +65,15 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	tables := make(map[string][]string)
 
 	if err != nil {
-		return tables, err
+		return nil, err
 	}
 
 	for rows.Next() {
 		var table string
-		rows.Scan(&table)
+		err = rows.Scan(&table)
+		if err != nil {
+			return nil, err
+		}
 
 		tables[database] = append(tables[database], table)
 	}
@@ -81,15 +84,15 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 func (db *MySQL) GetTableColumns(database, table string) (results [][]string, err error) {
 	table = db.formatTableName(table)
 
-	rows, err := db.Connection.Query("DESCRIBE " + table)
+	rows, err := db.Connection.Query(fmt.Sprintf("DESCRIBE %s.%s", database, table))
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -100,7 +103,10 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -122,14 +128,14 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'", database, tableName))
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -140,7 +146,10 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -161,14 +170,14 @@ func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
 
 	rows, err := db.Connection.Query(fmt.Sprintf("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_SCHEMA = '%s' AND REFERENCED_TABLE_NAME = '%s'", database, tableName))
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	results = append(results, columns)
@@ -179,7 +188,10 @@ func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -196,11 +208,14 @@ func (db *MySQL) GetIndexes(table string) (results [][]string, err error) {
 	table = db.formatTableName(table)
 	rows, err := db.Connection.Query("SHOW INDEX FROM " + table)
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	results = append(results, columns)
 
@@ -210,7 +225,10 @@ func (db *MySQL) GetIndexes(table string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -245,7 +263,7 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 
 	paginatedRows, err := db.Connection.Query(query)
 	if err != nil {
-		return paginatedResults, totalRecords, err
+		return nil, 0, err
 	}
 
 	if isPaginationEnabled {
@@ -254,15 +272,21 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 		rows := db.Connection.QueryRow(queryWithoutLimit)
 
 		if err != nil {
-			return paginatedResults, totalRecords, err
+			return nil, 0, err
 		}
 
-		rows.Scan(&totalRecords)
+		err = rows.Scan(&totalRecords)
+		if err != nil {
+			return nil, 0, err
+		}
 
 		defer paginatedRows.Close()
 	}
 
-	columns, _ := paginatedRows.Columns()
+	columns, err := paginatedRows.Columns()
+	if err != nil {
+		return nil, 0, err
+	}
 
 	paginatedResults = append(paginatedResults, columns)
 
@@ -272,7 +296,10 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		paginatedRows.Scan(rowValues...)
+		err = paginatedRows.Scan(rowValues...)
+		if err != nil {
+			return nil, 0, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -289,12 +316,15 @@ func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (pagin
 func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return results, err
+		return nil, err
 	}
 
 	defer rows.Close()
 
-	columns, _ := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
 
 	results = append(results, columns)
 
@@ -304,7 +334,10 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		rows.Scan(rowValues...)
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
 
 		var row []string
 		for _, col := range rowValues {
@@ -337,15 +370,17 @@ func (db *MySQL) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue strin
 }
 
 func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
-	res, error := db.Connection.Exec(query)
-
-	if error != nil {
-		return result, error
-	} else {
-		rowsAffected, _ := res.RowsAffected()
-
-		return fmt.Sprintf("%d rows affected", rowsAffected), error
+	res, err := db.Connection.Exec(query)
+	if err != nil {
+		return "", err
 	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
 func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
@@ -405,9 +440,9 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		values := make([]string, 0, len(insert.Values))
 
 		for _, value := range insert.Values {
-			_, error := strconv.ParseFloat(value, 64)
+			_, err := strconv.ParseFloat(value, 64)
 
-			if strings.ToLower(value) != "default" && error != nil {
+			if strings.ToLower(value) != "default" && err != nil {
 				values = append(values, fmt.Sprintf("\"%s\"", value))
 			} else {
 				values = append(values, value)
@@ -419,18 +454,16 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 		queries = append(queries, query)
 	}
 
-	tx, error := db.Connection.Begin()
-	if error != nil {
-		return error
+	tx, err := db.Connection.Begin()
+	if err != nil {
+		return err
 	}
 
 	for _, query := range queries {
 
 		_, err = tx.Exec(query)
 		if err != nil {
-			tx.Rollback()
-
-			return err
+			return errors.Join(err, tx.Rollback())
 		}
 	}
 
@@ -438,8 +471,7 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []m
 	if err != nil {
 		return err
 	}
-
-	return err
+	return nil
 }
 
 func (db *MySQL) SetProvider(provider string) {

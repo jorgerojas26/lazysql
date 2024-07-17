@@ -5,16 +5,19 @@ import (
 	"log"
 	"os"
 
+	"github.com/go-sql-driver/mysql"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/components"
-
-	"github.com/go-sql-driver/mysql"
 )
 
 var version = "dev"
 
 func main() {
-	mysql.SetLogger(log.New(io.Discard, "", 0))
+	err := mysql.SetLogger(log.New(io.Discard, "", 0))
+	if err != nil {
+		panic(err)
+	}
 
 	// check if "version" arg is passed
 	argsWithProg := os.Args
