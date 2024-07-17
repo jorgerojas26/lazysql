@@ -437,13 +437,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 			newRow := make([]string, table.GetColumnCount())
 			newRowIndex := table.GetRowCount()
-			newRowUuid := uuid.New()
+			newRowUUID := uuid.New()
 
 			for i := 0; i < table.GetColumnCount(); i++ {
 				newRow[i] = "Default"
 			}
 
-			table.InsertRow(newRow, newRowIndex, newRowUuid)
+			table.InsertRow(newRow, newRowIndex, newRowUUID)
 
 			for i := 0; i < table.GetColumnCount(); i++ {
 				table.GetCell(newRowIndex, i).SetBackgroundColor(tcell.ColorDarkGreen)
@@ -453,7 +453,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				Table:           table.GetDBReference(),
 				Columns:         table.GetRecords()[0],
 				Values:          newRow,
-				PrimaryKeyValue: newRowUuid,
+				PrimaryKeyValue: newRowUUID,
 				Option:          1,
 			}
 
@@ -970,9 +970,9 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	App.SetFocus(inputField)
 }
 
-func (table *ResultsTable) CheckIfRowIsInserted(rowId uuid.UUID) bool {
+func (table *ResultsTable) CheckIfRowIsInserted(rowID uuid.UUID) bool {
 	for _, insertedRow := range *table.state.listOfDbInserts {
-		if insertedRow.PrimaryKeyValue == rowId {
+		if insertedRow.PrimaryKeyValue == rowID {
 			return true
 		}
 	}
@@ -980,9 +980,9 @@ func (table *ResultsTable) CheckIfRowIsInserted(rowId uuid.UUID) bool {
 	return false
 }
 
-func (table *ResultsTable) MutateInsertedRowCell(rowId uuid.UUID, colIndex int, newValue string) {
+func (table *ResultsTable) MutateInsertedRowCell(rowID uuid.UUID, colIndex int, newValue string) {
 	for i, insertedRow := range *table.state.listOfDbInserts {
-		if insertedRow.PrimaryKeyValue == rowId {
+		if insertedRow.PrimaryKeyValue == rowID {
 			(*table.state.listOfDbInserts)[i].Values[colIndex] = newValue
 		}
 	}
