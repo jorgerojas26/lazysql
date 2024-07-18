@@ -81,10 +81,11 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *MySQL) GetTableColumns(database, table string) (results [][]string, err error) {
+// TODO: Rewrite this logic to use the database name instead of the table name, which for now has the format `database.table`
+func (db *MySQL) GetTableColumns(_, table string) (results [][]string, err error) {
 	table = db.formatTableName(table)
 
-	rows, err := db.Connection.Query(fmt.Sprintf("DESCRIBE %s.%s", database, table))
+	rows, err := db.Connection.Query(fmt.Sprintf("DESCRIBE %s", table))
 	if err != nil {
 		return nil, err
 	}
