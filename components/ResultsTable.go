@@ -4,16 +4,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/commands"
-	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/jorgerojas26/lazysql/drivers"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
 	"github.com/rivo/tview"
 	"golang.design/x/clipboard"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type ResultsTableState struct {
@@ -256,11 +255,59 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.UpdateRows(table.GetIndexes())
 		}
 	}
+
+	command := app.Keymaps.Group("table").Resolve(event)
+
+	if command == commands.AppendNewRow {
+		if table.Menu.GetSelectedOption() == 1 {
+
+			newRow := make([]string, table.GetColumnCount())
+			newRowIndex := table.GetRowCount()
+			newRowUUID := uuid.New()
+
+			for i := 0; i < table.GetColumnCount(); i++ {
+				newRow[i] = "Default"
+			}
+
+			table.InsertRow(newRow, newRowIndex, newRowUUID)
+
+			for i := 0; i < table.GetColumnCount(); i++ {
+				table.GetCell(newRowIndex, i).SetBackgroundColor(tcell.ColorDarkGreen)
+			}
+
+			newInsert := models.DbInsert{
+				Table:           table.GetDBReference(),
+				Columns:         table.GetRecords()[0],
+				Values:          newRow,
+				PrimaryKeyValue: newRowUUID,
+				Option:          1,
+			}
+
+			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
+
+			if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
+				table.Tree.GetCurrentNode().SetColor(InsertColor)
+			} else if table.Tree.GetCurrentNode().GetColor() == DeleteColor {
+				table.Tree.GetCurrentNode().SetColor(ChangeColor)
+			}
+
+			table.Select(newRowIndex, 0)
+
+			App.ForceDraw()
+			table.StartEditingCell(newRowIndex, 0, func(newValue string, row, col int) {
+				cellReference := table.GetCell(row, 0).GetReference()
+
+				if cellReference != nil {
+					table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
+				}
+			})
+
+		}
+	}
+
 	if rowCount == 1 || colCount == 0 {
 		return nil
 	}
-
-	command := app.Keymaps.Group("table").Resolve(event)
 
 	if command == commands.Search {
 		if table.Editor != nil {
@@ -269,96 +316,96 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.RemoveHighlightTable()
 			table.SetIsFiltering(true)
 			return nil
-		} else {
-			App.SetFocus(table.Filter.Input)
-			table.RemoveHighlightTable()
-			table.Filter.HighlightLocal()
-			table.SetIsFiltering(true)
+		}
 
-			if table.Filter.Input.GetText() == "/" {
-				go table.Filter.Input.SetText("")
-			}
+		App.SetFocus(table.Filter.Input)
+		table.RemoveHighlightTable()
+		table.Filter.HighlightLocal()
+		table.SetIsFiltering(true)
 
-			table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
-				split := strings.Split(currentText, " ")
-				comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
+		if table.Filter.Input.GetText() == "/" {
+			go table.Filter.Input.SetText("")
+		}
 
-				if len(split) == 1 {
-					columns := table.GetColumns()
-					columnNames := []string{}
+		table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
+			split := strings.Split(currentText, " ")
+			comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
 
-					for i, col := range columns {
-						if i > 0 {
-							columnNames = append(columnNames, col[0])
-						}
+			if len(split) == 1 {
+				columns := table.GetColumns()
+				columnNames := []string{}
+
+				for i, col := range columns {
+					if i > 0 {
+						columnNames = append(columnNames, col[0])
 					}
+				}
 
-					return columnNames
-				} else if len(split) == 2 {
+				return columnNames
+			} else if len(split) == 2 {
 
+				for i, comparator := range comparators {
+					comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
+				}
+
+				return comparators
+			} else if len(split) == 3 {
+
+				ret := true
+
+				if split[1] == "not" {
+					comparators = []string{"between", "in", "like"}
+				} else if split[1] == "is" {
+					comparators = []string{"not", "null"}
+				} else {
+					ret = false
+				}
+
+				if ret {
 					for i, comparator := range comparators {
-						comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
+						comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
+					}
+					return comparators
+				}
+
+			} else if len(split) == 4 {
+				ret := true
+
+				if split[2] == "not" {
+					comparators = []string{"null"}
+				} else if split[2] == "is" {
+					comparators = []string{"not", "null"}
+				} else {
+					ret = false
+				}
+
+				if ret {
+					for i, comparator := range comparators {
+						comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
 					}
 
 					return comparators
-				} else if len(split) == 3 {
+				}
+			}
 
-					ret := true
+			return []string{}
+		})
 
-					if split[1] == "not" {
-						comparators = []string{"between", "in", "like"}
-					} else if split[1] == "is" {
-						comparators = []string{"not", "null"}
-					} else {
-						ret = false
-					}
+		table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
+			if source != tview.AutocompletedNavigate {
+				inputText := strings.Split(table.Filter.Input.GetText(), " ")
 
-					if ret {
-						for i, comparator := range comparators {
-							comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
-						}
-						return comparators
-					}
-
-				} else if len(split) == 4 {
-					ret := true
-
-					if split[2] == "not" {
-						comparators = []string{"null"}
-					} else if split[2] == "is" {
-						comparators = []string{"not", "null"}
-					} else {
-						ret = false
-					}
-
-					if ret {
-						for i, comparator := range comparators {
-							comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
-						}
-
-						return comparators
-					}
+				if len(inputText) == 1 {
+					table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
+				} else if len(inputText) == 2 {
+					table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
 				}
 
-				return []string{}
-			})
+				table.Filter.Input.SetText(text)
+			}
+			return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
+		})
 
-			table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
-				if source != tview.AutocompletedNavigate {
-					inputText := strings.Split(table.Filter.Input.GetText(), " ")
-
-					if len(inputText) == 1 {
-						table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
-					} else if len(inputText) == 2 {
-						table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
-					}
-
-					table.Filter.Input.SetText(text)
-				}
-				return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
-			})
-
-		}
 		table.SetInputCapture(nil)
 	} else if command == commands.Edit {
 		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string, row, col int) {
@@ -431,51 +478,6 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			} else {
 				table.AppendNewChange("DELETE", table.GetDBReference(), selectedRowIndex, -1, "")
 			}
-
-		}
-	} else if command == commands.AppendNewRow {
-		if table.Menu.GetSelectedOption() == 1 {
-
-			newRow := make([]string, table.GetColumnCount())
-			newRowIndex := table.GetRowCount()
-			newRowUuid := uuid.New()
-
-			for i := 0; i < table.GetColumnCount(); i++ {
-				newRow[i] = "Default"
-			}
-
-			table.InsertRow(newRow, newRowIndex, newRowUuid)
-
-			for i := 0; i < table.GetColumnCount(); i++ {
-				table.GetCell(newRowIndex, i).SetBackgroundColor(InsertColor).SetTextColor(tcell.ColorWhite.TrueColor())
-			}
-
-			newInsert := models.DbInsert{
-				Table:           table.GetDBReference(),
-				Columns:         table.GetRecords()[0],
-				Values:          newRow,
-				PrimaryKeyValue: newRowUuid,
-				Option:          1,
-			}
-
-			*table.state.listOfDbInserts = append(*table.state.listOfDbInserts, newInsert)
-
-			// if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
-			// 	table.Tree.GetCurrentNode().SetColor(InsertColor)
-			// } else if table.Tree.GetCurrentNode().GetColor() == DeleteColor {
-			// 	table.Tree.GetCurrentNode().SetColor(ChangeColor)
-			// }
-
-			table.Select(newRowIndex, 1)
-
-			App.ForceDraw()
-			table.StartEditingCell(newRowIndex, 1, func(newValue string, row, col int) {
-				cellReference := table.GetCell(row, 0).GetReference()
-
-				if cellReference != nil {
-					table.MutateInsertedRowCell(cellReference.(uuid.UUID), col, newValue)
-				}
-			})
 
 		}
 	}
@@ -971,9 +973,9 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	App.SetFocus(inputField)
 }
 
-func (table *ResultsTable) CheckIfRowIsInserted(rowId uuid.UUID) bool {
+func (table *ResultsTable) CheckIfRowIsInserted(rowID uuid.UUID) bool {
 	for _, insertedRow := range *table.state.listOfDbInserts {
-		if insertedRow.PrimaryKeyValue == rowId {
+		if insertedRow.PrimaryKeyValue == rowID {
 			return true
 		}
 	}
@@ -981,9 +983,9 @@ func (table *ResultsTable) CheckIfRowIsInserted(rowId uuid.UUID) bool {
 	return false
 }
 
-func (table *ResultsTable) MutateInsertedRowCell(rowId uuid.UUID, colIndex int, newValue string) {
+func (table *ResultsTable) MutateInsertedRowCell(rowID uuid.UUID, colIndex int, newValue string) {
 	for i, insertedRow := range *table.state.listOfDbInserts {
-		if insertedRow.PrimaryKeyValue == rowId {
+		if insertedRow.PrimaryKeyValue == rowID {
 			(*table.state.listOfDbInserts)[i].Values[colIndex] = newValue
 		}
 	}

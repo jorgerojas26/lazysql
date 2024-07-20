@@ -146,7 +146,7 @@ func openExternalEditor(s *SQLEditor) string {
 
 // Function to select editor
 func getEditor() string {
-	var editor string = os.Getenv("SQL_EDITOR")
+	editor := os.Getenv("SQL_EDITOR")
 	if editor == "" {
 		editor = os.Getenv("EDITOR")
 	}
@@ -164,7 +164,7 @@ func getEditor() string {
 
 // Function to select terminal
 func getTerminal() string {
-	var terminal string = os.Getenv("SQL_TERMINAL")
+	terminal := os.Getenv("SQL_TERMINAL")
 
 	if terminal == "" {
 		terminal = os.Getenv("TERMINAL")
