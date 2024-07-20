@@ -3,7 +3,6 @@ package components
 import (
 	"fmt"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -89,7 +88,7 @@ func (menu *ResultsTableMenu) SetSelectedOption(option int) {
 }
 
 func (menu *ResultsTableMenu) SetBlur() {
-	menu.SetBorderColor(tcell.ColorDarkGray)
+	menu.SetBorderColor(tview.Styles.InverseTextColor)
 
 	for _, item := range menu.MenuItems {
 		item.SetTextColor(tview.Styles.InverseTextColor)

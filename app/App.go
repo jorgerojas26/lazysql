@@ -8,19 +8,18 @@ import (
 var App = tview.NewApplication()
 
 func init() {
-	Styles := tview.Theme{
+	theme := tview.Theme{
 		PrimitiveBackgroundColor:    tcell.ColorDefault,
 		ContrastBackgroundColor:     tcell.ColorBlue,
 		MoreContrastBackgroundColor: tcell.ColorGreen,
 		BorderColor:                 tcell.ColorWhite,
 		TitleColor:                  tcell.ColorWhite,
 		GraphicsColor:               tcell.ColorWhite,
-		PrimaryTextColor:            tcell.ColorWhite.TrueColor(),
-		SecondaryTextColor:          tcell.ColorCadetBlue,
+		PrimaryTextColor:            tcell.ColorDefault.TrueColor(),
+		SecondaryTextColor:          tcell.ColorYellow,
 		TertiaryTextColor:           tcell.ColorGreen,
-		InverseTextColor:            tcell.ColorDarkGray,
-		ContrastSecondaryTextColor:  tcell.ColorNavy,
+		InverseTextColor:            tcell.ColorWhite,
+		ContrastSecondaryTextColor:  tcell.ColorBlack,
 	}
-
-	tview.Styles = Styles
+	tview.Styles = theme
 }

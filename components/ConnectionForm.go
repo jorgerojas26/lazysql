@@ -23,37 +23,45 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	wrapper.SetDirection(tview.FlexColumnCSS)
 
-	addForm := tview.NewForm().SetFieldBackgroundColor(tcell.ColorWhite).SetButtonBackgroundColor(tcell.ColorWhite).SetLabelColor(tcell.ColorWhite.TrueColor()).SetFieldTextColor(tcell.ColorBlack)
+	addForm := tview.NewForm().SetFieldBackgroundColor(tview.Styles.InverseTextColor).SetButtonBackgroundColor(tview.Styles.InverseTextColor).SetLabelColor(tview.Styles.PrimaryTextColor).SetFieldTextColor(tview.Styles.ContrastSecondaryTextColor)
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	saveButton := tview.NewButton("[darkred]F1 [black]Save")
-	saveButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	saveButton := tview.NewButton("[yellow]F1 [dark]Save")
+	saveButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	saveButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	testButton := tview.NewButton("[darkred]F2 [black]Test")
-	testButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	testButton := tview.NewButton("[yellow]F2 [dark]Test")
+	testButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	testButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[darkred]F3 [black]Connect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	connectButton := tview.NewButton("[yellow]F3 [dark]Connect")
+	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	connectButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	cancelButton := tview.NewButton("[darkred]Esc [black]Cancel")
-	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	cancelButton := tview.NewButton("[yellow]Esc [dark]Cancel")
+	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(tview.Styles.PrimaryTextColor)))
+	cancelButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
-	statusText.SetBorderPadding(0, 1, 0, 0)
+	statusText.SetBorderPadding(1, 1, 0, 0)
 
 	wrapper.AddItem(addForm, 0, 1, true)
-	wrapper.AddItem(statusText, 3, 0, false)
-	wrapper.AddItem(buttonsWrapper, 1, 0, false)
+	wrapper.AddItem(statusText, 4, 0, false)
+	wrapper.AddItem(buttonsWrapper, 3, 0, false)
 
 	form := &ConnectionForm{
 		Flex:       wrapper,
@@ -81,7 +89,6 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
-
 			if err != nil {
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
@@ -161,17 +168,17 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		return
 	}
 
-	form.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
+	form.StatusText.SetText("Connecting...").SetTextColor(tview.Styles.TertiaryTextColor)
 
 	var db drivers.Driver
 
 	switch parsed.Driver {
 	case "mysql":
 		db = &drivers.MySQL{}
-	case "postgres":
-		db = &drivers.Postgres{}
-	case "sqlite3":
-		db = &drivers.SQLite{}
+		// case "postgres":
+		// 	db = &drivers.Postgres{}
+		// case "sqlite3":
+		// 	db = &drivers.SQLite{}
 	}
 
 	err = db.TestConnection(connectionString)
@@ -179,7 +186,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 	} else {
-		form.StatusText.SetText("Connection success").SetTextColor(tcell.ColorGreen)
+		form.StatusText.SetText("Connection success").SetTextColor(tview.Styles.TertiaryTextColor)
 	}
 	App.ForceDraw()
 }

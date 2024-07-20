@@ -27,14 +27,14 @@ func NewResultsFilter() *ResultsTableFilter {
 	recordsFilter.SetTitleAlign(tview.AlignCenter)
 	recordsFilter.SetBorderPadding(0, 0, 1, 1)
 
-	recordsFilter.Label.SetTextColor(tcell.ColorOrange)
+	recordsFilter.Label.SetTextColor(tview.Styles.TertiaryTextColor)
 	recordsFilter.Label.SetText("WHERE")
 	recordsFilter.Label.SetBorderPadding(0, 0, 0, 1)
 
 	recordsFilter.Input.SetPlaceholder("Enter a WHERE clause to filter the results")
-	recordsFilter.Input.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDefault))
-	recordsFilter.Input.SetFieldBackgroundColor(tcell.ColorDefault)
-	recordsFilter.Input.SetFieldTextColor(tcell.ColorWhite.TrueColor())
+	recordsFilter.Input.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
+	recordsFilter.Input.SetFieldBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
+	recordsFilter.Input.SetFieldTextColor(tview.Styles.PrimaryTextColor)
 	recordsFilter.Input.SetDoneFunc(func(key tcell.Key) {
 		switch key {
 		case tcell.KeyEnter:
@@ -50,7 +50,7 @@ func NewResultsFilter() *ResultsTableFilter {
 
 		}
 	})
-	recordsFilter.Input.SetAutocompleteStyles(tcell.ColorBlack, tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorBlack), tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorBlack))
+	recordsFilter.Input.SetAutocompleteStyles(tview.Styles.PrimitiveBackgroundColor, tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor), tcell.StyleDefault.Foreground(tview.Styles.SecondaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
 
 	recordsFilter.AddItem(recordsFilter.Label, 6, 0, false)
 	recordsFilter.AddItem(recordsFilter.Input, 0, 1, false)
@@ -95,21 +95,21 @@ func (filter *ResultsTableFilter) RemoveHighlight() {
 
 func (filter *ResultsTableFilter) RemoveLocalHighlight() {
 	filter.SetBorderColor(tcell.ColorWhite)
-	filter.Label.SetTextColor(tcell.ColorOrange)
+	filter.Label.SetTextColor(tview.Styles.TertiaryTextColor)
 	filter.Input.SetPlaceholderTextColor(tview.Styles.InverseTextColor)
 	filter.Input.SetFieldTextColor(tview.Styles.InverseTextColor)
 }
 
 func (filter *ResultsTableFilter) Highlight() {
 	filter.SetBorderColor(tcell.ColorWhite)
-	filter.Label.SetTextColor(tcell.ColorOrange)
+	filter.Label.SetTextColor(tview.Styles.TertiaryTextColor)
 	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
 	filter.Input.SetFieldTextColor(tview.Styles.PrimaryTextColor)
 }
 
 func (filter *ResultsTableFilter) HighlightLocal() {
 	filter.SetBorderColor(tview.Styles.PrimaryTextColor)
-	filter.Label.SetTextColor(tcell.ColorOrange)
+	filter.Label.SetTextColor(tview.Styles.TertiaryTextColor)
 	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
 	filter.Input.SetFieldTextColor(tview.Styles.PrimaryTextColor)
 }

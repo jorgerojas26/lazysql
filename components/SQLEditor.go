@@ -84,8 +84,8 @@ func (s *SQLEditor) Highlight() {
 }
 
 func (s *SQLEditor) SetBlur() {
-	s.SetBorderColor(tcell.ColorWhite)
-	s.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
+	s.SetBorderColor(tview.Styles.InverseTextColor)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.InverseTextColor))
 }
 
 /*

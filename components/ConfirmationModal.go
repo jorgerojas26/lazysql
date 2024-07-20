@@ -1,7 +1,6 @@
 package components
 
 import (
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -17,7 +16,7 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 		modal.SetText("Are you sure?")
 	}
 	modal.AddButtons([]string{"Yes", "No"})
-	modal.SetBackgroundColor(tcell.ColorBlack)
+	modal.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
 	modal.SetTextColor(tview.Styles.PrimaryTextColor)
 
 	return &ConfirmationModal{

@@ -50,6 +50,7 @@ const (
 
 type DbDmlChange struct {
 	Type                 DmlType
+	Database             string
 	Table                string
 	Values               []CellValue
 	PrimaryKeyColumnName string
@@ -63,4 +64,9 @@ type DatabaseTableColumn struct {
 	Key     string
 	Default string
 	Extra   string
+}
+
+type Query struct {
+	Query string
+	Args  []interface{}
 }

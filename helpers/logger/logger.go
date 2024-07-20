@@ -56,8 +56,15 @@ func (l *logger) log(level slog.Level, msg string, data map[string]any) {
 		return
 	}
 
-	l.file.Write(logData)
-	l.file.Write([]byte("\n"))
+	_, err = l.file.Write(logData)
+	if err != nil {
+		return
+	}
+
+	_, err = l.file.Write([]byte("\n"))
+	if err != nil {
+		return
+	}
 }
 
 func (l *logger) SetFile(filename string) error {
@@ -65,7 +72,10 @@ func (l *logger) SetFile(filename string) error {
 	defer l.mu.Unlock()
 
 	if l.file != nil {
-		l.file.Close()
+		err := l.file.Close()
+		if err != nil {
+			return err
+		}
 	}
 
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

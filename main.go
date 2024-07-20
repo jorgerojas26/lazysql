@@ -25,9 +25,12 @@ func main() {
 		panic(parseError)
 	}
 	logger.SetLevel(logLvl)
-	fileError := logger.SetFile(*logFile)
-	if fileError != nil {
-		panic(fileError)
+
+	if *logFile != "" {
+		fileError := logger.SetFile(*logFile)
+		if fileError != nil {
+			panic(fileError)
+		}
 	}
 
 	logger.Info("Starting LazySQL...", nil)

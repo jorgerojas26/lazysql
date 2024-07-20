@@ -82,7 +82,8 @@ func (home *Home) subscribeToTreeChanges() {
 				home.TabbedPane.SwitchToTabByName(tab.Name)
 			} else {
 				table = NewResultsTable(&home.ListOfDbChanges, home.Tree, home.DBDriver).WithFilter()
-				table.SetDBReference(tableName)
+				table.SetDatabaseName(home.Tree.GetSelectedDatabase())
+				table.SetTableName(tableName)
 
 				home.TabbedPane.AppendTab(tableName, table)
 			}
