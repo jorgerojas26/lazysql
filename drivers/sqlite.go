@@ -2,9 +2,7 @@ package drivers
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	// import sqlite3 driver
@@ -392,95 +390,7 @@ func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
-	queries := make([]string, 0, len(changes)+len(inserts))
-
-	// This will hold grouped changes by their RowId and Table
-	groupedUpdated := make(map[string][]models.DbDmlChange)
-	groupedDeletes := make([]models.DbDmlChange, 0, len(changes))
-
-	// Group changes by RowId and Table
-	for _, change := range changes {
-		if change.Type == "UPDATE" {
-			key := fmt.Sprintf("%s|%s|%s", change.Table, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
-			groupedUpdated[key] = append(groupedUpdated[key], change)
-		} else if change.Type == "DELETE" {
-			groupedDeletes = append(groupedDeletes, change)
-		}
-	}
-
-	// Combine individual changes to SQL statements
-	for key, changes := range groupedUpdated {
-		columns := []string{}
-
-		// Split key into table and rowId
-		splitted := strings.Split(key, "|")
-		table := splitted[0]
-		primaryKeyColumnName := splitted[1]
-		primaryKeyValue := splitted[2]
-
-		for _, change := range changes {
-			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
-		}
-
-		// Merge all column updates
-		updateClause := strings.Join(columns, ", ")
-
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s';", table, updateClause, primaryKeyColumnName, primaryKeyValue)
-
-		queries = append(queries, query)
-	}
-
-	for _, delete := range groupedDeletes {
-		statementType := ""
-		query := ""
-
-		statementType = "DELETE FROM"
-
-		query = fmt.Sprintf("%s %s WHERE %s = \"%s\"", statementType, delete.Table, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
-
-		if query != "" {
-			queries = append(queries, query)
-		}
-	}
-
-	for _, insert := range inserts {
-		values := make([]string, 0, len(insert.Values))
-
-		columnsToBeInserted := insert.Columns
-
-		for _, value := range insert.Values {
-			_, err := strconv.ParseFloat(value, 64)
-
-			if err != nil {
-				values = append(values, fmt.Sprintf("\"%s\"", value))
-			} else {
-				values = append(values, value)
-			}
-		}
-
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", insert.Table, strings.Join(columnsToBeInserted, ", "), strings.Join(values, ", "))
-
-		queries = append(queries, query)
-	}
-
-	tx, err := db.Connection.Begin()
-	if err != nil {
-		return err
-	}
-
-	for _, query := range queries {
-		fmt.Printf("LS -> drivers/sqlite.go:440 -> query: %+v\n", query)
-		_, err = tx.Exec(query)
-		if err != nil {
-			return errors.Join(err, tx.Rollback())
-		}
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}
+func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
 	return nil
 }
 

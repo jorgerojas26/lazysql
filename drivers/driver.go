@@ -18,7 +18,7 @@ type Driver interface {
 	DeleteRecord(table string, primaryKeyColumnName, primaryKeyValue string) error
 	ExecuteDMLStatement(query string) (string, error)
 	ExecuteQuery(query string) ([][]string, error)
-	ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) error
-	SetProvider(provider string)
+	ExecutePendingChanges(changes []models.DbDmlChange) error
+	SetProvider(provider string) // NOTE: This is used to get the primary key from the database table until i find a better way to do it. See ResultsTable.go GetPrimaryKeyValue function
 	GetProvider() string
 }

@@ -1,7 +1,6 @@
 package models
 
 import (
-	"github.com/google/uuid"
 	"github.com/rivo/tview"
 )
 
@@ -22,22 +21,39 @@ type ConnectionPages struct {
 	*tview.Pages
 }
 
-type DbDmlChange struct {
-	Type                 string
-	Table                string
-	Column               string
-	Value                string
-	PrimaryKeyColumnName string
-	PrimaryKeyValue      string
-	Option               int
+type (
+	CellValueType int8
+	DmlType       int8
+)
+
+// This is not a direct map of the database types, but rather a way to represent them in the UI.
+// So the String type is a representation of the cell value in the UI table and the others are
+// just a representation of the values that you can put in the database but not in the UI as a string of characters.
+const (
+	Empty CellValueType = iota
+	Null
+	Default
+	String
+)
+
+type CellValue struct {
+	Type   CellValueType
+	Column string
+	Value  interface{}
 }
 
-type DbInsert struct {
-	Table           string
-	Columns         []string
-	Values          []string
-	Option          int
-	PrimaryKeyValue uuid.UUID
+const (
+	DmlUpdateType DmlType = iota
+	DmlDeleteType
+	DmlInsertType
+)
+
+type DbDmlChange struct {
+	Type                 DmlType
+	Table                string
+	Values               []CellValue
+	PrimaryKeyColumnName string
+	PrimaryKeyValue      string
 }
 
 type DatabaseTableColumn struct {
