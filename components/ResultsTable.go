@@ -50,8 +50,8 @@ type ResultsTable struct {
 
 var (
 	ErrorModal  = tview.NewModal()
-	ChangeColor = tcell.ColorDarkOrange.TrueColor()
-	InsertColor = tcell.ColorDarkGreen.TrueColor()
+	ChangeColor = tcell.ColorDarkOrange
+	InsertColor = tcell.ColorDarkGreen
 	DeleteColor = tcell.ColorRed
 )
 
@@ -75,14 +75,14 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]m
 	errorModal.AddButtons([]string{"Ok"})
 	errorModal.SetText("An error occurred")
 	errorModal.SetBackgroundColor(tcell.ColorRed)
-	errorModal.SetTextColor(tcell.ColorBlack)
-	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(tcell.ColorBlack))
+	errorModal.SetTextColor(tview.Styles.PrimaryTextColor)
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor))
 	errorModal.SetFocus(0)
 
 	loadingModal := tview.NewModal()
 	loadingModal.SetText("Loading...")
-	loadingModal.SetBackgroundColor(tview.Styles.SecondaryTextColor)
-	loadingModal.SetTextColor(tview.Styles.PrimaryTextColor)
+	loadingModal.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
+	loadingModal.SetTextColor(tview.Styles.SecondaryTextColor)
 
 	pages := tview.NewPages()
 	pages.AddPage("table", wrapper, true, true)
@@ -108,7 +108,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, listOfDbInserts *[]m
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
-	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tcell.ColorBlack.TrueColor()))
+	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 
 	return table
 }
@@ -204,7 +204,7 @@ func (table *ResultsTable) AddInsertedRows() {
 			tableCell.SetExpansion(1)
 			tableCell.SetReference(inserts[i].PrimaryKeyValue)
 
-			tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
+			tableCell.SetTextColor(tcell.ColorWhite.TrueColor())
 			tableCell.SetBackgroundColor(InsertColor)
 
 			table.SetCell(rowIndex, j, tableCell)
@@ -468,13 +468,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					}
 				}
 
-				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
-					table.Tree.ForceRemoveHighlight()
-				} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
-					table.Tree.GetCurrentNode().SetColor(InsertColor)
-				} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
-					table.Tree.GetCurrentNode().SetColor(ChangeColor)
-				}
+				// if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
+				// 	table.Tree.ForceRemoveHighlight()
+				// } else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
+				// 	table.Tree.GetCurrentNode().SetColor(InsertColor)
+				// } else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
+				// 	table.Tree.GetCurrentNode().SetColor(ChangeColor)
+				// }
 			} else {
 				table.AppendNewChange("DELETE", table.GetDBReference(), selectedRowIndex, -1, "")
 			}
@@ -920,7 +920,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	inputField := tview.NewInputField()
 	inputField.SetText(cell.Text)
 	inputField.SetFieldBackgroundColor(tview.Styles.PrimaryTextColor)
-	inputField.SetFieldTextColor(tcell.ColorBlack)
+	inputField.SetFieldTextColor(tview.Styles.PrimitiveBackgroundColor)
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
@@ -1032,18 +1032,18 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 					cell.SetBackgroundColor(tcell.ColorDefault)
 					cell.SetTextColor(tview.Styles.PrimaryTextColor)
 
-					if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
-						table.Tree.GetCurrentNode().SetColor(tview.Styles.InverseTextColor)
-					} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
-						table.Tree.GetCurrentNode().SetColor(InsertColor)
-					} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
-						table.Tree.GetCurrentNode().SetColor(ChangeColor)
-					}
+					// if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
+					// 	table.Tree.GetCurrentNode().SetColor(tview.Styles.InverseTextColor)
+					// } else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
+					// 	table.Tree.GetCurrentNode().SetColor(InsertColor)
+					// } else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
+					// 	table.Tree.GetCurrentNode().SetColor(ChangeColor)
+					// }
 
 				} else {
 					cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
 					cell.SetTextColor(tcell.ColorBlack.TrueColor())
-					table.Tree.GetCurrentNode().SetColor(ChangeColor)
+					// table.Tree.GetCurrentNode().SetColor(ChangeColor)
 
 					(*table.state.listOfDbChanges)[indexOfChange].Value = value
 				}
@@ -1062,32 +1062,32 @@ func (table *ResultsTable) AppendNewChange(changeType string, tableName string, 
 
 				cell.SetBackgroundColor(tcell.ColorOrange.TrueColor())
 				cell.SetTextColor(tcell.ColorBlack.TrueColor())
-				table.Tree.GetCurrentNode().SetColor(ChangeColor)
+				// table.Tree.GetCurrentNode().SetColor(ChangeColor)
 			}
 		case "DELETE":
 			if alreadyExists {
 
 				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfChange], (*table.state.listOfDbChanges)[indexOfChange+1:]...)
 
-				if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
-					table.Tree.GetCurrentNode().SetColor(tview.Styles.InverseTextColor)
-				} else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
-					table.Tree.GetCurrentNode().SetColor(InsertColor)
-				} else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
-					table.Tree.GetCurrentNode().SetColor(ChangeColor)
-				}
+				// if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) == 0 {
+				// 	table.Tree.GetCurrentNode().SetColor(tview.Styles.InverseTextColor)
+				// } else if len(*table.state.listOfDbChanges) == 0 && len(*table.state.listOfDbInserts) > 0 {
+				// 	table.Tree.GetCurrentNode().SetColor(InsertColor)
+				// } else if len(*table.state.listOfDbChanges) > 0 && len(*table.state.listOfDbInserts) == 0 {
+				// 	table.Tree.GetCurrentNode().SetColor(ChangeColor)
+				// }
 
 				for i := 0; i < table.GetColumnCount(); i++ {
-					table.GetCell(rowIndex, i).SetBackgroundColor(tcell.ColorDefault)
+					table.GetCell(rowIndex, i).SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
 				}
 
 			} else {
 
-				if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
-					table.Tree.GetCurrentNode().SetColor(DeleteColor)
-				} else if table.Tree.GetCurrentNode().GetColor() == InsertColor {
-					table.Tree.GetCurrentNode().SetColor(ChangeColor)
-				}
+				// if table.Tree.GetCurrentNode().GetColor() == tview.Styles.InverseTextColor || table.Tree.GetCurrentNode().GetColor() == tview.Styles.PrimaryTextColor {
+				// 	table.Tree.GetCurrentNode().SetColor(DeleteColor)
+				// } else if table.Tree.GetCurrentNode().GetColor() == InsertColor {
+				// 	table.Tree.GetCurrentNode().SetColor(ChangeColor)
+				// }
 
 				newChange := models.DbDmlChange{
 					Type:                 changeType,

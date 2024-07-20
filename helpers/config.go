@@ -42,7 +42,6 @@ func SaveConnectionConfig(connections []models.Connection) (err error) {
 	configFilePath := filepath.Join(directoriesPath, "config.toml")
 
 	err = os.MkdirAll(directoriesPath, 0755)
-
 	if err != nil {
 		return err
 	}

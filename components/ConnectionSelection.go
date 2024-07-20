@@ -28,27 +28,27 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexRowCSS)
 
 	newButton := tview.NewButton("[darkred]N[black]ew")
-	newButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	newButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(newButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	connectButton := tview.NewButton("[darkred]C[black]onnect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	editButton := tview.NewButton("[darkred]E[black]dit")
-	editButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	editButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(editButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	deleteButton := tview.NewButton("[darkred]D[black]elete")
-	deleteButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	deleteButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(deleteButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	quitButton := tview.NewButton("[darkred]Q[black]uit")
-	quitButton.SetStyle(tcell.StyleDefault.Background(tcell.ColorGhostWhite))
+	quitButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
@@ -130,7 +130,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 		MainPages.SwitchToPage(connection.URL)
 		App.Draw()
 	} else {
-		cs.StatusText.SetText("Connecting...").SetTextColor(tcell.ColorGreen)
+		cs.StatusText.SetText("Connecting...").SetTextColor(tview.Styles.TertiaryTextColor)
 		App.Draw()
 
 		var newDbDriver drivers.Driver

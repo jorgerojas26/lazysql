@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -38,7 +39,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	}
 
 	tree.SetTopLevel(1)
-	tree.SetGraphicsColor(tview.Styles.SecondaryTextColor)
+	tree.SetGraphicsColor(tview.Styles.PrimaryTextColor)
 	tree.SetBorder(true)
 	tree.SetTitle("Databases")
 	tree.SetTitleAlign(tview.AlignLeft)
@@ -73,12 +74,29 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		tree.SetFocusFunc(nil)
 	})
 
+	tree.SetChangedFunc(func(node *tview.TreeNode) {
+		rootNode.Walk(func(n, parent *tview.TreeNode) bool {
+			nodeText := n.GetText()
+
+			splittedNodeText := strings.Split(nodeText, "]")
+
+			if len(splittedNodeText) > 1 {
+				n.SetText(splittedNodeText[1])
+			}
+
+			return true
+		})
+
+		nodeText := node.GetText()
+		node.SetText(fmt.Sprintf("[%s:]%s", tview.Styles.SecondaryTextColor.Name(), nodeText))
+	})
+
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
 		if node.GetLevel() == 1 {
 			if node.IsExpanded() {
 				node.SetExpanded(false)
 			} else {
-				tree.SetSelectedDatabase(node.GetText())
+				tree.SetSelectedDatabase(node.GetReference().(string))
 
 				if node.GetChildren() == nil {
 					tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
@@ -94,22 +112,14 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			}
 		} else if node.GetLevel() == 2 {
 			if node.GetChildren() == nil {
-				tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
-
-				if tree.DBDriver.GetProvider() == "sqlite3" {
-					tableName = node.GetText()
-				}
+				tableName := node.GetReference().(string)
 
 				tree.SetSelectedTable(tableName)
 			} else {
 				node.SetExpanded(!node.IsExpanded())
 			}
 		} else if node.GetLevel() == 3 {
-			tableName := fmt.Sprintf("%s.%s", node.GetReference(), node.GetText())
-
-			if tree.DBDriver.GetProvider() == "sqlite3" {
-				tableName = node.GetText()
-			}
+			tableName := node.GetReference().(string)
 
 			tree.SetSelectedTable(tableName)
 		}
@@ -157,15 +167,19 @@ func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode
 			rootNode = tview.NewTreeNode(key)
 			rootNode.SetExpanded(false)
 			rootNode.SetReference(key)
-			rootNode.SetColor(tview.Styles.PrimaryTextColor)
+			rootNode.SetColor(tview.Styles.SecondaryTextColor)
 			node.AddChild(rootNode)
 		}
 
 		for _, child := range values {
 			childNode := tview.NewTreeNode(child)
 			childNode.SetExpanded(defaultExpanded)
-			childNode.SetReference(key)
-			childNode.SetColor(tview.Styles.SecondaryTextColor)
+			childNode.SetColor(tview.Styles.PrimaryTextColor)
+			if tree.DBDriver.GetProvider() == "sqlite3" {
+				childNode.SetReference(child)
+			} else {
+				childNode.SetReference(fmt.Sprintf("%s.%s", key, child))
+			}
 			if rootNode != nil {
 				rootNode.AddChild(childNode)
 			} else {
@@ -219,14 +233,16 @@ func (tree *Tree) RemoveHighlight() {
 	tree.SetBorderColor(tview.Styles.InverseTextColor)
 	tree.SetGraphicsColor(tview.Styles.InverseTextColor)
 	tree.SetTitleColor(tview.Styles.InverseTextColor)
-	tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
+	// tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
 	for _, children := range childrens {
 		currentColor := children.GetColor()
 
-		if currentColor == tview.Styles.PrimaryTextColor {
+		childrenIsCurrentNode := children.GetReference() == tree.GetCurrentNode().GetReference()
+
+		if !childrenIsCurrentNode && currentColor == tview.Styles.PrimaryTextColor {
 			children.SetColor(tview.Styles.InverseTextColor)
 		}
 
@@ -235,7 +251,9 @@ func (tree *Tree) RemoveHighlight() {
 		for _, children := range childrenOfChildren {
 			currentColor := children.GetColor()
 
-			if currentColor == tview.Styles.PrimaryTextColor {
+			childrenIsCurrentNode := children.GetReference() == tree.GetCurrentNode().GetReference()
+
+			if !childrenIsCurrentNode && currentColor == tview.Styles.PrimaryTextColor {
 				children.SetColor(tview.Styles.InverseTextColor)
 			}
 
@@ -268,7 +286,7 @@ func (tree *Tree) ForceRemoveHighlight() {
 // Focus func
 func (tree *Tree) Highlight() {
 	tree.SetBorderColor(tview.Styles.PrimaryTextColor)
-	tree.SetGraphicsColor(tview.Styles.SecondaryTextColor)
+	tree.SetGraphicsColor(tview.Styles.PrimaryTextColor)
 	tree.SetTitleColor(tview.Styles.PrimaryTextColor)
 	tree.GetRoot().SetColor(tview.Styles.PrimaryTextColor)
 
@@ -286,7 +304,7 @@ func (tree *Tree) Highlight() {
 				currentColor := children.GetColor()
 
 				if currentColor == tview.Styles.InverseTextColor {
-					children.SetColor(tview.Styles.SecondaryTextColor)
+					children.SetColor(tview.Styles.PrimaryTextColor)
 				}
 			}
 
