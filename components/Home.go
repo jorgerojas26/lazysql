@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
@@ -72,20 +74,25 @@ func (home *Home) subscribeToTreeChanges() {
 	for stateChange := range ch {
 		switch stateChange.Key {
 		case "SelectedTable":
+			databaseName := home.Tree.GetSelectedDatabase()
 			tableName := stateChange.Value.(string)
 
-			tab := home.TabbedPane.GetTabByName(tableName)
+			tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
+
+			tab := home.TabbedPane.GetTabByReference(tabReference)
+
 			var table *ResultsTable
 
 			if tab != nil {
 				table = tab.Content
-				home.TabbedPane.SwitchToTabByName(tab.Name)
+				home.TabbedPane.SwitchToTabByReference(tab.Reference)
 			} else {
 				table = NewResultsTable(&home.ListOfDbChanges, home.Tree, home.DBDriver).WithFilter()
-				table.SetDatabaseName(home.Tree.GetSelectedDatabase())
+				table.SetDatabaseName(databaseName)
 				table.SetTableName(tableName)
 
-				home.TabbedPane.AppendTab(tableName, table)
+				home.TabbedPane.AppendTab(tableName, table, tabReference)
+
 			}
 
 			table.FetchRecords(func() {
@@ -246,13 +253,14 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.focusRightWrapper()
 		}
 	} else if command == commands.SwitchToEditorView {
-		tab := home.TabbedPane.GetTabByName("Editor")
+		tab := home.TabbedPane.GetTabByReference("Editor")
 
 		if tab != nil {
-			home.TabbedPane.SwitchToTabByName("Editor")
+			home.TabbedPane.SwitchToTabByReference("Editor")
+			tab.Content.SetIsFiltering(true)
 		} else {
 			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, home.Tree, home.DBDriver).WithEditor()
-			home.TabbedPane.AppendTab("Editor", tableWithEditor)
+			home.TabbedPane.AppendTab("Editor", tableWithEditor, "Editor")
 			tableWithEditor.SetIsFiltering(true)
 		}
 		home.focusRightWrapper()

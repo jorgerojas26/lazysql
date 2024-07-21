@@ -16,6 +16,7 @@ type Tab struct {
 	PreviousTab *Tab
 	Header      *Header
 	Name        string
+	Reference   string
 }
 
 type TabbedPaneState struct {
@@ -42,15 +43,16 @@ func NewTabbedPane() *TabbedPane {
 	}
 }
 
-func (t *TabbedPane) AppendTab(name string, content *ResultsTable) {
+func (t *TabbedPane) AppendTab(name string, content *ResultsTable, reference string) {
 	textView := tview.NewTextView()
 	textView.SetText(name)
 	item := &Header{textView}
 
 	newTab := &Tab{
-		Content: content,
-		Name:    name,
-		Header:  item,
+		Content:   content,
+		Name:      name,
+		Header:    item,
+		Reference: reference,
 	}
 
 	t.state.Length++
@@ -70,7 +72,7 @@ func (t *TabbedPane) AppendTab(name string, content *ResultsTable) {
 
 	t.HighlightTabHeader(newTab)
 
-	t.AddAndSwitchToPage(name, content.Page, true)
+	t.AddAndSwitchToPage(reference, content.Page, true)
 }
 
 func (t *TabbedPane) RemoveCurrentTab() {
@@ -114,7 +116,7 @@ func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
 	t.state.CurrentTab = tab
 	t.HighlightTabHeader(tab)
 
-	t.SwitchToPage(tab.Name)
+	t.SwitchToPage(tab.Reference)
 
 	app.App.SetFocus(tab.Content.Page)
 
@@ -129,6 +131,19 @@ func (t *TabbedPane) GetTabByName(name string) *Tab {
 	tab := t.state.FirstTab
 	for i := 0; tab != nil && i < t.state.Length; i++ {
 		if tab.Name == name {
+			break
+		}
+		tab = tab.NextTab
+	}
+
+	return tab
+}
+
+func (t *TabbedPane) GetTabByReference(reference string) *Tab {
+	tab := t.state.FirstTab
+
+	for i := 0; tab != nil && i < t.state.Length; i++ {
+		if tab.Reference == reference {
 			break
 		}
 		tab = tab.NextTab
@@ -190,6 +205,24 @@ func (t *TabbedPane) SwitchToTabByName(name string) *Tab {
 
 	for i := 0; tab != nil && i < t.state.Length; i++ {
 		if tab.Name == name {
+			break
+		}
+		tab = tab.NextTab
+	}
+
+	if tab != nil {
+		t.SetCurrentTab(tab)
+		return tab
+	}
+
+	return nil
+}
+
+func (t *TabbedPane) SwitchToTabByReference(reference string) *Tab {
+	tab := t.state.FirstTab
+
+	for i := 0; tab != nil && i < t.state.Length; i++ {
+		if tab.Reference == reference {
 			break
 		}
 		tab = tab.NextTab
