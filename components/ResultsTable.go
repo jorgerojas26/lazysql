@@ -282,7 +282,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 	command := app.Keymaps.Group("table").Resolve(event)
 
-	if table.Menu.GetSelectedOption() == 1 && command == commands.AppendNewRow {
+	if command == commands.AppendNewRow && (table.Menu != nil && table.Menu.GetSelectedOption() == 1) {
 		dbColumns := table.GetColumns()
 		newRowTableIndex := table.GetRowCount()
 		newRowUUID := uuid.New().String()
@@ -309,13 +309,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		table.StartEditingCell(newRowTableIndex, 0, nil)
 
-	}
-
-	if rowCount == 1 || colCount == 0 {
-		return nil
-	}
-
-	if command == commands.Search {
+	} else if command == commands.Search {
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
 			table.Editor.Highlight()
@@ -413,7 +407,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		})
 
 		table.SetInputCapture(nil)
-	} else if command == commands.Edit {
+	}
+
+	if rowCount == 1 || colCount == 0 {
+		return nil
+	}
+
+	if command == commands.Edit {
 		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, nil)
 	} else if command == commands.GotoNext {
 		if selectedColumnIndex+1 < colCount {
