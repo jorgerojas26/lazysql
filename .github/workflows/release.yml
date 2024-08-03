@@ -25,8 +25,18 @@ jobs:
         name: Golangci-lint
         uses: golangci/golangci-lint-action@v6.0.1
 
-      -
-        name: Run GoReleaser
+      - name: Set up GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: latest
+          platform: x64
+
+      - name: Install libx11-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev 
+
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           # either 'goreleaser' (default) or 'goreleaser-pro'
