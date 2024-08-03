@@ -7,9 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	// import sqlite3 driver
-	_ "github.com/mattn/go-sqlite3"
-	"github.com/xo/dburl"
+	// import sqlite driver
+	_ "modernc.org/sqlite"
 
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -26,7 +25,7 @@ func (db *SQLite) TestConnection(urlstr string) (err error) {
 func (db *SQLite) Connect(urlstr string) (err error) {
 	db.SetProvider("sqlite3")
 
-	db.Connection, err = dburl.Open(urlstr)
+	db.Connection, err = sql.Open("sqlite", urlstr)
 	if err != nil {
 		return err
 	}
@@ -85,8 +84,8 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *SQLite) GetTableColumns(database, table string) (results [][]string, err error) {
-	rows, err := db.Connection.Query(fmt.Sprintf("PRAGMA %s.table_info(%s)", database, table))
+func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err error) {
+	rows, err := db.Connection.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
 	if err != nil {
 		return nil, err
 	}
@@ -470,7 +469,6 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []
 	}
 
 	for _, query := range queries {
-		fmt.Printf("LS -> drivers/sqlite.go:440 -> query: %+v\n", query)
 		_, err = tx.Exec(query)
 		if err != nil {
 			return errors.Join(err, tx.Rollback())
