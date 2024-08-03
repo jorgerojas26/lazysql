@@ -75,7 +75,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	})
 
 	tree.SetChangedFunc(func(node *tview.TreeNode) {
-		rootNode.Walk(func(n, parent *tview.TreeNode) bool {
+		rootNode.Walk(func(n, _ *tview.TreeNode) bool {
 			nodeText := n.GetText()
 
 			splittedNodeText := strings.Split(nodeText, "]")
