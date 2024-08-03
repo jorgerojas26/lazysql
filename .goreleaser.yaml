@@ -16,7 +16,9 @@ before:
     - go generate ./...
 
 builds:
-  - goos:
+  - env:
+      - CGO_ENABLED=1
+    goos:
       - linux
       - windows
       - darwin
