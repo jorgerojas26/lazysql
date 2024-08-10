@@ -18,7 +18,7 @@ func NewHelpModal() *HelpModal {
 	colorBorder := tcell.ColorGreen
 	colorSelected := tcell.ColorBlue
 
-	list := tview.NewList().SetSelectedBackgroundColor(SelectedColor)
+	list := tview.NewList().SetSelectedBackgroundColor(colorSelected)
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 
 		command := app.Keymaps.Group("tree").Resolve(event)
@@ -44,8 +44,8 @@ func NewHelpModal() *HelpModal {
 		AddItem(list, 0, 5, true)
 
 	flex.SetBorder(true)
-	flex.SetTitleColor(BorderColor).SetTitle("Help")
-	flex.SetBorderColor(BorderColor)
+	flex.SetTitleColor(colorBorder).SetTitle("Help")
+	flex.SetBorderColor(colorBorder)
 
 	//Magic Number gain from trial and error
 	screenWidth, screenHeight := 145, 30
