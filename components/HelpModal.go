@@ -14,9 +14,8 @@ type HelpModal struct {
 
 func NewHelpModal() *HelpModal {
 
-	// Colors
-	BorderColor := tcell.ColorGreen
-	SelectedColor := tcell.ColorBlue
+	colorBorder := tcell.ColorGreen
+	colorSelected := tcell.ColorBlue
 
 	list := tview.NewList().SetSelectedBackgroundColor(SelectedColor)
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
