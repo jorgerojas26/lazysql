@@ -27,21 +27,21 @@ func (status *HelpStatus) UpdateText(binds []keymap.Bind) {
 
 	for i, key := range binds {
 
-		newText += key.Cmd.String()
+		newtext += key.Cmd.String()
 
-		newText += ": "
+		newtext += ": "
 
-		newText += key.Key.String()
+		newtext += key.Key.String()
 
 		islast := i == len(binds)-1
 
 		if !islast {
-			newText += " | "
+			newtext += " | "
 		}
 
 	}
 
-	status.SetText(newText)
+	status.SetText(newtext)
 }
 
 func (status *HelpStatus) SetStatusOnTree() {
