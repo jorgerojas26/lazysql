@@ -148,7 +148,7 @@ func (home *Home) focusTab(tab *Tab) {
 			App.SetFocus(table)
 		}
 
-		if tab.Name == "Editor" {
+		if tab.Name == EditorTabName {
 			home.HelpStatus.SetStatusOnEditorView()
 		} else {
 			home.HelpStatus.SetStatusOnTableView()
@@ -260,13 +260,13 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.focusRightWrapper()
 		}
 	} else if command == commands.SwitchToEditorView {
-		tab := home.TabbedPane.GetTabByName("Editor")
+		tab := home.TabbedPane.GetTabByName(EditorTabName)
 
 		if tab != nil {
-			home.TabbedPane.SwitchToTabByName("Editor")
+			home.TabbedPane.SwitchToTabByName(EditorTabName)
 		} else {
 			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, home.DBDriver).WithEditor()
-			home.TabbedPane.AppendTab("Editor", tableWithEditor)
+			home.TabbedPane.AppendTab(EditorTabName, tableWithEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
 		home.HelpStatus.SetStatusOnEditorView()
@@ -325,11 +325,11 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				if command == commands.Quit {
 					App.Stop()
 				} else if event.Key() == tcell.KeyEsc {
-					MainPages.RemovePage("Help")
+					MainPages.RemovePage(HelpPageName)
 				}
 				return event
 			})
-			MainPages.AddPage("Help", home.HelpModal, false, true)
+			MainPages.AddPage(HelpPageName, home.HelpModal, false, true)
 		}
 	}
 
