@@ -16,6 +16,8 @@ type Home struct {
 	TabbedPane      *TabbedPane
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
+	HelpStatus      HelpStatus
+	HelpModal       *HelpModal
 	DBDriver        drivers.Driver
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
@@ -28,12 +30,15 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
+	maincontent := tview.NewFlex()
+
 	home := &Home{
-		Flex:            tview.NewFlex(),
+		Flex:            tview.NewFlex().SetDirection(tview.FlexRow),
 		Tree:            tree,
 		TabbedPane:      tabbedPane,
 		LeftWrapper:     leftWrapper,
 		RightWrapper:    rightWrapper,
+		HelpStatus:      NewHelpStatus(),
 		ListOfDbChanges: []models.DbDmlChange{},
 		ListOfDbInserts: []models.DbInsert{},
 		DBDriver:        dbdriver,
@@ -51,8 +56,11 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	home.AddItem(leftWrapper, 30, 1, false)
-	home.AddItem(rightWrapper, 0, 5, false)
+	maincontent.AddItem(leftWrapper, 30, 1, false)
+	maincontent.AddItem(rightWrapper, 0, 5, false)
+
+	home.AddItem(maincontent, 0, 1, false)
+	home.AddItem(home.HelpStatus, 1, 1, false)
 
 	home.SetInputCapture(home.homeInputCapture)
 
