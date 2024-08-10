@@ -119,13 +119,13 @@ func (home *Home) focusRightWrapper() {
 	tab := home.TabbedPane.GetCurrentTab()
 
 	if tab != nil {
-		focusTab(tab)
+		home.focusTab(tab)
 	}
 
 	home.FocusedWrapper = "right"
 }
 
-func focusTab(tab *Tab) {
+func (home *Home) focusTab(tab *Tab) {
 	if tab != nil {
 		table := tab.Content
 		table.HighlightAll()
@@ -148,6 +148,11 @@ func focusTab(tab *Tab) {
 			App.SetFocus(table)
 		}
 
+		if tab.Name == "Editor" {
+			home.HelpStatus.SetStatusOnEditorView()
+		} else {
+			home.HelpStatus.SetStatusOnTableView()
+		}
 	}
 }
 
@@ -179,16 +184,16 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 	command := app.Keymaps.Group("table").Resolve(event)
 
 	if command == commands.TabPrev {
-		focusTab(home.TabbedPane.SwitchToPreviousTab())
+		home.focusTab(home.TabbedPane.SwitchToPreviousTab())
 		return nil
 	} else if command == commands.TabNext {
-		focusTab(home.TabbedPane.SwitchToNextTab())
+		home.focusTab(home.TabbedPane.SwitchToNextTab())
 		return nil
 	} else if command == commands.TabFirst {
-		focusTab(home.TabbedPane.SwitchToFirstTab())
+		home.focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
 	} else if command == commands.TabLast {
-		focusTab(home.TabbedPane.SwitchToLastTab())
+		home.focusTab(home.TabbedPane.SwitchToLastTab())
 		return nil
 	} else if command == commands.TabClose {
 		tab = home.TabbedPane.GetCurrentTab()
@@ -264,6 +269,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.TabbedPane.AppendTab("Editor", tableWithEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
+		home.HelpStatus.SetStatusOnEditorView()
 		home.focusRightWrapper()
 		App.ForceDraw()
 	} else if command == commands.SwitchToConnectionsView {
