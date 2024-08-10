@@ -2,10 +2,11 @@ package components
 
 import (
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	app "github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	. "github.com/jorgerojas26/lazysql/keymap"
-	"github.com/rivo/tview"
 )
 
 type HelpModal struct {
