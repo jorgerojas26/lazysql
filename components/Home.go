@@ -308,6 +308,23 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 			MainPages.AddPage("Confirmation", confirmationModal, true, true)
 		}
+	} else if command == commands.HelpPopup {
+
+		if table == nil || !table.GetIsEditing() {
+			home.HelpModal = NewHelpModal()
+
+			home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+
+				command := app.Keymaps.Resolve(event)
+				if command == commands.Quit {
+					App.Stop()
+				} else if event.Key() == tcell.KeyEsc {
+					MainPages.RemovePage("Help")
+				}
+				return event
+			})
+			MainPages.AddPage("Help", home.HelpModal, false, true)
+		}
 	}
 
 	return event
