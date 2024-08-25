@@ -494,8 +494,6 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 				values = append(values, sql.NullString{})
 			case models.String:
 				values = append(values, cell.Value)
-			case models.Default:
-				break
 			}
 		}
 

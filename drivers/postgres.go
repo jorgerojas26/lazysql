@@ -805,8 +805,6 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				values = append(values, sql.NullString{})
 			case models.String:
 				values = append(values, cell.Value)
-			case models.Default:
-				break
 			}
 		}
 
@@ -921,7 +919,11 @@ func (db *Postgres) SwitchDatabase(database string) error {
 		return err
 	}
 
-	db.Connection.Close()
+	err = db.Connection.Close()
+	if err != nil {
+		return err
+	}
+
 	db.Connection = connection
 	db.PreviousDatabase = db.CurrentDatabase
 	db.CurrentDatabase = database
