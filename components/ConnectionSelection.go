@@ -59,6 +59,9 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	quitButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
 	quitButton.SetBorder(true)
 
+	buttonsWrapper.AddItem(quitButton, 0, 1, false)
+	buttonsWrapper.AddItem(nil, 1, 0, false)
+
 	statusText := tview.NewTextView()
 	statusText.SetBorderPadding(1, 1, 0, 0)
 
