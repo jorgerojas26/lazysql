@@ -134,6 +134,14 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	editor := NewSQLEditor()
 	editorPages := tview.NewPages()
 
+	editor.SetFocusFunc(func() {
+		table.SetIsEditing(true)
+	})
+
+	editor.SetBlurFunc(func() {
+		table.SetIsEditing(false)
+	})
+
 	table.Editor = editor
 
 	table.Wrapper.Clear()
@@ -303,13 +311,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			})
 
 		}
-	}
-
-	if rowCount == 1 || colCount == 0 {
-		return nil
-	}
-
-	if command == commands.Search {
+	} else if command == commands.Search {
 		if table.Editor != nil {
 			App.SetFocus(table.Editor)
 			table.Editor.Highlight()
@@ -407,7 +409,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		})
 
 		table.SetInputCapture(nil)
-	} else if command == commands.Edit {
+	}
+
+	if rowCount == 1 || colCount == 0 {
+		return nil
+	}
+
+	if command == commands.Edit {
 		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string, row, col int) {
 			cellReference := table.GetCell(row, 0).GetReference()
 
