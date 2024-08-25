@@ -4,7 +4,7 @@
 # Author: @ccoVeille
 # License: MIT
 # Variant: 03-safe
-# Version: v1.0.0
+# Version: v1.0.0 + gosec + sqlclosecheck + rowserrcheck
 #
 linters:
   # some linters are enabled by default
@@ -48,6 +48,15 @@ linters:
 
     # Checks for duplicate words in the source code.
     - dupword
+
+    # Inspects source code for security problems.
+    - gosec
+
+    # Checks that sql.Rows, sql.Stmt, sqlx.NamedStmt, pgx.Query are closed.
+    - sqlclosecheck
+
+    # Checks whether Rows.Err of rows is checked successfully.
+    - rowserrcheck
 
 linters-settings:
   gci:  # define the section orders for imports
@@ -132,11 +141,29 @@ linters-settings:
       # warns when initialism, variable or package naming conventions are not followed.
       - name: var-naming
 
+      # if-then-else conditional with identical implementations in both branches is an error.
+      - name: identical-branches
+
+      # warns when errors returned by a function are not explicitly handled on the caller side.
+      - name: unhandled-error
+        arguments: # here are the exceptions we don't want to be reported
+          - "fmt.Print.*"
+          - "fmt.Fprint.*"
+          - "bytes.Buffer.Write*"
+          - "strings.Builder.Write*"
+
   dupword:
     # Keywords used to ignore detection.
     # Default: []
     ignore:
     #  - "blah" # this will accept "blah blah …" as a valid duplicate word
+
+  gosec:
+    # To specify a set of rules to explicitly exclude.
+    # Available rules: https://github.com/securego/gosec#available-rules
+    excludes:
+      - G306 # Poor file permissions used when writing to a new file
+      - G307 # Poor file permissions used when creating a file with os.Create
 
   misspell:
     # Correct spellings using locale preferences for US or UK.

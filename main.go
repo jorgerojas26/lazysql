@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"io"
 	"log"
 	"os"
@@ -9,14 +10,34 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/components"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 )
 
 var version = "dev"
 
 func main() {
-	err := mysql.SetLogger(log.New(io.Discard, "", 0))
-	if err != nil {
-		panic(err)
+	rawLogLvl := flag.String("loglvl", "info", "Log level")
+	logFile := flag.String("logfile", "", "Log file")
+	flag.Parse()
+
+	logLvl, parseError := logger.ParseLogLevel(*rawLogLvl)
+	if parseError != nil {
+		panic(parseError)
+	}
+	logger.SetLevel(logLvl)
+
+	if *logFile != "" {
+		fileError := logger.SetFile(*logFile)
+		if fileError != nil {
+			panic(fileError)
+		}
+	}
+
+	logger.Info("Starting LazySQL...", nil)
+
+	mysqlError := mysql.SetLogger(log.New(io.Discard, "", 0))
+	if mysqlError != nil {
+		panic(mysqlError)
 	}
 
 	// check if "version" arg is passed

@@ -22,15 +22,7 @@ jobs:
         uses: actions/setup-go@v5
 
       -
-        name: Golangci-lint
-        uses: golangci/golangci-lint-action@v6.0.1
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libc6-dev
-
-      - name: Run GoReleaser
+        name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           # either 'goreleaser' (default) or 'goreleaser-pro'

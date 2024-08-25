@@ -29,31 +29,39 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	saveButton := tview.NewButton("[darkred]F1 [black]Save")
+	saveButton := tview.NewButton("[yellow]F1 [dark]Save")
 	saveButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	saveButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	testButton := tview.NewButton("[darkred]F2 [black]Test")
+	testButton := tview.NewButton("[yellow]F2 [dark]Test")
 	testButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	testButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[darkred]F3 [black]Connect")
+	connectButton := tview.NewButton("[yellow]F3 [dark]Connect")
 	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	connectButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	cancelButton := tview.NewButton("[darkred]Esc [black]Cancel")
+	cancelButton := tview.NewButton("[yellow]Esc [dark]Cancel")
 	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(tview.Styles.PrimaryTextColor)))
+	cancelButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 
 	statusText := tview.NewTextView()
-	statusText.SetBorderPadding(0, 1, 0, 0)
+	statusText.SetBorderPadding(1, 1, 0, 0)
 
 	wrapper.AddItem(addForm, 0, 1, true)
-	wrapper.AddItem(statusText, 3, 0, false)
-	wrapper.AddItem(buttonsWrapper, 1, 0, false)
+	wrapper.AddItem(statusText, 4, 0, false)
+	wrapper.AddItem(buttonsWrapper, 3, 0, false)
 
 	form := &ConnectionForm{
 		Flex:       wrapper,
@@ -81,7 +89,6 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
-
 			if err != nil {
 				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return event
