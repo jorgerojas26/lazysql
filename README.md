@@ -227,6 +227,16 @@ See the [open issues](https://github.com/jorgerojas26/lazysql/issues) for a full
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+## Clipboard support
+
+We use [atotto/clipboard](https://github.com/atotto/clipboard?tab=readme-ov-file#clipboard-for-go) to copy to clipboard.
+
+Platforms:
+
+- OSX
+- Windows 7 (probably work on other Windows)
+- Linux, Unix (requires 'xclip' or 'xsel' command to be installed)
+
 <!-- CONTRIBUTING -->
 
 ## Contributing
