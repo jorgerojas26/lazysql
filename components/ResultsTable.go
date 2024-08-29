@@ -7,11 +7,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
 	"github.com/rivo/tview"
-	"golang.design/x/clipboard"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -504,14 +504,12 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 
 			if selectedCell != nil {
-				err := clipboard.Init()
 
-				if err == nil {
-					text := []byte(selectedCell.Text)
+				clipboard := lib.NewClipboard()
 
-					if text != nil {
-						clipboard.Write(clipboard.FmtText, text)
-					}
+				err := clipboard.Write(selectedCell.Text)
+				if err != nil {
+					table.SetError(err.Error(), nil)
 				}
 			}
 		}
