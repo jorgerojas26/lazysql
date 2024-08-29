@@ -273,7 +273,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			App.Stop()
 		}
 	} else if command == commands.Save {
-		if (home.ListOfDbChanges != nil && len(home.ListOfDbChanges) > 0) || (home.ListOfDbInserts != nil && len(home.ListOfDbInserts) > 0) && !table.GetIsEditing() {
+		if ((len(home.ListOfDbChanges) > 0) || len(home.ListOfDbInserts) > 0) && !table.GetIsEditing() {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
