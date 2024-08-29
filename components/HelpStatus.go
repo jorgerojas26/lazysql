@@ -1,7 +1,6 @@
 package components
 
 import (
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -14,7 +13,7 @@ type HelpStatus struct {
 
 func NewHelpStatus() HelpStatus {
 
-	status := HelpStatus{tview.NewTextView().SetTextColor(tcell.ColorBlue)}
+	status := HelpStatus{tview.NewTextView().SetTextColor(tview.Styles.TertiaryTextColor)}
 
 	status.SetStatusOnTree()
 
