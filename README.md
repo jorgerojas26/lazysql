@@ -208,8 +208,8 @@ mssql://user:pass@remote-host.com/instance/dbname
 ms://user:pass@remote-host.com:port/instance/dbname?keepAlive=10
 oracle://user:pass@somehost.com/sid
 sap://user:pass@localhost/dbname
-sqlite:/path/to/file.db
 file:myfile.sqlite3?loc=auto
+/path/to/sqlite/file/test.db
 odbc+postgres://user:pass@localhost:port/dbname?option1=
 ```
 
