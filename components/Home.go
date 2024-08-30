@@ -39,6 +39,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		LeftWrapper:     leftWrapper,
 		RightWrapper:    rightWrapper,
 		HelpStatus:      NewHelpStatus(),
+		HelpModal:       NewHelpModal(),
 		ListOfDbChanges: []models.DbDmlChange{},
 		ListOfDbInserts: []models.DbInsert{},
 		DBDriver:        dbdriver,
@@ -60,7 +61,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
-	home.AddItem(home.HelpStatus, 1, 1, false)
+	// home.AddItem(home.HelpStatus, 1, 1, false)
 
 	home.SetInputCapture(home.homeInputCapture)
 
@@ -315,21 +316,17 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			MainPages.AddPage("Confirmation", confirmationModal, true, true)
 		}
 	} else if command == commands.HelpPopup {
-
 		if table == nil || !table.GetIsEditing() {
-			home.HelpModal = NewHelpModal()
-
-			home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-
-				command := app.Keymaps.Resolve(event)
-				if command == commands.Quit {
-					App.Stop()
-				} else if event.Key() == tcell.KeyEsc {
-					MainPages.RemovePage(HelpPageName)
-				}
-				return event
-			})
-			MainPages.AddPage(HelpPageName, home.HelpModal, false, true)
+			// home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			// 	command := app.Keymaps.Resolve(event)
+			// 	if command == commands.Quit {
+			// 		App.Stop()
+			// 	} else if event.Key() == tcell.KeyEsc {
+			// 		MainPages.RemovePage(HelpPageName)
+			// 	}
+			// 	return event
+			// })
+			MainPages.AddPage(HelpPageName, home.HelpModal, true, true)
 		}
 	}
 

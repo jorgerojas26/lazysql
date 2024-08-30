@@ -1,77 +1,94 @@
 package components
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
-	. "github.com/jorgerojas26/lazysql/keymap"
+	"github.com/jorgerojas26/lazysql/keymap"
+	"github.com/rivo/tview"
 )
 
 type HelpModal struct {
-	*tview.Flex
+	tview.Primitive
 }
 
 func NewHelpModal() *HelpModal {
+	// Returns a new primitive which puts the provided primitive in the center and
+	// sets its size to the given width and height.
+	modal := func(p tview.Primitive, width, height int) tview.Primitive {
+		return tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+				AddItem(nil, 0, 1, false).
+				AddItem(p, height, 1, true).
+				AddItem(nil, 0, 1, false), width, 1, true).
+			AddItem(nil, 0, 1, false)
+	}
 
-	colorBorder := tcell.ColorGreen
-	colorSelected := tcell.ColorBlue
+	table := tview.NewTable()
 
-	list := tview.NewList().SetSelectedBackgroundColor(colorSelected)
-	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	// table.SetBorders(true)
+	table.SetBorder(true)
+	table.SetBorderColor(tview.Styles.PrimaryTextColor)
+	table.SetTitle(" Keybindings ")
+	table.SetSelectable(true, false)
+	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 
-		command := app.Keymaps.Group("tree").Resolve(event)
+	keymapGroups := make(map[string]keymap.Map, len(app.Keymaps.Groups)+1)
 
-		if command == commands.MoveUp {
-			current := list.GetCurrentItem()
+	keymapGroups["global"] = app.Keymaps.Global
 
-			if current-1 >= 0 {
-				list.SetCurrentItem(current - 1)
+	for name, group := range app.Keymaps.Groups {
+		keymapGroups[name] = group
+	}
+
+	mostLengthyKey := ""
+
+	for groupName := range keymapGroups {
+		for _, key := range keymapGroups[groupName] {
+			if len(key.Key.String()) > len(mostLengthyKey) {
+				mostLengthyKey = key.Key.String()
 			}
-		} else if command == commands.MoveDown {
+		}
+	}
 
-			current := list.GetCurrentItem()
+	for groupName, keys := range keymapGroups {
+		rowCount := table.GetRowCount()
+		groupNameCell := tview.NewTableCell(strings.ToUpper(groupName))
+		groupNameCell.SetTextColor(tview.Styles.TertiaryTextColor)
+		groupNameCell.SetSelectable(rowCount == 0)
 
-			if current+1 < list.GetItemCount() {
-				list.SetCurrentItem(current + 1)
+		table.SetCell(rowCount, 0, tview.NewTableCell("").SetSelectable(false))
+		table.SetCell(rowCount+1, 0, groupNameCell)
+		table.SetCell(rowCount+2, 0, tview.NewTableCell("").SetSelectable(false))
+
+		for i, key := range keys {
+			keyText := key.Key.String()
+
+			if len(keyText) < len(mostLengthyKey) {
+				keyText = strings.Repeat(" ", len(mostLengthyKey)-len(keyText)) + keyText
 			}
+			table.SetCell(rowCount+3+i, 0, tview.NewTableCell(keyText).SetAlign(tview.AlignRight).SetTextColor(tview.Styles.SecondaryTextColor))
+			table.SetCell(rowCount+3+i, 1, tview.NewTableCell(key.Description).SetAlign(tview.AlignLeft).SetExpansion(1))
+		}
+
+	}
+
+	table.Select(3, 0)
+
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		command := app.Keymaps.Group("global").Resolve(event)
+		if command == commands.Quit {
+			App.Stop()
+		} else if command == commands.HelpPopup {
+			MainPages.RemovePage(HelpPageName)
 		}
 		return event
 	})
 
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(list, 0, 5, true)
+	r := &HelpModal{modal(table, 0, 30)}
 
-	flex.SetBorder(true)
-	flex.SetTitleColor(colorBorder).SetTitle("Help")
-	flex.SetBorderColor(colorBorder)
-
-	//Magic Number gain from trial and error
-	screenWidth, screenHeight := 145, 30
-
-	modalWidth := 50
-	modalHeight := 20
-	x := (screenWidth - modalWidth) / 2
-	y := (screenHeight - modalHeight) / 2
-
-	flex.SetRect(x, y, modalWidth, modalHeight)
-
-	r := &HelpModal{flex}
-
-	r.drawgroup(list, "Global", app.Keymaps.Global)
-	for k, v := range app.Keymaps.Groups {
-		r.drawgroup(list, k, v)
-	}
-
-	list.SetCurrentItem(1)
 	return r
-}
-func (modal HelpModal) drawgroup(outtext *tview.List, groupname string, keys Map) {
-
-	outtext.AddItem("", "---"+groupname+"---", rune(0), nil)
-
-	for _, key := range keys {
-		outtext.AddItem(key.Key.String()+":"+key.Description, "", rune(0), nil)
-	}
 }
