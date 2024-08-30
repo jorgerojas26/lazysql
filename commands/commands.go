@@ -8,6 +8,7 @@ const (
 	// Views
 	SwitchToEditorView
 	SwitchToConnectionsView
+	HelpPopup
 
 	// Movement: Basic
 	MoveUp
@@ -54,6 +55,8 @@ func (c Command) String() string {
 		return "SwitchToEditorView"
 	case SwitchToConnectionsView:
 		return "SwitchToConnectionsView"
+	case HelpPopup:
+		return "HelpPopup"
 
 	// Movement: Basic
 	case MoveUp:
