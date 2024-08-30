@@ -491,12 +491,12 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if len(table.GetRecords()) > 0 {
-		if eventKey == 'J' {
+		if command == commands.SortDesc {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "DESC")
 
-		} else if eventKey == 'K' {
+		} else if command == commands.SortAsc {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")

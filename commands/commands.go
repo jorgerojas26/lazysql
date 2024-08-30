@@ -44,6 +44,8 @@ const (
 	Execute
 	OpenInExternalEditor
 	AppendNewRow
+	SortAsc
+	SortDesc
 )
 
 func (c Command) String() string {
@@ -118,6 +120,10 @@ func (c Command) String() string {
 		return "OpenInExternalEditor"
 	case AppendNewRow:
 		return "AppendNewRow"
+	case SortAsc:
+		return "SortAsc"
+	case SortDesc:
+		return "SortDesc"
 	}
 	return "Unknown"
 }
