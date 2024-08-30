@@ -35,12 +35,12 @@ func NewSQLEditor() *SQLEditor {
 		},
 	}
 	sqlEditor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		command := app.Keymaps.Group("editor").Resolve(event)
+		command := app.Keymaps.Group(app.EditorGroup).Resolve(event)
 
 		if command == commands.Execute {
 			sqlEditor.Publish("Query", sqlEditor.GetText())
 			return nil
-		} else if command == commands.Quit {
+		} else if command == commands.UnfocusEditor {
 			sqlEditor.Publish("Escape", "")
 		} else if command == commands.OpenInExternalEditor && runtime.GOOS == "linux" {
 			// ----- THIS IS A LINUX-ONLY FEATURE, for now
@@ -48,7 +48,7 @@ func NewSQLEditor() *SQLEditor {
 			text := openExternalEditor(sqlEditor)
 
 			// Set the text from file
-			sqlEditor.TextArea.SetText(text, true)
+			sqlEditor.SetText(text, true)
 		}
 		return event
 	})
@@ -103,7 +103,7 @@ func openExternalEditor(s *SQLEditor) string {
 	terminal := getTerminal()
 
 	// Create a temporary file with the current SQL query content
-	content := []byte(s.TextArea.GetText())
+	content := []byte(s.GetText())
 
 	/*
 		0644 Permission
@@ -114,7 +114,7 @@ func openExternalEditor(s *SQLEditor) string {
 
 	err := os.WriteFile(path, content, 0644)
 	if err != nil {
-		return s.TextArea.GetText()
+		return s.GetText()
 	}
 
 	// Remove the temporary file with the end of function
@@ -131,13 +131,13 @@ func openExternalEditor(s *SQLEditor) string {
 
 	err = cmd.Run()
 	if err != nil {
-		return s.TextArea.GetText()
+		return s.GetText()
 	}
 
 	// Read the updated content from the temporary file
 	updatedContent, err := os.ReadFile(path)
 	if err != nil {
-		return s.TextArea.GetText()
+		return s.GetText()
 	}
 
 	// Convert to string before returning

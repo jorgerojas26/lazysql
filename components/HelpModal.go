@@ -8,7 +8,6 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
-	"github.com/jorgerojas26/lazysql/keymap"
 )
 
 type HelpModal struct {
@@ -37,13 +36,7 @@ func NewHelpModal() *HelpModal {
 	table.SetSelectable(true, false)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 
-	keymapGroups := make(map[string]keymap.Map, len(app.Keymaps.Groups)+1)
-
-	keymapGroups["global"] = app.Keymaps.Global
-
-	for name, group := range app.Keymaps.Groups {
-		keymapGroups[name] = group
-	}
+	keymapGroups := app.Keymaps.Groups
 
 	mostLengthyKey := ""
 
@@ -80,10 +73,8 @@ func NewHelpModal() *HelpModal {
 	table.Select(3, 0)
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		command := app.Keymaps.Group("global").Resolve(event)
-		if command == commands.Quit {
-			App.Stop()
-		} else if command == commands.HelpPopup {
+		command := app.Keymaps.Group(app.HomeGroup).Resolve(event)
+		if command == commands.Quit || command == commands.HelpPopup {
 			MainPages.RemovePage(HelpPageName)
 		}
 		return event

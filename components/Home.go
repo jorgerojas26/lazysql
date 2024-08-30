@@ -188,21 +188,22 @@ func (home *Home) focusLeftWrapper() {
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	var tab *Tab
 
-	command := app.Keymaps.Group("table").Resolve(event)
+	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
 
-	if command == commands.TabPrev {
+	switch command {
+	case commands.TabPrev:
 		home.focusTab(home.TabbedPane.SwitchToPreviousTab())
 		return nil
-	} else if command == commands.TabNext {
+	case commands.TabNext:
 		home.focusTab(home.TabbedPane.SwitchToNextTab())
 		return nil
-	} else if command == commands.TabFirst {
+	case commands.TabFirst:
 		home.focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
-	} else if command == commands.TabLast {
+	case commands.TabLast:
 		home.focusTab(home.TabbedPane.SwitchToLastTab())
 		return nil
-	} else if command == commands.TabClose {
+	case commands.TabClose:
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
@@ -217,7 +218,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 				}
 			}
 		}
-	} else if command == commands.PagePrev {
+	case commands.PagePrev:
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
@@ -231,7 +232,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 		}
 
-	} else if command == commands.PageNext {
+	case commands.PageNext:
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
@@ -256,17 +257,18 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		table = tab.Content
 	}
 
-	command := app.Keymaps.Resolve(event)
+	command := app.Keymaps.Group(app.HomeGroup).Resolve(event)
 
-	if command == commands.MoveLeft {
+	switch command {
+	case commands.MoveLeft:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "right" {
 			home.focusLeftWrapper()
 		}
-	} else if command == commands.MoveRight {
+	case commands.MoveRight:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "left" {
 			home.focusRightWrapper()
 		}
-	} else if command == commands.SwitchToEditorView {
+	case commands.SwitchToEditorView:
 		tab := home.TabbedPane.GetTabByName(EditorTabName)
 
 		if tab != nil {
@@ -280,11 +282,11 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		home.HelpStatus.SetStatusOnEditorView()
 		home.focusRightWrapper()
 		App.ForceDraw()
-	} else if command == commands.SwitchToConnectionsView {
+	case commands.SwitchToConnectionsView:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
 			MainPages.SwitchToPage("Connections")
 		}
-	} else if command == commands.Quit {
+	case commands.Quit:
 		if tab != nil {
 			table := tab.Content
 
@@ -294,7 +296,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		} else {
 			App.Stop()
 		}
-	} else if command == commands.Save {
+	case commands.Save:
 		if (len(home.ListOfDbChanges) > 0) && !table.GetIsEditing() {
 			confirmationModal := NewConfirmationModal("")
 
@@ -321,7 +323,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 			MainPages.AddPage("Confirmation", confirmationModal, true, true)
 		}
-	} else if command == commands.HelpPopup {
+	case commands.HelpPopup:
 		if table == nil || !table.GetIsEditing() {
 			// home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			// 	command := app.Keymaps.Resolve(event)

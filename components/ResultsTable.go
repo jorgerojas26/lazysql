@@ -11,6 +11,7 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
@@ -265,157 +266,42 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 	eventKey := event.Rune()
 
-	if eventKey == '1' || eventKey == '2' || eventKey == '3' || eventKey == '4' || eventKey == '5' {
+	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
+
+	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu}
+
+	if helpers.ContainsCommand(menuCommands, command) {
 		table.Select(1, 0)
 	}
 
 	if table.Menu != nil {
-		if eventKey == '1' {
+		switch command {
+		case commands.RecordsMenu:
 			table.Menu.SetSelectedOption(1)
 			table.UpdateRows(table.GetRecords())
 			table.AddInsertedRows()
-		} else if eventKey == '2' {
+		case commands.ColumnsMenu:
 			table.Menu.SetSelectedOption(2)
 			table.UpdateRows(table.GetColumns())
-		} else if eventKey == '3' {
+		case commands.ConstraintsMenu:
 			table.Menu.SetSelectedOption(3)
 			table.UpdateRows(table.GetConstraints())
-		} else if eventKey == '4' {
+		case commands.ForeignKeysMenu:
 			table.Menu.SetSelectedOption(4)
 			table.UpdateRows(table.GetForeignKeys())
-		} else if eventKey == '5' {
+		case commands.IndexesMenu:
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
 		}
 	}
 
-	command := app.Keymaps.Group("table").Resolve(event)
-
-	if command == commands.AppendNewRow && (table.Menu != nil && table.Menu.GetSelectedOption() == 1) {
-		dbColumns := table.GetColumns()
-		newRowTableIndex := table.GetRowCount()
-		newRowUUID := uuid.New().String()
-		newRow := make([]models.CellValue, len(dbColumns)-1)
-
-		for i, column := range dbColumns {
-			if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
-				newRow[i-1] = models.CellValue{Type: models.Default, Column: column[0], Value: "DEFAULT"}
-			}
+	switch command {
+	case commands.AppendNewRow:
+		if table.Menu.GetSelectedOption() == 1 {
+			table.appendNewRow()
 		}
-
-		newInsert := models.DbDmlChange{
-			Type:                 models.DmlInsertType,
-			Database:             table.GetDatabaseName(),
-			Table:                table.GetTableName(),
-			Values:               newRow,
-			PrimaryKeyColumnName: "",
-			PrimaryKeyValue:      newRowUUID,
-		}
-
-		*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newInsert)
-
-		table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
-
-		table.StartEditingCell(newRowTableIndex, 0, nil)
-
-	} else if command == commands.Search {
-		if table.Editor != nil {
-			App.SetFocus(table.Editor)
-			table.Editor.Highlight()
-			table.RemoveHighlightTable()
-			table.SetIsFiltering(true)
-			return nil
-		}
-
-		App.SetFocus(table.Filter.Input)
-		table.RemoveHighlightTable()
-		table.Filter.HighlightLocal()
-		table.SetIsFiltering(true)
-
-		if table.Filter.Input.GetText() == "/" {
-			go table.Filter.Input.SetText("")
-		}
-
-		table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
-			split := strings.Split(currentText, " ")
-			comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
-
-			if len(split) == 1 {
-				columns := table.GetColumns()
-				columnNames := []string{}
-
-				for i, col := range columns {
-					if i > 0 {
-						columnNames = append(columnNames, col[0])
-					}
-				}
-
-				return columnNames
-			} else if len(split) == 2 {
-
-				for i, comparator := range comparators {
-					comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
-				}
-
-				return comparators
-			} else if len(split) == 3 {
-
-				ret := true
-
-				if split[1] == "not" {
-					comparators = []string{"between", "in", "like"}
-				} else if split[1] == "is" {
-					comparators = []string{"not", "null"}
-				} else {
-					ret = false
-				}
-
-				if ret {
-					for i, comparator := range comparators {
-						comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
-					}
-					return comparators
-				}
-
-			} else if len(split) == 4 {
-				ret := true
-
-				if split[2] == "not" {
-					comparators = []string{"null"}
-				} else if split[2] == "is" {
-					comparators = []string{"not", "null"}
-				} else {
-					ret = false
-				}
-
-				if ret {
-					for i, comparator := range comparators {
-						comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
-					}
-
-					return comparators
-				}
-			}
-
-			return []string{}
-		})
-
-		table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
-			if source != tview.AutocompletedNavigate {
-				inputText := strings.Split(table.Filter.Input.GetText(), " ")
-
-				if len(inputText) == 1 {
-					table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
-				} else if len(inputText) == 2 {
-					table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
-				}
-
-				table.Filter.Input.SetText(text)
-			}
-			return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
-		})
-
-		table.SetInputCapture(nil)
+	case commands.Search:
+		table.search()
 	}
 
 	if rowCount == 1 || colCount == 0 {
@@ -484,16 +370,16 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if len(table.GetRecords()) > 0 {
-		if eventKey == 'J' {
+		switch command {
+		case commands.SortDesc:
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "DESC")
-
-		} else if eventKey == 'K' {
+		case commands.SortAsc:
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
-		} else if command == commands.Copy {
+		case commands.Copy:
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 
 			if selectedCell != nil {
@@ -957,7 +843,8 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 				table.AppendNewChange(models.DmlUpdateType, table.GetDatabaseName(), table.GetTableName(), row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName})
 			}
 
-			if key == tcell.KeyTab {
+			switch key {
+			case tcell.KeyTab:
 				nextEditableColumnIndex := col + 1
 
 				if nextEditableColumnIndex <= table.GetColumnCount()-1 {
@@ -966,7 +853,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 					table.StartEditingCell(row, nextEditableColumnIndex, callback)
 
 				}
-			} else if key == tcell.KeyBacktab {
+			case tcell.KeyBacktab:
 				nextEditableColumnIndex := col - 1
 
 				if nextEditableColumnIndex >= 0 {
@@ -1206,4 +1093,134 @@ func (table *ResultsTable) SetRowColor(rowIndex int, color tcell.Color) {
 
 func (table *ResultsTable) SetCellColor(rowIndex int, colIndex int, color tcell.Color) {
 	table.GetCell(rowIndex, colIndex).SetBackgroundColor(color)
+}
+
+func (table *ResultsTable) appendNewRow() {
+	dbColumns := table.GetColumns()
+	newRowTableIndex := table.GetRowCount()
+	newRowUUID := uuid.New().String()
+	newRow := make([]models.CellValue, len(dbColumns)-1)
+
+	for i, column := range dbColumns {
+		if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
+			newRow[i-1] = models.CellValue{Type: models.Default, Column: column[0], Value: "DEFAULT"}
+		}
+	}
+
+	newInsert := models.DbDmlChange{
+		Type:                 models.DmlInsertType,
+		Database:             table.GetDatabaseName(),
+		Table:                table.GetTableName(),
+		Values:               newRow,
+		PrimaryKeyColumnName: "",
+		PrimaryKeyValue:      newRowUUID,
+	}
+
+	*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newInsert)
+
+	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
+
+	table.StartEditingCell(newRowTableIndex, 0, nil)
+}
+
+func (table *ResultsTable) search() {
+	if table.Editor != nil {
+		App.SetFocus(table.Editor)
+		table.Editor.Highlight()
+		table.RemoveHighlightTable()
+		table.SetIsFiltering(true)
+		return
+	}
+
+	App.SetFocus(table.Filter.Input)
+	table.RemoveHighlightTable()
+	table.Filter.HighlightLocal()
+	table.SetIsFiltering(true)
+
+	if table.Filter.Input.GetText() == "/" {
+		go table.Filter.Input.SetText("")
+	}
+
+	table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
+		split := strings.Split(currentText, " ")
+		comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
+
+		if len(split) == 1 {
+			columns := table.GetColumns()
+			columnNames := []string{}
+
+			for i, col := range columns {
+				if i > 0 {
+					columnNames = append(columnNames, col[0])
+				}
+			}
+
+			return columnNames
+		} else if len(split) == 2 {
+
+			for i, comparator := range comparators {
+				comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
+			}
+
+			return comparators
+		} else if len(split) == 3 {
+
+			ret := true
+
+			switch split[1] {
+			case "not":
+				comparators = []string{"between", "in", "like"}
+			case "is":
+				comparators = []string{"not", "null"}
+			default:
+				ret = false
+			}
+
+			if ret {
+				for i, comparator := range comparators {
+					comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
+				}
+				return comparators
+			}
+
+		} else if len(split) == 4 {
+			ret := true
+
+			switch split[2] {
+			case "not":
+				comparators = []string{"null"}
+			case "is":
+				comparators = []string{"not", "null"}
+			default:
+				ret = false
+			}
+
+			if ret {
+				for i, comparator := range comparators {
+					comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
+				}
+
+				return comparators
+			}
+		}
+
+		return []string{}
+	})
+
+	table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
+		if source != tview.AutocompletedNavigate {
+			inputText := strings.Split(table.Filter.Input.GetText(), " ")
+
+			if len(inputText) == 1 {
+				table.Filter.Input.SetText(fmt.Sprintf("%s =", text))
+			} else if len(inputText) == 2 {
+				table.Filter.Input.SetText(fmt.Sprintf("%s %s", inputText[0], text))
+			}
+
+			table.Filter.Input.SetText(text)
+		}
+		return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
+	})
+
+	table.SetInputCapture(nil)
 }
