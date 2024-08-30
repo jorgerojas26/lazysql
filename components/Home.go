@@ -16,6 +16,8 @@ type Home struct {
 	TabbedPane      *TabbedPane
 	LeftWrapper     *tview.Flex
 	RightWrapper    *tview.Flex
+	HelpStatus      HelpStatus
+	HelpModal       *HelpModal
 	DBDriver        drivers.Driver
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
@@ -28,12 +30,16 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
+	maincontent := tview.NewFlex()
+
 	home := &Home{
-		Flex:            tview.NewFlex(),
+		Flex:            tview.NewFlex().SetDirection(tview.FlexRow),
 		Tree:            tree,
 		TabbedPane:      tabbedPane,
 		LeftWrapper:     leftWrapper,
 		RightWrapper:    rightWrapper,
+		HelpStatus:      NewHelpStatus(),
+		HelpModal:       NewHelpModal(),
 		ListOfDbChanges: []models.DbDmlChange{},
 		ListOfDbInserts: []models.DbInsert{},
 		DBDriver:        dbdriver,
@@ -51,8 +57,11 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	home.AddItem(leftWrapper, 30, 1, false)
-	home.AddItem(rightWrapper, 0, 5, false)
+	maincontent.AddItem(leftWrapper, 30, 1, false)
+	maincontent.AddItem(rightWrapper, 0, 5, false)
+
+	home.AddItem(maincontent, 0, 1, false)
+	// home.AddItem(home.HelpStatus, 1, 1, false)
 
 	home.SetInputCapture(home.homeInputCapture)
 
@@ -111,13 +120,13 @@ func (home *Home) focusRightWrapper() {
 	tab := home.TabbedPane.GetCurrentTab()
 
 	if tab != nil {
-		focusTab(tab)
+		home.focusTab(tab)
 	}
 
 	home.FocusedWrapper = "right"
 }
 
-func focusTab(tab *Tab) {
+func (home *Home) focusTab(tab *Tab) {
 	if tab != nil {
 		table := tab.Content
 		table.HighlightAll()
@@ -140,6 +149,11 @@ func focusTab(tab *Tab) {
 			App.SetFocus(table)
 		}
 
+		if tab.Name == EditorTabName {
+			home.HelpStatus.SetStatusOnEditorView()
+		} else {
+			home.HelpStatus.SetStatusOnTableView()
+		}
 	}
 }
 
@@ -171,16 +185,16 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 	command := app.Keymaps.Group("table").Resolve(event)
 
 	if command == commands.TabPrev {
-		focusTab(home.TabbedPane.SwitchToPreviousTab())
+		home.focusTab(home.TabbedPane.SwitchToPreviousTab())
 		return nil
 	} else if command == commands.TabNext {
-		focusTab(home.TabbedPane.SwitchToNextTab())
+		home.focusTab(home.TabbedPane.SwitchToNextTab())
 		return nil
 	} else if command == commands.TabFirst {
-		focusTab(home.TabbedPane.SwitchToFirstTab())
+		home.focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
 	} else if command == commands.TabLast {
-		focusTab(home.TabbedPane.SwitchToLastTab())
+		home.focusTab(home.TabbedPane.SwitchToLastTab())
 		return nil
 	} else if command == commands.TabClose {
 		tab = home.TabbedPane.GetCurrentTab()
@@ -247,15 +261,16 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.focusRightWrapper()
 		}
 	} else if command == commands.SwitchToEditorView {
-		tab := home.TabbedPane.GetTabByName("Editor")
+		tab := home.TabbedPane.GetTabByName(EditorTabName)
 
 		if tab != nil {
-			home.TabbedPane.SwitchToTabByName("Editor")
+			home.TabbedPane.SwitchToTabByName(EditorTabName)
 		} else {
 			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, home.DBDriver).WithEditor()
-			home.TabbedPane.AppendTab("Editor", tableWithEditor)
+			home.TabbedPane.AppendTab(EditorTabName, tableWithEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
+		home.HelpStatus.SetStatusOnEditorView()
 		home.focusRightWrapper()
 		App.ForceDraw()
 	} else if command == commands.SwitchToConnectionsView {
@@ -299,6 +314,19 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			})
 
 			MainPages.AddPage("Confirmation", confirmationModal, true, true)
+		}
+	} else if command == commands.HelpPopup {
+		if table == nil || !table.GetIsEditing() {
+			// home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			// 	command := app.Keymaps.Resolve(event)
+			// 	if command == commands.Quit {
+			// 		App.Stop()
+			// 	} else if event.Key() == tcell.KeyEsc {
+			// 		MainPages.RemovePage(HelpPageName)
+			// 	}
+			// 	return event
+			// })
+			MainPages.AddPage(HelpPageName, home.HelpModal, true, true)
 		}
 	}
 

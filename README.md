@@ -157,6 +157,7 @@ Support for multiple RDBMS is a work in progress.
 | q         | Quit                           |
 | CTRL + e  | Open SQL editor                |
 | Backspace | Return to connection selection |
+| ?         | Show keybindings popup                |
 
 ### Table
 
