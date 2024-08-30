@@ -27,6 +27,13 @@ const (
 	PageNext
 	PagePrev
 
+	// Menu:
+	RecordsMenu
+	ColumnsMenu
+	ConstraintsMenu
+	ForeignKeysMenu
+	IndexesMenu
+
 	// Tabs
 	TabNext
 	TabPrev
@@ -35,6 +42,7 @@ const (
 	TabClose
 
 	// Operations
+	UnfocusEditor
 	Copy
 	Edit
 	Save
@@ -46,6 +54,13 @@ const (
 	AppendNewRow
 	SortAsc
 	SortDesc
+
+	// Connection
+	NewConnection
+	Connect
+	TestConnection
+	EditConnection
+	DeleteConnection
 )
 
 func (c Command) String() string {
@@ -124,6 +139,28 @@ func (c Command) String() string {
 		return "SortAsc"
 	case SortDesc:
 		return "SortDesc"
+	case NewConnection:
+		return "NewConnection"
+	case Connect:
+		return "Connect"
+	case TestConnection:
+		return "TestConnection"
+	case EditConnection:
+		return "EditConnection"
+	case DeleteConnection:
+		return "DeleteConnection"
+	case UnfocusEditor:
+		return "UnfocusEditor"
+	case RecordsMenu:
+		return "RecordsMenu"
+	case ColumnsMenu:
+		return "ColumnsMenu"
+	case ConstraintsMenu:
+		return "ConstraintsMenu"
+	case ForeignKeysMenu:
+		return "ForeignKeysMenu"
+	case IndexesMenu:
+		return "IndexesMenu"
 	}
 	return "Unknown"
 }

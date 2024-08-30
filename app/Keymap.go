@@ -15,19 +15,13 @@ type (
 )
 
 // KeymapSystem is the actual key mapping system.
-//
 // A map can have several groups. But it always has a "Global" one.
 type KeymapSystem struct {
-	Global Map
 	Groups map[string]Map
+	Global Map
 }
 
 func (c KeymapSystem) Group(name string) Map {
-	// Global is special.
-	if name == "global" {
-		return c.Global
-	}
-
 	// Lookup the group
 	if group, ok := c.Groups[name]; ok {
 		return group
@@ -43,19 +37,35 @@ func (c KeymapSystem) Resolve(event *tcell.EventKey) cmd.Command {
 	return c.Global.Resolve(event)
 }
 
+const (
+	HomeGroup       = "home"
+	TreeGroup       = "tree"
+	TableGroup      = "table"
+	EditorGroup     = "editor"
+	ConnectionGroup = "connection"
+)
+
 // Define a global KeymapSystem object with default keybinds
 var Keymaps = KeymapSystem{
-	Global: Map{
-		Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight, Description: "Focus table"},
-		Bind{Key: Key{Char: 'H'}, Cmd: cmd.MoveLeft, Description: "Focus tree"},
-		Bind{Key: Key{Code: tcell.KeyCtrlE}, Cmd: cmd.SwitchToEditorView, Description: "Open SQL editor"},
-		Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: cmd.Save, Description: "Execute pending changes"},
-		Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
-		Bind{Key: Key{Code: tcell.KeyBackspace2}, Cmd: cmd.SwitchToConnectionsView, Description: "Switch to connections list"},
-		Bind{Key: Key{Char: '?'}, Cmd: cmd.HelpPopup, Description: "Help"},
-	},
 	Groups: map[string]Map{
-		"tree": {
+		HomeGroup: {
+			Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight, Description: "Focus table"},
+			Bind{Key: Key{Char: 'H'}, Cmd: cmd.MoveLeft, Description: "Focus tree"},
+			Bind{Key: Key{Code: tcell.KeyCtrlE}, Cmd: cmd.SwitchToEditorView, Description: "Open SQL editor"},
+			Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: cmd.Save, Description: "Execute pending changes"},
+			Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
+			Bind{Key: Key{Code: tcell.KeyBackspace2}, Cmd: cmd.SwitchToConnectionsView, Description: "Switch to connections list"},
+			Bind{Key: Key{Char: '?'}, Cmd: cmd.HelpPopup, Description: "Help"},
+		},
+		ConnectionGroup: {
+			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},
+			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Connect, Description: "Connect to database"},
+			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.Connect, Description: "Connect to database"},
+			Bind{Key: Key{Char: 'e'}, Cmd: cmd.EditConnection, Description: "Edit a database connection"},
+			Bind{Key: Key{Char: 'd'}, Cmd: cmd.DeleteConnection, Description: "Delete a database connection"},
+			Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
+		},
+		TreeGroup: {
 			Bind{Key: Key{Char: 'g'}, Cmd: cmd.GotoTop, Description: "Go to top"},
 			Bind{Key: Key{Char: 'G'}, Cmd: cmd.GotoBottom, Description: "Go to bottom"},
 			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.Execute, Description: "Open"},
@@ -64,7 +74,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'k'}, Cmd: cmd.MoveUp, Description: "Go up"},
 			Bind{Key: Key{Code: tcell.KeyUp}, Cmd: cmd.MoveUp, Description: "Go up"},
 		},
-		"table": {
+		TableGroup: {
 			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit, Description: "Change cell"},
 			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete row"},
@@ -85,10 +95,15 @@ var Keymaps = KeymapSystem{
 			// Pages
 			Bind{Key: Key{Char: '>'}, Cmd: cmd.PageNext, Description: "Switch to next page"},
 			Bind{Key: Key{Char: '<'}, Cmd: cmd.PagePrev, Description: "Switch to previous page"},
+			Bind{Key: Key{Char: '1'}, Cmd: cmd.RecordsMenu, Description: "Switch to records menu"},
+			Bind{Key: Key{Char: '2'}, Cmd: cmd.ColumnsMenu, Description: "Switch to columns menu"},
+			Bind{Key: Key{Char: '3'}, Cmd: cmd.ConstraintsMenu, Description: "Switch to constraints menu"},
+			Bind{Key: Key{Char: '4'}, Cmd: cmd.ForeignKeysMenu, Description: "Switch to foreign keys menu"},
+			Bind{Key: Key{Char: '5'}, Cmd: cmd.IndexesMenu, Description: "Switch to indexes menu"},
 		},
-		"editor": {
+		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
-			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.Quit, Description: "Unfocus editor"},
+			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusEditor, Description: "Unfocus editor"},
 			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: cmd.OpenInExternalEditor, Description: "Open in external editor"},
 		},
 	},

@@ -12,7 +12,6 @@ type HelpStatus struct {
 }
 
 func NewHelpStatus() HelpStatus {
-
 	status := HelpStatus{tview.NewTextView().SetTextColor(tview.Styles.TertiaryTextColor)}
 
 	status.SetStatusOnTree()
@@ -21,7 +20,6 @@ func NewHelpStatus() HelpStatus {
 }
 
 func (status *HelpStatus) UpdateText(binds []keymap.Bind) {
-
 	newtext := ""
 
 	for i, key := range binds {
@@ -46,9 +44,11 @@ func (status *HelpStatus) UpdateText(binds []keymap.Bind) {
 func (status *HelpStatus) SetStatusOnTree() {
 	status.UpdateText(app.Keymaps.Global)
 }
+
 func (status *HelpStatus) SetStatusOnEditorView() {
-	status.UpdateText(app.Keymaps.Group("editor"))
+	status.UpdateText(app.Keymaps.Group(app.EditorGroup))
 }
+
 func (status *HelpStatus) SetStatusOnTableView() {
-	status.UpdateText(app.Keymaps.Group("table"))
+	status.UpdateText(app.Keymaps.Group(app.TableGroup))
 }

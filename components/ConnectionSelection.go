@@ -8,6 +8,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
@@ -66,13 +67,16 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	wrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		connections := ConnectionListTable.GetConnections()
 
+		command := app.Keymaps.Group(app.ConnectionGroup).Resolve(event)
+
 		if len(connections) != 0 {
 			row, _ := ConnectionListTable.GetSelection()
 			selectedConnection := connections[row]
 
-			if event.Rune() == 'c' || event.Key() == tcell.KeyEnter {
+			switch command {
+			case commands.Connect:
 				go cs.Connect(selectedConnection)
-			} else if event.Rune() == 'e' {
+			case commands.EditConnection:
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
 				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(selectedConnection.URL)
@@ -80,8 +84,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 				connectionForm.SetAction("edit")
 				return nil
-
-			} else if event.Rune() == 'd' {
+			case commands.DeleteConnection:
 				confirmationModal := NewConfirmationModal("")
 
 				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
@@ -107,13 +110,14 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			}
 		}
 
-		if event.Rune() == 'n' {
+		switch command {
+		case commands.NewConnection:
 			connectionForm.SetAction("create")
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			connectionForm.StatusText.SetText("")
 			connectionPages.SwitchToPage("ConnectionForm")
-		} else if event.Rune() == 'q' {
+		case commands.Quit:
 			if wrapper.HasFocus() {
 				app.App.Stop()
 			}

@@ -126,7 +126,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	})
 
 	tree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		command := app.Keymaps.Group("tree").Resolve(event)
+		command := app.Keymaps.Group(app.TreeGroup).Resolve(event)
 
 		switch command {
 		case commands.GotoBottom:
