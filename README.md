@@ -222,7 +222,7 @@ odbc+postgres://user:pass@localhost:port/dbname?option1=
 - [ ] Table tree input filter
 - [ ] Custom keybindings
 - [x] Show keybindings on a modal
-- [ ] Rewrite row `create`, `update` and `delete` logic
+- [x] Rewrite row `create`, `update` and `delete` logic
 
 See the [open issues](https://github.com/jorgerojas26/lazysql/issues) for a full list of proposed features (and known issues).
 
