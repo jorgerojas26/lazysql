@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
@@ -21,7 +23,6 @@ type Home struct {
 	DBDriver        drivers.Driver
 	FocusedWrapper  string
 	ListOfDbChanges []models.DbDmlChange
-	ListOfDbInserts []models.DbInsert
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
@@ -41,7 +42,6 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		HelpStatus:      NewHelpStatus(),
 		HelpModal:       NewHelpModal(),
 		ListOfDbChanges: []models.DbDmlChange{},
-		ListOfDbInserts: []models.DbInsert{},
 		DBDriver:        dbdriver,
 	}
 
@@ -83,19 +83,25 @@ func (home *Home) subscribeToTreeChanges() {
 	for stateChange := range ch {
 		switch stateChange.Key {
 		case "SelectedTable":
+			databaseName := home.Tree.GetSelectedDatabase()
 			tableName := stateChange.Value.(string)
 
-			tab := home.TabbedPane.GetTabByName(tableName)
+			tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
+
+			tab := home.TabbedPane.GetTabByReference(tabReference)
+
 			var table *ResultsTable
 
 			if tab != nil {
 				table = tab.Content
-				home.TabbedPane.SwitchToTabByName(tab.Name)
+				home.TabbedPane.SwitchToTabByReference(tab.Reference)
 			} else {
-				table = NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, home.DBDriver).WithFilter()
-				table.SetDBReference(tableName)
+				table = NewResultsTable(&home.ListOfDbChanges, home.Tree, home.DBDriver).WithFilter()
+				table.SetDatabaseName(databaseName)
+				table.SetTableName(tableName)
 
-				home.TabbedPane.AppendTab(tableName, table)
+				home.TabbedPane.AppendTab(tableName, table, tabReference)
+
 			}
 
 			table.FetchRecords(func() {
@@ -206,7 +212,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 			if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
 				home.TabbedPane.RemoveCurrentTab()
 
-				if home.TabbedPane.GetLenght() == 0 {
+				if home.TabbedPane.GetLength() == 0 {
 					home.focusLeftWrapper()
 					return nil
 				}
@@ -267,9 +273,10 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 		if tab != nil {
 			home.TabbedPane.SwitchToTabByName(EditorTabName)
+			tab.Content.SetIsFiltering(true)
 		} else {
-			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, &home.ListOfDbInserts, home.Tree, home.DBDriver).WithEditor()
-			home.TabbedPane.AppendTab(EditorTabName, tableWithEditor)
+			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, home.Tree, home.DBDriver).WithEditor()
+			home.TabbedPane.AppendTab(EditorTabName, tableWithEditor, EditorTabName)
 			tableWithEditor.SetIsFiltering(true)
 		}
 		home.HelpStatus.SetStatusOnEditorView()
@@ -290,7 +297,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			App.Stop()
 		}
 	case commands.Save:
-		if ((len(home.ListOfDbChanges) > 0) || len(home.ListOfDbInserts) > 0) && !table.GetIsEditing() {
+		if (len(home.ListOfDbChanges) > 0) && !table.GetIsEditing() {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
@@ -299,13 +306,12 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 				if buttonLabel == "Yes" {
 
-					err := home.DBDriver.ExecutePendingChanges(home.ListOfDbChanges, home.ListOfDbInserts)
+					err := home.DBDriver.ExecutePendingChanges(home.ListOfDbChanges)
 
 					if err != nil {
 						table.SetError(err.Error(), nil)
 					} else {
 						home.ListOfDbChanges = []models.DbDmlChange{}
-						home.ListOfDbInserts = []models.DbInsert{}
 
 						table.FetchRecords(nil)
 						home.Tree.ForceRemoveHighlight()

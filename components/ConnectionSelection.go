@@ -28,36 +28,47 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexRowCSS)
 
-	newButton := tview.NewButton("[darkred]N[black]ew")
-	newButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	newButton := tview.NewButton("[yellow]N[dark]ew")
+	newButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	newButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(newButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[darkred]C[black]onnect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	connectButton := tview.NewButton("[yellow]C[dark]onnect")
+	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	connectButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	editButton := tview.NewButton("[darkred]E[black]dit")
-	editButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	editButton := tview.NewButton("[yellow]E[dark]dit")
+	editButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	editButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(editButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	deleteButton := tview.NewButton("[darkred]D[black]elete")
-	deleteButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	deleteButton := tview.NewButton("[yellow]D[dark]elete")
+	deleteButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	deleteButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(deleteButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	quitButton := tview.NewButton("[darkred]Q[black]uit")
-	quitButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	quitButton := tview.NewButton("[yellow]Q[dark]uit")
+	quitButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	quitButton.SetBorder(true)
+
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
+	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	statusText := tview.NewTextView()
-	statusText.SetBorderPadding(0, 1, 0, 0)
+	statusText.SetBorderPadding(1, 1, 0, 0)
 
 	wrapper.AddItem(ConnectionListTable, 0, 1, true)
-	wrapper.AddItem(statusText, 3, 0, false)
-	wrapper.AddItem(buttonsWrapper, 1, 0, false)
+	wrapper.AddItem(statusText, 4, 0, false)
+	wrapper.AddItem(buttonsWrapper, 3, 0, false)
 
 	cs := &ConnectionSelection{
 		Flex:       wrapper,

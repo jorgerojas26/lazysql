@@ -112,16 +112,32 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			}
 		} else if node.GetLevel() == 2 {
 			if node.GetChildren() == nil {
-				tableName := node.GetReference().(string)
+				nodeReference := node.GetReference().(string)
+				split := strings.Split(nodeReference, ".")
+				databaseName := ""
+				tableName := ""
 
+				if len(split) == 1 {
+					tableName = split[0]
+				} else if len(split) > 1 {
+					databaseName = split[0]
+					tableName = split[1]
+				}
+
+				tree.SetSelectedDatabase(databaseName)
 				tree.SetSelectedTable(tableName)
 			} else {
 				node.SetExpanded(!node.IsExpanded())
 			}
 		} else if node.GetLevel() == 3 {
-			tableName := node.GetReference().(string)
+			nodeReference := node.GetReference().(string)
+			split := strings.Split(nodeReference, ".")
+			databaseName := split[0]
+			schemaName := split[1]
+			tableName := split[2]
 
-			tree.SetSelectedTable(tableName)
+			tree.SetSelectedDatabase(databaseName)
+			tree.SetSelectedTable(fmt.Sprintf("%s.%s", schemaName, tableName))
 		}
 	})
 
@@ -163,7 +179,9 @@ func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode
 	for key, values := range children {
 		var rootNode *tview.TreeNode
 
-		if key != node.GetReference().(string) {
+		nodeReference := node.GetReference().(string)
+
+		if key != nodeReference {
 			rootNode = tview.NewTreeNode(key)
 			rootNode.SetExpanded(false)
 			rootNode.SetReference(key)
@@ -177,6 +195,8 @@ func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode
 			childNode.SetColor(tview.Styles.PrimaryTextColor)
 			if tree.DBDriver.GetProvider() == "sqlite3" {
 				childNode.SetReference(child)
+			} else if tree.DBDriver.GetProvider() == "postgres" {
+				childNode.SetReference(fmt.Sprintf("%s.%s.%s", nodeReference, key, child))
 			} else {
 				childNode.SetReference(fmt.Sprintf("%s.%s", key, child))
 			}

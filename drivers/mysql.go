@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/xo/dburl"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -45,6 +45,13 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 		return nil, err
 	}
 
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	defer rows.Close()
+
 	for rows.Next() {
 		var database string
 		err := rows.Scan(&database)
@@ -60,7 +67,18 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 }
 
 func (db *MySQL) GetTables(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
 	rows, err := db.Connection.Query(fmt.Sprintf("SHOW TABLES FROM `%s`", database))
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	defer rows.Close()
 
 	tables := make(map[string][]string)
 
@@ -81,14 +99,81 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-// TODO: Rewrite this logic to use the database name instead of the table name, which for now has the format `database.table`
-func (db *MySQL) GetTableColumns(_, table string) (results [][]string, err error) {
-	table = db.formatTableName(table)
+func (db *MySQL) GetTableColumns(database, table string) (results [][]string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
 
-	rows, err := db.Connection.Query(fmt.Sprintf("DESCRIBE %s", table))
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	query := "DESCRIBE "
+	query += db.formatTableName(database, table)
+
+	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
 	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	results = append(results, columns)
+
+	for rows.Next() {
+		rowValues := make([]interface{}, len(columns))
+
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		err = rows.Scan(rowValues...)
+		if err != nil {
+			return nil, err
+		}
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		results = append(results, row)
+	}
+
+	return
+}
+
+func (db *MySQL) GetConstraints(database, table string) (results [][]string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	query := "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_SCHEMA = ? AND TABLE_NAME = ?"
+
+	rows, err := db.Connection.Query(query, database, table)
+	if err != nil {
+		return nil, err
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -120,16 +205,25 @@ func (db *MySQL) GetTableColumns(_, table string) (results [][]string, err error
 	return
 }
 
-func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
-	table = db.formatTableName(table)
+func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
 
-	splitTableString := strings.Split(table, ".")
-	database := splitTableString[0]
-	tableName := splitTableString[1]
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
 
-	rows, err := db.Connection.Query(fmt.Sprintf("SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'", database, tableName))
+	query := "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
+
+	rows, err := db.Connection.Query(query, database, table)
 	if err != nil {
 		return nil, err
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
 	}
 
 	defer rows.Close()
@@ -163,15 +257,26 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 	return
 }
 
-func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
-	table = db.formatTableName(table)
-	splitTableString := strings.Split(table, ".")
-	database := splitTableString[0]
-	tableName := splitTableString[1]
+func (db *MySQL) GetIndexes(database, table string) (results [][]string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
 
-	rows, err := db.Connection.Query(fmt.Sprintf("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_SCHEMA = '%s' AND REFERENCED_TABLE_NAME = '%s'", database, tableName))
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	query := "SHOW INDEX FROM "
+	query += db.formatTableName(database, table)
+
+	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
 	}
 
 	defer rows.Close()
@@ -205,83 +310,58 @@ func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
 	return
 }
 
-func (db *MySQL) GetIndexes(table string) (results [][]string, err error) {
-	table = db.formatTableName(table)
-	rows, err := db.Connection.Query("SHOW INDEX FROM " + table)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, err
+func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
+	if table == "" {
+		return nil, 0, errors.New("table name is required")
 	}
 
-	results = append(results, columns)
-
-	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
-		}
-
-		err = rows.Scan(rowValues...)
-		if err != nil {
-			return nil, err
-		}
-
-		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
-		}
-
-		results = append(results, row)
+	if database == "" {
+		return nil, 0, errors.New("database name is required")
 	}
 
-	return
-}
-
-func (db *MySQL) GetRecords(table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
-	table = db.formatTableName(table)
-	defaultLimit := 300
-
-	isPaginationEnabled := offset >= 0 && limit >= 0
-
-	if limit != 0 {
-		defaultLimit = limit
+	if limit == 0 {
+		limit = DefaultRowLimit
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s s LIMIT %d,%d", table, offset, defaultLimit)
+	query := "SELECT * FROM "
+	query += db.formatTableName(database, table)
 
 	if where != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s LIMIT %d,%d", table, where, offset, defaultLimit)
+		query += fmt.Sprintf(" %s", where)
 	}
 
 	if sort != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d,%d", table, where, sort, offset, defaultLimit)
+		query += fmt.Sprintf(" ORDER BY %s", sort)
 	}
 
-	paginatedRows, err := db.Connection.Query(query)
+	query += " LIMIT ?, ?"
+
+	paginatedRows, err := db.Connection.Query(query, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if isPaginationEnabled {
-		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", table, where)
+	rowsErr := paginatedRows.Err()
 
-		rows := db.Connection.QueryRow(queryWithoutLimit)
+	if rowsErr != nil {
+		return nil, 0, rowsErr
+	}
 
-		if err != nil {
-			return nil, 0, err
-		}
+	defer paginatedRows.Close()
 
-		err = rows.Scan(&totalRecords)
-		if err != nil {
-			return nil, 0, err
-		}
+	countQuery := "SELECT COUNT(*) FROM "
+	countQuery += fmt.Sprintf("`%s`.", database)
+	countQuery += fmt.Sprintf("`%s`", table)
 
-		defer paginatedRows.Close()
+	rows := db.Connection.QueryRow(countQuery)
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = rows.Scan(&totalRecords)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	columns, err := paginatedRows.Columns()
@@ -320,6 +400,11 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 		return nil, err
 	}
 
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -352,20 +437,21 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 	return
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
-func (db *MySQL) UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
-	table = db.formatTableName(table)
-	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = \"%s\"", table, column, value, primaryKeyColumnName, primaryKeyValue)
-	_, err := db.Connection.Exec(query)
+func (db *MySQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	query := "UPDATE "
+	query += db.formatTableName(database, table)
+	query += fmt.Sprintf(" SET %s = ? WHERE %s = ?", column, primaryKeyColumnName)
+
+	_, err := db.Connection.Exec(query, value, primaryKeyValue)
 
 	return err
 }
 
-// TODO: Rewrites this logic to use the primary key instead of the id
-func (db *MySQL) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue string) error {
-	table = db.formatTableName(table)
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s = \"%s\"", table, primaryKeyColumnName, primaryKeyValue)
-	_, err := db.Connection.Exec(query)
+func (db *MySQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
+	query := "DELETE FROM "
+	query += db.formatTableName(database, table)
+	query += fmt.Sprintf(" WHERE %s = ?", primaryKeyColumnName)
+	_, err := db.Connection.Exec(query, primaryKeyValue)
 
 	return err
 }
@@ -384,94 +470,102 @@ func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
-	queries := make([]string, 0, len(changes)+len(inserts))
+func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
+	var query []models.Query
 
-	// This will hold grouped changes by their RowId and Table
-	groupedUpdated := make(map[string][]models.DbDmlChange)
-	groupedDeletes := make([]models.DbDmlChange, 0, len(changes))
-
-	// Group changes by RowId and Table
 	for _, change := range changes {
-		switch change.Type {
-		case "UPDATE":
-			key := fmt.Sprintf("%s|%s|%s", change.Table, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
-			groupedUpdated[key] = append(groupedUpdated[key], change)
-		case "DELETE":
-			groupedDeletes = append(groupedDeletes, change)
-		}
-	}
+		columnNames := []string{}
+		values := []interface{}{}
+		valuesPlaceholder := []string{}
 
-	// Combine individual changes to SQL statements
-	for key, changes := range groupedUpdated {
-		columns := []string{}
-
-		// Split key into table and rowId
-		splitted := strings.Split(key, "|")
-		table := db.formatTableName(splitted[0])
-		primaryKeyColumnName := splitted[1]
-		primaryKeyValue := splitted[2]
-
-		for _, change := range changes {
-			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
-		}
-
-		// Merge all column updates
-		updateClause := strings.Join(columns, ", ")
-
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s';", table, updateClause, primaryKeyColumnName, primaryKeyValue)
-
-		queries = append(queries, query)
-	}
-
-	for _, delete := range groupedDeletes {
-		statementType := ""
-		query := ""
-
-		statementType = "DELETE FROM"
-
-		query = fmt.Sprintf("%s %s WHERE %s = \"%s\"", statementType, db.formatTableName(delete.Table), delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
-
-		if query != "" {
-			queries = append(queries, query)
-		}
-	}
-
-	for _, insert := range inserts {
-		values := make([]string, 0, len(insert.Values))
-
-		for _, value := range insert.Values {
-			_, err := strconv.ParseFloat(value, 64)
-
-			if strings.ToLower(value) != "default" && err != nil {
-				values = append(values, fmt.Sprintf("\"%s\"", value))
-			} else {
-				values = append(values, value)
+		for _, cell := range change.Values {
+			switch cell.Type {
+			case models.Empty, models.Null, models.String:
+				columnNames = append(columnNames, cell.Column)
+				valuesPlaceholder = append(valuesPlaceholder, "?")
 			}
 		}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", db.formatTableName(insert.Table), strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
+		for _, cell := range change.Values {
+			switch cell.Type {
+			case models.Empty:
+				values = append(values, "")
+			case models.Null:
+				values = append(values, sql.NullString{})
+			case models.String:
+				values = append(values, cell.Value)
+			}
+		}
 
-		queries = append(queries, query)
-	}
+		switch change.Type {
+		case models.DmlInsertType:
+			queryStr := "INSERT INTO "
+			queryStr += db.formatTableName(change.Database, change.Table)
+			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
 
-	tx, err := db.Connection.Begin()
-	if err != nil {
-		return err
-	}
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  values,
+			}
 
-	for _, query := range queries {
+			query = append(query, newQuery)
+		case models.DmlUpdateType:
+			queryStr := "UPDATE "
+			queryStr += db.formatTableName(change.Database, change.Table)
 
-		_, err = tx.Exec(query)
-		if err != nil {
-			return errors.Join(err, tx.Rollback())
+			for i, column := range columnNames {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" SET `%s` = ?", column)
+				} else {
+					queryStr += fmt.Sprintf(", `%s` = ?", column)
+				}
+			}
+
+			args := make([]interface{}, len(values))
+
+			copy(args, values)
+
+			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+			args = append(args, change.PrimaryKeyValue)
+
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  args,
+			}
+
+			query = append(query, newQuery)
+		case models.DmlDeleteType:
+			queryStr := "DELETE FROM "
+			queryStr += db.formatTableName(change.Database, change.Table)
+			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  []interface{}{change.PrimaryKeyValue},
+			}
+
+			query = append(query, newQuery)
 		}
 	}
 
-	err = tx.Commit()
+	trx, err := db.Connection.Begin()
 	if err != nil {
 		return err
 	}
+
+	for _, query := range query {
+		logger.Info(query.Query, map[string]any{"args": query.Args})
+		_, err := trx.Exec(query.Query, query.Args...)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = trx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -483,17 +577,6 @@ func (db *MySQL) GetProvider() string {
 	return db.Provider
 }
 
-func (db *MySQL) formatTableName(tableName string) string {
-	splittedTableName := strings.Split(tableName, ".")
-
-	if len(splittedTableName) == 1 {
-		return tableName
-	}
-
-	database := splittedTableName[0]
-	table := splittedTableName[1]
-
-	formattedTableName := fmt.Sprintf("`%s`.`%s`", database, table)
-
-	return formattedTableName
+func (db *MySQL) formatTableName(database, table string) string {
+	return fmt.Sprintf("`%s`.`%s`", database, table)
 }

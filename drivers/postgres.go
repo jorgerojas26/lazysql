@@ -4,13 +4,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	// import postgresql driver
 	_ "github.com/lib/pq"
 	"github.com/xo/dburl"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -25,6 +25,10 @@ type Postgres struct {
 const (
 	defaultPort = "5432"
 )
+
+func (db *Postgres) TestConnection(urlstr string) error {
+	return db.Connect(urlstr)
+}
 
 func (db *Postgres) Connect(urlstr string) (err error) {
 	db.SetProvider("postgres")
@@ -58,13 +62,18 @@ func (db *Postgres) Connect(urlstr string) (err error) {
 	return nil
 }
 
-func (db *Postgres) TestConnection(urlstr string) error {
-	return db.Connect(urlstr)
-}
-
 func (db *Postgres) GetDatabases() (databases []string, err error) {
 	rows, err := db.Connection.Query("SELECT datname FROM pg_database;")
 	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	rowsErr := rows.Err()
+
+	if rowsErr != nil {
+		err = rowsErr
 		return nil, err
 	}
 
@@ -83,83 +92,163 @@ func (db *Postgres) GetDatabases() (databases []string, err error) {
 func (db *Postgres) GetTables(database string) (tables map[string][]string, err error) {
 	tables = make(map[string][]string)
 
-	switchDatabase := false
+	logger.Info("GetTables", map[string]any{"database": database})
+
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
 
 	if database != db.CurrentDatabase {
 		err = db.SwitchDatabase(database)
 		if err != nil {
 			return nil, err
 		}
-		switchDatabase = true
 	}
 
-	rows, err := db.Connection.Query(fmt.Sprintf("SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = '%s'", database))
+	defer func() {
+		if r := recover(); r != nil {
+			_ = db.SwitchDatabase(db.PreviousDatabase)
+		}
+	}()
+
+	query := "SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = $1"
+	rows, err := db.Connection.Query(query, database)
+
+	if rows != nil {
+		rowsErr := rows.Err()
+
+		if rowsErr != nil {
+			err = rowsErr
+		}
+
+		defer rows.Close()
+
+		for rows.Next() {
+			var tableName string
+			var tableSchema string
+
+			err = rows.Scan(&tableName, &tableSchema)
+
+			tables[tableSchema] = append(tables[tableSchema], tableName)
+
+		}
+
+	}
+
 	if err != nil {
-		if switchDatabase {
-			err = db.SwitchDatabase(db.PreviousDatabase)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return tables, nil
-	}
-
-	for rows.Next() {
-		var tableName string
-		var tableSchema string
-
-		err = rows.Scan(&tableName, &tableSchema)
-		if err != nil {
-			return nil, err
-		}
-
-		tables[tableSchema] = append(tables[tableSchema], tableName)
-
+		return nil, err
 	}
 
 	return tables, nil
 }
 
 func (db *Postgres) GetTableColumns(database, table string) (results [][]string, err error) {
-	tableSchema := strings.Split(table, ".")[0]
-	tableName := strings.Split(table, ".")[1]
-	rows, err := db.Connection.Query(fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = '%s' AND table_schema = '%s' AND table_name = '%s' ORDER by ordinal_position", database, tableSchema, tableName))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, err
+	if database == "" {
+		return nil, errors.New("database name is required")
 	}
 
-	results = append(results, columns)
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
 
-	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
-		}
+	splitTableString := strings.Split(table, ".")
 
-		err = rows.Scan(rowValues...)
+	if len(splitTableString) == 1 {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
 		if err != nil {
 			return nil, err
 		}
+	}
 
-		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+	defer func() {
+		if r := recover(); r != nil {
+			_ = db.SwitchDatabase(db.PreviousDatabase)
+		}
+	}()
+
+	tableSchema := splitTableString[0]
+	tableName := splitTableString[1]
+
+	query := "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = $1 AND table_schema = $2 AND table_name = $3 ORDER by ordinal_position"
+
+	rows, err := db.Connection.Query(query, database, tableSchema, tableName)
+
+	if rows != nil {
+
+		rowsErr := rows.Err()
+
+		if rowsErr != nil {
+			err = rowsErr
 		}
 
-		results = append(results, row)
+		defer rows.Close()
+
+		columns, columnsError := rows.Columns()
+
+		if columnsError != nil {
+			err = columnsError
+		}
+
+		results = append(results, columns)
+
+		for rows.Next() {
+			rowValues := make([]interface{}, len(columns))
+
+			for i := range columns {
+				rowValues[i] = new(sql.RawBytes)
+			}
+
+			err = rows.Scan(rowValues...)
+
+			var row []string
+			for _, col := range rowValues {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
+
+			results = append(results, row)
+		}
+
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return
 }
 
-func (db *Postgres) GetConstraints(table string) (constraints [][]string, err error) {
+func (db *Postgres) GetConstraints(database, table string) (constraints [][]string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
 	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			_ = db.SwitchDatabase(db.PreviousDatabase)
+		}
+	}()
+
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
@@ -179,43 +268,77 @@ func (db *Postgres) GetConstraints(table string) (constraints [][]string, err er
 			AND tc.table_schema = '%s'
             AND tc.table_name = '%s'
             `, tableSchema, tableName))
-	if err != nil {
-		return nil, err
+
+	if rows != nil {
+
+		rowsErr := rows.Err()
+
+		if rowsErr != nil {
+			err = rowsErr
+		}
+
+		defer rows.Close()
+
+		columns, columnsError := rows.Columns()
+
+		if columnsError != nil {
+			err = columnsError
+		}
+
+		constraints = append(constraints, columns)
+
+		for rows.Next() {
+			rowValues := make([]interface{}, len(columns))
+			for i := range columns {
+				rowValues[i] = new(sql.RawBytes)
+			}
+
+			err = rows.Scan(rowValues...)
+
+			var row []string
+			for _, col := range rowValues {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
+
+			constraints = append(constraints, row)
+		}
 	}
 
-	defer rows.Close()
-
-	columns, err := rows.Columns()
 	if err != nil {
 		return nil, err
-	}
-
-	constraints = append(constraints, columns)
-
-	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
-		}
-
-		err = rows.Scan(rowValues...)
-		if err != nil {
-			return nil, err
-		}
-
-		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
-		}
-
-		constraints = append(constraints, row)
 	}
 
 	return
 }
 
-func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, err error) {
+func (db *Postgres) GetForeignKeys(database, table string) (foreignKeys [][]string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
 	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			_ = db.SwitchDatabase(db.PreviousDatabase)
+		}
+	}()
+
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
@@ -236,43 +359,77 @@ func (db *Postgres) GetForeignKeys(table string) (foreignKeys [][]string, err er
           	AND tc.table_schema = '%s'
             AND tc.table_name = '%s'
   `, tableSchema, tableName))
-	if err != nil {
-		return nil, err
+
+	if rows != nil {
+
+		rowsErr := rows.Err()
+
+		if rowsErr != nil {
+			err = rowsErr
+		}
+
+		defer rows.Close()
+
+		columns, columnsError := rows.Columns()
+
+		if columnsError != nil {
+			err = columnsError
+		}
+
+		foreignKeys = append(foreignKeys, columns)
+
+		for rows.Next() {
+			rowValues := make([]interface{}, len(columns))
+			for i := range columns {
+				rowValues[i] = new(sql.RawBytes)
+			}
+
+			err = rows.Scan(rowValues...)
+
+			var row []string
+			for _, col := range rowValues {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
+
+			foreignKeys = append(foreignKeys, row)
+		}
 	}
 
-	defer rows.Close()
-
-	columns, err := rows.Columns()
 	if err != nil {
 		return nil, err
-	}
-
-	foreignKeys = append(foreignKeys, columns)
-
-	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
-		}
-
-		err = rows.Scan(rowValues...)
-		if err != nil {
-			return nil, err
-		}
-
-		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
-		}
-
-		foreignKeys = append(foreignKeys, row)
 	}
 
 	return
 }
 
-func (db *Postgres) GetIndexes(table string) (indexes [][]string, err error) {
+func (db *Postgres) GetIndexes(database, table string) (indexes [][]string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
 	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			_ = db.SwitchDatabase(db.PreviousDatabase)
+		}
+	}()
+
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
@@ -302,123 +459,265 @@ func (db *Postgres) GetIndexes(table string) (indexes [][]string, err error) {
             t.relname,
             i.relname
   `, tableSchema, tableName))
+
+	if rows != nil {
+
+		rowsErr := rows.Err()
+
+		if rowsErr != nil {
+			err = rowsErr
+		}
+
+		defer rows.Close()
+
+		columns, columnsError := rows.Columns()
+
+		if columnsError != nil {
+			err = columnsError
+		}
+
+		indexes = append(indexes, columns)
+
+		for rows.Next() {
+			rowValues := make([]interface{}, len(columns))
+			for i := range columns {
+				rowValues[i] = new(sql.RawBytes)
+			}
+
+			err = rows.Scan(rowValues...)
+
+			var row []string
+			for _, col := range rowValues {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
+
+			indexes = append(indexes, row)
+		}
+	}
+
 	if err != nil {
 		return nil, err
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	indexes = append(indexes, columns)
-
-	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
-		}
-
-		err = rows.Scan(rowValues...)
-		if err != nil {
-			return nil, err
-		}
-
-		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
-		}
-
-		indexes = append(indexes, row)
 	}
 
 	return
 }
 
-func (db *Postgres) GetRecords(table, where, sort string, offset, limit int) (records [][]string, totalRecords int, err error) {
-	table = db.formatTableName(table)
-	defaultLimit := 300
-	isPaginationEnabled := offset >= 0 && limit >= 0
-
-	if limit != 0 {
-		defaultLimit = limit
+func (db *Postgres) GetRecords(database, table, where, sort string, offset, limit int) (records [][]string, totalRecords int, err error) {
+	if database == "" {
+		return nil, 0, errors.New("database name is required")
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s s LIMIT %d OFFSET %d", table, defaultLimit, offset)
+	if table == "" {
+		return nil, 0, errors.New("table name is required")
+	}
+
+	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return nil, 0, errors.New("table must be in the format schema.table")
+	}
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			if database != db.PreviousDatabase {
+				_ = db.SwitchDatabase(db.PreviousDatabase)
+			}
+		}
+	}()
+
+	tableSchema := splitTableString[0]
+	tableName := splitTableString[1]
+
+	formattedTableName := db.formatTableName(tableSchema, tableName)
+
+	if limit == 0 {
+		limit = DefaultRowLimit
+	}
+
+	query := "SELECT * FROM "
+	query += formattedTableName
 
 	if where != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s LIMIT %d OFFSET %d", table, where, defaultLimit, offset)
+		query += fmt.Sprintf(" %s", where)
 	}
 
 	if sort != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d OFFSET %d", table, where, sort, defaultLimit, offset)
+		query += fmt.Sprintf(" ORDER BY %s", sort)
 	}
 
-	paginatedRows, err := db.Connection.Query(query)
-	if err != nil {
-		return nil, 0, err
-	}
+	query += " LIMIT $1 OFFSET $2"
 
-	if isPaginationEnabled {
-		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", table, where)
+	paginatedRows, err := db.Connection.Query(query, limit, offset)
 
-		rows := db.Connection.QueryRow(queryWithoutLimit)
+	if paginatedRows != nil {
 
-		if err != nil {
-			return nil, 0, err
+		rowsErr := paginatedRows.Err()
+
+		defer paginatedRows.Close()
+
+		if rowsErr != nil {
+			err = rowsErr
+		}
+
+		countQuery := "SELECT COUNT(*) FROM "
+		countQuery += formattedTableName
+
+		rows := db.Connection.QueryRow(countQuery)
+
+		rowsErr = rows.Err()
+
+		if rowsErr != nil {
+			err = rowsErr
 		}
 
 		err = rows.Scan(&totalRecords)
-		if err != nil {
-			return nil, 0, err
+
+		columns, columnsError := paginatedRows.Columns()
+
+		if columnsError != nil {
+			err = columnsError
 		}
 
-		defer paginatedRows.Close()
+		records = append(records, columns)
+
+		for paginatedRows.Next() {
+			rowValues := make([]interface{}, len(columns))
+			for i := range columns {
+				rowValues[i] = new(sql.RawBytes)
+			}
+
+			err = paginatedRows.Scan(rowValues...)
+
+			var row []string
+			for _, col := range rowValues {
+				row = append(row, string(*col.(*sql.RawBytes)))
+			}
+
+			records = append(records, row)
+
+		}
 	}
 
-	columns, err := paginatedRows.Columns()
 	if err != nil {
 		return nil, 0, err
-	}
-
-	records = append(records, columns)
-
-	for paginatedRows.Next() {
-		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
-		}
-
-		err = paginatedRows.Scan(rowValues...)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
-		}
-
-		records = append(records, row)
-
 	}
 
 	return
 }
 
-func (db *Postgres) UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) (err error) {
-	table = db.formatTableName(table)
-	query := fmt.Sprintf("UPDATE %s SET %s = '%s' WHERE \"%s\" = '%s'", table, column, value, primaryKeyColumnName, primaryKeyValue)
-	_, err = db.Connection.Exec(query)
+func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) (err error) {
+	if database == "" {
+		return errors.New("database name is required")
+	}
+
+	if table == "" {
+		return errors.New("table name is required")
+	}
+
+	if column == "" {
+		return errors.New("column name is required")
+	}
+
+	if value == "" {
+		return errors.New("value is required")
+	}
+
+	if primaryKeyColumnName == "" {
+		return errors.New("primary key column name is required")
+	}
+
+	if primaryKeyValue == "" {
+		return errors.New("primary key value is required")
+	}
+
+	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return errors.New("table must be in the format schema.table")
+	}
+
+	switchDatabaseOnError := false
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return err
+		}
+		switchDatabaseOnError = true
+	}
+
+	tableSchema := splitTableString[0]
+	tableName := splitTableString[1]
+
+	formattedTableName := db.formatTableName(tableSchema, tableName)
+
+	query := "UPDATE "
+	query += formattedTableName
+	query += fmt.Sprintf(" SET \"%s\" = $1 WHERE \"%s\" = $2", column, primaryKeyColumnName)
+
+	_, err = db.Connection.Exec(query, value, primaryKeyValue)
+
+	if err != nil && switchDatabaseOnError {
+		err = db.SwitchDatabase(db.PreviousDatabase)
+	}
 
 	return err
 }
 
-func (db *Postgres) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue string) (err error) {
-	table = db.formatTableName(table)
-	query := fmt.Sprintf("DELETE FROM %s WHERE \"%s\" = '%s'", table, primaryKeyColumnName, primaryKeyValue)
-	_, err = db.Connection.Exec(query)
+func (db *Postgres) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) (err error) {
+	if database == "" {
+		return errors.New("database name is required")
+	}
+
+	if table == "" {
+		return errors.New("table name is required")
+	}
+
+	if primaryKeyColumnName == "" {
+		return errors.New("primary key column name is required")
+	}
+
+	if primaryKeyValue == "" {
+		return errors.New("primary key value is required")
+	}
+
+	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return errors.New("table must be in the format schema.table")
+	}
+
+	switchDatabaseOnError := false
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return err
+		}
+		switchDatabaseOnError = true
+	}
+
+	tableSchema := splitTableString[0]
+	tableName := splitTableString[1]
+
+	formattedTableName := db.formatTableName(tableSchema, tableName)
+
+	query := "DELETE FROM "
+	query += formattedTableName
+	query += fmt.Sprintf(" WHERE \"%s\" = $1", primaryKeyColumnName)
+
+	_, err = db.Connection.Exec(query, primaryKeyValue)
+
+	if err != nil && switchDatabaseOnError {
+		err = db.SwitchDatabase(db.PreviousDatabase)
+	}
 
 	return err
 }
@@ -443,6 +742,12 @@ func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 	}
 
 	defer rows.Close()
+
+	rowsErr := rows.Err()
+
+	if rowsErr != nil {
+		err = rowsErr
+	}
 
 	columns, err := rows.Columns()
 	if err != nil {
@@ -474,87 +779,106 @@ func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 	return
 }
 
-func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
-	queries := make([]string, 0, len(changes)+len(inserts))
+func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
+	var query []models.Query
 
-	// This will hold grouped changes by their RowId and Table
-	groupedUpdated := make(map[string][]models.DbDmlChange)
-	groupedDeletes := make([]models.DbDmlChange, 0, len(changes))
-
-	// Group changes by RowId and Table
 	for _, change := range changes {
-		if change.Type == "UPDATE" {
-			key := fmt.Sprintf("%s|%s|%s", db.formatTableName(change.Table), change.PrimaryKeyColumnName, change.PrimaryKeyValue)
-			groupedUpdated[key] = append(groupedUpdated[key], change)
-		} else if change.Type == "DELETE" {
-			groupedDeletes = append(groupedDeletes, change)
-		}
-	}
+		columnNames := []string{}
+		values := []interface{}{}
+		valuesPlaceholder := []string{}
+		placeholderIndex := 1
 
-	// Combine individual changes to SQL statements
-	for key, changes := range groupedUpdated {
-		columns := []string{}
-
-		// Split key into table and rowId
-		splitted := strings.Split(key, "|")
-		table := db.formatTableName(splitted[0])
-		PrimaryKeyColumnName := splitted[1]
-		primaryKeyValue := splitted[2]
-
-		for _, change := range changes {
-			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
-		}
-
-		// Merge all column updates
-		updateClause := strings.Join(columns, ", ")
-
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE \"%s\" = '%s';", table, updateClause, PrimaryKeyColumnName, primaryKeyValue)
-
-		queries = append(queries, query)
-	}
-
-	for _, del := range groupedDeletes {
-		statementType := ""
-		query := ""
-
-		statementType = "DELETE FROM"
-		query = fmt.Sprintf("%s %s WHERE \"%s\" = '%s'", statementType, db.formatTableName(del.Table), del.PrimaryKeyColumnName, del.PrimaryKeyValue)
-
-		if query != "" {
-			queries = append(queries, query)
-		}
-	}
-
-	for _, insert := range inserts {
-		values := make([]string, 0, len(insert.Values))
-
-		for _, value := range insert.Values {
-			_, err := strconv.ParseFloat(value, 64)
-
-			if strings.ToLower(value) != "default" && err != nil {
-				values = append(values, fmt.Sprintf("'%s'", value))
-			} else {
-				values = append(values, value)
+		for _, cell := range change.Values {
+			switch cell.Type {
+			case models.Empty, models.Null, models.String:
+				columnNames = append(columnNames, cell.Column)
+				valuesPlaceholder = append(valuesPlaceholder, fmt.Sprintf("$%d", placeholderIndex))
+				placeholderIndex++
 			}
 		}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", db.formatTableName(insert.Table), strings.Join(insert.Columns, ", "), strings.Join(values, ", "))
-		queries = append(queries, query)
+		for _, cell := range change.Values {
+			switch cell.Type {
+			case models.Empty:
+				values = append(values, "")
+			case models.Null:
+				values = append(values, sql.NullString{})
+			case models.String:
+				values = append(values, cell.Value)
+			}
+		}
+
+		splitTableString := strings.Split(change.Table, ".")
+
+		tableSchema := splitTableString[0]
+		tableName := splitTableString[1]
+
+		formattedTableName := db.formatTableName(tableSchema, tableName)
+
+		switch change.Type {
+
+		case models.DmlInsertType:
+
+			queryStr := "INSERT INTO " + formattedTableName
+			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
+
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  values,
+			}
+
+			query = append(query, newQuery)
+		case models.DmlUpdateType:
+			queryStr := "UPDATE " + formattedTableName
+
+			for i, column := range columnNames {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" SET \"%s\" = $1", column)
+				} else {
+					queryStr += fmt.Sprintf(", \"%s\" = $%d", column, i+1)
+				}
+			}
+
+			args := make([]interface{}, len(values))
+
+			copy(args, values)
+
+			queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", change.PrimaryKeyColumnName, len(columnNames)+1)
+			args = append(args, change.PrimaryKeyValue)
+
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  args,
+			}
+
+			query = append(query, newQuery)
+		case models.DmlDeleteType:
+			queryStr := "DELETE FROM " + formattedTableName
+			queryStr += fmt.Sprintf(" WHERE %s = $1", change.PrimaryKeyColumnName)
+
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  []interface{}{change.PrimaryKeyValue},
+			}
+
+			query = append(query, newQuery)
+		}
 	}
 
-	tx, err := db.Connection.Begin()
+	trx, err := db.Connection.Begin()
 	if err != nil {
 		return err
 	}
 
-	for _, query := range queries {
-		_, err = tx.Exec(query)
+	for _, query := range query {
+		logger.Info(query.Query, map[string]any{"args": query.Args})
+		_, err := trx.Exec(query.Query, query.Args...)
 		if err != nil {
-			return errors.Join(err, tx.Rollback())
+			return err
 		}
 	}
 
-	err = tx.Commit()
+	err = trx.Commit()
 	if err != nil {
 		return err
 	}
@@ -595,7 +919,11 @@ func (db *Postgres) SwitchDatabase(database string) error {
 		return err
 	}
 
-	db.Connection.Close()
+	err = db.Connection.Close()
+	if err != nil {
+		return err
+	}
+
 	db.Connection = connection
 	db.PreviousDatabase = db.CurrentDatabase
 	db.CurrentDatabase = database
@@ -603,17 +931,6 @@ func (db *Postgres) SwitchDatabase(database string) error {
 	return nil
 }
 
-func (db *Postgres) formatTableName(table string) string {
-	splittedTableName := strings.Split(table, ".")
-
-	if len(splittedTableName) == 1 {
-		return table
-	}
-
-	schema := splittedTableName[0]
-	tableName := splittedTableName[1]
-
-	formattedTableName := fmt.Sprintf("\"%s\".\"%s\"", schema, tableName)
-
-	return formattedTableName
+func (db *Postgres) formatTableName(database, table string) string {
+	return fmt.Sprintf("\"%s\".\"%s\"", database, table)
 }

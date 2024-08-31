@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	// import sqlite driver
 	_ "modernc.org/sqlite"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -46,6 +46,13 @@ func (db *SQLite) GetDatabases() ([]string, error) {
 		return nil, err
 	}
 
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	defer rows.Close()
+
 	for rows.Next() {
 		var database string
 		err := rows.Scan(&database)
@@ -63,13 +70,23 @@ func (db *SQLite) GetDatabases() ([]string, error) {
 }
 
 func (db *SQLite) GetTables(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
 	rows, err := db.Connection.Query("SELECT name FROM sqlite_master WHERE type='table'")
-
-	tables := make(map[string][]string)
-
 	if err != nil {
 		return nil, err
 	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	defer rows.Close()
+
+	tables := make(map[string][]string)
 
 	for rows.Next() {
 		var table string
@@ -85,10 +102,20 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 }
 
 func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err error) {
-	rows, err := db.Connection.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	rows, err := db.Connection.Query(fmt.Sprintf("PRAGMA table_info(%s)", db.formatTableName(table)))
 	if err != nil {
 		return nil, err
 	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -125,10 +152,22 @@ func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err erro
 	return
 }
 
-func (db *SQLite) GetConstraints(table string) (results [][]string, err error) {
-	rows, err := db.Connection.Query("SELECT sql FROM sqlite_master WHERE type='table' AND name = '" + table + "'")
+func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error) {
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	query := "SELECT sql FROM sqlite_master "
+	query += "WHERE type='table' AND name = ?"
+
+	rows, err := db.Connection.Query(query, table)
 	if err != nil {
 		return nil, err
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
 	}
 
 	defer rows.Close()
@@ -166,12 +205,21 @@ func (db *SQLite) GetConstraints(table string) (results [][]string, err error) {
 	return
 }
 
-func (db *SQLite) GetForeignKeys(table string) (results [][]string, err error) {
+func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error) {
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
 	rows, err := db.Connection.Query("PRAGMA foreign_key_list(" + table + ")")
 	if err != nil {
 		return nil, err
 	}
 
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -207,11 +255,21 @@ func (db *SQLite) GetForeignKeys(table string) (results [][]string, err error) {
 	return
 }
 
-func (db *SQLite) GetIndexes(table string) (results [][]string, err error) {
+func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
 	rows, err := db.Connection.Query("PRAGMA index_list(" + table + ")")
 	if err != nil {
 		return nil, err
 	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -247,44 +305,53 @@ func (db *SQLite) GetIndexes(table string) (results [][]string, err error) {
 	return
 }
 
-func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
-	defaultLimit := 300
-
-	isPaginationEnabled := offset >= 0 && limit >= 0
-
-	if limit != 0 {
-		defaultLimit = limit
+func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
+	if table == "" {
+		return nil, 0, errors.New("table name is required")
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s s LIMIT %d,%d", table, offset, defaultLimit)
+	if limit == 0 {
+		limit = DefaultRowLimit
+	}
+
+	query := "SELECT * FROM "
+	query += db.formatTableName(table)
 
 	if where != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s LIMIT %d,%d", table, where, offset, defaultLimit)
+		query += fmt.Sprintf(" %s", where)
 	}
 
 	if sort != "" {
-		query = fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s LIMIT %d,%d", table, where, sort, offset, defaultLimit)
+		query += fmt.Sprintf(" ORDER BY %s", sort)
 	}
 
-	paginatedRows, err := db.Connection.Query(query)
+	query += " LIMIT ?, ?"
+
+	paginatedRows, err := db.Connection.Query(query, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if isPaginationEnabled {
-		queryWithoutLimit := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", table, where)
+	rowsErr := paginatedRows.Err()
 
-		rows := db.Connection.QueryRow(queryWithoutLimit)
-		if err != nil {
-			return nil, 0, err
-		}
+	if rowsErr != nil {
+		return nil, 0, rowsErr
+	}
 
-		err = rows.Scan(&totalRecords)
-		if err != nil {
-			return nil, 0, err
-		}
+	defer paginatedRows.Close()
 
-		defer paginatedRows.Close()
+	countQuery := "SELECT COUNT(*) FROM "
+	countQuery += db.formatTableName(table)
+
+	rows := db.Connection.QueryRow(countQuery)
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = rows.Scan(&totalRecords)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	columns, err := paginatedRows.Columns()
@@ -307,11 +374,7 @@ func (db *SQLite) GetRecords(table, where, sort string, offset, limit int) (pagi
 
 		var row []string
 		for _, col := range rowValues {
-			if col == nil {
-				row = append(row, "NULL")
-			} else {
-				row = append(row, string(*col.(*sql.RawBytes)))
-			}
+			row = append(row, string(*col.(*sql.RawBytes)))
 		}
 
 		paginatedResults = append(paginatedResults, row)
@@ -325,6 +388,11 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
 	}
 
 	defer rows.Close()
@@ -363,15 +431,53 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 	return
 }
 
-func (db *SQLite) UpdateRecord(table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
-	query := fmt.Sprintf("UPDATE %s SET %s = \"%s\" WHERE %s = %s;", table, column, value, primaryKeyColumnName, primaryKeyValue)
-	_, err := db.Connection.Exec(query)
+func (db *SQLite) UpdateRecord(_, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	if table == "" {
+		return errors.New("table name is required")
+	}
+
+	if column == "" {
+		return errors.New("column name is required")
+	}
+
+	if value == "" {
+		return errors.New("value is required")
+	}
+
+	if primaryKeyColumnName == "" {
+		return errors.New("primary key column name is required")
+	}
+
+	if primaryKeyValue == "" {
+		return errors.New("primary key value is required")
+	}
+
+	query := "UPDATE "
+	query += db.formatTableName(table)
+	query += fmt.Sprintf(" SET %s = ? WHERE %s = ?", column, primaryKeyColumnName)
+
+	_, err := db.Connection.Exec(query, value, primaryKeyValue)
 
 	return err
 }
 
-func (db *SQLite) DeleteRecord(table, primaryKeyColumnName, primaryKeyValue string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s = \"%s\"", table, primaryKeyColumnName, primaryKeyValue)
+func (db *SQLite) DeleteRecord(_, table, primaryKeyColumnName, primaryKeyValue string) error {
+	if table == "" {
+		return errors.New("table name is required")
+	}
+
+	if primaryKeyColumnName == "" {
+		return errors.New("primary key column name is required")
+	}
+
+	if primaryKeyValue == "" {
+		return errors.New("primary key value is required")
+	}
+
+	query := "DELETE FROM "
+	query += db.formatTableName(table)
+	query += fmt.Sprintf(" WHERE %s = ?", primaryKeyColumnName)
+
 	_, err := db.Connection.Exec(query)
 
 	return err
@@ -391,94 +497,103 @@ func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange, inserts []models.DbInsert) (err error) {
-	queries := make([]string, 0, len(changes)+len(inserts))
+func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
+	var query []models.Query
 
-	// This will hold grouped changes by their RowId and Table
-	groupedUpdated := make(map[string][]models.DbDmlChange)
-	groupedDeletes := make([]models.DbDmlChange, 0, len(changes))
-
-	// Group changes by RowId and Table
 	for _, change := range changes {
-		if change.Type == "UPDATE" {
-			key := fmt.Sprintf("%s|%s|%s", change.Table, change.PrimaryKeyColumnName, change.PrimaryKeyValue)
-			groupedUpdated[key] = append(groupedUpdated[key], change)
-		} else if change.Type == "DELETE" {
-			groupedDeletes = append(groupedDeletes, change)
+		columnNames := []string{}
+		values := []interface{}{}
+		valuesPlaceholder := []string{}
+
+		for _, cell := range change.Values {
+			switch cell.Type {
+			case models.Empty, models.Null, models.String:
+				columnNames = append(columnNames, cell.Column)
+				valuesPlaceholder = append(valuesPlaceholder, "?")
+			}
 		}
-	}
+		logger.Info("Column names", map[string]any{"columnNames": columnNames})
 
-	// Combine individual changes to SQL statements
-	for key, changes := range groupedUpdated {
-		columns := []string{}
-
-		// Split key into table and rowId
-		splitted := strings.Split(key, "|")
-		table := splitted[0]
-		primaryKeyColumnName := splitted[1]
-		primaryKeyValue := splitted[2]
-
-		for _, change := range changes {
-			columns = append(columns, fmt.Sprintf("%s='%s'", change.Column, change.Value))
-		}
-
-		// Merge all column updates
-		updateClause := strings.Join(columns, ", ")
-
-		query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s';", table, updateClause, primaryKeyColumnName, primaryKeyValue)
-
-		queries = append(queries, query)
-	}
-
-	for _, delete := range groupedDeletes {
-		statementType := ""
-		query := ""
-
-		statementType = "DELETE FROM"
-
-		query = fmt.Sprintf("%s %s WHERE %s = \"%s\"", statementType, delete.Table, delete.PrimaryKeyColumnName, delete.PrimaryKeyValue)
-
-		if query != "" {
-			queries = append(queries, query)
-		}
-	}
-
-	for _, insert := range inserts {
-		values := make([]string, 0, len(insert.Values))
-
-		columnsToBeInserted := insert.Columns
-
-		for _, value := range insert.Values {
-			_, err := strconv.ParseFloat(value, 64)
-
-			if err != nil {
-				values = append(values, fmt.Sprintf("\"%s\"", value))
-			} else {
-				values = append(values, value)
+		for _, cell := range change.Values {
+			switch cell.Type {
+			case models.Empty:
+				values = append(values, "")
+			case models.Null:
+				values = append(values, sql.NullString{})
+			case models.String:
+				values = append(values, cell.Value)
 			}
 		}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", insert.Table, strings.Join(columnsToBeInserted, ", "), strings.Join(values, ", "))
+		switch change.Type {
+		case models.DmlInsertType:
+			queryStr := "INSERT INTO "
+			queryStr += db.formatTableName(change.Table)
+			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
 
-		queries = append(queries, query)
-	}
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  values,
+			}
 
-	tx, err := db.Connection.Begin()
-	if err != nil {
-		return err
-	}
+			query = append(query, newQuery)
+		case models.DmlUpdateType:
+			queryStr := "UPDATE "
+			queryStr += db.formatTableName(change.Table)
 
-	for _, query := range queries {
-		_, err = tx.Exec(query)
-		if err != nil {
-			return errors.Join(err, tx.Rollback())
+			for i, column := range columnNames {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" SET `%s` = ?", column)
+				} else {
+					queryStr += fmt.Sprintf(", `%s` = ?", column)
+				}
+			}
+
+			args := make([]interface{}, len(values))
+
+			copy(args, values)
+
+			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+			args = append(args, change.PrimaryKeyValue)
+
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  args,
+			}
+
+			query = append(query, newQuery)
+		case models.DmlDeleteType:
+			queryStr := "DELETE FROM "
+			queryStr += db.formatTableName(change.Table)
+			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+
+			newQuery := models.Query{
+				Query: queryStr,
+				Args:  []interface{}{change.PrimaryKeyValue},
+			}
+
+			query = append(query, newQuery)
 		}
 	}
 
-	err = tx.Commit()
+	trx, err := db.Connection.Begin()
 	if err != nil {
 		return err
 	}
+
+	for _, query := range query {
+		logger.Info(query.Query, map[string]any{"args": query.Args})
+		_, err := trx.Exec(query.Query, query.Args...)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = trx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -488,4 +603,8 @@ func (db *SQLite) SetProvider(provider string) {
 
 func (db *SQLite) GetProvider() string {
 	return db.Provider
+}
+
+func (db *SQLite) formatTableName(table string) string {
+	return fmt.Sprintf("`%s`", table)
 }
