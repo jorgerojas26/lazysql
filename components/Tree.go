@@ -10,18 +10,24 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
 type TreeState struct {
-	selectedDatabase string
-	selectedTable    string
+	currentFocusFoundNode *tview.TreeNode
+	selectedDatabase      string
+	selectedTable         string
+	searchFoundNodes      []*tview.TreeNode
+	isFiltering           bool
 }
 
 type Tree struct {
+	DBDriver drivers.Driver
 	*tview.TreeView
 	state       *TreeState
-	DBDriver    drivers.Driver
+	Filter      *tview.InputField
+	Wrapper     *tview.Flex
 	subscribers []chan models.StateChange
 }
 
@@ -32,18 +38,20 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	}
 
 	tree := &Tree{
+		Wrapper:     tview.NewFlex(),
 		TreeView:    tview.NewTreeView(),
 		state:       state,
 		subscribers: []chan models.StateChange{},
 		DBDriver:    dbdriver,
+		Filter:      tview.NewInputField(),
 	}
 
 	tree.SetTopLevel(1)
 	tree.SetGraphicsColor(tview.Styles.PrimaryTextColor)
-	tree.SetBorder(true)
+	// tree.SetBorder(true)
 	tree.SetTitle("Databases")
 	tree.SetTitleAlign(tview.AlignLeft)
-	tree.SetBorderPadding(0, 0, 1, 1)
+	// tree.SetBorderPadding(0, 0, 1, 1)
 
 	rootNode := tview.NewTreeNode("-")
 	tree.SetRoot(rootNode)
@@ -63,12 +71,23 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		}
 
 		if tree.GetSelectedDatabase() == "" {
-			for _, child := range databases {
-				childNode := tview.NewTreeNode(child)
+			for _, database := range databases {
+				childNode := tview.NewTreeNode(database)
 				childNode.SetExpanded(false)
-				childNode.SetReference(child)
+				childNode.SetReference(database)
 				childNode.SetColor(tview.Styles.PrimaryTextColor)
 				rootNode.AddChild(childNode)
+
+				go func(database string, node *tview.TreeNode) {
+					tables, err := tree.DBDriver.GetTables(database)
+					if err != nil {
+						logger.Error(err.Error(), nil)
+						return
+					}
+
+					tree.databasesToNodes(tables, node, true)
+					App.Draw()
+				}(database, childNode)
 			}
 		}
 		tree.SetFocusFunc(nil)
@@ -98,15 +117,15 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			} else {
 				tree.SetSelectedDatabase(node.GetReference().(string))
 
-				if node.GetChildren() == nil {
-					tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
-					if err != nil {
-						// TODO: Handle error
-						return
-					}
-
-					tree.updateNodes(tables, node, true)
-				}
+				// if node.GetChildren() == nil {
+				// 	tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
+				// 	if err != nil {
+				// 		// TODO: Handle error
+				// 		return
+				// 	}
+				//
+				// 	tree.databasesToNodes(tables, node, true)
+				// }
 				node.SetExpanded(true)
 
 			}
@@ -166,14 +185,82 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			// Can't "select" the current node via TreeView api.
 			// So fake it by sending it a Enter key event
 			return tcell.NewEventKey(tcell.KeyEnter, 0, 0)
+		case commands.Search:
+			tree.RemoveHighlight()
+			App.SetFocus(tree.Filter)
+			tree.SetIsFiltering(true)
+		case commands.NextFoundNode:
+			tree.goToNextFoundNode()
+		case commands.PreviousFoundNode:
+			tree.goToPreviousFoundNode()
+		case commands.TreeCollapseAll:
+			tree.CollapseAll()
+		case commands.ExpandAll:
+			tree.ExpandAll()
 		}
 		return nil
 	})
 
+	tree.Filter.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		command := app.Keymaps.Group(app.TreeFilterGroup).Resolve(event)
+
+		switch command {
+		case commands.UnfocusTreeFilter:
+			tree.Filter.SetText("")
+			tree.Highlight()
+			tree.SetCurrentNode(rootNode)
+			App.SetFocus(tree)
+			tree.SetIsFiltering(false)
+			tree.search("")
+			return nil
+		case commands.CommitTreeFilter:
+			App.SetFocus(tree)
+			tree.SetIsFiltering(false)
+			tree.Highlight()
+		default:
+			isBackSpace := event.Key() == tcell.KeyBackspace2
+
+			if isBackSpace {
+				if len(tree.Filter.GetText()) > 0 {
+					tree.search(tree.Filter.GetText()[:len(tree.Filter.GetText())-1])
+				} else {
+					tree.search("")
+				}
+			} else {
+				tree.search(tree.Filter.GetText() + string(event.Rune()))
+			}
+
+		}
+
+		return event
+	})
+
+	tree.Filter.SetFieldStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.PrimaryTextColor))
+	tree.Filter.SetPlaceholderStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.InverseTextColor))
+	tree.Filter.SetBorderPadding(0, 1, 0, 0)
+	tree.Filter.SetBorderColor(tview.Styles.PrimaryTextColor)
+	tree.Filter.SetLabel("Search: ")
+	tree.Filter.SetFocusFunc(func() {
+		tree.Filter.SetLabelColor(tview.Styles.SecondaryTextColor)
+		tree.Filter.SetFieldTextColor(tview.Styles.PrimaryTextColor)
+	})
+
+	tree.Filter.SetBlurFunc(func() {
+		tree.Filter.SetLabelColor(tview.Styles.PrimaryTextColor)
+		tree.Filter.SetFieldTextColor(tview.Styles.InverseTextColor)
+	})
+
+	tree.Wrapper.SetDirection(tview.FlexRow)
+	tree.Wrapper.SetBorder(true)
+	tree.Wrapper.SetBorderPadding(0, 0, 1, 1)
+
+	tree.Wrapper.AddItem(tree.Filter, 2, 0, false)
+	tree.Wrapper.AddItem(tree, 0, 1, true)
+
 	return tree
 }
 
-func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
+func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
 	node.ClearChildren()
 
 	for key, values := range children {
@@ -209,6 +296,40 @@ func (tree *Tree) updateNodes(children map[string][]string, node *tview.TreeNode
 	}
 }
 
+func (tree *Tree) search(searchText string) {
+	rootNode := tree.GetRoot()
+	lowerSearchText := strings.ToLower(searchText)
+	tree.state.searchFoundNodes = []*tview.TreeNode{}
+
+	if lowerSearchText == "" {
+		rootNode.Walk(func(_, parent *tview.TreeNode) bool {
+			if parent != nil && parent != rootNode && parent.IsExpanded() {
+				parent.SetExpanded(false)
+			}
+			return true
+		})
+		return
+	}
+
+	// filteredNodes := make([]*TreeStateNode, 0, len(treeNodes))
+
+	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
+		nodeText := strings.ToLower(node.GetText())
+
+		if strings.Contains(nodeText, lowerSearchText) {
+			if parent != nil {
+				parent.SetExpanded(true)
+			}
+			tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
+			tree.SetCurrentNode(node)
+			tree.state.currentFocusFoundNode = node
+		}
+		return true
+	})
+
+	App.ForceDraw()
+}
+
 // Subscribe to changes in the tree state
 func (tree *Tree) Subscribe() chan models.StateChange {
 	subscriber := make(chan models.StateChange)
@@ -232,6 +353,10 @@ func (tree *Tree) GetSelectedTable() string {
 	return tree.state.selectedTable
 }
 
+func (tree *Tree) GetIsFiltering() bool {
+	return tree.state.isFiltering
+}
+
 func (tree *Tree) SetSelectedDatabase(database string) {
 	tree.state.selectedDatabase = database
 	tree.Publish(models.StateChange{
@@ -248,11 +373,21 @@ func (tree *Tree) SetSelectedTable(table string) {
 	})
 }
 
+func (tree *Tree) SetIsFiltering(isFiltering bool) {
+	tree.state.isFiltering = isFiltering
+	tree.Publish(models.StateChange{
+		Key:   "IsFiltering",
+		Value: isFiltering,
+	})
+}
+
 // Blur func
 func (tree *Tree) RemoveHighlight() {
 	tree.SetBorderColor(tview.Styles.InverseTextColor)
 	tree.SetGraphicsColor(tview.Styles.InverseTextColor)
 	tree.SetTitleColor(tview.Styles.InverseTextColor)
+	tree.Filter.SetFieldTextColor(tview.Styles.InverseTextColor)
+	tree.Filter.SetLabelColor(tview.Styles.InverseTextColor)
 	// tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
@@ -287,6 +422,8 @@ func (tree *Tree) ForceRemoveHighlight() {
 	tree.SetGraphicsColor(tview.Styles.InverseTextColor)
 	tree.SetTitleColor(tview.Styles.InverseTextColor)
 	tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
+	tree.Filter.SetFieldTextColor(tview.Styles.InverseTextColor)
+	tree.Filter.SetLabelColor(tview.Styles.InverseTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
@@ -309,6 +446,8 @@ func (tree *Tree) Highlight() {
 	tree.SetGraphicsColor(tview.Styles.PrimaryTextColor)
 	tree.SetTitleColor(tview.Styles.PrimaryTextColor)
 	tree.GetRoot().SetColor(tview.Styles.PrimaryTextColor)
+	tree.Filter.SetFieldTextColor(tview.Styles.PrimaryTextColor)
+	tree.Filter.SetLabelColor(tview.Styles.PrimaryTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
@@ -331,4 +470,63 @@ func (tree *Tree) Highlight() {
 		}
 
 	}
+}
+
+func (tree *Tree) goToNextFoundNode() {
+	foundNodesText := make([]string, len(tree.state.searchFoundNodes))
+	for i, node := range tree.state.searchFoundNodes {
+		foundNodesText[i] = node.GetText()
+	}
+
+	for i, node := range tree.state.searchFoundNodes {
+		if node == tree.state.currentFocusFoundNode {
+			var newFocusNode *tview.TreeNode
+
+			if i+1 < len(tree.state.searchFoundNodes) {
+				newFocusNode = tree.state.searchFoundNodes[i+1]
+			} else {
+				newFocusNode = tree.state.searchFoundNodes[0]
+			}
+
+			tree.SetCurrentNode(newFocusNode)
+			tree.state.currentFocusFoundNode = newFocusNode
+			break
+		}
+	}
+}
+
+func (tree *Tree) goToPreviousFoundNode() {
+	for i, node := range tree.state.searchFoundNodes {
+		if node == tree.state.currentFocusFoundNode {
+			var newFocusNode *tview.TreeNode
+
+			if i-1 >= 0 {
+				newFocusNode = tree.state.searchFoundNodes[i-1]
+			} else {
+				newFocusNode = tree.state.searchFoundNodes[len(tree.state.searchFoundNodes)-1]
+			}
+
+			tree.SetCurrentNode(newFocusNode)
+			tree.state.currentFocusFoundNode = newFocusNode
+			break
+		}
+	}
+}
+
+func (tree *Tree) CollapseAll() {
+	tree.GetRoot().Walk(func(node, _ *tview.TreeNode) bool {
+		if node.IsExpanded() && node != tree.GetRoot() {
+			node.Collapse()
+		}
+		return true
+	})
+}
+
+func (tree *Tree) ExpandAll() {
+	tree.GetRoot().Walk(func(node, _ *tview.TreeNode) bool {
+		if !node.IsExpanded() && node != tree.GetRoot() {
+			node.Expand()
+		}
+		return true
+	})
 }

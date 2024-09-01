@@ -48,7 +48,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	go home.subscribeToTreeChanges()
 
 	leftWrapper.SetBorderColor(tview.Styles.InverseTextColor)
-	leftWrapper.AddItem(tree, 0, 1, true)
+	leftWrapper.AddItem(tree.Wrapper, 0, 1, true)
 
 	rightWrapper.SetBorderColor(tview.Styles.InverseTextColor)
 	rightWrapper.SetBorder(true)
@@ -113,6 +113,13 @@ func (home *Home) subscribeToTreeChanges() {
 			}
 
 			app.App.ForceDraw()
+		case "IsFiltering":
+			isFiltering := stateChange.Value.(bool)
+			if isFiltering {
+				home.SetInputCapture(nil)
+			} else {
+				home.SetInputCapture(home.homeInputCapture)
+			}
 		}
 	}
 }

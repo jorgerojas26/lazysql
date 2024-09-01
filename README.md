@@ -219,7 +219,7 @@ odbc+postgres://user:pass@localhost:port/dbname?option1=
 
 - [ ] Support for NoSQL databases
 - [ ] Columns and indexes creation through TUI
-- [ ] Table tree input filter
+- [x] Table tree input filter
 - [ ] Custom keybindings
 - [x] Show keybindings on a modal
 - [x] Rewrite row `create`, `update` and `delete` logic
