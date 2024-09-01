@@ -25,10 +25,11 @@ type TreeState struct {
 type Tree struct {
 	DBDriver drivers.Driver
 	*tview.TreeView
-	state       *TreeState
-	Filter      *tview.InputField
-	Wrapper     *tview.Flex
-	subscribers []chan models.StateChange
+	state               *TreeState
+	Filter              *tview.InputField
+	Wrapper             *tview.Flex
+	FoundNodeCountInput *tview.InputField
+	subscribers         []chan models.StateChange
 }
 
 func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
@@ -38,12 +39,13 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	}
 
 	tree := &Tree{
-		Wrapper:     tview.NewFlex(),
-		TreeView:    tview.NewTreeView(),
-		state:       state,
-		subscribers: []chan models.StateChange{},
-		DBDriver:    dbdriver,
-		Filter:      tview.NewInputField(),
+		Wrapper:             tview.NewFlex(),
+		TreeView:            tview.NewTreeView(),
+		state:               state,
+		subscribers:         []chan models.StateChange{},
+		DBDriver:            dbdriver,
+		Filter:              tview.NewInputField(),
+		FoundNodeCountInput: tview.NewInputField(),
 	}
 
 	tree.SetTopLevel(1)
@@ -107,7 +109,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		})
 
 		nodeText := node.GetText()
-		node.SetText(fmt.Sprintf("[%s:]%s", tview.Styles.SecondaryTextColor.Name(), nodeText))
+		node.SetText(fmt.Sprintf("[%s:dark]%s", tview.Styles.SecondaryTextColor.Name(), nodeText))
 	})
 
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
@@ -201,35 +203,48 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		return nil
 	})
 
-	tree.Filter.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		command := app.Keymaps.Group(app.TreeFilterGroup).Resolve(event)
+	tree.Filter.SetDoneFunc(func(key tcell.Key) {
+		switch key {
+		case tcell.KeyEnter:
 
-		switch command {
-		case commands.UnfocusTreeFilter:
-			tree.Filter.SetText("")
-			tree.Highlight()
-			tree.SetCurrentNode(rootNode)
-			App.SetFocus(tree)
-			tree.SetIsFiltering(false)
+			filterText := tree.Filter.GetText()
+
+			if filterText == "" {
+				tree.search("")
+				tree.FoundNodeCountInput.SetText("")
+				tree.SetBorderPadding(0, 0, 0, 0)
+			} else {
+				tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", len(tree.state.searchFoundNodes), len(tree.state.searchFoundNodes)))
+				tree.SetBorderPadding(1, 0, 0, 0)
+			}
+
+		case tcell.KeyEscape:
 			tree.search("")
-			return nil
-		case commands.CommitTreeFilter:
-			App.SetFocus(tree)
-			tree.SetIsFiltering(false)
-			tree.Highlight()
-		default:
+			tree.FoundNodeCountInput.SetText("")
+			tree.SetBorderPadding(0, 0, 0, 0)
+			tree.Filter.SetText("")
+		}
+
+		tree.SetIsFiltering(false)
+		tree.Highlight()
+		App.SetFocus(tree)
+	})
+
+	tree.Filter.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() != tcell.KeyEscape && event.Key() != tcell.KeyEnter {
 			isBackSpace := event.Key() == tcell.KeyBackspace2
 
+			filterText := tree.Filter.GetText()
+
 			if isBackSpace {
-				if len(tree.Filter.GetText()) > 0 {
-					tree.search(tree.Filter.GetText()[:len(tree.Filter.GetText())-1])
+				if len(filterText) > 0 {
+					tree.search(filterText[:len(filterText)-1])
 				} else {
 					tree.search("")
 				}
 			} else {
-				tree.search(tree.Filter.GetText() + string(event.Rune()))
+				tree.search(filterText + string(event.Rune()))
 			}
-
 		}
 
 		return event
@@ -237,24 +252,33 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 
 	tree.Filter.SetFieldStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.PrimaryTextColor))
 	tree.Filter.SetPlaceholderStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.InverseTextColor))
-	tree.Filter.SetBorderPadding(0, 1, 0, 0)
+	tree.Filter.SetBorderPadding(0, 0, 0, 0)
 	tree.Filter.SetBorderColor(tview.Styles.PrimaryTextColor)
 	tree.Filter.SetLabel("Search: ")
+	tree.Filter.SetLabelColor(tview.Styles.InverseTextColor)
+
 	tree.Filter.SetFocusFunc(func() {
-		tree.Filter.SetLabelColor(tview.Styles.SecondaryTextColor)
+		tree.Filter.SetLabelColor(tview.Styles.TertiaryTextColor)
 		tree.Filter.SetFieldTextColor(tview.Styles.PrimaryTextColor)
 	})
 
 	tree.Filter.SetBlurFunc(func() {
-		tree.Filter.SetLabelColor(tview.Styles.PrimaryTextColor)
+		if tree.Filter.GetText() == "" {
+			tree.Filter.SetLabelColor(tview.Styles.InverseTextColor)
+		} else {
+			tree.Filter.SetLabelColor(tview.Styles.TertiaryTextColor)
+		}
 		tree.Filter.SetFieldTextColor(tview.Styles.InverseTextColor)
 	})
+
+	tree.FoundNodeCountInput.SetFieldStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.PrimaryTextColor))
 
 	tree.Wrapper.SetDirection(tview.FlexRow)
 	tree.Wrapper.SetBorder(true)
 	tree.Wrapper.SetBorderPadding(0, 0, 1, 1)
 
-	tree.Wrapper.AddItem(tree.Filter, 2, 0, false)
+	tree.Wrapper.AddItem(tree.Filter, 1, 0, false)
+	tree.Wrapper.AddItem(tree.FoundNodeCountInput, 1, 0, false)
 	tree.Wrapper.AddItem(tree, 0, 1, true)
 
 	return tree
@@ -386,8 +410,6 @@ func (tree *Tree) RemoveHighlight() {
 	tree.SetBorderColor(tview.Styles.InverseTextColor)
 	tree.SetGraphicsColor(tview.Styles.InverseTextColor)
 	tree.SetTitleColor(tview.Styles.InverseTextColor)
-	tree.Filter.SetFieldTextColor(tview.Styles.InverseTextColor)
-	tree.Filter.SetLabelColor(tview.Styles.InverseTextColor)
 	// tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
@@ -422,8 +444,6 @@ func (tree *Tree) ForceRemoveHighlight() {
 	tree.SetGraphicsColor(tview.Styles.InverseTextColor)
 	tree.SetTitleColor(tview.Styles.InverseTextColor)
 	tree.GetRoot().SetColor(tview.Styles.InverseTextColor)
-	tree.Filter.SetFieldTextColor(tview.Styles.InverseTextColor)
-	tree.Filter.SetLabelColor(tview.Styles.InverseTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
@@ -446,8 +466,6 @@ func (tree *Tree) Highlight() {
 	tree.SetGraphicsColor(tview.Styles.PrimaryTextColor)
 	tree.SetTitleColor(tview.Styles.PrimaryTextColor)
 	tree.GetRoot().SetColor(tview.Styles.PrimaryTextColor)
-	tree.Filter.SetFieldTextColor(tview.Styles.PrimaryTextColor)
-	tree.Filter.SetLabelColor(tview.Styles.PrimaryTextColor)
 
 	childrens := tree.GetRoot().GetChildren()
 
@@ -474,22 +492,25 @@ func (tree *Tree) Highlight() {
 
 func (tree *Tree) goToNextFoundNode() {
 	foundNodesText := make([]string, len(tree.state.searchFoundNodes))
+
 	for i, node := range tree.state.searchFoundNodes {
 		foundNodesText[i] = node.GetText()
 	}
 
 	for i, node := range tree.state.searchFoundNodes {
 		if node == tree.state.currentFocusFoundNode {
-			var newFocusNode *tview.TreeNode
+			var newFocusNodeIndex int
 
 			if i+1 < len(tree.state.searchFoundNodes) {
-				newFocusNode = tree.state.searchFoundNodes[i+1]
+				newFocusNodeIndex = i + 1
 			} else {
-				newFocusNode = tree.state.searchFoundNodes[0]
+				newFocusNodeIndex = 0
 			}
 
+			newFocusNode := tree.state.searchFoundNodes[newFocusNodeIndex]
 			tree.SetCurrentNode(newFocusNode)
 			tree.state.currentFocusFoundNode = newFocusNode
+			tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", newFocusNodeIndex+1, len(tree.state.searchFoundNodes)))
 			break
 		}
 	}
@@ -498,16 +519,18 @@ func (tree *Tree) goToNextFoundNode() {
 func (tree *Tree) goToPreviousFoundNode() {
 	for i, node := range tree.state.searchFoundNodes {
 		if node == tree.state.currentFocusFoundNode {
-			var newFocusNode *tview.TreeNode
+			var newFocusNodeIndex int
 
 			if i-1 >= 0 {
-				newFocusNode = tree.state.searchFoundNodes[i-1]
+				newFocusNodeIndex = i - 1
 			} else {
-				newFocusNode = tree.state.searchFoundNodes[len(tree.state.searchFoundNodes)-1]
+				newFocusNodeIndex = len(tree.state.searchFoundNodes) - 1
 			}
 
+			newFocusNode := tree.state.searchFoundNodes[newFocusNodeIndex]
 			tree.SetCurrentNode(newFocusNode)
 			tree.state.currentFocusFoundNode = newFocusNode
+			tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", newFocusNodeIndex+1, len(tree.state.searchFoundNodes)))
 			break
 		}
 	}
