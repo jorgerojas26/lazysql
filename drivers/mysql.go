@@ -44,12 +44,6 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	for rows.Next() {
@@ -62,6 +56,9 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 			databases = append(databases, database)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return databases, nil
 }
@@ -72,20 +69,12 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	}
 
 	rows, err := db.Connection.Query(fmt.Sprintf("SHOW TABLES FROM `%s`", database))
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
-	defer rows.Close()
-
-	tables := make(map[string][]string)
-
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
+	tables := make(map[string][]string)
 	for rows.Next() {
 		var table string
 		err = rows.Scan(&table)
@@ -94,6 +83,9 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 		}
 
 		tables[database] = append(tables[database], table)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return tables, nil
@@ -115,12 +107,6 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -148,6 +134,9 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 		}
 
 		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -168,12 +157,6 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -200,6 +183,9 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 		}
 
 		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -220,12 +206,6 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -252,6 +232,9 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 		}
 
 		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -273,12 +256,6 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -305,6 +282,9 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 		}
 
 		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -340,29 +320,7 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	if err != nil {
 		return nil, 0, err
 	}
-
-	rowsErr := paginatedRows.Err()
-
-	if rowsErr != nil {
-		return nil, 0, rowsErr
-	}
-
 	defer paginatedRows.Close()
-
-	countQuery := "SELECT COUNT(*) FROM "
-	countQuery += fmt.Sprintf("`%s`.", database)
-	countQuery += fmt.Sprintf("`%s`", table)
-
-	rows := db.Connection.QueryRow(countQuery)
-
-	if err != nil {
-		return nil, 0, err
-	}
-
-	err = rows.Scan(&totalRecords)
-	if err != nil {
-		return nil, 0, err
-	}
 
 	columns, err := paginatedRows.Columns()
 	if err != nil {
@@ -388,7 +346,20 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 		}
 
 		paginatedResults = append(paginatedResults, row)
-
+	}
+	if err := paginatedRows.Err(); err != nil {
+		return nil, 0, err
+	}
+	// close to release the connection
+	if err := paginatedRows.Close(); err != nil {
+		return nil, 0, err
+	}
+	countQuery := "SELECT COUNT(*) FROM "
+	countQuery += fmt.Sprintf("`%s`.", database)
+	countQuery += fmt.Sprintf("`%s`", table)
+	row := db.Connection.QueryRow(countQuery)
+	if err := row.Scan(&totalRecords); err != nil {
+		return nil, 0, err
 	}
 
 	return
@@ -399,12 +370,6 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -431,7 +396,9 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 		}
 
 		results = append(results, row)
-
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -552,6 +519,7 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 	if err != nil {
 		return err
 	}
+	defer trx.Rollback()
 
 	for _, query := range query {
 		logger.Info(query.Query, map[string]any{"args": query.Args})
