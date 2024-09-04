@@ -95,21 +95,24 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		tree.SetFocusFunc(nil)
 	})
 
+	selectedNodeTextColor := fmt.Sprintf("[black:%s]", tview.Styles.SecondaryTextColor.Name())
+	previouslyFocusedNode := tree.GetCurrentNode()
+	previouslyFocusedNode.SetText(selectedNodeTextColor + previouslyFocusedNode.GetText())
+
 	tree.SetChangedFunc(func(node *tview.TreeNode) {
-		rootNode.Walk(func(n, _ *tview.TreeNode) bool {
-			nodeText := n.GetText()
-
-			splittedNodeText := strings.Split(nodeText, "]")
-
-			if len(splittedNodeText) > 1 {
-				n.SetText(splittedNodeText[1])
-			}
-
-			return true
-		})
-
+		// Set colors on focused node
 		nodeText := node.GetText()
-		node.SetText(fmt.Sprintf("[%s:dark]%s", tview.Styles.SecondaryTextColor.Name(), nodeText))
+		if !strings.Contains(nodeText, selectedNodeTextColor) {
+			node.SetText(selectedNodeTextColor + nodeText)
+		}
+
+		// Remove colors on previously focused node
+		previousNodeText := previouslyFocusedNode.GetText()
+		splittedNodeText := strings.Split(previousNodeText, selectedNodeTextColor)
+		if len(splittedNodeText) > 1 {
+			previouslyFocusedNode.SetText(splittedNodeText[1])
+		}
+		previouslyFocusedNode = node
 	})
 
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
@@ -276,6 +279,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	tree.Wrapper.SetDirection(tview.FlexRow)
 	tree.Wrapper.SetBorder(true)
 	tree.Wrapper.SetBorderPadding(0, 0, 1, 1)
+	tree.Wrapper.SetTitleColor(tview.Styles.PrimaryTextColor)
 
 	tree.Wrapper.AddItem(tree.Filter, 1, 0, false)
 	tree.Wrapper.AddItem(tree.FoundNodeCountInput, 1, 0, false)
@@ -296,7 +300,7 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			rootNode = tview.NewTreeNode(key)
 			rootNode.SetExpanded(false)
 			rootNode.SetReference(key)
-			rootNode.SetColor(tview.Styles.SecondaryTextColor)
+			rootNode.SetColor(tview.Styles.PrimaryTextColor)
 			node.AddChild(rootNode)
 		}
 
