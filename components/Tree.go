@@ -95,21 +95,21 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		tree.SetFocusFunc(nil)
 	})
 
+	previouslyFocusedNode := tree.GetCurrentNode()
+	previouslyFocusedNode.SetText(fmt.Sprintf("[black:%s]%s", tview.Styles.SecondaryTextColor.Name(), previouslyFocusedNode.GetText()))
+
 	tree.SetChangedFunc(func(node *tview.TreeNode) {
-		rootNode.Walk(func(n, _ *tview.TreeNode) bool {
-			nodeText := n.GetText()
-
-			splittedNodeText := strings.Split(nodeText, "]")
-
-			if len(splittedNodeText) > 1 {
-				n.SetText(splittedNodeText[1])
-			}
-
-			return true
-		})
-
+		// Set colors on focused node
 		nodeText := node.GetText()
-		node.SetText(fmt.Sprintf("[%s:dark]%s", tview.Styles.SecondaryTextColor.Name(), nodeText))
+		node.SetText(fmt.Sprintf("[black:%s]%s", tview.Styles.SecondaryTextColor.Name(), nodeText))
+
+		// Remove colors on previously focused node
+		previousNodeText := previouslyFocusedNode.GetText()
+		splittedNodeText := strings.Split(previousNodeText, "]")
+		if len(splittedNodeText) > 1 {
+			previouslyFocusedNode.SetText(splittedNodeText[1])
+		}
+		previouslyFocusedNode = node
 	})
 
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
