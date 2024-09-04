@@ -180,7 +180,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 
 			MainPages.SwitchToPage(connection.URL)
 			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
-			newHome.Tree.SetTitle(fmt.Sprintf("%s (%s)", connection.Name, strings.ToUpper(connection.Provider)))
+			newHome.Tree.Wrapper.SetTitle(fmt.Sprintf("%s (%s)", connection.Name, strings.ToUpper(connection.Provider)))
 			App.SetFocus(newHome.Tree)
 			App.Draw()
 		}

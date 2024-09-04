@@ -54,6 +54,12 @@ const (
 	AppendNewRow
 	SortAsc
 	SortDesc
+	UnfocusTreeFilter
+	CommitTreeFilter
+	NextFoundNode
+	PreviousFoundNode
+	TreeCollapseAll
+	ExpandAll
 
 	// Connection
 	NewConnection
@@ -161,6 +167,18 @@ func (c Command) String() string {
 		return "ForeignKeysMenu"
 	case IndexesMenu:
 		return "IndexesMenu"
+	case UnfocusTreeFilter:
+		return "UnfocusTreeFilter"
+	case CommitTreeFilter:
+		return "CommitTreeFilter"
+	case NextFoundNode:
+		return "NextFoundNode"
+	case PreviousFoundNode:
+		return "PreviousFoundNode"
+	case TreeCollapseAll:
+		return "TreeCollapseAll"
+	case ExpandAll:
+		return "ExpandAll"
 	}
 	return "Unknown"
 }

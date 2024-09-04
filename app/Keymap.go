@@ -40,6 +40,7 @@ func (c KeymapSystem) Resolve(event *tcell.EventKey) cmd.Command {
 const (
 	HomeGroup       = "home"
 	TreeGroup       = "tree"
+	TreeFilterGroup = "treefilter"
 	TableGroup      = "table"
 	EditorGroup     = "editor"
 	ConnectionGroup = "connection"
@@ -73,6 +74,15 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyDown}, Cmd: cmd.MoveDown, Description: "Go down"},
 			Bind{Key: Key{Char: 'k'}, Cmd: cmd.MoveUp, Description: "Go up"},
 			Bind{Key: Key{Code: tcell.KeyUp}, Cmd: cmd.MoveUp, Description: "Go up"},
+			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},
+			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NextFoundNode, Description: "Go to next found node"},
+			Bind{Key: Key{Char: 'p'}, Cmd: cmd.PreviousFoundNode, Description: "Go to previous found node"},
+			Bind{Key: Key{Char: 'c'}, Cmd: cmd.TreeCollapseAll, Description: "Collapse all"},
+			Bind{Key: Key{Char: 'e'}, Cmd: cmd.ExpandAll, Description: "Expand all"},
+		},
+		TreeFilterGroup: {
+			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusTreeFilter, Description: "Unfocus tree filter"},
+			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.CommitTreeFilter, Description: "Commit tree filter search"},
 		},
 		TableGroup: {
 			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},
