@@ -296,7 +296,7 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			rootNode = tview.NewTreeNode(key)
 			rootNode.SetExpanded(false)
 			rootNode.SetReference(key)
-			rootNode.SetColor(tview.Styles.SecondaryTextColor)
+			rootNode.SetColor(tview.Styles.PrimaryTextColor)
 			node.AddChild(rootNode)
 		}
 
