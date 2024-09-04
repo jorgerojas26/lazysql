@@ -276,6 +276,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	tree.Wrapper.SetDirection(tview.FlexRow)
 	tree.Wrapper.SetBorder(true)
 	tree.Wrapper.SetBorderPadding(0, 0, 1, 1)
+	tree.Wrapper.SetTitleColor(tview.Styles.PrimaryTextColor)
 
 	tree.Wrapper.AddItem(tree.Filter, 1, 0, false)
 	tree.Wrapper.AddItem(tree.FoundNodeCountInput, 1, 0, false)
