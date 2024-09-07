@@ -210,6 +210,9 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 		case "Unfocusing":
 			App.SetFocus(table)
 			App.ForceDraw()
+		case "Toggling":
+			table.ShowSidebar(false)
+			App.ForceDraw()
 		}
 	}
 }
@@ -398,7 +401,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ToggleSidebar {
 		table.ShowSidebar(!table.GetShowSidebar())
 	} else if command == commands.FocusSidebar {
-		App.SetFocus(table.Sidebar)
+		if table.GetShowSidebar() {
+			App.SetFocus(table.Sidebar)
+		}
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -1270,6 +1275,7 @@ func (table *ResultsTable) ShowSidebar(show bool) {
 		table.Page.ShowPage(SidebarPageName)
 	} else {
 		table.Page.HidePage(SidebarPageName)
+		App.SetFocus(table)
 	}
 }
 
