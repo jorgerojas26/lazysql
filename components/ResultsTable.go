@@ -1278,11 +1278,14 @@ func (table *ResultsTable) UpdateSidebar() {
 	selectedRow, _ := table.GetSelection()
 
 	if selectedRow > 0 {
-		tableX, tableY, tableWidth, tableHeight := table.GetInnerRect()
+		tableX, _, _, tableHeight := table.GetRect()
+		_, _, tableInnerWidth, _ := table.GetInnerRect()
+		_, tableMenuY, _, tableMenuHeight := table.Menu.GetRect()
+		_, _, _, tableFilterHeight := table.Filter.GetRect()
 
-		sidebarWidth := (tableWidth / 3)
+		sidebarWidth := (tableInnerWidth / 3)
 
-		table.Sidebar.SetRect(tableX+tableWidth-sidebarWidth, tableY, sidebarWidth, tableHeight)
+		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, tableHeight+tableMenuHeight+tableFilterHeight)
 		table.Sidebar.Clear()
 
 		for i := 0; i < columnCount; i++ {
