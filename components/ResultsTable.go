@@ -1280,7 +1280,7 @@ func (table *ResultsTable) ShowSidebar(show bool) {
 }
 
 func (table *ResultsTable) UpdateSidebar() {
-	columnCount := table.GetColumnCount()
+	columns := table.GetColumns()
 	selectedRow, _ := table.GetSelection()
 
 	if selectedRow > 0 {
@@ -1289,15 +1289,26 @@ func (table *ResultsTable) UpdateSidebar() {
 		_, tableMenuY, _, tableMenuHeight := table.Menu.GetRect()
 		_, _, _, tableFilterHeight := table.Filter.GetRect()
 
-		sidebarWidth := (tableInnerWidth / 3)
 		sidebarWidth := (tableInnerWidth / 4)
 
 		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, tableHeight+tableMenuHeight+tableFilterHeight)
 		table.Sidebar.Clear()
 
-		for i := 0; i < columnCount; i++ {
-			title := table.GetColumnNameByIndex(i)
-			text := table.GetCell(selectedRow, i).Text
+		for i := 1; i < len(columns); i++ {
+			name := columns[i][0]
+			colType := columns[i][1]
+
+			text := table.GetCell(selectedRow, i-1).Text
+			title := name
+
+			logger.Info("string repeat", map[string]any{"sidebarWidth": sidebarWidth, "name": len(name), "colType": len(colType)})
+			repeatCount := sidebarWidth - len(name) - len(colType) - 6 // 2 for spaces added below and idk why 6 is needed, but it works.
+
+			if repeatCount <= 0 {
+				repeatCount = 1
+			}
+			title += "[gray]" + strings.Repeat("-", repeatCount)
+			title += colType
 
 			table.Sidebar.AddField(title, text, sidebarWidth)
 		}
