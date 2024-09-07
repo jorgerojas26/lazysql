@@ -468,7 +468,7 @@ func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 }
 
 func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
-	var query []models.Query
+	var queries []models.Query
 
 	for _, change := range changes {
 		columnNames := []string{}
@@ -506,7 +506,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 				Args:  values,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlUpdateType:
 			queryStr := "UPDATE "
 			queryStr += db.formatTableName(change.Table)
@@ -531,7 +531,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 				Args:  args,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Table)
@@ -542,30 +542,10 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 				Args:  []interface{}{change.PrimaryKeyValue},
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		}
 	}
-
-	trx, err := db.Connection.Begin()
-	if err != nil {
-		return err
-	}
-	defer trx.Rollback()
-
-	for _, query := range query {
-		logger.Info(query.Query, map[string]any{"args": query.Args})
-		_, err := trx.Exec(query.Query, query.Args...)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = trx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return queriesInTransaction(db.Connection, queries)
 }
 
 func (db *SQLite) SetProvider(provider string) {

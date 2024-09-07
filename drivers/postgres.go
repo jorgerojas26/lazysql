@@ -723,7 +723,7 @@ func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 }
 
 func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
-	var query []models.Query
+	var queries []models.Query
 
 	for _, change := range changes {
 		columnNames := []string{}
@@ -770,7 +770,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				Args:  values,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlUpdateType:
 			queryStr := "UPDATE " + formattedTableName
 
@@ -794,7 +794,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				Args:  args,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM " + formattedTableName
 			queryStr += fmt.Sprintf(" WHERE %s = $1", change.PrimaryKeyColumnName)
@@ -804,30 +804,10 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				Args:  []interface{}{change.PrimaryKeyValue},
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		}
 	}
-
-	trx, err := db.Connection.Begin()
-	if err != nil {
-		return err
-	}
-	defer trx.Rollback()
-
-	for _, query := range query {
-		logger.Info(query.Query, map[string]any{"args": query.Args})
-		_, err := trx.Exec(query.Query, query.Args...)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = trx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return queriesInTransaction(db.Connection, queries)
 }
 
 func (db *Postgres) SetProvider(provider string) {
