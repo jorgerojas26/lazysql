@@ -14,23 +14,26 @@ type SidebarState struct {
 }
 
 type Sidebar struct {
-	*tview.Flex
+	*tview.Frame
+	Flex        *tview.Flex
 	state       *SidebarState
 	Fields      []*tview.TextArea
 	subscribers []chan models.StateChange
 }
 
 func NewSidebar() *Sidebar {
-	sidebar := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
-	sidebar.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
-	sidebar.SetBorder(true)
+	flex := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
+	frame := tview.NewFrame(flex)
+	frame.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
+	frame.SetBorder(true)
 
 	sidebarState := &SidebarState{
 		currentFieldIndex: 0,
 	}
 
 	newSidebar := &Sidebar{
-		Flex:        sidebar,
+		Frame:       frame,
+		Flex:        flex,
 		state:       sidebarState,
 		Fields:      []*tview.TextArea{},
 		subscribers: []chan models.StateChange{},
@@ -70,13 +73,13 @@ func (sidebar *Sidebar) AddField(title, text string, fieldWidth int) {
 	}
 
 	sidebar.Fields = append(sidebar.Fields, field)
-	sidebar.AddItem(field, itemFixedSize, 0, true)
+	sidebar.Flex.AddItem(field, itemFixedSize, 0, true)
 }
 
 func (sidebar *Sidebar) FocusNextField() {
 	newIndex := sidebar.GetCurrentFieldIndex() + 1
 
-	if newIndex < sidebar.GetItemCount() {
+	if newIndex < sidebar.Flex.GetItemCount() {
 		item := sidebar.Fields[newIndex]
 
 		if item != nil {
@@ -110,7 +113,7 @@ func (sidebar *Sidebar) FocusFirstField() {
 }
 
 func (sidebar *Sidebar) FocusLastField() {
-	newIndex := sidebar.GetItemCount() - 1
+	newIndex := sidebar.Flex.GetItemCount() - 1
 	sidebar.SetCurrentFieldIndex(newIndex)
 	App.SetFocus(sidebar.Fields[newIndex])
 }
