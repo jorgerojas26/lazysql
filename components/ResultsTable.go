@@ -1290,6 +1290,7 @@ func (table *ResultsTable) UpdateSidebar() {
 		_, _, _, tableFilterHeight := table.Filter.GetRect()
 
 		sidebarWidth := (tableInnerWidth / 3)
+		sidebarWidth := (tableInnerWidth / 4)
 
 		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, tableHeight+tableMenuHeight+tableFilterHeight)
 		table.Sidebar.Clear()
