@@ -31,6 +31,7 @@ type ResultsTableState struct {
 	isEditing       bool
 	isFiltering     bool
 	isLoading       bool
+	setShowSidebar  bool
 }
 
 type ResultsTable struct {
@@ -47,6 +48,7 @@ type ResultsTable struct {
 	EditorPages *tview.Pages
 	ResultsInfo *tview.TextView
 	Tree        *Tree
+	Sidebar     *Sidebar
 	DBDriver    drivers.Driver
 }
 
@@ -67,6 +69,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 		isEditing:       false,
 		isLoading:       false,
 		listOfDbChanges: listOfDbChanges,
+		setShowSidebar:  true,
 	}
 
 	wrapper := tview.NewFlex()
@@ -103,6 +106,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 		Editor:     nil,
 		Tree:       tree,
 		DBDriver:   dbdriver,
+		Sidebar:    NewSidebar(),
 	}
 
 	table.SetSelectable(true, true)
@@ -110,6 +114,32 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	table.Page.AddPage("sidebar", table.Sidebar, false, false)
+
+	table.SetSelectionChangedFunc(func(row, _ int) {
+		columnCount := table.GetColumnCount()
+
+		tableX, tableY, tableWidth, tableHeight := table.GetRect()
+
+		sidebarWidth := tableWidth / 3
+		table.Sidebar.SetRect(tableX+tableWidth-sidebarWidth, tableY, sidebarWidth, tableHeight)
+		table.Sidebar.Clear()
+
+		for i := 0; i < columnCount; i++ {
+			label := tview.NewTextView()
+			field := tview.NewInputField()
+			field.SetBorder(true)
+			field.SetFieldStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
+
+			label.SetText(table.GetColumnNameByIndex(i))
+			field.SetText(table.GetCell(row, i).Text)
+
+			table.Sidebar.AddItem(label, 1, 0, false)
+			table.Sidebar.AddItem(field, 3, 0, false)
+		}
+
+		table.ShowSidebar(true)
+	})
 
 	go table.subscribeToTreeChanges()
 
@@ -126,7 +156,6 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 	table.Wrapper.AddItem(menu.Flex, 3, 0, false)
 	table.Wrapper.AddItem(filter.Flex, 3, 0, false)
 	table.Wrapper.AddItem(table, 0, 1, true)
-	table.Wrapper.AddItem(table.Pagination, 3, 0, false)
 
 	go table.subscribeToFilterChanges()
 
@@ -1223,4 +1252,16 @@ func (table *ResultsTable) search() {
 	})
 
 	table.SetInputCapture(nil)
+}
+
+func (table *ResultsTable) ShowSidebar(show bool) {
+	if table.state.setShowSidebar != show {
+		table.state.setShowSidebar = show
+
+		if show {
+			table.Page.ShowPage("sidebar")
+		} else {
+			table.Page.HidePage("sidebar")
+		}
+	}
 }
