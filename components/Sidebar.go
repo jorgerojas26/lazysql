@@ -141,6 +141,8 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 	switch command {
 	case commands.UnfocusSidebar:
 		sidebar.Publish(models.StateChange{Key: "Unfocusing", Value: nil})
+	case commands.ToggleSidebar:
+		sidebar.Publish(models.StateChange{Key: "Toggling", Value: nil})
 	case commands.MoveDown:
 		sidebar.FocusNextField()
 	case commands.MoveUp:
