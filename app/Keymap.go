@@ -44,6 +44,7 @@ const (
 	TableGroup      = "table"
 	EditorGroup     = "editor"
 	ConnectionGroup = "connection"
+	SidebarGroup    = "sidebar"
 )
 
 // Define a global KeymapSystem object with default keybinds
@@ -110,11 +111,24 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '3'}, Cmd: cmd.ConstraintsMenu, Description: "Switch to constraints menu"},
 			Bind{Key: Key{Char: '4'}, Cmd: cmd.ForeignKeysMenu, Description: "Switch to foreign keys menu"},
 			Bind{Key: Key{Char: '5'}, Cmd: cmd.IndexesMenu, Description: "Switch to indexes menu"},
+			// Sidebar
+			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Toggle sidebar"},
+			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusEditor, Description: "Unfocus editor"},
 			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: cmd.OpenInExternalEditor, Description: "Open in external editor"},
+		},
+		SidebarGroup: {
+			Bind{Key: Key{Char: 's'}, Cmd: cmd.UnfocusSidebar, Description: "Focus table"},
+			Bind{Key: Key{Char: 'j'}, Cmd: cmd.MoveDown, Description: "Focus next field"},
+			Bind{Key: Key{Char: 'k'}, Cmd: cmd.MoveUp, Description: "Focus previous field"},
+			Bind{Key: Key{Char: 'g'}, Cmd: cmd.GotoStart, Description: "Focus first field"},
+			Bind{Key: Key{Char: 'G'}, Cmd: cmd.GotoEnd, Description: "Focus last field"},
+			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit, Description: "Edit field"},
+			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.CommitEdit, Description: "Add edit to pending changes"},
+			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.DiscardEdit, Description: "Discard edit"},
 		},
 	},
 }

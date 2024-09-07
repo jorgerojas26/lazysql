@@ -31,7 +31,7 @@ type ResultsTableState struct {
 	isEditing       bool
 	isFiltering     bool
 	isLoading       bool
-	setShowSidebar  bool
+	showSidebar     bool
 }
 
 type ResultsTable struct {
@@ -69,7 +69,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 		isEditing:       false,
 		isLoading:       false,
 		listOfDbChanges: listOfDbChanges,
-		setShowSidebar:  true,
+		showSidebar:     false,
 	}
 
 	wrapper := tview.NewFlex()
@@ -95,6 +95,8 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 
 	pagination := NewPagination()
 
+	sidebar := NewSidebar()
+
 	table := &ResultsTable{
 		Table:      tview.NewTable(),
 		state:      state,
@@ -106,7 +108,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 		Editor:     nil,
 		Tree:       tree,
 		DBDriver:   dbdriver,
-		Sidebar:    NewSidebar(),
+		Sidebar:    sidebar,
 	}
 
 	table.SetSelectable(true, true)
@@ -114,34 +116,16 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
-	table.Page.AddPage("sidebar", table.Sidebar, false, false)
+	table.Page.AddPage(SidebarPageName, table.Sidebar, false, false)
 
-	table.SetSelectionChangedFunc(func(row, _ int) {
-		columnCount := table.GetColumnCount()
-
-		tableX, tableY, tableWidth, tableHeight := table.GetRect()
-
-		sidebarWidth := tableWidth / 3
-		table.Sidebar.SetRect(tableX+tableWidth-sidebarWidth, tableY, sidebarWidth, tableHeight)
-		table.Sidebar.Clear()
-
-		for i := 0; i < columnCount; i++ {
-			label := tview.NewTextView()
-			field := tview.NewInputField()
-			field.SetBorder(true)
-			field.SetFieldStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
-
-			label.SetText(table.GetColumnNameByIndex(i))
-			field.SetText(table.GetCell(row, i).Text)
-
-			table.Sidebar.AddItem(label, 1, 0, false)
-			table.Sidebar.AddItem(field, 3, 0, false)
+	table.SetSelectionChangedFunc(func(_, _ int) {
+		if table.GetShowSidebar() {
+			table.UpdateSidebar()
 		}
-
-		table.ShowSidebar(true)
 	})
 
 	go table.subscribeToTreeChanges()
+	go table.subscribeToSidebarChanges()
 
 	return table
 }
@@ -211,6 +195,21 @@ func (table *ResultsTable) subscribeToTreeChanges() {
 	for stateChange := range ch {
 		if stateChange.Key == "SelectedDatabase" {
 			table.SetDatabaseName(stateChange.Value.(string))
+		}
+	}
+}
+
+func (table *ResultsTable) subscribeToSidebarChanges() {
+	ch := table.Sidebar.Subscribe()
+
+	for stateChange := range ch {
+		switch stateChange.Key {
+		case "Editing":
+			editing := stateChange.Value.(bool)
+			table.SetIsEditing(editing)
+		case "Unfocusing":
+			App.SetFocus(table)
+			App.ForceDraw()
 		}
 	}
 }
@@ -396,6 +395,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 
 		}
+	} else if command == commands.ToggleSidebar {
+		table.ShowSidebar(!table.GetShowSidebar())
+	} else if command == commands.FocusSidebar {
+		App.SetFocus(table.Sidebar)
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -653,6 +656,10 @@ func (table *ResultsTable) GetIsLoading() bool {
 
 func (table *ResultsTable) GetIsFiltering() bool {
 	return table.state.isFiltering
+}
+
+func (table *ResultsTable) GetShowSidebar() bool {
+	return table.state.showSidebar
 }
 
 // Setters
@@ -1255,13 +1262,34 @@ func (table *ResultsTable) search() {
 }
 
 func (table *ResultsTable) ShowSidebar(show bool) {
-	if table.state.setShowSidebar != show {
-		table.state.setShowSidebar = show
+	table.state.showSidebar = show
 
-		if show {
-			table.Page.ShowPage("sidebar")
-		} else {
-			table.Page.HidePage("sidebar")
+	if show {
+		table.UpdateSidebar()
+		table.Page.SendToFront(SidebarPageName)
+		table.Page.ShowPage(SidebarPageName)
+	} else {
+		table.Page.HidePage(SidebarPageName)
+	}
+}
+
+func (table *ResultsTable) UpdateSidebar() {
+	columnCount := table.GetColumnCount()
+	selectedRow, _ := table.GetSelection()
+
+	if selectedRow > 0 {
+		tableX, tableY, tableWidth, tableHeight := table.GetInnerRect()
+
+		sidebarWidth := (tableWidth / 3)
+
+		table.Sidebar.SetRect(tableX+tableWidth-sidebarWidth, tableY, sidebarWidth, tableHeight)
+		table.Sidebar.Clear()
+
+		for i := 0; i < columnCount; i++ {
+			title := table.GetColumnNameByIndex(i)
+			text := table.GetCell(selectedRow, i).Text
+
+			table.Sidebar.AddField(title, text, sidebarWidth)
 		}
 	}
 }

@@ -104,9 +104,13 @@ func (home *Home) subscribeToTreeChanges() {
 
 			}
 
-			table.FetchRecords(func() {
+			results := table.FetchRecords(func() {
 				home.focusLeftWrapper()
 			})
+
+			if len(results) > 1 && !table.GetShowSidebar() { // 1 because the row 0 is the column names
+				table.ShowSidebar(true)
+			}
 
 			if table.state.error == "" {
 				home.focusRightWrapper()
