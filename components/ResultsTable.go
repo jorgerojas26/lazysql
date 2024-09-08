@@ -89,9 +89,9 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	loadingModal.SetTextColor(tview.Styles.SecondaryTextColor)
 
 	pages := tview.NewPages()
-	pages.AddPage("table", wrapper, true, true)
-	pages.AddPage("error", errorModal, true, false)
-	pages.AddPage("loading", loadingModal, false, false)
+	pages.AddPage(TablePageName, wrapper, true, true)
+	pages.AddPage(TableErrorPageName, errorModal, true, false)
+	pages.AddPage(TableLoadingPageName, loadingModal, false, false)
 
 	pagination := NewPagination()
 
@@ -176,8 +176,8 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	resultsInfoText.SetTextColor(tview.Styles.PrimaryTextColor)
 	resultsInfoWrapper.AddItem(resultsInfoText, 3, 0, false)
 
-	editorPages.AddPage("Table", tableWrapper, true, false)
-	editorPages.AddPage("ResultsInfo", resultsInfoWrapper, true, true)
+	editorPages.AddPage(TableEditorTablePageName, tableWrapper, true, false)
+	editorPages.AddPage(TableEditorResultsInfoPageName, resultsInfoWrapper, true, true)
 
 	table.EditorPages = editorPages
 	table.ResultsInfo = resultsInfoText
@@ -193,7 +193,7 @@ func (table *ResultsTable) subscribeToTreeChanges() {
 	ch := table.Tree.Subscribe()
 
 	for stateChange := range ch {
-		if stateChange.Key == "SelectedDatabase" {
+		if stateChange.Key == SelectedDatabaseTree {
 			table.SetDatabaseName(stateChange.Value.(string))
 		}
 	}
@@ -204,13 +204,13 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case "Editing":
+		case EditingSidebar:
 			editing := stateChange.Value.(bool)
 			table.SetIsEditing(editing)
-		case "Unfocusing":
+		case UnfocusingSidebar:
 			App.SetFocus(table)
 			App.ForceDraw()
-		case "Toggling":
+		case TogglingSidebar:
 			table.ShowSidebar(false)
 			App.ForceDraw()
 		}
@@ -493,7 +493,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case "Filter":
+		case FilteringResultsTable:
 			if stateChange.Value != "" {
 				rows := table.FetchRecords(nil)
 
@@ -532,7 +532,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case "Query":
+		case QuerySQLEditor:
 			query := stateChange.Value.(string)
 			if query != "" {
 				queryLower := strings.ToLower(query)
@@ -568,7 +568,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						}
 						table.SetLoading(false)
 					}
-					table.EditorPages.SwitchToPage("Table")
+					table.EditorPages.SwitchToPage(TablePageName)
 					App.Draw()
 				} else {
 					table.SetRecords([][]string{})
@@ -584,13 +584,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					} else {
 						table.SetResultsInfo(result)
 						table.SetLoading(false)
-						table.EditorPages.SwitchToPage("ResultsInfo")
+						table.EditorPages.SwitchToPage(TableEditorResultsInfoPageName)
 						App.SetFocus(table.Editor)
 						App.Draw()
 					}
 				}
 			}
-		case "Escape":
+		case EscapeSQLEditor:
 			table.SetIsFiltering(false)
 			App.SetFocus(table)
 			table.HighlightTable()
@@ -704,7 +704,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Error.SetText(err)
 	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
-		table.Page.HidePage("error")
+		table.Page.HidePage(TableErrorPageName)
 		if table.GetIsFiltering() {
 			if table.Editor != nil {
 				App.SetFocus(table.Editor)
@@ -718,7 +718,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 			done()
 		}
 	})
-	table.Page.ShowPage("error")
+	table.Page.ShowPage(TableErrorPageName)
 	App.SetFocus(table.Error)
 	App.ForceDraw()
 }
@@ -731,7 +731,7 @@ func (table *ResultsTable) SetLoading(show bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("ResultsTable.go:800 => Recovered from panic", map[string]any{"error": r})
-			_ = table.Page.HidePage("loading")
+			_ = table.Page.HidePage(TableLoadingPageName)
 			if table.state.error != "" {
 				App.SetFocus(table.Error)
 			} else {
@@ -742,11 +742,11 @@ func (table *ResultsTable) SetLoading(show bool) {
 
 	table.state.isLoading = show
 	if show {
-		table.Page.ShowPage("loading")
+		table.Page.ShowPage(TableLoadingPageName)
 		App.SetFocus(table.Loading)
 		App.ForceDraw()
 	} else {
-		table.Page.HidePage("loading")
+		table.Page.HidePage(TableLoadingPageName)
 		if table.state.error != "" {
 			App.SetFocus(table.Error)
 		} else {
@@ -909,7 +909,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 		if key == tcell.KeyEnter || key == tcell.KeyEscape {
 			table.SetInputCapture(table.tableInputCapture)
-			table.Page.RemovePage("edit")
+			table.Page.RemovePage(TableEditCellPageName)
 			App.SetFocus(table)
 		}
 
@@ -920,7 +920,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 	x, y, width := cell.GetLastPosition()
 	inputField.SetRect(x, y, width+1, 1)
-	table.Page.AddPage("edit", inputField, false, true)
+	table.Page.AddPage(TableEditCellPageName, inputField, false, true)
 	App.SetFocus(inputField)
 }
 
@@ -1038,7 +1038,7 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 	primaryKeyValue := ""
 
 	switch provider {
-	case "mysql":
+	case drivers.MySQLDriver:
 		keyColumnIndex := -1
 		primaryKeyColumnIndex := -1
 
@@ -1059,7 +1059,7 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 			primaryKeyValue = table.GetRecords()[rowIndex][primaryKeyColumnIndex]
 		}
 
-	case "postgres":
+	case drivers.PostgresDriver:
 		keyColumnIndex := -1
 		constraintTypeColumnIndex := -1
 		constraintNameColumnIndex := -1
@@ -1101,7 +1101,7 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 			primaryKeyValue = table.GetRecords()[rowIndex][primaryKeyColumnIndex]
 		}
 
-	case "sqlite3":
+	case drivers.SQLiteDriver:
 		keyColumnIndex := -1
 		primaryKeyColumnIndex := -1
 

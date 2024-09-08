@@ -66,7 +66,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	home.SetInputCapture(home.homeInputCapture)
 
 	home.SetFocusFunc(func() {
-		if home.FocusedWrapper == "left" || home.FocusedWrapper == "" {
+		if home.FocusedWrapper == FocusedWrapperLeft || home.FocusedWrapper == "" {
 			home.focusLeftWrapper()
 		} else {
 			home.focusRightWrapper()
@@ -82,7 +82,7 @@ func (home *Home) subscribeToTreeChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case "SelectedTable":
+		case SelectedTableTree:
 			databaseName := home.Tree.GetSelectedDatabase()
 			tableName := stateChange.Value.(string)
 
@@ -117,7 +117,7 @@ func (home *Home) subscribeToTreeChanges() {
 			}
 
 			app.App.ForceDraw()
-		case "IsFiltering":
+		case IsFilteringTree:
 			isFiltering := stateChange.Value.(bool)
 			if isFiltering {
 				home.SetInputCapture(nil)
@@ -140,7 +140,7 @@ func (home *Home) focusRightWrapper() {
 		home.focusTab(tab)
 	}
 
-	home.FocusedWrapper = "right"
+	home.FocusedWrapper = FocusedWrapperRight
 }
 
 func (home *Home) focusTab(tab *Tab) {
@@ -193,7 +193,7 @@ func (home *Home) focusLeftWrapper() {
 
 	App.SetFocus(home.Tree)
 
-	home.FocusedWrapper = "left"
+	home.FocusedWrapper = FocusedWrapperLeft
 }
 
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
@@ -272,11 +272,11 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 	switch command {
 	case commands.MoveLeft:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "right" {
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == FocusedWrapperRight {
 			home.focusLeftWrapper()
 		}
 	case commands.MoveRight:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "left" {
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == FocusedWrapperLeft {
 			home.focusRightWrapper()
 		}
 	case commands.SwitchToEditorView:
@@ -295,7 +295,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		App.ForceDraw()
 	case commands.SwitchToConnectionsView:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
-			MainPages.SwitchToPage("Connections")
+			MainPages.SwitchToPage(ConnectionsPageName)
 		}
 	case commands.Quit:
 		if tab != nil {
@@ -312,7 +312,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-				MainPages.RemovePage("Confirmation")
+				MainPages.RemovePage(ConfirmationPageName)
 				confirmationModal = nil
 
 				if buttonLabel == "Yes" {
@@ -332,7 +332,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				}
 			})
 
-			MainPages.AddPage("Confirmation", confirmationModal, true, true)
+			MainPages.AddPage(ConfirmationPageName, confirmationModal, true, true)
 		}
 	case commands.HelpPopup:
 		if table == nil || !table.GetIsEditing() {

@@ -88,18 +88,18 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			case commands.Connect:
 				go cs.Connect(selectedConnection)
 			case commands.EditConnection:
-				connectionPages.SwitchToPage("ConnectionForm")
+				connectionPages.SwitchToPage(ConnectionsFormPageName)
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
 				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(selectedConnection.URL)
 				connectionForm.StatusText.SetText("")
 
-				connectionForm.SetAction("edit")
+				connectionForm.SetAction(EditConnection)
 				return nil
 			case commands.DeleteConnection:
 				confirmationModal := NewConfirmationModal("")
 
 				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-					MainPages.RemovePage("Confirmation")
+					MainPages.RemovePage(ConfirmationPageName)
 					confirmationModal = nil
 
 					if buttonLabel == "Yes" {
@@ -115,7 +115,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 					}
 				})
 
-				MainPages.AddPage("Confirmation", confirmationModal, true, true)
+				MainPages.AddPage(ConfirmationPageName, confirmationModal, true, true)
 
 				return nil
 			}
@@ -123,11 +123,11 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 		switch command {
 		case commands.NewConnection:
-			connectionForm.SetAction("create")
+			connectionForm.SetAction(NewConnection)
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			connectionForm.StatusText.SetText("")
-			connectionPages.SwitchToPage("ConnectionForm")
+			connectionPages.SwitchToPage(ConnectionsFormPageName)
 		case commands.Quit:
 			if wrapper.HasFocus() {
 				app.App.Stop()
@@ -151,11 +151,11 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 		var newDbDriver drivers.Driver
 
 		switch connection.Provider {
-		case "mysql":
+		case drivers.MySQLDriver:
 			newDbDriver = &drivers.MySQL{}
-		case "postgres":
+		case drivers.PostgresDriver:
 			newDbDriver = &drivers.Postgres{}
-		case "sqlite3":
+		case drivers.SQLiteDriver:
 			newDbDriver = &drivers.SQLite{}
 		}
 

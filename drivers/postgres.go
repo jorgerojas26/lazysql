@@ -31,7 +31,7 @@ func (db *Postgres) TestConnection(urlstr string) error {
 }
 
 func (db *Postgres) Connect(urlstr string) (err error) {
-	db.SetProvider("postgres")
+	db.SetProvider(PostgresDriver)
 
 	db.Connection, err = dburl.Open(urlstr)
 	if err != nil {

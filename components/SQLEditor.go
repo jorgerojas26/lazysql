@@ -38,10 +38,10 @@ func NewSQLEditor() *SQLEditor {
 		command := app.Keymaps.Group(app.EditorGroup).Resolve(event)
 
 		if command == commands.Execute {
-			sqlEditor.Publish("Query", sqlEditor.GetText())
+			sqlEditor.Publish(QuerySQLEditor, sqlEditor.GetText())
 			return nil
 		} else if command == commands.UnfocusEditor {
-			sqlEditor.Publish("Escape", "")
+			sqlEditor.Publish(EscapeSQLEditor, "")
 		} else if command == commands.OpenInExternalEditor && runtime.GOOS == "linux" {
 			// ----- THIS IS A LINUX-ONLY FEATURE, for now
 

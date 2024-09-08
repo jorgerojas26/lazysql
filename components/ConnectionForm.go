@@ -77,7 +77,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages) func(event *tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
-			connectionPages.SwitchToPage("Connections")
+			connectionPages.SwitchToPage(ConnectionsPageName)
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
@@ -111,7 +111,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			}
 
 			switch form.Action {
-			case "create":
+			case NewConnection:
 
 				newDatabases = append(databases, parsedDatabaseData)
 				err := helpers.SaveConnectionConfig(newDatabases)
@@ -120,7 +120,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 					return event
 				}
 
-			case "edit":
+			case EditConnection:
 				newDatabases = make([]models.Connection, len(databases))
 				row, _ := ConnectionListTable.GetSelection()
 
@@ -151,7 +151,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			}
 
 			ConnectionListTable.SetConnections(newDatabases)
-			connectionPages.SwitchToPage("Connections")
+			connectionPages.SwitchToPage(ConnectionsPageName)
 
 		} else if event.Key() == tcell.KeyF2 {
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
@@ -173,11 +173,11 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	var db drivers.Driver
 
 	switch parsed.Driver {
-	case "mysql":
+	case drivers.MySQLDriver:
 		db = &drivers.MySQL{}
-	case "postgres":
+	case drivers.PostgresDriver:
 		db = &drivers.Postgres{}
-	case "sqlite3":
+	case drivers.SQLiteDriver:
 		db = &drivers.SQLite{}
 	}
 

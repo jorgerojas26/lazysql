@@ -388,7 +388,7 @@ func (tree *Tree) GetIsFiltering() bool {
 func (tree *Tree) SetSelectedDatabase(database string) {
 	tree.state.selectedDatabase = database
 	tree.Publish(models.StateChange{
-		Key:   "SelectedDatabase",
+		Key:   SelectedDatabaseTree,
 		Value: database,
 	})
 }
@@ -396,7 +396,7 @@ func (tree *Tree) SetSelectedDatabase(database string) {
 func (tree *Tree) SetSelectedTable(table string) {
 	tree.state.selectedTable = table
 	tree.Publish(models.StateChange{
-		Key:   "SelectedTable",
+		Key:   SelectedTableTree,
 		Value: table,
 	})
 }
@@ -404,7 +404,7 @@ func (tree *Tree) SetSelectedTable(table string) {
 func (tree *Tree) SetIsFiltering(isFiltering bool) {
 	tree.state.isFiltering = isFiltering
 	tree.Publish(models.StateChange{
-		Key:   "IsFiltering",
+		Key:   IsFilteringTree,
 		Value: isFiltering,
 	})
 }
