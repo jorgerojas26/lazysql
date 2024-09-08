@@ -22,7 +22,7 @@ func (db *MySQL) TestConnection(urlstr string) (err error) {
 }
 
 func (db *MySQL) Connect(urlstr string) (err error) {
-	db.SetProvider(MySQLDriver)
+	db.SetProvider(DriverMySQL)
 
 	db.Connection, err = dburl.Open(urlstr)
 	if err != nil {

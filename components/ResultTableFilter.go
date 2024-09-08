@@ -67,7 +67,7 @@ func (filter *ResultsTableFilter) Subscribe() chan models.StateChange {
 func (filter *ResultsTableFilter) Publish(message string) {
 	for _, sub := range filter.subscribers {
 		sub <- models.StateChange{
-			Key:   filteringResultsTable,
+			Key:   eventResultsTableFiltering,
 			Value: message,
 		}
 	}

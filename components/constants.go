@@ -7,60 +7,60 @@ var App = app.App
 // Pages
 const (
 	// General
-	helpPageName         string = "Help"
-	confirmationPageName string = "Confirmation"
-	connectionsPageName  string = "Connections"
+	pageNameHelp         string = "Help"
+	pageNameConfirmation string = "Confirmation"
+	pageNameConnections  string = "Connections"
 
 	// Results table
-	tablePageName                  string = "Table"
-	tableErrorPageName             string = "TableError"
-	tableLoadingPageName           string = "TableLoading"
-	tableEditorTablePageName       string = "TableEditorTable"
-	tableEditorResultsInfoPageName string = "TableEditorResultsInfo"
-	tableEditCellPageName          string = "TableEditCell"
+	pageNameTable                  string = "Table"
+	pageNameTableError             string = "TableError"
+	pageNameTableLoading           string = "TableLoading"
+	pageNameTableEditorTable       string = "TableEditorTable"
+	pageNameTableEditorResultsInfo string = "TableEditorResultsInfo"
+	pageNameTableEditCell          string = "TableEditCell"
 
 	// Sidebar
-	sidebarPageName string = "Sidebar"
+	pageNameSidebar string = "Sidebar"
 
 	// Connections
-	connectionsSelectionPageName string = "ConnectionsSelection"
-	connectionsFormPageName      string = "ConnectionsForm"
+	pageNameConnectionSelection string = "ConnectionSelection"
+	pageNameConnectionForm      string = "ConnectionForm"
 )
 
 // Tabs
 const (
-	editorTabName string = "Editor"
+	tabNameEditor string = "Editor"
 )
 
 // Events
 const (
-	editingSidebar    string = "EditingSidebar"
-	unfocusingSidebar string = "UnfocusingSidebar"
-	togglingSidebar   string = "TogglingSidebar"
+	eventSidebarEditing    string = "EditingSidebar"
+	eventSidebarUnfocusing string = "UnfocusingSidebar"
+	eventSidebarToggling   string = "TogglingSidebar"
 
-	querySQLEditor  string = "Query"
-	escapeSQLEditor string = "Escape"
+	eventSqlEditorQuery  string = "Query"
+	eventSqlEditorEscape string = "Escape"
 
-	filteringResultsTable string = "FilteringResultsTable"
+	eventResultsTableFiltering string = "FilteringResultsTable"
 
-	selectedDatabaseTree string = "SelectedDatabase"
-	selectedTableTree    string = "SelectedTable"
-	isFilteringTree      string = "IsFiltering"
+	eventTreeSelectedDatabase string = "SelectedDatabase"
+	eventTreeSelectedTable    string = "SelectedTable"
+	eventTreeIsFiltering      string = "IsFiltering"
 )
 
 // Results table menu items
 const (
-	recordsMenu     string = "Records"
-	columnsMenu     string = "Columns"
-	constraintsMenu string = "Constraints"
-	foreignKeysMenu string = "Foreign Keys"
-	indexesMenu     string = "Indexes"
+	menuRecords     string = "Records"
+	menuColumns     string = "Columns"
+	menuConstraints string = "Constraints"
+	menuForeignKeys string = "Foreign Keys"
+	menuIndexes     string = "Indexes"
 )
 
 // Actions
 const (
-	newConnection  string = "NewConnection"
-	editConnection string = "EditConnection"
+	actionNewConnection  string = "NewConnection"
+	actionEditConnection string = "EditConnection"
 )
 
 // Misc (until i find a better name)

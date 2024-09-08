@@ -8,5 +8,5 @@ var MainPages = tview.NewPages()
 
 func init() {
 	MainPages.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
-	MainPages.AddPage(connectionsPageName, NewConnectionPages().Flex, true, true)
+	MainPages.AddPage(pageNameConnections, NewConnectionPages().Flex, true, true)
 }

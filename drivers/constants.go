@@ -6,7 +6,7 @@ const (
 
 // Drivers
 const (
-	MySQLDriver    string = "mysql"
-	PostgresDriver string = "postgres"
-	SQLiteDriver   string = "sqlite3"
+	DriverMySQL    string = "mysql"
+	DriverPostgres string = "postgres"
+	DriverSqlite   string = "sqlite3"
 )

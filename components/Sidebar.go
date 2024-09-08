@@ -140,9 +140,9 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 	switch command {
 	case commands.UnfocusSidebar:
-		sidebar.Publish(models.StateChange{Key: unfocusingSidebar, Value: nil})
+		sidebar.Publish(models.StateChange{Key: eventSidebarUnfocusing, Value: nil})
 	case commands.ToggleSidebar:
-		sidebar.Publish(models.StateChange{Key: togglingSidebar, Value: nil})
+		sidebar.Publish(models.StateChange{Key: eventSidebarToggling, Value: nil})
 	case commands.MoveDown:
 		sidebar.FocusNextField()
 	case commands.MoveUp:
@@ -152,7 +152,7 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case commands.GotoEnd:
 		sidebar.FocusLastField()
 	case commands.Edit:
-		sidebar.Publish(models.StateChange{Key: editingSidebar, Value: true})
+		sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: true})
 
 		currentItemIndex := sidebar.GetCurrentFieldIndex()
 		item := sidebar.Fields[currentItemIndex]
@@ -165,13 +165,13 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 			case commands.CommitEdit:
 				sidebar.SetInputCapture(sidebar.inputCapture)
 				sidebar.SetDisabledStyles(item)
-				sidebar.Publish(models.StateChange{Key: editingSidebar, Value: false})
+				sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: false})
 				return nil
 			case commands.DiscardEdit:
 				sidebar.SetInputCapture(sidebar.inputCapture)
 				sidebar.SetDisabledStyles(item)
 				item.SetText(text, true)
-				sidebar.Publish(models.StateChange{Key: editingSidebar, Value: false})
+				sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: false})
 				return nil
 			}
 

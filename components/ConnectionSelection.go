@@ -88,18 +88,18 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			case commands.Connect:
 				go cs.Connect(selectedConnection)
 			case commands.EditConnection:
-				connectionPages.SwitchToPage(connectionsFormPageName)
+				connectionPages.SwitchToPage(pageNameConnectionForm)
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
 				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(selectedConnection.URL)
 				connectionForm.StatusText.SetText("")
 
-				connectionForm.SetAction(editConnection)
+				connectionForm.SetAction(actionEditConnection)
 				return nil
 			case commands.DeleteConnection:
 				confirmationModal := NewConfirmationModal("")
 
 				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-					MainPages.RemovePage(confirmationPageName)
+					MainPages.RemovePage(pageNameConfirmation)
 					confirmationModal = nil
 
 					if buttonLabel == "Yes" {
@@ -115,7 +115,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 					}
 				})
 
-				MainPages.AddPage(confirmationPageName, confirmationModal, true, true)
+				MainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
 
 				return nil
 			}
@@ -123,11 +123,11 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 		switch command {
 		case commands.NewConnection:
-			connectionForm.SetAction(newConnection)
+			connectionForm.SetAction(actionNewConnection)
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			connectionForm.StatusText.SetText("")
-			connectionPages.SwitchToPage(connectionsFormPageName)
+			connectionPages.SwitchToPage(pageNameConnectionForm)
 		case commands.Quit:
 			if wrapper.HasFocus() {
 				app.App.Stop()
@@ -151,11 +151,11 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 		var newDbDriver drivers.Driver
 
 		switch connection.Provider {
-		case drivers.MySQLDriver:
+		case drivers.DriverMySQL:
 			newDbDriver = &drivers.MySQL{}
-		case drivers.PostgresDriver:
+		case drivers.DriverPostgres:
 			newDbDriver = &drivers.Postgres{}
-		case drivers.SQLiteDriver:
+		case drivers.DriverSqlite:
 			newDbDriver = &drivers.SQLite{}
 		}
 

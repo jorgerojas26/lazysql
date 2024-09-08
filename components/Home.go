@@ -82,7 +82,7 @@ func (home *Home) subscribeToTreeChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case selectedTableTree:
+		case eventTreeSelectedTable:
 			databaseName := home.Tree.GetSelectedDatabase()
 			tableName := stateChange.Value.(string)
 
@@ -117,7 +117,7 @@ func (home *Home) subscribeToTreeChanges() {
 			}
 
 			app.App.ForceDraw()
-		case isFilteringTree:
+		case eventTreeIsFiltering:
 			isFiltering := stateChange.Value.(bool)
 			if isFiltering {
 				home.SetInputCapture(nil)
@@ -166,7 +166,7 @@ func (home *Home) focusTab(tab *Tab) {
 			App.SetFocus(table)
 		}
 
-		if tab.Name == editorTabName {
+		if tab.Name == tabNameEditor {
 			home.HelpStatus.SetStatusOnEditorView()
 		} else {
 			home.HelpStatus.SetStatusOnTableView()
@@ -280,14 +280,14 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.focusRightWrapper()
 		}
 	case commands.SwitchToEditorView:
-		tab := home.TabbedPane.GetTabByName(editorTabName)
+		tab := home.TabbedPane.GetTabByName(tabNameEditor)
 
 		if tab != nil {
-			home.TabbedPane.SwitchToTabByName(editorTabName)
+			home.TabbedPane.SwitchToTabByName(tabNameEditor)
 			tab.Content.SetIsFiltering(true)
 		} else {
 			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, home.Tree, home.DBDriver).WithEditor()
-			home.TabbedPane.AppendTab(editorTabName, tableWithEditor, editorTabName)
+			home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
 		home.HelpStatus.SetStatusOnEditorView()
@@ -295,7 +295,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		App.ForceDraw()
 	case commands.SwitchToConnectionsView:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
-			MainPages.SwitchToPage(connectionsPageName)
+			MainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
 		if tab != nil {
@@ -312,7 +312,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-				MainPages.RemovePage(confirmationPageName)
+				MainPages.RemovePage(pageNameConfirmation)
 				confirmationModal = nil
 
 				if buttonLabel == "Yes" {
@@ -332,7 +332,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				}
 			})
 
-			MainPages.AddPage(confirmationPageName, confirmationModal, true, true)
+			MainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
 		}
 	case commands.HelpPopup:
 		if table == nil || !table.GetIsEditing() {
@@ -345,7 +345,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			// 	}
 			// 	return event
 			// })
-			MainPages.AddPage(helpPageName, home.HelpModal, true, true)
+			MainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
 	}
 
