@@ -7,64 +7,64 @@ var App = app.App
 // Pages
 const (
 	// General
-	HelpPageName         string = "Help"
-	ConfirmationPageName string = "Confirmation"
-	ConnectionsPageName  string = "Connections"
+	helpPageName         string = "Help"
+	confirmationPageName string = "Confirmation"
+	connectionsPageName  string = "Connections"
 
 	// Results table
-	TablePageName                  string = "Table"
-	TableErrorPageName             string = "TableError"
-	TableLoadingPageName           string = "TableLoading"
-	TableEditorTablePageName       string = "TableEditorTable"
-	TableEditorResultsInfoPageName string = "TableEditorResultsInfo"
-	TableEditCellPageName          string = "TableEditCell"
+	tablePageName                  string = "Table"
+	tableErrorPageName             string = "TableError"
+	tableLoadingPageName           string = "TableLoading"
+	tableEditorTablePageName       string = "TableEditorTable"
+	tableEditorResultsInfoPageName string = "TableEditorResultsInfo"
+	tableEditCellPageName          string = "TableEditCell"
 
 	// Sidebar
-	SidebarPageName string = "Sidebar"
+	sidebarPageName string = "Sidebar"
 
 	// Connections
-	ConnectionsSelectionPageName string = "ConnectionsSelection"
-	ConnectionsFormPageName      string = "ConnectionsForm"
+	connectionsSelectionPageName string = "ConnectionsSelection"
+	connectionsFormPageName      string = "ConnectionsForm"
 )
 
 // Tabs
 const (
-	EditorTabName string = "Editor"
+	editorTabName string = "Editor"
 )
 
 // Events
 const (
-	EditingSidebar    string = "EditingSidebar"
-	UnfocusingSidebar string = "UnfocusingSidebar"
-	TogglingSidebar   string = "TogglingSidebar"
+	editingSidebar    string = "EditingSidebar"
+	unfocusingSidebar string = "UnfocusingSidebar"
+	togglingSidebar   string = "TogglingSidebar"
 
-	QuerySQLEditor  string = "Query"
-	EscapeSQLEditor string = "Escape"
+	querySQLEditor  string = "Query"
+	escapeSQLEditor string = "Escape"
 
-	FilteringResultsTable string = "FilteringResultsTable"
+	filteringResultsTable string = "FilteringResultsTable"
 
-	SelectedDatabaseTree string = "SelectedDatabase"
-	SelectedTableTree    string = "SelectedTable"
-	IsFilteringTree      string = "IsFiltering"
+	selectedDatabaseTree string = "SelectedDatabase"
+	selectedTableTree    string = "SelectedTable"
+	isFilteringTree      string = "IsFiltering"
 )
 
 // Results table menu items
 const (
-	RecordsMenu     string = "Records"
-	ColumnsMenu     string = "Columns"
-	ConstraintsMenu string = "Constraints"
-	ForeignKeysMenu string = "Foreign Keys"
-	IndexesMenu     string = "Indexes"
+	recordsMenu     string = "Records"
+	columnsMenu     string = "Columns"
+	constraintsMenu string = "Constraints"
+	foreignKeysMenu string = "Foreign Keys"
+	indexesMenu     string = "Indexes"
 )
 
 // Actions
 const (
-	NewConnection  string = "NewConnection"
-	EditConnection string = "EditConnection"
+	newConnection  string = "NewConnection"
+	editConnection string = "EditConnection"
 )
 
 // Misc (until i find a better name)
 const (
-	FocusedWrapperLeft  string = "left"
-	FocusedWrapperRight string = "right"
+	focusedWrapperLeft  string = "left"
+	focusedWrapperRight string = "right"
 )

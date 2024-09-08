@@ -88,18 +88,18 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			case commands.Connect:
 				go cs.Connect(selectedConnection)
 			case commands.EditConnection:
-				connectionPages.SwitchToPage(ConnectionsFormPageName)
+				connectionPages.SwitchToPage(connectionsFormPageName)
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
 				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(selectedConnection.URL)
 				connectionForm.StatusText.SetText("")
 
-				connectionForm.SetAction(EditConnection)
+				connectionForm.SetAction(editConnection)
 				return nil
 			case commands.DeleteConnection:
 				confirmationModal := NewConfirmationModal("")
 
 				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-					MainPages.RemovePage(ConfirmationPageName)
+					MainPages.RemovePage(confirmationPageName)
 					confirmationModal = nil
 
 					if buttonLabel == "Yes" {
@@ -115,7 +115,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 					}
 				})
 
-				MainPages.AddPage(ConfirmationPageName, confirmationModal, true, true)
+				MainPages.AddPage(confirmationPageName, confirmationModal, true, true)
 
 				return nil
 			}
@@ -123,11 +123,11 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 		switch command {
 		case commands.NewConnection:
-			connectionForm.SetAction(NewConnection)
+			connectionForm.SetAction(newConnection)
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			connectionForm.StatusText.SetText("")
-			connectionPages.SwitchToPage(ConnectionsFormPageName)
+			connectionPages.SwitchToPage(connectionsFormPageName)
 		case commands.Quit:
 			if wrapper.HasFocus() {
 				app.App.Stop()

@@ -89,9 +89,9 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	loadingModal.SetTextColor(tview.Styles.SecondaryTextColor)
 
 	pages := tview.NewPages()
-	pages.AddPage(TablePageName, wrapper, true, true)
-	pages.AddPage(TableErrorPageName, errorModal, true, false)
-	pages.AddPage(TableLoadingPageName, loadingModal, false, false)
+	pages.AddPage(tablePageName, wrapper, true, true)
+	pages.AddPage(tableErrorPageName, errorModal, true, false)
+	pages.AddPage(tableLoadingPageName, loadingModal, false, false)
 
 	pagination := NewPagination()
 
@@ -116,7 +116,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
-	table.Page.AddPage(SidebarPageName, table.Sidebar, false, false)
+	table.Page.AddPage(sidebarPageName, table.Sidebar, false, false)
 
 	table.SetSelectionChangedFunc(func(_, _ int) {
 		if table.GetShowSidebar() {
@@ -176,8 +176,8 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	resultsInfoText.SetTextColor(tview.Styles.PrimaryTextColor)
 	resultsInfoWrapper.AddItem(resultsInfoText, 3, 0, false)
 
-	editorPages.AddPage(TableEditorTablePageName, tableWrapper, true, false)
-	editorPages.AddPage(TableEditorResultsInfoPageName, resultsInfoWrapper, true, true)
+	editorPages.AddPage(tableEditorTablePageName, tableWrapper, true, false)
+	editorPages.AddPage(tableEditorResultsInfoPageName, resultsInfoWrapper, true, true)
 
 	table.EditorPages = editorPages
 	table.ResultsInfo = resultsInfoText
@@ -193,7 +193,7 @@ func (table *ResultsTable) subscribeToTreeChanges() {
 	ch := table.Tree.Subscribe()
 
 	for stateChange := range ch {
-		if stateChange.Key == SelectedDatabaseTree {
+		if stateChange.Key == selectedDatabaseTree {
 			table.SetDatabaseName(stateChange.Value.(string))
 		}
 	}
@@ -204,13 +204,13 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case EditingSidebar:
+		case editingSidebar:
 			editing := stateChange.Value.(bool)
 			table.SetIsEditing(editing)
-		case UnfocusingSidebar:
+		case unfocusingSidebar:
 			App.SetFocus(table)
 			App.ForceDraw()
-		case TogglingSidebar:
+		case togglingSidebar:
 			table.ShowSidebar(false)
 			App.ForceDraw()
 		}
@@ -493,7 +493,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case FilteringResultsTable:
+		case filteringResultsTable:
 			if stateChange.Value != "" {
 				rows := table.FetchRecords(nil)
 
@@ -532,7 +532,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case QuerySQLEditor:
+		case querySQLEditor:
 			query := stateChange.Value.(string)
 			if query != "" {
 				queryLower := strings.ToLower(query)
@@ -568,7 +568,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						}
 						table.SetLoading(false)
 					}
-					table.EditorPages.SwitchToPage(TablePageName)
+					table.EditorPages.SwitchToPage(tablePageName)
 					App.Draw()
 				} else {
 					table.SetRecords([][]string{})
@@ -584,13 +584,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					} else {
 						table.SetResultsInfo(result)
 						table.SetLoading(false)
-						table.EditorPages.SwitchToPage(TableEditorResultsInfoPageName)
+						table.EditorPages.SwitchToPage(tableEditorResultsInfoPageName)
 						App.SetFocus(table.Editor)
 						App.Draw()
 					}
 				}
 			}
-		case EscapeSQLEditor:
+		case escapeSQLEditor:
 			table.SetIsFiltering(false)
 			App.SetFocus(table)
 			table.HighlightTable()
@@ -704,7 +704,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Error.SetText(err)
 	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
-		table.Page.HidePage(TableErrorPageName)
+		table.Page.HidePage(tableErrorPageName)
 		if table.GetIsFiltering() {
 			if table.Editor != nil {
 				App.SetFocus(table.Editor)
@@ -718,7 +718,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 			done()
 		}
 	})
-	table.Page.ShowPage(TableErrorPageName)
+	table.Page.ShowPage(tableErrorPageName)
 	App.SetFocus(table.Error)
 	App.ForceDraw()
 }
@@ -731,7 +731,7 @@ func (table *ResultsTable) SetLoading(show bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("ResultsTable.go:800 => Recovered from panic", map[string]any{"error": r})
-			_ = table.Page.HidePage(TableLoadingPageName)
+			_ = table.Page.HidePage(tableLoadingPageName)
 			if table.state.error != "" {
 				App.SetFocus(table.Error)
 			} else {
@@ -742,11 +742,11 @@ func (table *ResultsTable) SetLoading(show bool) {
 
 	table.state.isLoading = show
 	if show {
-		table.Page.ShowPage(TableLoadingPageName)
+		table.Page.ShowPage(tableLoadingPageName)
 		App.SetFocus(table.Loading)
 		App.ForceDraw()
 	} else {
-		table.Page.HidePage(TableLoadingPageName)
+		table.Page.HidePage(tableLoadingPageName)
 		if table.state.error != "" {
 			App.SetFocus(table.Error)
 		} else {
@@ -909,7 +909,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 		if key == tcell.KeyEnter || key == tcell.KeyEscape {
 			table.SetInputCapture(table.tableInputCapture)
-			table.Page.RemovePage(TableEditCellPageName)
+			table.Page.RemovePage(tableEditCellPageName)
 			App.SetFocus(table)
 		}
 
@@ -920,7 +920,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 	x, y, width := cell.GetLastPosition()
 	inputField.SetRect(x, y, width+1, 1)
-	table.Page.AddPage(TableEditCellPageName, inputField, false, true)
+	table.Page.AddPage(tableEditCellPageName, inputField, false, true)
 	App.SetFocus(inputField)
 }
 
@@ -1271,10 +1271,10 @@ func (table *ResultsTable) ShowSidebar(show bool) {
 
 	if show {
 		table.UpdateSidebar()
-		table.Page.SendToFront(SidebarPageName)
-		table.Page.ShowPage(SidebarPageName)
+		table.Page.SendToFront(sidebarPageName)
+		table.Page.ShowPage(sidebarPageName)
 	} else {
-		table.Page.HidePage(SidebarPageName)
+		table.Page.HidePage(sidebarPageName)
 		App.SetFocus(table)
 	}
 }

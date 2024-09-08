@@ -77,7 +77,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages) func(event *tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
-			connectionPages.SwitchToPage(ConnectionsPageName)
+			connectionPages.SwitchToPage(connectionsPageName)
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
@@ -111,7 +111,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			}
 
 			switch form.Action {
-			case NewConnection:
+			case newConnection:
 
 				newDatabases = append(databases, parsedDatabaseData)
 				err := helpers.SaveConnectionConfig(newDatabases)
@@ -120,7 +120,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 					return event
 				}
 
-			case EditConnection:
+			case editConnection:
 				newDatabases = make([]models.Connection, len(databases))
 				row, _ := ConnectionListTable.GetSelection()
 
@@ -151,7 +151,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			}
 
 			ConnectionListTable.SetConnections(newDatabases)
-			connectionPages.SwitchToPage(ConnectionsPageName)
+			connectionPages.SwitchToPage(connectionsPageName)
 
 		} else if event.Key() == tcell.KeyF2 {
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()

@@ -32,8 +32,8 @@ func NewConnectionPages() *models.ConnectionPages {
 	connectionForm := NewConnectionForm(cp)
 	connectionSelection := NewConnectionSelection(connectionForm, cp)
 
-	cp.AddPage(ConnectionsSelectionPageName, connectionSelection.Flex, true, true)
-	cp.AddPage(ConnectionsFormPageName, connectionForm.Flex, true, false)
+	cp.AddPage(connectionsSelectionPageName, connectionSelection.Flex, true, true)
+	cp.AddPage(connectionsFormPageName, connectionForm.Flex, true, false)
 
 	return cp
 }

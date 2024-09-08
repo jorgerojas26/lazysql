@@ -75,7 +75,7 @@ func NewHelpModal() *HelpModal {
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		command := app.Keymaps.Group(app.HomeGroup).Resolve(event)
 		if command == commands.Quit || command == commands.HelpPopup {
-			MainPages.RemovePage(HelpPageName)
+			MainPages.RemovePage(helpPageName)
 		}
 		return event
 	})
