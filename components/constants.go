@@ -38,8 +38,8 @@ const (
 	eventSidebarUnfocusing string = "UnfocusingSidebar"
 	eventSidebarToggling   string = "TogglingSidebar"
 
-	eventSqlEditorQuery  string = "Query"
-	eventSqlEditorEscape string = "Escape"
+	eventSQLEditorQuery  string = "Query"
+	eventSQLEditorEscape string = "Escape"
 
 	eventResultsTableFiltering string = "FilteringResultsTable"
 

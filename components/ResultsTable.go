@@ -532,7 +532,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case eventSqlEditorQuery:
+		case eventSQLEditorQuery:
 			query := stateChange.Value.(string)
 			if query != "" {
 				queryLower := strings.ToLower(query)
@@ -590,7 +590,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					}
 				}
 			}
-		case eventSqlEditorEscape:
+		case eventSQLEditorEscape:
 			table.SetIsFiltering(false)
 			App.SetFocus(table)
 			table.HighlightTable()
