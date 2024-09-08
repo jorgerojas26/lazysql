@@ -29,35 +29,35 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexRowCSS)
 
 	newButton := tview.NewButton("[yellow]N[dark]ew")
-	newButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	newButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	newButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(newButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	connectButton := tview.NewButton("[yellow]C[dark]onnect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	connectButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	editButton := tview.NewButton("[yellow]E[dark]dit")
-	editButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	editButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	editButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(editButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	deleteButton := tview.NewButton("[yellow]D[dark]elete")
-	deleteButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	deleteButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	deleteButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(deleteButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	quitButton := tview.NewButton("[yellow]Q[dark]uit")
-	quitButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor))
+	quitButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	quitButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
@@ -145,7 +145,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 		MainPages.SwitchToPage(connection.URL)
 		App.Draw()
 	} else {
-		cs.StatusText.SetText("Connecting...").SetTextColor(tview.Styles.TertiaryTextColor)
+		cs.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 		App.Draw()
 
 		var newDbDriver drivers.Driver

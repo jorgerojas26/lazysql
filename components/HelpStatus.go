@@ -12,7 +12,7 @@ type HelpStatus struct {
 }
 
 func NewHelpStatus() HelpStatus {
-	status := HelpStatus{tview.NewTextView().SetTextColor(tview.Styles.TertiaryTextColor)}
+	status := HelpStatus{tview.NewTextView().SetTextColor(app.Styles.TertiaryTextColor)}
 
 	status.SetStatusOnTree()
 

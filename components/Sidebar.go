@@ -24,7 +24,7 @@ type Sidebar struct {
 func NewSidebar() *Sidebar {
 	flex := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	frame := tview.NewFrame(flex)
-	frame.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
+	frame.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	frame.SetBorder(true)
 
 	sidebarState := &SidebarState{
@@ -56,9 +56,9 @@ func (sidebar *Sidebar) AddField(title, text string, fieldWidth int) {
 	field.SetBorder(true)
 	field.SetTitle(title)
 	field.SetTitleAlign(tview.AlignLeft)
-	field.SetTitleColor(tview.Styles.PrimaryTextColor)
+	field.SetTitleColor(app.Styles.PrimaryTextColor)
 	field.SetText(text, true)
-	field.SetTextStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
+	field.SetTextStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
 
 	textLength := len(field.GetText())
 
@@ -186,20 +186,20 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 }
 
 func (sidebar *Sidebar) SetEditingStyles(item *tview.TextArea) {
-	item.SetBackgroundColor(tview.Styles.SecondaryTextColor)
-	item.SetTextStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
-	item.SetTitleColor(tview.Styles.ContrastSecondaryTextColor)
-	item.SetBorderColor(tview.Styles.ContrastSecondaryTextColor)
+	item.SetBackgroundColor(app.Styles.SecondaryTextColor)
+	item.SetTextStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	item.SetTitleColor(app.Styles.ContrastSecondaryTextColor)
+	item.SetBorderColor(app.Styles.ContrastSecondaryTextColor)
 
 	item.SetWrap(true)
 	item.SetDisabled(false)
 }
 
 func (sidebar *Sidebar) SetDisabledStyles(item *tview.TextArea) {
-	item.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
-	item.SetTextStyle(tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
-	item.SetTitleColor(tview.Styles.PrimaryTextColor)
-	item.SetBorderColor(tview.Styles.BorderColor)
+	item.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	item.SetTextStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
+	item.SetTitleColor(app.Styles.PrimaryTextColor)
+	item.SetBorderColor(app.Styles.BorderColor)
 
 	item.SetWrap(true)
 	item.SetDisabled(true)

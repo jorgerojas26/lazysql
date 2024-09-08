@@ -79,13 +79,13 @@ func (s *SQLEditor) SetIsFocused(isFocused bool) {
 }
 
 func (s *SQLEditor) Highlight() {
-	s.SetBorderColor(tview.Styles.PrimaryTextColor)
-	s.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor))
+	s.SetBorderColor(app.Styles.PrimaryTextColor)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
 }
 
 func (s *SQLEditor) SetBlur() {
-	s.SetBorderColor(tview.Styles.InverseTextColor)
-	s.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.InverseTextColor))
+	s.SetBorderColor(app.Styles.InverseTextColor)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.InverseTextColor))
 }
 
 /*

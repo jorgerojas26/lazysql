@@ -79,14 +79,14 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	errorModal.AddButtons([]string{"Ok"})
 	errorModal.SetText("An error occurred")
 	errorModal.SetBackgroundColor(tcell.ColorRed)
-	errorModal.SetTextColor(tview.Styles.PrimaryTextColor)
-	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor))
+	errorModal.SetTextColor(app.Styles.PrimaryTextColor)
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
 	errorModal.SetFocus(0)
 
 	loadingModal := tview.NewModal()
 	loadingModal.SetText("Loading...")
-	loadingModal.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
-	loadingModal.SetTextColor(tview.Styles.SecondaryTextColor)
+	loadingModal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	loadingModal.SetTextColor(app.Styles.SecondaryTextColor)
 
 	pages := tview.NewPages()
 	pages.AddPage(pageNameTable, wrapper, true, true)
@@ -115,7 +115,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
-	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 	table.Page.AddPage(pageNameSidebar, table.Sidebar, false, false)
 
 	table.SetSelectionChangedFunc(func(_, _ int) {
@@ -172,8 +172,8 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	resultsInfoWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	resultsInfoText := tview.NewTextView()
 	resultsInfoText.SetBorder(true)
-	resultsInfoText.SetBorderColor(tview.Styles.PrimaryTextColor)
-	resultsInfoText.SetTextColor(tview.Styles.PrimaryTextColor)
+	resultsInfoText.SetBorderColor(app.Styles.PrimaryTextColor)
+	resultsInfoText.SetTextColor(app.Styles.PrimaryTextColor)
 	resultsInfoWrapper.AddItem(resultsInfoText, 3, 0, false)
 
 	editorPages.AddPage(pageNameTableEditorTable, tableWrapper, true, false)
@@ -224,7 +224,7 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 			tableCell.SetSelectable(i > 0)
 			tableCell.SetExpansion(1)
 
-			tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
+			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			table.SetCell(i, j, tableCell)
 		}
@@ -272,7 +272,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		tableCell := tview.NewTableCell(cell.Value.(string))
 		tableCell.SetExpansion(1)
 		tableCell.SetReference(UUID)
-		tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
+		tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 		tableCell.SetBackgroundColor(tcell.ColorDarkGreen)
 
 		switch cell.Type {
@@ -280,7 +280,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		case models.Default:
 		case models.String:
 			tableCell.SetText("")
-			tableCell.SetTextColor(tview.Styles.InverseTextColor)
+			tableCell.SetTextColor(app.Styles.InverseTextColor)
 		}
 
 		table.SetCell(index, i, tableCell)
@@ -455,10 +455,10 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 }
 
 func (table *ResultsTable) RemoveHighlightTable() {
-	table.SetBorderColor(tview.Styles.InverseTextColor)
-	table.SetBordersColor(tview.Styles.InverseTextColor)
-	table.SetTitleColor(tview.Styles.InverseTextColor)
-	table.UpdateRowsColor(tview.Styles.InverseTextColor, tview.Styles.InverseTextColor)
+	table.SetBorderColor(app.Styles.InverseTextColor)
+	table.SetBordersColor(app.Styles.InverseTextColor)
+	table.SetTitleColor(app.Styles.InverseTextColor)
+	table.UpdateRowsColor(app.Styles.InverseTextColor, tview.Styles.InverseTextColor)
 }
 
 func (table *ResultsTable) RemoveHighlightAll() {
@@ -472,10 +472,10 @@ func (table *ResultsTable) RemoveHighlightAll() {
 }
 
 func (table *ResultsTable) HighlightTable() {
-	table.SetBorderColor(tview.Styles.PrimaryTextColor)
-	table.SetBordersColor(tview.Styles.PrimaryTextColor)
-	table.SetTitleColor(tview.Styles.PrimaryTextColor)
-	table.UpdateRowsColor(tview.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
+	table.SetBorderColor(app.Styles.PrimaryTextColor)
+	table.SetBordersColor(app.Styles.PrimaryTextColor)
+	table.SetTitleColor(app.Styles.PrimaryTextColor)
+	table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 }
 
 func (table *ResultsTable) HighlightAll() {
@@ -801,7 +801,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 				tableCell := tview.NewTableCell(col[0])
 				tableCell.SetSelectable(false)
 				tableCell.SetExpansion(1)
-				tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
+				tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 				if col[0] == column {
 					tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
@@ -868,8 +868,8 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	cell := table.GetCell(row, col)
 	inputField := tview.NewInputField()
 	inputField.SetText(cell.Text)
-	inputField.SetFieldBackgroundColor(tview.Styles.PrimaryTextColor)
-	inputField.SetFieldTextColor(tview.Styles.PrimitiveBackgroundColor)
+	inputField.SetFieldBackgroundColor(app.Styles.PrimaryTextColor)
+	inputField.SetFieldTextColor(app.Styles.PrimitiveBackgroundColor)
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
@@ -990,7 +990,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 						} else {
 							(*table.state.listOfDbChanges)[i].Values = append((*table.state.listOfDbChanges)[i].Values[:valueIndex], (*table.state.listOfDbChanges)[i].Values[valueIndex+1:]...)
 						}
-						table.SetCellColor(rowIndex, colIndex, tview.Styles.PrimitiveBackgroundColor)
+						table.SetCellColor(rowIndex, colIndex, app.Styles.PrimitiveBackgroundColor)
 					} else {
 						(*table.state.listOfDbChanges)[i].Values[valueIndex] = value
 					}
@@ -1001,7 +1001,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 
 			case models.DmlDeleteType:
 				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:i], (*table.state.listOfDbChanges)[i+1:]...)
-				table.SetRowColor(rowIndex, tview.Styles.PrimitiveBackgroundColor)
+				table.SetRowColor(rowIndex, app.Styles.PrimitiveBackgroundColor)
 			}
 		}
 	}
@@ -1307,7 +1307,7 @@ func (table *ResultsTable) UpdateSidebar() {
 			if repeatCount <= 0 {
 				repeatCount = 1
 			}
-			title += "[gray]" + strings.Repeat("-", repeatCount)
+			title += fmt.Sprintf("[%s]", app.Styles.SidebarTitleBorderColor) + strings.Repeat("-", repeatCount)
 			title += colType
 
 			table.Sidebar.AddField(title, text, sidebarWidth)
