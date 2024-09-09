@@ -122,7 +122,7 @@ var Keymaps = KeymapSystem{
 		},
 		SidebarGroup: {
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.UnfocusSidebar, Description: "Focus table"},
-			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Focus table"},
+			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Toggle sidebar"},
 			Bind{Key: Key{Char: 'j'}, Cmd: cmd.MoveDown, Description: "Focus next field"},
 			Bind{Key: Key{Char: 'k'}, Cmd: cmd.MoveUp, Description: "Focus previous field"},
 			Bind{Key: Key{Char: 'g'}, Cmd: cmd.GotoStart, Description: "Focus first field"},

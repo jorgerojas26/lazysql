@@ -1291,7 +1291,9 @@ func (table *ResultsTable) UpdateSidebar() {
 
 		sidebarWidth := (tableInnerWidth / 4)
 
-		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, tableHeight+tableMenuHeight+tableFilterHeight)
+		sidebarHeight := tableHeight + tableMenuHeight + tableFilterHeight + 1
+
+		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, sidebarHeight)
 		table.Sidebar.Clear()
 
 		for i := 1; i < len(columns); i++ {
@@ -1301,8 +1303,7 @@ func (table *ResultsTable) UpdateSidebar() {
 			text := table.GetCell(selectedRow, i-1).Text
 			title := name
 
-			logger.Info("string repeat", map[string]any{"sidebarWidth": sidebarWidth, "name": len(name), "colType": len(colType)})
-			repeatCount := sidebarWidth - len(name) - len(colType) - 6 // 2 for spaces added below and idk why 6 is needed, but it works.
+			repeatCount := sidebarWidth - len(name) - len(colType) - 4 // idk why 4 is needed, but it works.
 
 			if repeatCount <= 0 {
 				repeatCount = 1
@@ -1312,5 +1313,6 @@ func (table *ResultsTable) UpdateSidebar() {
 
 			table.Sidebar.AddField(title, text, sidebarWidth)
 		}
+
 	}
 }

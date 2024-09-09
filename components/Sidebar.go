@@ -15,10 +15,10 @@ type SidebarState struct {
 
 type Sidebar struct {
 	*tview.Frame
-	Flex        *tview.Flex
-	state       *SidebarState
-	Fields      []*tview.TextArea
-	subscribers []chan models.StateChange
+	Flex         *tview.Flex
+	state        *SidebarState
+	FieldHeights []int
+	subscribers  []chan models.StateChange
 }
 
 func NewSidebar() *Sidebar {
@@ -26,6 +26,7 @@ func NewSidebar() *Sidebar {
 	frame := tview.NewFrame(flex)
 	frame.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	frame.SetBorder(true)
+	frame.SetBorders(0, 0, 0, 0, 0, 0)
 
 	sidebarState := &SidebarState{
 		currentFieldIndex: 0,
@@ -35,7 +36,6 @@ func NewSidebar() *Sidebar {
 		Frame:       frame,
 		Flex:        flex,
 		state:       sidebarState,
-		Fields:      []*tview.TextArea{},
 		subscribers: []chan models.StateChange{},
 	}
 
@@ -72,7 +72,30 @@ func (sidebar *Sidebar) AddField(title, text string, fieldWidth int) {
 		field.SetWrap(false)
 	}
 
-	sidebar.Fields = append(sidebar.Fields, field)
+	field.SetFocusFunc(func() {
+		_, y, _, h := field.GetRect()
+		_, _, _, mph := sidebar.GetRect()
+
+		if y >= mph {
+			hidingFieldIndex := 0
+			fieldCount := sidebar.Flex.GetItemCount()
+
+			for i := 0; i < fieldCount; i++ {
+				f := sidebar.Flex.GetItem(i)
+				_, _, _, h := f.GetRect()
+				if h != 0 {
+					hidingFieldIndex = i
+					break
+				}
+			}
+
+			sidebar.Flex.ResizeItem(sidebar.Flex.GetItem(hidingFieldIndex), 0, 0)
+		} else if h == 0 {
+			sidebar.Flex.ResizeItem(field, itemFixedSize, 0)
+		}
+	})
+
+	sidebar.FieldHeights = append(sidebar.FieldHeights, itemFixedSize)
 	sidebar.Flex.AddItem(field, itemFixedSize, 0, true)
 }
 
@@ -83,7 +106,7 @@ func (sidebar *Sidebar) FocusNextField() {
 		return
 	}
 
-	item := sidebar.Fields[newIndex]
+	item := sidebar.Flex.GetItem(newIndex)
 
 	if item == nil {
 		return
@@ -101,7 +124,7 @@ func (sidebar *Sidebar) FocusPreviousField() {
 		return
 	}
 
-	item := sidebar.Fields[newIndex]
+	item := sidebar.Flex.GetItem(newIndex)
 
 	if item == nil {
 		return
@@ -114,28 +137,51 @@ func (sidebar *Sidebar) FocusPreviousField() {
 
 func (sidebar *Sidebar) FocusFirstField() {
 	sidebar.SetCurrentFieldIndex(0)
-	App.SetFocus(sidebar.Fields[0])
+	App.SetFocus(sidebar.Flex.GetItem(0))
+
+	fieldCount := sidebar.Flex.GetItemCount()
+
+	for i := 0; i < fieldCount; i++ {
+		field := sidebar.Flex.GetItem(i)
+		height := sidebar.FieldHeights[i]
+		sidebar.Flex.ResizeItem(field, height, 0)
+	}
 }
 
 func (sidebar *Sidebar) FocusLastField() {
 	newIndex := sidebar.Flex.GetItemCount() - 1
 	sidebar.SetCurrentFieldIndex(newIndex)
-	App.SetFocus(sidebar.Fields[newIndex])
+	App.SetFocus(sidebar.Flex.GetItem(newIndex))
+
+	_, _, _, ph := sidebar.GetRect()
+
+	hSum := 0
+
+	for i := sidebar.Flex.GetItemCount() - 1; i >= 0; i-- {
+		field := sidebar.Flex.GetItem(i).(*tview.TextArea)
+		_, _, _, h := field.GetRect()
+
+		hSum += h
+
+		if hSum >= ph {
+			sidebar.Flex.ResizeItem(field, 0, 0)
+		}
+	}
 }
 
 func (sidebar *Sidebar) FocusField(index int) {
 	sidebar.SetCurrentFieldIndex(index)
-	App.SetFocus(sidebar.Fields[index])
+	App.SetFocus(sidebar.Flex.GetItem(index))
 }
 
 func (sidebar *Sidebar) Clear() {
-	sidebar.Fields = make([]*tview.TextArea, 0)
+	sidebar.FieldHeights = make([]int, 0)
 	sidebar.Flex.Clear()
 }
 
 func (sidebar *Sidebar) EditTextCurrentField() {
 	index := sidebar.GetCurrentFieldIndex()
-	item := sidebar.Fields[index]
+	item := sidebar.Flex.GetItem(index).(*tview.TextArea)
 
 	sidebar.SetEditingStyles(item)
 }
@@ -160,7 +206,7 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 		sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: true})
 
 		currentItemIndex := sidebar.GetCurrentFieldIndex()
-		item := sidebar.Fields[currentItemIndex]
+		item := sidebar.Flex.GetItem(currentItemIndex).(*tview.TextArea)
 		text := item.GetText()
 
 		sidebar.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
