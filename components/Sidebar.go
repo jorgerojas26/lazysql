@@ -79,32 +79,37 @@ func (sidebar *Sidebar) AddField(title, text string, fieldWidth int) {
 func (sidebar *Sidebar) FocusNextField() {
 	newIndex := sidebar.GetCurrentFieldIndex() + 1
 
-	if newIndex < sidebar.Flex.GetItemCount() {
-		item := sidebar.Fields[newIndex]
-
-		if item != nil {
-			sidebar.SetCurrentFieldIndex(newIndex)
-			App.SetFocus(item)
-			App.ForceDraw()
-			return
-		}
-
+	if newIndex >= sidebar.Flex.GetItemCount() {
+		return
 	}
+
+	item := sidebar.Fields[newIndex]
+
+	if item == nil {
+		return
+	}
+
+	sidebar.SetCurrentFieldIndex(newIndex)
+	App.SetFocus(item)
+	App.ForceDraw()
 }
 
 func (sidebar *Sidebar) FocusPreviousField() {
 	newIndex := sidebar.GetCurrentFieldIndex() - 1
 
-	if newIndex >= 0 {
-		item := sidebar.Fields[newIndex]
-
-		if item != nil {
-			sidebar.SetCurrentFieldIndex(newIndex)
-			App.SetFocus(item)
-			App.ForceDraw()
-			return
-		}
+	if newIndex < 0 {
+		return
 	}
+
+	item := sidebar.Fields[newIndex]
+
+	if item == nil {
+		return
+	}
+
+	sidebar.SetCurrentFieldIndex(newIndex)
+	App.SetFocus(item)
+	App.ForceDraw()
 }
 
 func (sidebar *Sidebar) FocusFirstField() {
