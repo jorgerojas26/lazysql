@@ -134,6 +134,7 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 	table.Wrapper.AddItem(menu.Flex, 3, 0, false)
 	table.Wrapper.AddItem(filter.Flex, 3, 0, false)
 	table.Wrapper.AddItem(table, 0, 1, true)
+	table.Wrapper.AddItem(table.Pagination, 3, 0, false)
 
 	go table.subscribeToFilterChanges()
 
@@ -1326,9 +1327,10 @@ func (table *ResultsTable) UpdateSidebar() {
 		_, _, tableInnerWidth, _ := table.GetInnerRect()
 		_, tableMenuY, _, tableMenuHeight := table.Menu.GetRect()
 		_, _, _, tableFilterHeight := table.Filter.GetRect()
+		_, _, _, tablePaginationHeight := table.Pagination.GetRect()
 
 		sidebarWidth := (tableInnerWidth / 4)
-		sidebarHeight := tableHeight + tableMenuHeight + tableFilterHeight + 1
+		sidebarHeight := tableHeight + tableMenuHeight + tableFilterHeight + tablePaginationHeight + 1
 
 		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, sidebarHeight)
 		table.Sidebar.Clear()
