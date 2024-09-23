@@ -47,10 +47,10 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 
 	go home.subscribeToTreeChanges()
 
-	leftWrapper.SetBorderColor(tview.Styles.InverseTextColor)
+	leftWrapper.SetBorderColor(app.Styles.InverseTextColor)
 	leftWrapper.AddItem(tree.Wrapper, 0, 1, true)
 
-	rightWrapper.SetBorderColor(tview.Styles.InverseTextColor)
+	rightWrapper.SetBorderColor(app.Styles.InverseTextColor)
 	rightWrapper.SetBorder(true)
 	rightWrapper.SetDirection(tview.FlexColumnCSS)
 	rightWrapper.SetInputCapture(home.rightWrapperInputCapture)
@@ -66,7 +66,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	home.SetInputCapture(home.homeInputCapture)
 
 	home.SetFocusFunc(func() {
-		if home.FocusedWrapper == "left" || home.FocusedWrapper == "" {
+		if home.FocusedWrapper == focusedWrapperLeft || home.FocusedWrapper == "" {
 			home.focusLeftWrapper()
 		} else {
 			home.focusRightWrapper()
@@ -82,7 +82,7 @@ func (home *Home) subscribeToTreeChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case "SelectedTable":
+		case eventTreeSelectedTable:
 			databaseName := home.Tree.GetSelectedDatabase()
 			tableName := stateChange.Value.(string)
 
@@ -104,16 +104,20 @@ func (home *Home) subscribeToTreeChanges() {
 
 			}
 
-			table.FetchRecords(func() {
+			results := table.FetchRecords(func() {
 				home.focusLeftWrapper()
 			})
+
+			if len(results) > 1 && !table.GetShowSidebar() { // 1 because the row 0 is the column names
+				table.ShowSidebar(true)
+			}
 
 			if table.state.error == "" {
 				home.focusRightWrapper()
 			}
 
 			app.App.ForceDraw()
-		case "IsFiltering":
+		case eventTreeIsFiltering:
 			isFiltering := stateChange.Value.(bool)
 			if isFiltering {
 				home.SetInputCapture(nil)
@@ -127,8 +131,8 @@ func (home *Home) subscribeToTreeChanges() {
 func (home *Home) focusRightWrapper() {
 	home.Tree.RemoveHighlight()
 
-	home.RightWrapper.SetBorderColor(tview.Styles.PrimaryTextColor)
-	home.LeftWrapper.SetBorderColor(tview.Styles.InverseTextColor)
+	home.RightWrapper.SetBorderColor(app.Styles.PrimaryTextColor)
+	home.LeftWrapper.SetBorderColor(app.Styles.InverseTextColor)
 	home.TabbedPane.Highlight()
 	tab := home.TabbedPane.GetCurrentTab()
 
@@ -136,7 +140,7 @@ func (home *Home) focusRightWrapper() {
 		home.focusTab(tab)
 	}
 
-	home.FocusedWrapper = "right"
+	home.FocusedWrapper = focusedWrapperRight
 }
 
 func (home *Home) focusTab(tab *Tab) {
@@ -162,7 +166,7 @@ func (home *Home) focusTab(tab *Tab) {
 			App.SetFocus(table)
 		}
 
-		if tab.Name == EditorTabName {
+		if tab.Name == tabNameEditor {
 			home.HelpStatus.SetStatusOnEditorView()
 		} else {
 			home.HelpStatus.SetStatusOnTableView()
@@ -173,8 +177,8 @@ func (home *Home) focusTab(tab *Tab) {
 func (home *Home) focusLeftWrapper() {
 	home.Tree.Highlight()
 
-	home.RightWrapper.SetBorderColor(tview.Styles.InverseTextColor)
-	home.LeftWrapper.SetBorderColor(tview.Styles.PrimaryTextColor)
+	home.RightWrapper.SetBorderColor(app.Styles.InverseTextColor)
+	home.LeftWrapper.SetBorderColor(app.Styles.PrimaryTextColor)
 
 	tab := home.TabbedPane.GetCurrentTab()
 
@@ -189,7 +193,7 @@ func (home *Home) focusLeftWrapper() {
 
 	App.SetFocus(home.Tree)
 
-	home.FocusedWrapper = "left"
+	home.FocusedWrapper = focusedWrapperLeft
 }
 
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
@@ -268,22 +272,22 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 	switch command {
 	case commands.MoveLeft:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "right" {
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
 			home.focusLeftWrapper()
 		}
 	case commands.MoveRight:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == "left" {
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperLeft {
 			home.focusRightWrapper()
 		}
 	case commands.SwitchToEditorView:
-		tab := home.TabbedPane.GetTabByName(EditorTabName)
+		tab := home.TabbedPane.GetTabByName(tabNameEditor)
 
 		if tab != nil {
-			home.TabbedPane.SwitchToTabByName(EditorTabName)
+			home.TabbedPane.SwitchToTabByName(tabNameEditor)
 			tab.Content.SetIsFiltering(true)
 		} else {
 			tableWithEditor := NewResultsTable(&home.ListOfDbChanges, home.Tree, home.DBDriver).WithEditor()
-			home.TabbedPane.AppendTab(EditorTabName, tableWithEditor, EditorTabName)
+			home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
 		home.HelpStatus.SetStatusOnEditorView()
@@ -291,7 +295,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		App.ForceDraw()
 	case commands.SwitchToConnectionsView:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
-			MainPages.SwitchToPage("Connections")
+			MainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
 		if tab != nil {
@@ -308,7 +312,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-				MainPages.RemovePage("Confirmation")
+				MainPages.RemovePage(pageNameConfirmation)
 				confirmationModal = nil
 
 				if buttonLabel == "Yes" {
@@ -328,7 +332,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				}
 			})
 
-			MainPages.AddPage("Confirmation", confirmationModal, true, true)
+			MainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
 		}
 	case commands.HelpPopup:
 		if table == nil || !table.GetIsEditing() {
@@ -341,7 +345,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			// 	}
 			// 	return event
 			// })
-			MainPages.AddPage(HelpPageName, home.HelpModal, true, true)
+			MainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
 	}
 

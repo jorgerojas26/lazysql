@@ -37,9 +37,11 @@ const (
 )
 
 type CellValue struct {
-	Type   CellValueType
-	Column string
-	Value  interface{}
+	Value            interface{}
+	Column           string
+	TableColumnIndex int
+	TableRowIndex    int
+	Type             CellValueType
 }
 
 const (
@@ -49,12 +51,12 @@ const (
 )
 
 type DbDmlChange struct {
-	Type                 DmlType
 	Database             string
 	Table                string
-	Values               []CellValue
 	PrimaryKeyColumnName string
 	PrimaryKeyValue      string
+	Values               []CellValue
+	Type                 DmlType
 }
 
 type DatabaseTableColumn struct {
@@ -69,4 +71,9 @@ type DatabaseTableColumn struct {
 type Query struct {
 	Query string
 	Args  []interface{}
+}
+
+type SidebarEditingCommitParams struct {
+	ColumnName string
+	NewValue   string
 }

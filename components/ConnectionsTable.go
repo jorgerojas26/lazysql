@@ -4,6 +4,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -29,7 +30,7 @@ func NewConnectionsTable() *ConnectionsTable {
 	}
 
 	table.SetOffset(5, 0)
-	table.SetSelectedStyle(tcell.StyleDefault.Foreground(tview.Styles.SecondaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
+	table.SetSelectedStyle(tcell.StyleDefault.Foreground(app.Styles.SecondaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
 
 	wrapper.AddItem(table, 0, 1, true)
 
