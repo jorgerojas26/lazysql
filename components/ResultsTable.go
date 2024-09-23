@@ -52,13 +52,6 @@ type ResultsTable struct {
 	DBDriver    drivers.Driver
 }
 
-var (
-	ErrorModal  = tview.NewModal()
-	ChangeColor = tcell.ColorDarkOrange
-	InsertColor = tcell.ColorDarkGreen
-	DeleteColor = tcell.ColorRed
-)
-
 func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
@@ -118,9 +111,10 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 	table.Page.AddPage(pageNameSidebar, table.Sidebar, false, false)
 
-	table.SetSelectionChangedFunc(func(_, _ int) {
+	table.SetSelectionChangedFunc(func(row, col int) {
 		if table.GetShowSidebar() {
-			table.UpdateSidebar()
+			logger.Info("table.SetSelectionChangedFunc", map[string]any{"row": row, "col": col})
+			go table.UpdateSidebar()
 		}
 	})
 
@@ -213,6 +207,30 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 		case eventSidebarToggling:
 			table.ShowSidebar(false)
 			App.ForceDraw()
+		case eventSidebarCommitEditing:
+			params := stateChange.Value.(models.SidebarEditingCommitParams)
+
+			table.SetInputCapture(table.tableInputCapture)
+			table.SetIsEditing(false)
+
+			row, _ := table.GetSelection()
+			changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
+			tableCell := table.GetCell(row, changedColumnIndex)
+
+			tableCell.SetText(params.NewValue)
+
+			cellValue := models.CellValue{
+				Type:             models.String,
+				Column:           params.ColumnName,
+				Value:            params.NewValue,
+				TableColumnIndex: changedColumnIndex,
+				TableRowIndex:    row,
+			}
+
+			logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
+			table.AppendNewChange(models.DmlUpdateType, row, changedColumnIndex, cellValue)
+
+			App.ForceDraw()
 		}
 	}
 }
@@ -260,7 +278,7 @@ func (table *ResultsTable) AddInsertedRows() {
 			tableCell.SetReference(inserts[i].PrimaryKeyValue)
 
 			tableCell.SetTextColor(tcell.ColorWhite.TrueColor())
-			tableCell.SetBackgroundColor(InsertColor)
+			tableCell.SetBackgroundColor(colorTableInsert)
 
 			table.SetCell(rowIndex, j, tableCell)
 		}
@@ -340,7 +358,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if command == commands.Edit {
-		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, nil)
+		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
+			if table.GetShowSidebar() {
+				table.UpdateSidebar()
+			}
+		})
 	} else if command == commands.GotoNext {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
@@ -394,7 +416,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					}
 				}
 			} else {
-				table.AppendNewChange(models.DmlDeleteType, table.GetDatabaseName(), table.GetTableName(), selectedRowIndex, -1, models.CellValue{})
+				table.AppendNewChange(models.DmlDeleteType, selectedRowIndex, -1, models.CellValue{})
 			}
 
 		}
@@ -655,6 +677,17 @@ func (table *ResultsTable) GetColumnNameByIndex(index int) string {
 	return ""
 }
 
+func (table *ResultsTable) GetColumnIndexByName(columnName string) int {
+	for i := 0; i < table.GetColumnCount(); i++ {
+		cell := table.GetCell(0, i)
+		if cell.Text == columnName {
+			return i
+		}
+	}
+
+	return -1
+}
+
 func (table *ResultsTable) GetIsLoading() bool {
 	return table.state.isLoading
 }
@@ -881,7 +914,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 			cell.SetText(newValue)
 
 			if currentValue != newValue {
-				table.AppendNewChange(models.DmlUpdateType, table.GetDatabaseName(), table.GetTableName(), row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName})
+				table.AppendNewChange(models.DmlUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
 			}
 
 			switch key {
@@ -947,7 +980,10 @@ func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.C
 	}
 }
 
-func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseName, tableName string, rowIndex int, colIndex int, value models.CellValue) {
+func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex int, colIndex int, value models.CellValue) {
+	databaseName := table.GetDatabaseName()
+	tableName := table.GetTableName()
+
 	dmlChangeAlreadyExists := false
 
 	// If the column has a reference, it means it's an inserted rowIndex
@@ -996,7 +1032,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 					}
 				} else {
 					(*table.state.listOfDbChanges)[i].Values = append((*table.state.listOfDbChanges)[i].Values, value)
-					table.SetCellColor(rowIndex, colIndex, ChangeColor)
+					table.SetCellColor(rowIndex, colIndex, colorTableChange)
 				}
 
 			case models.DmlDeleteType:
@@ -1009,10 +1045,10 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 	if !dmlChangeAlreadyExists {
 
 		switch changeType {
-		case models.DmlDeleteType:
-			table.SetRowColor(rowIndex, DeleteColor)
 		case models.DmlUpdateType:
-			table.SetCellColor(rowIndex, colIndex, ChangeColor)
+			table.SetCellColor(rowIndex, colIndex, colorTableChange)
+		case models.DmlDeleteType:
+			table.SetRowColor(rowIndex, colorTableDelete)
 		}
 
 		newDmlChange := models.DbDmlChange{
@@ -1027,6 +1063,8 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 		*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newDmlChange)
 
 	}
+
+	logger.Info("AppendNewChange", map[string]any{"listOfDbChanges": *table.state.listOfDbChanges})
 }
 
 func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
@@ -1144,7 +1182,7 @@ func (table *ResultsTable) appendNewRow() {
 
 	for i, column := range dbColumns {
 		if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
-			newRow[i-1] = models.CellValue{Type: models.Default, Column: column[0], Value: "DEFAULT"}
+			newRow[i-1] = models.CellValue{Type: models.Default, Column: column[0], Value: "DEFAULT", TableRowIndex: newRowTableIndex, TableColumnIndex: i}
 		}
 	}
 
@@ -1290,7 +1328,6 @@ func (table *ResultsTable) UpdateSidebar() {
 		_, _, _, tableFilterHeight := table.Filter.GetRect()
 
 		sidebarWidth := (tableInnerWidth / 4)
-
 		sidebarHeight := tableHeight + tableMenuHeight + tableFilterHeight + 1
 
 		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, sidebarHeight)
@@ -1308,10 +1345,24 @@ func (table *ResultsTable) UpdateSidebar() {
 			if repeatCount <= 0 {
 				repeatCount = 1
 			}
+
 			title += fmt.Sprintf("[%s]", app.Styles.SidebarTitleBorderColor) + strings.Repeat("-", repeatCount)
 			title += colType
 
-			table.Sidebar.AddField(title, text, sidebarWidth)
+			pendingEditExist := false
+
+			for _, dmlChange := range *table.state.listOfDbChanges {
+				if dmlChange.Type == models.DmlUpdateType {
+					for _, v := range dmlChange.Values {
+						if v.Column == name && v.TableRowIndex == selectedRow && v.TableColumnIndex == i-1 {
+							pendingEditExist = true
+							break
+						}
+					}
+				}
+			}
+
+			table.Sidebar.AddField(title, text, sidebarWidth, pendingEditExist)
 		}
 
 	}

@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
@@ -13,12 +15,17 @@ type SidebarState struct {
 	currentFieldIndex int
 }
 
+type SidebarFieldParameters struct {
+	OriginalValue string
+	Height        int
+}
+
 type Sidebar struct {
 	*tview.Frame
-	Flex         *tview.Flex
-	state        *SidebarState
-	FieldHeights []int
-	subscribers  []chan models.StateChange
+	Flex            *tview.Flex
+	state           *SidebarState
+	FieldParameters []*SidebarFieldParameters
+	subscribers     []chan models.StateChange
 }
 
 func NewSidebar() *Sidebar {
@@ -48,7 +55,7 @@ func NewSidebar() *Sidebar {
 	return newSidebar
 }
 
-func (sidebar *Sidebar) AddField(title, text string, fieldWidth int) {
+func (sidebar *Sidebar) AddField(title, text string, fieldWidth int, pendingEdit bool) {
 	field := tview.NewTextArea()
 	field.SetWrap(true)
 	field.SetDisabled(true)
@@ -59,6 +66,10 @@ func (sidebar *Sidebar) AddField(title, text string, fieldWidth int) {
 	field.SetTitleColor(app.Styles.PrimaryTextColor)
 	field.SetText(text, true)
 	field.SetTextStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
+
+	if pendingEdit {
+		sidebar.SetEditedStyles(field)
+	}
 
 	textLength := len(field.GetText())
 
@@ -95,7 +106,12 @@ func (sidebar *Sidebar) AddField(title, text string, fieldWidth int) {
 		}
 	})
 
-	sidebar.FieldHeights = append(sidebar.FieldHeights, itemFixedSize)
+	fieldParameters := &SidebarFieldParameters{
+		Height:        itemFixedSize,
+		OriginalValue: text,
+	}
+
+	sidebar.FieldParameters = append(sidebar.FieldParameters, fieldParameters)
 	sidebar.Flex.AddItem(field, itemFixedSize, 0, true)
 }
 
@@ -143,7 +159,7 @@ func (sidebar *Sidebar) FocusFirstField() {
 
 	for i := 0; i < fieldCount; i++ {
 		field := sidebar.Flex.GetItem(i)
-		height := sidebar.FieldHeights[i]
+		height := sidebar.FieldParameters[i].Height
 		sidebar.Flex.ResizeItem(field, height, 0)
 	}
 }
@@ -175,7 +191,7 @@ func (sidebar *Sidebar) FocusField(index int) {
 }
 
 func (sidebar *Sidebar) Clear() {
-	sidebar.FieldHeights = make([]int, 0)
+	sidebar.FieldParameters = make([]*SidebarFieldParameters, 0)
 	sidebar.Flex.Clear()
 }
 
@@ -209,14 +225,26 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 		item := sidebar.Flex.GetItem(currentItemIndex).(*tview.TextArea)
 		text := item.GetText()
 
+		columnName := item.GetTitle()
+		columnNameSplit := strings.Split(columnName, "[")
+		columnName = columnNameSplit[0]
+
 		sidebar.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			command := app.Keymaps.Group(app.SidebarGroup).Resolve(event)
 
 			switch command {
 			case commands.CommitEdit:
 				sidebar.SetInputCapture(sidebar.inputCapture)
-				sidebar.SetDisabledStyles(item)
-				sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: false})
+				originalValue := sidebar.FieldParameters[currentItemIndex].OriginalValue
+				newText := item.GetText()
+
+				if originalValue == newText {
+					sidebar.SetDisabledStyles(item)
+				} else {
+					sidebar.SetEditedStyles(item)
+					sidebar.Publish(models.StateChange{Key: eventSidebarCommitEditing, Value: models.SidebarEditingCommitParams{ColumnName: columnName, NewValue: newText}})
+				}
+
 				return nil
 			case commands.DiscardEdit:
 				sidebar.SetInputCapture(sidebar.inputCapture)
@@ -240,7 +268,7 @@ func (sidebar *Sidebar) SetEditingStyles(item *tview.TextArea) {
 	item.SetBackgroundColor(app.Styles.SecondaryTextColor)
 	item.SetTextStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 	item.SetTitleColor(app.Styles.ContrastSecondaryTextColor)
-	item.SetBorderColor(app.Styles.ContrastSecondaryTextColor)
+	item.SetBorderColor(app.Styles.SecondaryTextColor)
 
 	item.SetWrap(true)
 	item.SetDisabled(false)
@@ -251,6 +279,16 @@ func (sidebar *Sidebar) SetDisabledStyles(item *tview.TextArea) {
 	item.SetTextStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.SecondaryTextColor))
 	item.SetTitleColor(app.Styles.PrimaryTextColor)
 	item.SetBorderColor(app.Styles.BorderColor)
+
+	item.SetWrap(true)
+	item.SetDisabled(true)
+}
+
+func (sidebar *Sidebar) SetEditedStyles(item *tview.TextArea) {
+	item.SetBackgroundColor(colorTableChange)
+	item.SetTextStyle(tcell.StyleDefault.Background(colorTableChange).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	item.SetTitleColor(app.Styles.ContrastSecondaryTextColor)
+	item.SetBorderColor(app.Styles.ContrastSecondaryTextColor)
 
 	item.SetWrap(true)
 	item.SetDisabled(true)

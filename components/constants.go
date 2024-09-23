@@ -1,6 +1,9 @@
 package components
 
-import "github.com/jorgerojas26/lazysql/app"
+import (
+	"github.com/gdamore/tcell/v2"
+	"github.com/jorgerojas26/lazysql/app"
+)
 
 var App = app.App
 
@@ -34,9 +37,10 @@ const (
 
 // Events
 const (
-	eventSidebarEditing    string = "EditingSidebar"
-	eventSidebarUnfocusing string = "UnfocusingSidebar"
-	eventSidebarToggling   string = "TogglingSidebar"
+	eventSidebarEditing       string = "EditingSidebar"
+	eventSidebarUnfocusing    string = "UnfocusingSidebar"
+	eventSidebarToggling      string = "TogglingSidebar"
+	eventSidebarCommitEditing string = "CommitEditingSidebar"
 
 	eventSQLEditorQuery  string = "Query"
 	eventSQLEditorEscape string = "Escape"
@@ -67,4 +71,8 @@ const (
 const (
 	focusedWrapperLeft  string = "left"
 	focusedWrapperRight string = "right"
+
+	colorTableChange = tcell.ColorOrange
+	colorTableInsert = tcell.ColorDarkGreen
+	colorTableDelete = tcell.ColorRed
 )
