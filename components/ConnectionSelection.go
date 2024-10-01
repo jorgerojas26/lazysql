@@ -90,6 +90,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			case commands.EditConnection:
 				connectionPages.SwitchToPage("ConnectionForm")
 				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
+				connectionForm.GetFormItemByLabel("Provider").(*tview.InputField).SetText(selectedConnection.Provider)
 				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(selectedConnection.URL)
 				connectionForm.StatusText.SetText("")
 
@@ -125,6 +126,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 		case commands.NewConnection:
 			connectionForm.SetAction("create")
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
+			connectionForm.GetFormItemByLabel("Provider").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
 			connectionForm.StatusText.SetText("")
 			connectionPages.SwitchToPage("ConnectionForm")
@@ -157,6 +159,19 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 			newDbDriver = &drivers.Postgres{}
 		case "sqlite3":
 			newDbDriver = &drivers.SQLite{}
+		default:
+			App.QueueUpdateDraw(func() {
+				modal := tview.NewModal().
+					SetText(fmt.Sprintf("Unsupported provider: %s", connection.Provider)).
+					AddButtons([]string{"OK"}).
+					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+						if buttonLabel == "OK" {
+							App.SetRoot(MainPages, true)
+						}
+					})
+				App.SetRoot(modal, true).SetFocus(modal)
+			})
+			return
 		}
 
 		err := newDbDriver.Connect(connection.URL)
