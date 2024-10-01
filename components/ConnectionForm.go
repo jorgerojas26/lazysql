@@ -25,6 +25,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	addForm := tview.NewForm().SetFieldBackgroundColor(tview.Styles.InverseTextColor).SetButtonBackgroundColor(tview.Styles.InverseTextColor).SetLabelColor(tview.Styles.PrimaryTextColor).SetFieldTextColor(tview.Styles.ContrastSecondaryTextColor)
 	addForm.AddInputField("Name", "", 0, nil, nil)
+	addForm.AddInputField("Provider", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
@@ -86,7 +87,13 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				return event
 			}
 
-			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
+			connectionProvider := form.GetFormItem(1).(*tview.InputField).GetText()
+			if connectionProvider == "" {
+				form.StatusText.SetText("Connection provider is required").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				return event
+			}
+
+			connectionString := form.GetFormItem(2).(*tview.InputField).GetText()
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
 			if err != nil {
