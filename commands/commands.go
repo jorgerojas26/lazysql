@@ -60,6 +60,7 @@ const (
 	PreviousFoundNode
 	TreeCollapseAll
 	ExpandAll
+	SetValue
 
 	// Connection
 	NewConnection
@@ -179,6 +180,9 @@ func (c Command) String() string {
 		return "TreeCollapseAll"
 	case ExpandAll:
 		return "ExpandAll"
+	case SetValue:
+		return "SetValue"
 	}
+
 	return "Unknown"
 }

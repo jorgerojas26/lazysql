@@ -367,6 +367,19 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 
 		}
+	} else if command == commands.SetValue {
+		table.SetIsEditing(true)
+		table.SetInputCapture(nil)
+
+		cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+		x, y, width := cell.GetLastPosition()
+
+		list := NewSetValueList()
+		list.SetRect(x, y, width, 7)
+
+		list.OnFinish(table.FinishSettingValue)
+
+		list.Show(x, y, width)
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -1223,4 +1236,10 @@ func (table *ResultsTable) search() {
 	})
 
 	table.SetInputCapture(nil)
+}
+
+func (table *ResultsTable) FinishSettingValue() {
+	table.SetIsEditing(false)
+	table.SetInputCapture(table.tableInputCapture)
+	App.SetFocus(table)
 }
