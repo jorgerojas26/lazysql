@@ -362,9 +362,12 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 	paginatedResults = append(paginatedResults, columns)
 
 	for paginatedRows.Next() {
+		nullStringSlice := make([]sql.NullString, len(columns))
+
 		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
+
+		for i := range nullStringSlice {
+			rowValues[i] = &nullStringSlice[i]
 		}
 
 		err = paginatedRows.Scan(rowValues...)
@@ -373,8 +376,16 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		}
 
 		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+		for _, col := range nullStringSlice {
+			if col.Valid {
+				if col.String == "" {
+					row = append(row, "EMPTY&")
+				} else {
+					row = append(row, col.String)
+				}
+			} else {
+				row = append(row, "NULL&")
+			}
 		}
 
 		paginatedResults = append(paginatedResults, row)

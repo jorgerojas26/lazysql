@@ -4,6 +4,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/models"
 	"github.com/rivo/tview"
 )
 
@@ -33,15 +34,21 @@ func NewSetValueList() *SetValueList {
 	return &SetValueList{List: list}
 }
 
-func (list *SetValueList) OnFinish(callback func()) {
+func (list *SetValueList) OnFinish(callback func(selection models.CellValueType, value string)) {
 	list.SetDoneFunc(func() {
 		list.Hide()
-		callback()
+		callback(-1, "")
 	})
 
-	list.SetSelectedFunc(func(int, string, string, rune) {
+	list.SetSelectedFunc(func(_ int, _ string, _ string, shortcut rune) {
 		list.Hide()
-		callback()
+		if shortcut == 'n' {
+			callback(models.Null, "NULL")
+		} else if shortcut == 'e' {
+			callback(models.Empty, "EMPTY")
+		} else if shortcut == 'd' {
+			callback(models.Default, "DEFAULT")
+		}
 	})
 
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -49,7 +56,7 @@ func (list *SetValueList) OnFinish(callback func()) {
 
 		if command == commands.SetValue {
 			list.Hide()
-			callback()
+			callback(-1, "")
 			return nil
 		}
 
