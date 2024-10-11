@@ -391,7 +391,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 		})
 
-		list.Show(x, y, width)
+		list.Show(x, y, 30)
 	}
 
 	if len(table.GetRecords()) > 0 {
