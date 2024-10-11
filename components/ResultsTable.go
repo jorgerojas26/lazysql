@@ -378,10 +378,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		table.SetInputCapture(nil)
 
 		cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
-		x, y, width := cell.GetLastPosition()
+		x, y, _ := cell.GetLastPosition()
 
 		list := NewSetValueList()
-		list.SetRect(x, y, width, 7)
 
 		list.OnFinish(func(selection models.CellValueType, value string) {
 			table.FinishSettingValue()
@@ -438,7 +437,7 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 			} else {
 				cellReference := cell.GetReference()
 
-				if cellReference != nil && cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&" {
+				if cellReference != nil && (cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&") && (cell.BackgroundColor != DeleteColor && cell.BackgroundColor != ChangeColor && cell.BackgroundColor != InsertColor) {
 					cell.SetStyle(table.GetItalicStyle())
 				} else {
 					cell.SetTextColor(rowColor)
