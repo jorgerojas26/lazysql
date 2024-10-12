@@ -284,7 +284,6 @@ func (table *ResultsTable) AddInsertedRows() {
 			tableCell.SetExpansion(1)
 			tableCell.SetReference(inserts[i].PrimaryKeyValue)
 
-
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 			tableCell.SetBackgroundColor(colorTableInsert)
 
