@@ -45,12 +45,6 @@ func (db *SQLite) GetDatabases() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	for rows.Next() {
@@ -65,6 +59,9 @@ func (db *SQLite) GetDatabases() ([]string, error) {
 
 		databases = append(databases, dbName)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return databases, nil
 }
@@ -78,12 +75,6 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	tables := make(map[string][]string)
@@ -96,6 +87,9 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 		}
 
 		tables[database] = append(tables[database], table)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return tables, nil
@@ -110,12 +104,6 @@ func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err erro
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -148,6 +136,9 @@ func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err erro
 
 		results = append(results, row[1:])
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return
 }
@@ -164,12 +155,6 @@ func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -200,6 +185,9 @@ func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error
 		}
 
 		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -214,12 +202,6 @@ func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -250,6 +232,9 @@ func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error
 		}
 
 		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -264,12 +249,6 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -300,6 +279,9 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 		}
 
 		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -331,28 +313,7 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 	if err != nil {
 		return nil, 0, err
 	}
-
-	rowsErr := paginatedRows.Err()
-
-	if rowsErr != nil {
-		return nil, 0, rowsErr
-	}
-
 	defer paginatedRows.Close()
-
-	countQuery := "SELECT COUNT(*) FROM "
-	countQuery += db.formatTableName(table)
-
-	rows := db.Connection.QueryRow(countQuery)
-
-	if err != nil {
-		return nil, 0, err
-	}
-
-	err = rows.Scan(&totalRecords)
-	if err != nil {
-		return nil, 0, err
-	}
 
 	columns, err := paginatedRows.Columns()
 	if err != nil {
@@ -378,7 +339,20 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		}
 
 		paginatedResults = append(paginatedResults, row)
+	}
+	if err := paginatedRows.Err(); err != nil {
+		return nil, 0, err
+	}
+	// close to release the connection
+	if err := paginatedRows.Close(); err != nil {
+		return nil, 0, err
+	}
 
+	countQuery := "SELECT COUNT(*) FROM "
+	countQuery += db.formatTableName(table)
+	row := db.Connection.QueryRow(countQuery)
+	if err := row.Scan(&totalRecords); err != nil {
+		return nil, 0, err
 	}
 
 	return
@@ -389,12 +363,6 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 	if err != nil {
 		return nil, err
 	}
-
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -425,7 +393,9 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 		}
 
 		results = append(results, row)
-
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
@@ -498,7 +468,7 @@ func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 }
 
 func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
-	var query []models.Query
+	var queries []models.Query
 
 	for _, change := range changes {
 		columnNames := []string{}
@@ -536,7 +506,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 				Args:  values,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlUpdateType:
 			queryStr := "UPDATE "
 			queryStr += db.formatTableName(change.Table)
@@ -561,7 +531,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 				Args:  args,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Table)
@@ -572,29 +542,10 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 				Args:  []interface{}{change.PrimaryKeyValue},
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		}
 	}
-
-	trx, err := db.Connection.Begin()
-	if err != nil {
-		return err
-	}
-
-	for _, query := range query {
-		logger.Info(query.Query, map[string]any{"args": query.Args})
-		_, err := trx.Exec(query.Query, query.Args...)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = trx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return queriesInTransaction(db.Connection, queries)
 }
 
 func (db *SQLite) SetProvider(provider string) {
