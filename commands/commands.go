@@ -45,6 +45,8 @@ const (
 	UnfocusEditor
 	Copy
 	Edit
+	CommitEdit
+	DiscardEdit
 	Save
 	Delete
 	Search
@@ -61,6 +63,9 @@ const (
 	TreeCollapseAll
 	ExpandAll
 	SetValue
+	FocusSidebar
+	UnfocusSidebar
+	ToggleSidebar
 
 	// Connection
 	NewConnection
@@ -182,6 +187,16 @@ func (c Command) String() string {
 		return "ExpandAll"
 	case SetValue:
 		return "SetValue"
+	case FocusSidebar:
+		return "FocusSidebar"
+	case ToggleSidebar:
+		return "ToggleSidebar"
+	case UnfocusSidebar:
+		return "UnfocusSidebar"
+	case CommitEdit:
+		return "CommitEdit"
+	case DiscardEdit:
+		return "DiscardEdit"
 	}
 
 	return "Unknown"

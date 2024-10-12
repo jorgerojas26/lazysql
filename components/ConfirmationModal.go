@@ -2,6 +2,8 @@ package components
 
 import (
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/app"
 )
 
 type ConfirmationModal struct {
@@ -16,8 +18,8 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 		modal.SetText("Are you sure?")
 	}
 	modal.AddButtons([]string{"Yes", "No"})
-	modal.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
-	modal.SetTextColor(tview.Styles.PrimaryTextColor)
+	modal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	modal.SetTextColor(app.Styles.PrimaryTextColor)
 
 	return &ConfirmationModal{
 		Modal: modal,
