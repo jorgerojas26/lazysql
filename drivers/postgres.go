@@ -521,14 +521,17 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	}
 	defer paginatedRows.Close()
 
-	if paginatedRows != nil {
+	columns, columnsError := paginatedRows.Columns()
+	if columnsError != nil {
+		return nil, 0, columnsError
+	}
 
-		rowsErr := paginatedRows.Err()
+	records = append(records, columns)
 
-		defer paginatedRows.Close()
-
-		if rowsErr != nil {
-			err = rowsErr
+	for paginatedRows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
 		}
 
 		countQuery := "SELECT COUNT(*) FROM "

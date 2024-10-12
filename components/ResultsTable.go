@@ -284,6 +284,7 @@ func (table *ResultsTable) AddInsertedRows() {
 			tableCell.SetExpansion(1)
 			tableCell.SetReference(inserts[i].PrimaryKeyValue)
 
+
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 			tableCell.SetBackgroundColor(colorTableInsert)
 
@@ -305,6 +306,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 			tableCell.SetText(strings.Replace(cell.Value.(string), "&", "", 1))
 			tableCell.SetStyle(table.GetItalicStyle())
 			// tableCell.SetText("")
+
 			tableCell.SetTextColor(app.Styles.InverseTextColor)
 		}
 
