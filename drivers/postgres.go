@@ -67,15 +67,7 @@ func (db *Postgres) GetDatabases() (databases []string, err error) {
 	if err != nil {
 		return nil, err
 	}
-
 	defer rows.Close()
-
-	rowsErr := rows.Err()
-
-	if rowsErr != nil {
-		err = rowsErr
-		return nil, err
-	}
 
 	for rows.Next() {
 		var database string
@@ -84,6 +76,9 @@ func (db *Postgres) GetDatabases() (databases []string, err error) {
 			return nil, err
 		}
 		databases = append(databases, database)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return databases, nil
@@ -113,29 +108,23 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 
 	query := "SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = $1"
 	rows, err := db.Connection.Query(query, database)
-
-	if rows != nil {
-		rowsErr := rows.Err()
-
-		if rowsErr != nil {
-			err = rowsErr
-		}
-
-		defer rows.Close()
-
-		for rows.Next() {
-			var tableName string
-			var tableSchema string
-
-			err = rows.Scan(&tableName, &tableSchema)
-
-			tables[tableSchema] = append(tables[tableSchema], tableName)
-
-		}
-
-	}
-
 	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			tableName   string
+			tableSchema string
+		)
+		if err := rows.Scan(&tableName, &tableSchema); err != nil {
+			return nil, err
+		}
+
+		tables[tableSchema] = append(tables[tableSchema], tableName)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -176,46 +165,35 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 	query := "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = $1 AND table_schema = $2 AND table_name = $3 ORDER by ordinal_position"
 
 	rows, err := db.Connection.Query(query, database, tableSchema, tableName)
-
-	if rows != nil {
-
-		rowsErr := rows.Err()
-
-		if rowsErr != nil {
-			err = rowsErr
-		}
-
-		defer rows.Close()
-
-		columns, columnsError := rows.Columns()
-
-		if columnsError != nil {
-			err = columnsError
-		}
-
-		results = append(results, columns)
-
-		for rows.Next() {
-			rowValues := make([]interface{}, len(columns))
-
-			for i := range columns {
-				rowValues[i] = new(sql.RawBytes)
-			}
-
-			err = rows.Scan(rowValues...)
-
-			var row []string
-			for _, col := range rowValues {
-				row = append(row, string(*col.(*sql.RawBytes)))
-			}
-
-			results = append(results, row)
-		}
-
-	}
-
 	if err != nil {
 		return nil, err
+	}
+	defer rows.Close()
+
+	columns, columnsError := rows.Columns()
+	if columnsError != nil {
+		err = columnsError
+	}
+
+	results = append(results, columns)
+
+	for rows.Next() {
+		rowValues := make([]interface{}, len(columns))
+
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		if err := rows.Scan(rowValues...); err != nil {
+			return nil, err
+		}
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		results = append(results, row)
 	}
 
 	return
@@ -268,43 +246,36 @@ func (db *Postgres) GetConstraints(database, table string) (constraints [][]stri
 			AND tc.table_schema = '%s'
             AND tc.table_name = '%s'
             `, tableSchema, tableName))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-	if rows != nil {
-
-		rowsErr := rows.Err()
-
-		if rowsErr != nil {
-			err = rowsErr
-		}
-
-		defer rows.Close()
-
-		columns, columnsError := rows.Columns()
-
-		if columnsError != nil {
-			err = columnsError
-		}
-
-		constraints = append(constraints, columns)
-
-		for rows.Next() {
-			rowValues := make([]interface{}, len(columns))
-			for i := range columns {
-				rowValues[i] = new(sql.RawBytes)
-			}
-
-			err = rows.Scan(rowValues...)
-
-			var row []string
-			for _, col := range rowValues {
-				row = append(row, string(*col.(*sql.RawBytes)))
-			}
-
-			constraints = append(constraints, row)
-		}
+	columns, columnsError := rows.Columns()
+	if columnsError != nil {
+		err = columnsError
 	}
 
-	if err != nil {
+	constraints = append(constraints, columns)
+
+	for rows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		if err := rows.Scan(rowValues...); err != nil {
+			return nil, err
+		}
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		constraints = append(constraints, row)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -359,43 +330,36 @@ func (db *Postgres) GetForeignKeys(database, table string) (foreignKeys [][]stri
           	AND tc.table_schema = '%s'
             AND tc.table_name = '%s'
   `, tableSchema, tableName))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-	if rows != nil {
-
-		rowsErr := rows.Err()
-
-		if rowsErr != nil {
-			err = rowsErr
-		}
-
-		defer rows.Close()
-
-		columns, columnsError := rows.Columns()
-
-		if columnsError != nil {
-			err = columnsError
-		}
-
-		foreignKeys = append(foreignKeys, columns)
-
-		for rows.Next() {
-			rowValues := make([]interface{}, len(columns))
-			for i := range columns {
-				rowValues[i] = new(sql.RawBytes)
-			}
-
-			err = rows.Scan(rowValues...)
-
-			var row []string
-			for _, col := range rowValues {
-				row = append(row, string(*col.(*sql.RawBytes)))
-			}
-
-			foreignKeys = append(foreignKeys, row)
-		}
+	columns, columnsError := rows.Columns()
+	if columnsError != nil {
+		err = columnsError
 	}
 
-	if err != nil {
+	foreignKeys = append(foreignKeys, columns)
+
+	for rows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		if err := rows.Scan(rowValues...); err != nil {
+			return nil, err
+		}
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		foreignKeys = append(foreignKeys, row)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -459,43 +423,36 @@ func (db *Postgres) GetIndexes(database, table string) (indexes [][]string, err 
             t.relname,
             i.relname
   `, tableSchema, tableName))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-	if rows != nil {
-
-		rowsErr := rows.Err()
-
-		if rowsErr != nil {
-			err = rowsErr
-		}
-
-		defer rows.Close()
-
-		columns, columnsError := rows.Columns()
-
-		if columnsError != nil {
-			err = columnsError
-		}
-
-		indexes = append(indexes, columns)
-
-		for rows.Next() {
-			rowValues := make([]interface{}, len(columns))
-			for i := range columns {
-				rowValues[i] = new(sql.RawBytes)
-			}
-
-			err = rows.Scan(rowValues...)
-
-			var row []string
-			for _, col := range rowValues {
-				row = append(row, string(*col.(*sql.RawBytes)))
-			}
-
-			indexes = append(indexes, row)
-		}
+	columns, columnsError := rows.Columns()
+	if columnsError != nil {
+		err = columnsError
 	}
 
-	if err != nil {
+	indexes = append(indexes, columns)
+
+	for rows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		if err := rows.Scan(rowValues...); err != nil {
+			return nil, err
+		}
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		indexes = append(indexes, row)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -555,57 +512,48 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	query += " LIMIT $1 OFFSET $2"
 
 	paginatedRows, err := db.Connection.Query(query, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer paginatedRows.Close()
 
-	if paginatedRows != nil {
-
-		rowsErr := paginatedRows.Err()
-
-		defer paginatedRows.Close()
-
-		if rowsErr != nil {
-			err = rowsErr
-		}
-
-		countQuery := "SELECT COUNT(*) FROM "
-		countQuery += formattedTableName
-
-		rows := db.Connection.QueryRow(countQuery)
-
-		rowsErr = rows.Err()
-
-		if rowsErr != nil {
-			err = rowsErr
-		}
-
-		err = rows.Scan(&totalRecords)
-
-		columns, columnsError := paginatedRows.Columns()
-
-		if columnsError != nil {
-			err = columnsError
-		}
-
-		records = append(records, columns)
-
-		for paginatedRows.Next() {
-			rowValues := make([]interface{}, len(columns))
-			for i := range columns {
-				rowValues[i] = new(sql.RawBytes)
-			}
-
-			err = paginatedRows.Scan(rowValues...)
-
-			var row []string
-			for _, col := range rowValues {
-				row = append(row, string(*col.(*sql.RawBytes)))
-			}
-
-			records = append(records, row)
-
-		}
+	columns, columnsError := paginatedRows.Columns()
+	if columnsError != nil {
+		return nil, 0, columnsError
 	}
 
-	if err != nil {
+	records = append(records, columns)
+
+	for paginatedRows.Next() {
+		rowValues := make([]interface{}, len(columns))
+		for i := range columns {
+			rowValues[i] = new(sql.RawBytes)
+		}
+
+		if err := paginatedRows.Scan(rowValues...); err != nil {
+			return nil, 0, err
+		}
+
+		var row []string
+		for _, col := range rowValues {
+			row = append(row, string(*col.(*sql.RawBytes)))
+		}
+
+		records = append(records, row)
+
+	}
+	if err := paginatedRows.Err(); err != nil {
+		return nil, 0, err
+	}
+	// close to release the connection
+	if err := paginatedRows.Close(); err != nil {
+		return nil, 0, err
+	}
+
+	countQuery := "SELECT COUNT(*) FROM "
+	countQuery += formattedTableName
+	row := db.Connection.QueryRow(countQuery)
+	if err := row.Scan(&totalRecords); err != nil {
 		return nil, 0, err
 	}
 
@@ -740,14 +688,7 @@ func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 	if err != nil {
 		return nil, err
 	}
-
 	defer rows.Close()
-
-	rowsErr := rows.Err()
-
-	if rowsErr != nil {
-		err = rowsErr
-	}
 
 	columns, err := rows.Columns()
 	if err != nil {
@@ -773,14 +714,16 @@ func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 		}
 
 		results = append(results, row)
-
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return
 }
 
 func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
-	var query []models.Query
+	var queries []models.Query
 
 	for _, change := range changes {
 		columnNames := []string{}
@@ -827,7 +770,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				Args:  values,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlUpdateType:
 			queryStr := "UPDATE " + formattedTableName
 
@@ -851,7 +794,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				Args:  args,
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM " + formattedTableName
 			queryStr += fmt.Sprintf(" WHERE %s = $1", change.PrimaryKeyColumnName)
@@ -861,29 +804,10 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				Args:  []interface{}{change.PrimaryKeyValue},
 			}
 
-			query = append(query, newQuery)
+			queries = append(queries, newQuery)
 		}
 	}
-
-	trx, err := db.Connection.Begin()
-	if err != nil {
-		return err
-	}
-
-	for _, query := range query {
-		logger.Info(query.Query, map[string]any{"args": query.Args})
-		_, err := trx.Exec(query.Query, query.Args...)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = trx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return queriesInTransaction(db.Connection, queries)
 }
 
 func (db *Postgres) SetProvider(provider string) {
