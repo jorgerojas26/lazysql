@@ -6,6 +6,7 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -24,7 +25,7 @@ func NewSetValueList(dbProvider string) *SetValueList {
 	list := tview.NewList()
 	list.SetBorder(true)
 
-	if dbProvider == "sqlite3" {
+	if dbProvider == drivers.DriverSqlite {
 		VALUES = []value{
 			{value: "NULL", key: 'n'},
 			{value: "EMPTY", key: 'e'},
@@ -77,13 +78,13 @@ func (list *SetValueList) OnFinish(callback func(selection models.CellValueType,
 
 func (list *SetValueList) Show(x, y, width int) {
 	list.SetRect(x, y, width, len(VALUES)*2+1)
-	MainPages.AddPage("setValue", list, false, true)
+	MainPages.AddPage(pageNameSetValue, list, false, true)
 	App.SetFocus(list)
 	App.ForceDraw()
 }
 
 func (list *SetValueList) Hide() {
-	MainPages.RemovePage("setValue")
+	MainPages.RemovePage(pageNameSetValue)
 	App.SetFocus(list)
 	App.ForceDraw()
 }
