@@ -131,6 +131,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit, Description: "Edit field"},
 			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.CommitEdit, Description: "Add edit to pending changes"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.DiscardEdit, Description: "Discard edit"},
+			Bind{Key: Key{Char: 'C'}, Cmd: cmd.SetValue, Description: "Toggle value menu to put values like NULL, EMPTY or DEFAULT"},
 		},
 	},
 }

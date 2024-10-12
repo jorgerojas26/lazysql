@@ -76,4 +76,5 @@ type Query struct {
 type SidebarEditingCommitParams struct {
 	ColumnName string
 	NewValue   string
+	Type       CellValueType
 }

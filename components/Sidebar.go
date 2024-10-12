@@ -12,6 +12,7 @@ import (
 )
 
 type SidebarState struct {
+	dbProvider        string
 	currentFieldIndex int
 }
 
@@ -28,7 +29,7 @@ type Sidebar struct {
 	subscribers     []chan models.StateChange
 }
 
-func NewSidebar() *Sidebar {
+func NewSidebar(dbProvider string) *Sidebar {
 	flex := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	frame := tview.NewFrame(flex)
 	frame.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
@@ -37,6 +38,7 @@ func NewSidebar() *Sidebar {
 
 	sidebarState := &SidebarState{
 		currentFieldIndex: 0,
+		dbProvider:        dbProvider,
 	}
 
 	newSidebar := &Sidebar{
@@ -242,7 +244,7 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 					sidebar.SetDisabledStyles(item)
 				} else {
 					sidebar.SetEditedStyles(item)
-					sidebar.Publish(models.StateChange{Key: eventSidebarCommitEditing, Value: models.SidebarEditingCommitParams{ColumnName: columnName, NewValue: newText}})
+					sidebar.Publish(models.StateChange{Key: eventSidebarCommitEditing, Value: models.SidebarEditingCommitParams{ColumnName: columnName, Type: models.String, NewValue: newText}})
 				}
 
 				return nil
@@ -258,6 +260,33 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 		})
 
 		sidebar.EditTextCurrentField()
+
+		return nil
+	case commands.SetValue:
+		currentItemIndex := sidebar.GetCurrentFieldIndex()
+		item := sidebar.Flex.GetItem(currentItemIndex).(*tview.TextArea)
+		x, y, _, _ := item.GetRect()
+
+		columnName := item.GetTitle()
+		columnNameSplit := strings.Split(columnName, "[")
+		columnName = columnNameSplit[0]
+
+		list := NewSetValueList(sidebar.state.dbProvider)
+
+		sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: true})
+
+		list.OnFinish(func(selection models.CellValueType, value string) {
+			sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: false})
+			App.SetFocus(item)
+
+			if selection >= 0 {
+				sidebar.SetEditedStyles(item)
+				item.SetText(value, true)
+				sidebar.Publish(models.StateChange{Key: eventSidebarCommitEditing, Value: models.SidebarEditingCommitParams{ColumnName: columnName, Type: selection, NewValue: value}})
+			}
+		})
+
+		list.Show(x, y, 30)
 
 		return nil
 	}

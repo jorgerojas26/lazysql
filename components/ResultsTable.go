@@ -88,7 +88,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 
 	pagination := NewPagination()
 
-	sidebar := NewSidebar()
+	sidebar := NewSidebar(dbdriver.GetProvider())
 
 	table := &ResultsTable{
 		Table:      tview.NewTable(),
@@ -221,7 +221,7 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			tableCell.SetText(params.NewValue)
 
 			cellValue := models.CellValue{
-				Type:             models.String,
+				Type:             params.Type,
 				Column:           params.ColumnName,
 				Value:            params.NewValue,
 				TableColumnIndex: changedColumnIndex,
