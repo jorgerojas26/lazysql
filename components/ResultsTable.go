@@ -192,7 +192,7 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 			tableCell := tview.NewTableCell(cell)
 			tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
 
-			if cell == "EMPTY&" || cell == "NULL&" {
+			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
 				tableCell.SetText(strings.Replace(cell, "&", "", 1))
 				tableCell.SetStyle(table.GetItalicStyle())
 				tableCell.SetReference(cell)
@@ -248,16 +248,16 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		tableCell.SetExpansion(1)
 		tableCell.SetReference(UUID)
 		tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
-		tableCell.SetBackgroundColor(InsertColor)
 
 		switch cell.Type {
-		case models.Null:
-		case models.Default:
-		case models.String:
-			tableCell.SetText("")
+		case models.Null, models.Empty, models.Default:
+			tableCell.SetText(strings.Replace(cell.Value.(string), "&", "", 1))
+			tableCell.SetStyle(table.GetItalicStyle())
+			// tableCell.SetText("")
 			tableCell.SetTextColor(tview.Styles.InverseTextColor)
 		}
 
+		tableCell.SetBackgroundColor(InsertColor)
 		table.SetCell(index, i, tableCell)
 	}
 
@@ -380,7 +380,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 		x, y, _ := cell.GetLastPosition()
 
-		list := NewSetValueList()
+		list := NewSetValueList(table.DBDriver.GetProvider())
 
 		list.OnFinish(func(selection models.CellValueType, value string) {
 			table.FinishSettingValue()

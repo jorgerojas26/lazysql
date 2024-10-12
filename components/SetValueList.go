@@ -2,10 +2,11 @@ package components
 
 import (
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/models"
-	"github.com/rivo/tview"
 )
 
 type SetValueList struct {
@@ -17,15 +18,24 @@ type value struct {
 	key   rune
 }
 
-var VALUES = []value{
-	{value: "NULL", key: 'n'},
-	{value: "EMPTY", key: 'e'},
-	{value: "DEFAULT", key: 'd'},
-}
+var VALUES = []value{}
 
-func NewSetValueList() *SetValueList {
+func NewSetValueList(dbProvider string) *SetValueList {
 	list := tview.NewList()
 	list.SetBorder(true)
+
+	if dbProvider == "sqlite3" {
+		VALUES = []value{
+			{value: "NULL", key: 'n'},
+			{value: "EMPTY", key: 'e'},
+		}
+	} else {
+		VALUES = []value{
+			{value: "NULL", key: 'n'},
+			{value: "EMPTY", key: 'e'},
+			{value: "DEFAULT", key: 'd'},
+		}
+	}
 
 	for _, value := range VALUES {
 		list.AddItem(value.value, "", value.key, nil)
@@ -42,11 +52,12 @@ func (list *SetValueList) OnFinish(callback func(selection models.CellValueType,
 
 	list.SetSelectedFunc(func(_ int, _ string, _ string, shortcut rune) {
 		list.Hide()
-		if shortcut == 'n' {
+		switch shortcut {
+		case 'n':
 			callback(models.Null, "NULL")
-		} else if shortcut == 'e' {
+		case 'e':
 			callback(models.Empty, "EMPTY")
-		} else if shortcut == 'd' {
+		case 'd':
 			callback(models.Default, "DEFAULT")
 		}
 	})

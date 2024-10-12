@@ -590,7 +590,6 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		for paginatedRows.Next() {
 			nullStringSlice := make([]sql.NullString, len(columns))
 
-			// Create a slice of interface{} to hold pointers to the sql.NullString slice
 			rowValues := make([]interface{}, len(columns))
 			for i := range nullStringSlice {
 				rowValues[i] = &nullStringSlice[i]
@@ -800,9 +799,14 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 		placeholderIndex := 1
 
 		for _, cell := range change.Values {
+			columnNames = append(columnNames, cell.Column)
+
 			switch cell.Type {
-			case models.Empty, models.Null, models.String:
-				columnNames = append(columnNames, cell.Column)
+			case models.Default:
+				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
+			case models.Null:
+				valuesPlaceholder = append(valuesPlaceholder, "NULL")
+			default:
 				valuesPlaceholder = append(valuesPlaceholder, fmt.Sprintf("$%d", placeholderIndex))
 				placeholderIndex++
 			}
@@ -812,8 +816,6 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 			switch cell.Type {
 			case models.Empty:
 				values = append(values, "")
-			case models.Null:
-				values = append(values, sql.NullString{})
 			case models.String:
 				values = append(values, cell.Value)
 			}
@@ -844,9 +846,9 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 
 			for i, column := range columnNames {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" SET \"%s\" = $1", column)
+					queryStr += fmt.Sprintf(" SET \"%s\" = %s", column, valuesPlaceholder[i])
 				} else {
-					queryStr += fmt.Sprintf(", \"%s\" = $%d", column, i+1)
+					queryStr += fmt.Sprintf(", \"%s\" = %s", column, valuesPlaceholder[i])
 				}
 			}
 
@@ -854,7 +856,15 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 
 			copy(args, values)
 
-			queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", change.PrimaryKeyColumnName, len(columnNames)+1)
+			wherePlaceholder := 0
+
+			for _, placeholder := range valuesPlaceholder {
+				if strings.Contains(placeholder, "$") {
+					wherePlaceholder++
+				}
+			}
+
+			queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", change.PrimaryKeyColumnName, wherePlaceholder+1)
 			args = append(args, change.PrimaryKeyValue)
 
 			newQuery := models.Query{

@@ -516,28 +516,28 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 		values := []interface{}{}
 		valuesPlaceholder := []string{}
 
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty, models.Null, models.String:
-				columnNames = append(columnNames, cell.Column)
-				valuesPlaceholder = append(valuesPlaceholder, "?")
-			}
-		}
-		logger.Info("Column names", map[string]any{"columnNames": columnNames})
-
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty:
-				values = append(values, "")
-			case models.Null:
-				values = append(values, sql.NullString{})
-			case models.String:
-				values = append(values, cell.Value)
-			}
-		}
-
 		switch change.Type {
 		case models.DmlInsertType:
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Null:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "NULL")
+				case models.Empty, models.String:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "?")
+				}
+			}
+
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Empty:
+					values = append(values, "")
+				case models.String:
+					values = append(values, cell.Value)
+				}
+			}
+
 			queryStr := "INSERT INTO "
 			queryStr += db.formatTableName(change.Table)
 			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
@@ -549,14 +549,36 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 
 			query = append(query, newQuery)
 		case models.DmlUpdateType:
+
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Null:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "NULL")
+				case models.Empty, models.String:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "?")
+					/// Leaves "DEFAULT" type out because it's not supported by sqlite
+				}
+			}
+
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Empty:
+					values = append(values, "")
+				case models.String:
+					values = append(values, cell.Value)
+				}
+			}
+
 			queryStr := "UPDATE "
 			queryStr += db.formatTableName(change.Table)
 
 			for i, column := range columnNames {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = ?", column)
+					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
 				} else {
-					queryStr += fmt.Sprintf(", `%s` = ?", column)
+					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
 				}
 			}
 
