@@ -31,7 +31,7 @@ func (db *Postgres) TestConnection(urlstr string) error {
 }
 
 func (db *Postgres) Connect(urlstr string) (err error) {
-	db.SetProvider("postgres")
+	db.SetProvider(DriverPostgres)
 
 	db.Connection, err = dburl.Open(urlstr)
 	if err != nil {
@@ -194,6 +194,10 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 		}
 
 		results = append(results, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return

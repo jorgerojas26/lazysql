@@ -31,6 +31,7 @@ type ResultsTableState struct {
 	isEditing       bool
 	isFiltering     bool
 	isLoading       bool
+	showSidebar     bool
 }
 
 type ResultsTable struct {
@@ -47,15 +48,9 @@ type ResultsTable struct {
 	EditorPages *tview.Pages
 	ResultsInfo *tview.TextView
 	Tree        *Tree
+	Sidebar     *Sidebar
 	DBDriver    drivers.Driver
 }
-
-var (
-	ErrorModal  = tview.NewModal()
-	ChangeColor = tcell.ColorDarkOrange
-	InsertColor = tcell.ColorDarkGreen
-	DeleteColor = tcell.ColorRed
-)
 
 func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
 	state := &ResultsTableState{
@@ -67,6 +62,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 		isEditing:       false,
 		isLoading:       false,
 		listOfDbChanges: listOfDbChanges,
+		showSidebar:     false,
 	}
 
 	wrapper := tview.NewFlex()
@@ -76,21 +72,23 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	errorModal.AddButtons([]string{"Ok"})
 	errorModal.SetText("An error occurred")
 	errorModal.SetBackgroundColor(tcell.ColorRed)
-	errorModal.SetTextColor(tview.Styles.PrimaryTextColor)
-	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor))
+	errorModal.SetTextColor(app.Styles.PrimaryTextColor)
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
 	errorModal.SetFocus(0)
 
 	loadingModal := tview.NewModal()
 	loadingModal.SetText("Loading...")
-	loadingModal.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
-	loadingModal.SetTextColor(tview.Styles.SecondaryTextColor)
+	loadingModal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	loadingModal.SetTextColor(app.Styles.SecondaryTextColor)
 
 	pages := tview.NewPages()
-	pages.AddPage("table", wrapper, true, true)
-	pages.AddPage("error", errorModal, true, false)
-	pages.AddPage("loading", loadingModal, false, false)
+	pages.AddPage(pageNameTable, wrapper, true, true)
+	pages.AddPage(pageNameTableError, errorModal, true, false)
+	pages.AddPage(pageNameTableLoading, loadingModal, false, false)
 
 	pagination := NewPagination()
+
+	sidebar := NewSidebar()
 
 	table := &ResultsTable{
 		Table:      tview.NewTable(),
@@ -103,15 +101,25 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 		Editor:     nil,
 		Tree:       tree,
 		DBDriver:   dbdriver,
+		Sidebar:    sidebar,
 	}
 
 	table.SetSelectable(true, true)
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
-	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	table.Page.AddPage(pageNameSidebar, table.Sidebar, false, false)
+
+	table.SetSelectionChangedFunc(func(row, col int) {
+		if table.GetShowSidebar() {
+			logger.Info("table.SetSelectionChangedFunc", map[string]any{"row": row, "col": col})
+			go table.UpdateSidebar()
+		}
+	})
 
 	go table.subscribeToTreeChanges()
+	go table.subscribeToSidebarChanges()
 
 	return table
 }
@@ -159,12 +167,12 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	resultsInfoWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	resultsInfoText := tview.NewTextView()
 	resultsInfoText.SetBorder(true)
-	resultsInfoText.SetBorderColor(tview.Styles.PrimaryTextColor)
-	resultsInfoText.SetTextColor(tview.Styles.PrimaryTextColor)
+	resultsInfoText.SetBorderColor(app.Styles.PrimaryTextColor)
+	resultsInfoText.SetTextColor(app.Styles.PrimaryTextColor)
 	resultsInfoWrapper.AddItem(resultsInfoText, 3, 0, false)
 
-	editorPages.AddPage("Table", tableWrapper, true, false)
-	editorPages.AddPage("ResultsInfo", resultsInfoWrapper, true, true)
+	editorPages.AddPage(pageNameTableEditorTable, tableWrapper, true, false)
+	editorPages.AddPage(pageNameTableEditorResultsInfo, resultsInfoWrapper, true, true)
 
 	table.EditorPages = editorPages
 	table.ResultsInfo = resultsInfoText
@@ -180,8 +188,50 @@ func (table *ResultsTable) subscribeToTreeChanges() {
 	ch := table.Tree.Subscribe()
 
 	for stateChange := range ch {
-		if stateChange.Key == "SelectedDatabase" {
+		if stateChange.Key == eventTreeSelectedDatabase {
 			table.SetDatabaseName(stateChange.Value.(string))
+		}
+	}
+}
+
+func (table *ResultsTable) subscribeToSidebarChanges() {
+	ch := table.Sidebar.Subscribe()
+
+	for stateChange := range ch {
+		switch stateChange.Key {
+		case eventSidebarEditing:
+			editing := stateChange.Value.(bool)
+			table.SetIsEditing(editing)
+		case eventSidebarUnfocusing:
+			App.SetFocus(table)
+			App.ForceDraw()
+		case eventSidebarToggling:
+			table.ShowSidebar(false)
+			App.ForceDraw()
+		case eventSidebarCommitEditing:
+			params := stateChange.Value.(models.SidebarEditingCommitParams)
+
+			table.SetInputCapture(table.tableInputCapture)
+			table.SetIsEditing(false)
+
+			row, _ := table.GetSelection()
+			changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
+			tableCell := table.GetCell(row, changedColumnIndex)
+
+			tableCell.SetText(params.NewValue)
+
+			cellValue := models.CellValue{
+				Type:             models.String,
+				Column:           params.ColumnName,
+				Value:            params.NewValue,
+				TableColumnIndex: changedColumnIndex,
+				TableRowIndex:    row,
+			}
+
+			logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
+			table.AppendNewChange(models.DmlUpdateType, row, changedColumnIndex, cellValue)
+
+			App.ForceDraw()
 		}
 	}
 }
@@ -193,7 +243,7 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 			tableCell.SetSelectable(i > 0)
 			tableCell.SetExpansion(1)
 
-			tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
+			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			table.SetCell(i, j, tableCell)
 		}
@@ -229,7 +279,7 @@ func (table *ResultsTable) AddInsertedRows() {
 			tableCell.SetReference(inserts[i].PrimaryKeyValue)
 
 			tableCell.SetTextColor(tcell.ColorWhite.TrueColor())
-			tableCell.SetBackgroundColor(InsertColor)
+			tableCell.SetBackgroundColor(colorTableInsert)
 
 			table.SetCell(rowIndex, j, tableCell)
 		}
@@ -241,7 +291,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		tableCell := tview.NewTableCell(cell.Value.(string))
 		tableCell.SetExpansion(1)
 		tableCell.SetReference(UUID)
-		tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
+		tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 		tableCell.SetBackgroundColor(tcell.ColorDarkGreen)
 
 		switch cell.Type {
@@ -249,7 +299,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		case models.Default:
 		case models.String:
 			tableCell.SetText("")
-			tableCell.SetTextColor(tview.Styles.InverseTextColor)
+			tableCell.SetTextColor(app.Styles.InverseTextColor)
 		}
 
 		table.SetCell(index, i, tableCell)
@@ -309,7 +359,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if command == commands.Edit {
-		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, nil)
+		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
+			if table.GetShowSidebar() {
+				table.UpdateSidebar()
+			}
+		})
 	} else if command == commands.GotoNext {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
@@ -363,9 +417,15 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					}
 				}
 			} else {
-				table.AppendNewChange(models.DmlDeleteType, table.GetDatabaseName(), table.GetTableName(), selectedRowIndex, -1, models.CellValue{})
+				table.AppendNewChange(models.DmlDeleteType, selectedRowIndex, -1, models.CellValue{})
 			}
 
+		}
+	} else if command == commands.ToggleSidebar {
+		table.ShowSidebar(!table.GetShowSidebar())
+	} else if command == commands.FocusSidebar {
+		if table.GetShowSidebar() {
+			App.SetFocus(table.Sidebar)
 		}
 	}
 
@@ -418,10 +478,10 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 }
 
 func (table *ResultsTable) RemoveHighlightTable() {
-	table.SetBorderColor(tview.Styles.InverseTextColor)
-	table.SetBordersColor(tview.Styles.InverseTextColor)
-	table.SetTitleColor(tview.Styles.InverseTextColor)
-	table.UpdateRowsColor(tview.Styles.InverseTextColor, tview.Styles.InverseTextColor)
+	table.SetBorderColor(app.Styles.InverseTextColor)
+	table.SetBordersColor(app.Styles.InverseTextColor)
+	table.SetTitleColor(app.Styles.InverseTextColor)
+	table.UpdateRowsColor(app.Styles.InverseTextColor, tview.Styles.InverseTextColor)
 }
 
 func (table *ResultsTable) RemoveHighlightAll() {
@@ -435,10 +495,10 @@ func (table *ResultsTable) RemoveHighlightAll() {
 }
 
 func (table *ResultsTable) HighlightTable() {
-	table.SetBorderColor(tview.Styles.PrimaryTextColor)
-	table.SetBordersColor(tview.Styles.PrimaryTextColor)
-	table.SetTitleColor(tview.Styles.PrimaryTextColor)
-	table.UpdateRowsColor(tview.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
+	table.SetBorderColor(app.Styles.PrimaryTextColor)
+	table.SetBordersColor(app.Styles.PrimaryTextColor)
+	table.SetTitleColor(app.Styles.PrimaryTextColor)
+	table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 }
 
 func (table *ResultsTable) HighlightAll() {
@@ -456,7 +516,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case "Filter":
+		case eventResultsTableFiltering:
 			if stateChange.Value != "" {
 				rows := table.FetchRecords(nil)
 
@@ -495,7 +555,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 	for stateChange := range ch {
 		switch stateChange.Key {
-		case "Query":
+		case eventSQLEditorQuery:
 			query := stateChange.Value.(string)
 			if query != "" {
 				queryLower := strings.ToLower(query)
@@ -531,7 +591,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						}
 						table.SetLoading(false)
 					}
-					table.EditorPages.SwitchToPage("Table")
+					table.EditorPages.SwitchToPage(pageNameTable)
 					App.Draw()
 				} else {
 					table.SetRecords([][]string{})
@@ -547,13 +607,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					} else {
 						table.SetResultsInfo(result)
 						table.SetLoading(false)
-						table.EditorPages.SwitchToPage("ResultsInfo")
+						table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
 						App.SetFocus(table.Editor)
 						App.Draw()
 					}
 				}
 			}
-		case "Escape":
+		case eventSQLEditorEscape:
 			table.SetIsFiltering(false)
 			App.SetFocus(table)
 			table.HighlightTable()
@@ -618,12 +678,27 @@ func (table *ResultsTable) GetColumnNameByIndex(index int) string {
 	return ""
 }
 
+func (table *ResultsTable) GetColumnIndexByName(columnName string) int {
+	for i := 0; i < table.GetColumnCount(); i++ {
+		cell := table.GetCell(0, i)
+		if cell.Text == columnName {
+			return i
+		}
+	}
+
+	return -1
+}
+
 func (table *ResultsTable) GetIsLoading() bool {
 	return table.state.isLoading
 }
 
 func (table *ResultsTable) GetIsFiltering() bool {
 	return table.state.isFiltering
+}
+
+func (table *ResultsTable) GetShowSidebar() bool {
+	return table.state.showSidebar
 }
 
 // Setters
@@ -663,7 +738,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Error.SetText(err)
 	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
-		table.Page.HidePage("error")
+		table.Page.HidePage(pageNameTableError)
 		if table.GetIsFiltering() {
 			if table.Editor != nil {
 				App.SetFocus(table.Editor)
@@ -677,7 +752,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 			done()
 		}
 	})
-	table.Page.ShowPage("error")
+	table.Page.ShowPage(pageNameTableError)
 	App.SetFocus(table.Error)
 	App.ForceDraw()
 }
@@ -690,7 +765,7 @@ func (table *ResultsTable) SetLoading(show bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("ResultsTable.go:800 => Recovered from panic", map[string]any{"error": r})
-			_ = table.Page.HidePage("loading")
+			_ = table.Page.HidePage(pageNameTableLoading)
 			if table.state.error != "" {
 				App.SetFocus(table.Error)
 			} else {
@@ -701,11 +776,11 @@ func (table *ResultsTable) SetLoading(show bool) {
 
 	table.state.isLoading = show
 	if show {
-		table.Page.ShowPage("loading")
+		table.Page.ShowPage(pageNameTableLoading)
 		App.SetFocus(table.Loading)
 		App.ForceDraw()
 	} else {
-		table.Page.HidePage("loading")
+		table.Page.HidePage(pageNameTableLoading)
 		if table.state.error != "" {
 			App.SetFocus(table.Error)
 		} else {
@@ -760,7 +835,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 				tableCell := tview.NewTableCell(col[0])
 				tableCell.SetSelectable(false)
 				tableCell.SetExpansion(1)
-				tableCell.SetTextColor(tview.Styles.PrimaryTextColor)
+				tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 				if col[0] == column {
 					tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
@@ -827,8 +902,8 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	cell := table.GetCell(row, col)
 	inputField := tview.NewInputField()
 	inputField.SetText(cell.Text)
-	inputField.SetFieldBackgroundColor(tview.Styles.PrimaryTextColor)
-	inputField.SetFieldTextColor(tview.Styles.PrimitiveBackgroundColor)
+	inputField.SetFieldBackgroundColor(app.Styles.PrimaryTextColor)
+	inputField.SetFieldTextColor(app.Styles.PrimitiveBackgroundColor)
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
@@ -840,7 +915,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 			cell.SetText(newValue)
 
 			if currentValue != newValue {
-				table.AppendNewChange(models.DmlUpdateType, table.GetDatabaseName(), table.GetTableName(), row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName})
+				table.AppendNewChange(models.DmlUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
 			}
 
 			switch key {
@@ -868,7 +943,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 		if key == tcell.KeyEnter || key == tcell.KeyEscape {
 			table.SetInputCapture(table.tableInputCapture)
-			table.Page.RemovePage("edit")
+			table.Page.RemovePage(pageNameTableEditCell)
 			App.SetFocus(table)
 		}
 
@@ -879,7 +954,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 	x, y, width := cell.GetLastPosition()
 	inputField.SetRect(x, y, width+1, 1)
-	table.Page.AddPage("edit", inputField, false, true)
+	table.Page.AddPage(pageNameTableEditCell, inputField, false, true)
 	App.SetFocus(inputField)
 }
 
@@ -906,7 +981,10 @@ func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.C
 	}
 }
 
-func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseName, tableName string, rowIndex int, colIndex int, value models.CellValue) {
+func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex int, colIndex int, value models.CellValue) {
+	databaseName := table.GetDatabaseName()
+	tableName := table.GetTableName()
+
 	dmlChangeAlreadyExists := false
 
 	// If the column has a reference, it means it's an inserted rowIndex
@@ -949,18 +1027,18 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 						} else {
 							(*table.state.listOfDbChanges)[i].Values = append((*table.state.listOfDbChanges)[i].Values[:valueIndex], (*table.state.listOfDbChanges)[i].Values[valueIndex+1:]...)
 						}
-						table.SetCellColor(rowIndex, colIndex, tview.Styles.PrimitiveBackgroundColor)
+						table.SetCellColor(rowIndex, colIndex, app.Styles.PrimitiveBackgroundColor)
 					} else {
 						(*table.state.listOfDbChanges)[i].Values[valueIndex] = value
 					}
 				} else {
 					(*table.state.listOfDbChanges)[i].Values = append((*table.state.listOfDbChanges)[i].Values, value)
-					table.SetCellColor(rowIndex, colIndex, ChangeColor)
+					table.SetCellColor(rowIndex, colIndex, colorTableChange)
 				}
 
 			case models.DmlDeleteType:
 				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:i], (*table.state.listOfDbChanges)[i+1:]...)
-				table.SetRowColor(rowIndex, tview.Styles.PrimitiveBackgroundColor)
+				table.SetRowColor(rowIndex, app.Styles.PrimitiveBackgroundColor)
 			}
 		}
 	}
@@ -968,10 +1046,10 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 	if !dmlChangeAlreadyExists {
 
 		switch changeType {
-		case models.DmlDeleteType:
-			table.SetRowColor(rowIndex, DeleteColor)
 		case models.DmlUpdateType:
-			table.SetCellColor(rowIndex, colIndex, ChangeColor)
+			table.SetCellColor(rowIndex, colIndex, colorTableChange)
+		case models.DmlDeleteType:
+			table.SetRowColor(rowIndex, colorTableDelete)
 		}
 
 		newDmlChange := models.DbDmlChange{
@@ -986,6 +1064,8 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, databaseNa
 		*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newDmlChange)
 
 	}
+
+	logger.Info("AppendNewChange", map[string]any{"listOfDbChanges": *table.state.listOfDbChanges})
 }
 
 func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
@@ -997,7 +1077,7 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 	primaryKeyValue := ""
 
 	switch provider {
-	case "mysql":
+	case drivers.DriverMySQL:
 		keyColumnIndex := -1
 		primaryKeyColumnIndex := -1
 
@@ -1018,7 +1098,7 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 			primaryKeyValue = table.GetRecords()[rowIndex][primaryKeyColumnIndex]
 		}
 
-	case "postgres":
+	case drivers.DriverPostgres:
 		keyColumnIndex := -1
 		constraintTypeColumnIndex := -1
 		constraintNameColumnIndex := -1
@@ -1060,7 +1140,7 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
 			primaryKeyValue = table.GetRecords()[rowIndex][primaryKeyColumnIndex]
 		}
 
-	case "sqlite3":
+	case drivers.DriverSqlite:
 		keyColumnIndex := -1
 		primaryKeyColumnIndex := -1
 
@@ -1103,7 +1183,7 @@ func (table *ResultsTable) appendNewRow() {
 
 	for i, column := range dbColumns {
 		if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
-			newRow[i-1] = models.CellValue{Type: models.Default, Column: column[0], Value: "DEFAULT"}
+			newRow[i-1] = models.CellValue{Type: models.Default, Column: column[0], Value: "DEFAULT", TableRowIndex: newRowTableIndex, TableColumnIndex: i}
 		}
 	}
 
@@ -1223,4 +1303,69 @@ func (table *ResultsTable) search() {
 	})
 
 	table.SetInputCapture(nil)
+}
+
+func (table *ResultsTable) ShowSidebar(show bool) {
+	table.state.showSidebar = show
+
+	if show {
+		table.UpdateSidebar()
+		table.Page.SendToFront(pageNameSidebar)
+		table.Page.ShowPage(pageNameSidebar)
+	} else {
+		table.Page.HidePage(pageNameSidebar)
+		App.SetFocus(table)
+	}
+}
+
+func (table *ResultsTable) UpdateSidebar() {
+	columns := table.GetColumns()
+	selectedRow, _ := table.GetSelection()
+
+	if selectedRow > 0 {
+		tableX, _, _, tableHeight := table.GetRect()
+		_, _, tableInnerWidth, _ := table.GetInnerRect()
+		_, tableMenuY, _, tableMenuHeight := table.Menu.GetRect()
+		_, _, _, tableFilterHeight := table.Filter.GetRect()
+		_, _, _, tablePaginationHeight := table.Pagination.GetRect()
+
+		sidebarWidth := (tableInnerWidth / 4)
+		sidebarHeight := tableHeight + tableMenuHeight + tableFilterHeight + tablePaginationHeight + 1
+
+		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, sidebarHeight)
+		table.Sidebar.Clear()
+
+		for i := 1; i < len(columns); i++ {
+			name := columns[i][0]
+			colType := columns[i][1]
+
+			text := table.GetCell(selectedRow, i-1).Text
+			title := name
+
+			repeatCount := sidebarWidth - len(name) - len(colType) - 4 // idk why 4 is needed, but it works.
+
+			if repeatCount <= 0 {
+				repeatCount = 1
+			}
+
+			title += fmt.Sprintf("[%s]", app.Styles.SidebarTitleBorderColor) + strings.Repeat("-", repeatCount)
+			title += colType
+
+			pendingEditExist := false
+
+			for _, dmlChange := range *table.state.listOfDbChanges {
+				if dmlChange.Type == models.DmlUpdateType {
+					for _, v := range dmlChange.Values {
+						if v.Column == name && v.TableRowIndex == selectedRow && v.TableColumnIndex == i-1 {
+							pendingEditExist = true
+							break
+						}
+					}
+				}
+			}
+
+			table.Sidebar.AddField(title, text, sidebarWidth, pendingEditExist)
+		}
+
+	}
 }

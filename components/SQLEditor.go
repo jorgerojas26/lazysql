@@ -38,10 +38,10 @@ func NewSQLEditor() *SQLEditor {
 		command := app.Keymaps.Group(app.EditorGroup).Resolve(event)
 
 		if command == commands.Execute {
-			sqlEditor.Publish("Query", sqlEditor.GetText())
+			sqlEditor.Publish(eventSQLEditorQuery, sqlEditor.GetText())
 			return nil
 		} else if command == commands.UnfocusEditor {
-			sqlEditor.Publish("Escape", "")
+			sqlEditor.Publish(eventSQLEditorEscape, "")
 		} else if command == commands.OpenInExternalEditor && runtime.GOOS == "linux" {
 			// ----- THIS IS A LINUX-ONLY FEATURE, for now
 
@@ -79,13 +79,13 @@ func (s *SQLEditor) SetIsFocused(isFocused bool) {
 }
 
 func (s *SQLEditor) Highlight() {
-	s.SetBorderColor(tview.Styles.PrimaryTextColor)
-	s.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor))
+	s.SetBorderColor(app.Styles.PrimaryTextColor)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
 }
 
 func (s *SQLEditor) SetBlur() {
-	s.SetBorderColor(tview.Styles.InverseTextColor)
-	s.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.InverseTextColor))
+	s.SetBorderColor(app.Styles.InverseTextColor)
+	s.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.InverseTextColor))
 }
 
 /*

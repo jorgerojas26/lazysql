@@ -6,6 +6,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
@@ -23,35 +24,35 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	wrapper.SetDirection(tview.FlexColumnCSS)
 
-	addForm := tview.NewForm().SetFieldBackgroundColor(tview.Styles.InverseTextColor).SetButtonBackgroundColor(tview.Styles.InverseTextColor).SetLabelColor(tview.Styles.PrimaryTextColor).SetFieldTextColor(tview.Styles.ContrastSecondaryTextColor)
+	addForm := tview.NewForm().SetFieldBackgroundColor(app.Styles.InverseTextColor).SetButtonBackgroundColor(tview.Styles.InverseTextColor).SetLabelColor(tview.Styles.PrimaryTextColor).SetFieldTextColor(tview.Styles.ContrastSecondaryTextColor)
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
 	saveButton := tview.NewButton("[yellow]F1 [dark]Save")
-	saveButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	saveButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
 	saveButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	testButton := tview.NewButton("[yellow]F2 [dark]Test")
-	testButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	testButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
 	testButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	connectButton := tview.NewButton("[yellow]F3 [dark]Connect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor))
+	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
 	connectButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	cancelButton := tview.NewButton("[yellow]Esc [dark]Cancel")
-	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(tview.Styles.PrimaryTextColor)))
+	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(app.Styles.PrimaryTextColor)))
 	cancelButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
@@ -77,7 +78,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages) func(event *tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
-			connectionPages.SwitchToPage("Connections")
+			connectionPages.SwitchToPage(pageNameConnections)
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
@@ -111,7 +112,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			}
 
 			switch form.Action {
-			case "create":
+			case actionNewConnection:
 
 				newDatabases = append(databases, parsedDatabaseData)
 				err := helpers.SaveConnectionConfig(newDatabases)
@@ -120,7 +121,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 					return event
 				}
 
-			case "edit":
+			case actionEditConnection:
 				newDatabases = make([]models.Connection, len(databases))
 				row, _ := ConnectionListTable.GetSelection()
 
@@ -151,7 +152,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			}
 
 			ConnectionListTable.SetConnections(newDatabases)
-			connectionPages.SwitchToPage("Connections")
+			connectionPages.SwitchToPage(pageNameConnections)
 
 		} else if event.Key() == tcell.KeyF2 {
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
@@ -168,16 +169,16 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		return
 	}
 
-	form.StatusText.SetText("Connecting...").SetTextColor(tview.Styles.TertiaryTextColor)
+	form.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 
 	var db drivers.Driver
 
 	switch parsed.Driver {
-	case "mysql":
+	case drivers.DriverMySQL:
 		db = &drivers.MySQL{}
-	case "postgres":
+	case drivers.DriverPostgres:
 		db = &drivers.Postgres{}
-	case "sqlite3":
+	case drivers.DriverSqlite:
 		db = &drivers.SQLite{}
 	}
 
@@ -186,7 +187,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 	} else {
-		form.StatusText.SetText("Connection success").SetTextColor(tview.Styles.TertiaryTextColor)
+		form.StatusText.SetText("Connection success").SetTextColor(app.Styles.TertiaryTextColor)
 	}
 	App.ForceDraw()
 }

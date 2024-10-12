@@ -31,10 +31,10 @@ func NewHelpModal() *HelpModal {
 
 	// table.SetBorders(true)
 	table.SetBorder(true)
-	table.SetBorderColor(tview.Styles.PrimaryTextColor)
+	table.SetBorderColor(app.Styles.PrimaryTextColor)
 	table.SetTitle(" Keybindings ")
 	table.SetSelectable(true, false)
-	table.SetSelectedStyle(tcell.StyleDefault.Background(tview.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 
 	keymapGroups := app.Keymaps.Groups
 
@@ -51,7 +51,7 @@ func NewHelpModal() *HelpModal {
 	for groupName, keys := range keymapGroups {
 		rowCount := table.GetRowCount()
 		groupNameCell := tview.NewTableCell(strings.ToUpper(groupName))
-		groupNameCell.SetTextColor(tview.Styles.TertiaryTextColor)
+		groupNameCell.SetTextColor(app.Styles.TertiaryTextColor)
 		groupNameCell.SetSelectable(rowCount == 0)
 
 		table.SetCell(rowCount, 0, tview.NewTableCell("").SetSelectable(false))
@@ -64,7 +64,7 @@ func NewHelpModal() *HelpModal {
 			if len(keyText) < len(mostLengthyKey) {
 				keyText = strings.Repeat(" ", len(mostLengthyKey)-len(keyText)) + keyText
 			}
-			table.SetCell(rowCount+3+i, 0, tview.NewTableCell(keyText).SetAlign(tview.AlignRight).SetTextColor(tview.Styles.SecondaryTextColor))
+			table.SetCell(rowCount+3+i, 0, tview.NewTableCell(keyText).SetAlign(tview.AlignRight).SetTextColor(app.Styles.SecondaryTextColor))
 			table.SetCell(rowCount+3+i, 1, tview.NewTableCell(key.Description).SetAlign(tview.AlignLeft).SetExpansion(1))
 		}
 
@@ -75,7 +75,7 @@ func NewHelpModal() *HelpModal {
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		command := app.Keymaps.Group(app.HomeGroup).Resolve(event)
 		if command == commands.Quit || command == commands.HelpPopup {
-			MainPages.RemovePage(HelpPageName)
+			MainPages.RemovePage(pageNameHelp)
 		}
 		return event
 	})
