@@ -196,6 +196,10 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 		results = append(results, row)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return
 }
 
