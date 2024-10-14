@@ -591,7 +591,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						}
 						table.SetLoading(false)
 					}
-					table.EditorPages.SwitchToPage(pageNameTable)
+					table.EditorPages.SwitchToPage(pageNameTableEditorTable)
 					App.Draw()
 				} else {
 					table.SetRecords([][]string{})
