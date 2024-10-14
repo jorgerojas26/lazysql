@@ -145,7 +145,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 					tableName = split[0]
 				} else if len(split) > 1 {
 					databaseName = split[0]
-					tableName = split[1]
+					tableName = strings.Join(append([]string{}, split[1:]...), ".")
 				}
 
 				tree.SetSelectedDatabase(databaseName)
