@@ -529,54 +529,32 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	records = append(records, columns)
 
 	for paginatedRows.Next() {
+		nullStringSlice := make([]sql.NullString, len(columns))
+
 		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
+		for i := range nullStringSlice {
+			rowValues[i] = &nullStringSlice[i]
 		}
 
-		countQuery := "SELECT COUNT(*) FROM "
-		countQuery += formattedTableName
-		row := db.Connection.QueryRow(countQuery)
-		if err := row.Scan(&totalRecords); err != nil {
+		if err := paginatedRows.Scan(rowValues...); err != nil {
 			return nil, 0, err
 		}
 
-		columns, columnsError := paginatedRows.Columns()
-
-		if columnsError != nil {
-			err = columnsError
-		}
-
-		records = append(records, columns)
-
-		for paginatedRows.Next() {
-			nullStringSlice := make([]sql.NullString, len(columns))
-
-			rowValues := make([]interface{}, len(columns))
-			for i := range nullStringSlice {
-				rowValues[i] = &nullStringSlice[i]
-			}
-
-			if err := paginatedRows.Scan(rowValues...); err != nil {
-				return nil, 0, err
-			}
-
-			var row []string
-			for _, col := range nullStringSlice {
-				if col.Valid {
-					if col.String == "" {
-						row = append(row, "EMPTY&")
-					} else {
-						row = append(row, col.String)
-					}
+		var row []string
+		for _, col := range nullStringSlice {
+			if col.Valid {
+				if col.String == "" {
+					row = append(row, "EMPTY&")
 				} else {
-					row = append(row, "NULL&")
+					row = append(row, col.String)
 				}
+			} else {
+				row = append(row, "NULL&")
 			}
-
-			records = append(records, row)
-
 		}
+
+		records = append(records, row)
+
 	}
 
 	if err := paginatedRows.Err(); err != nil {
@@ -584,6 +562,13 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
+		return nil, 0, err
+	}
+
+	countQuery := "SELECT COUNT(*) FROM "
+	countQuery += formattedTableName
+	row := db.Connection.QueryRow(countQuery)
+	if err := row.Scan(&totalRecords); err != nil {
 		return nil, 0, err
 	}
 

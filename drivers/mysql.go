@@ -363,6 +363,7 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	if err := paginatedRows.Close(); err != nil {
 		return nil, 0, err
 	}
+
 	countQuery := "SELECT COUNT(*) FROM "
 	countQuery += fmt.Sprintf("`%s`.", database)
 	countQuery += fmt.Sprintf("`%s`", table)
