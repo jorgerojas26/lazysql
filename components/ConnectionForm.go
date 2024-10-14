@@ -78,7 +78,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages) func(event *tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
-			connectionPages.SwitchToPage(pageNameConnections)
+			connectionPages.SwitchToPage(pageNameConnectionSelection)
 		} else if event.Key() == tcell.KeyF1 || event.Key() == tcell.KeyEnter {
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
@@ -152,7 +152,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			}
 
 			ConnectionListTable.SetConnections(newDatabases)
-			connectionPages.SwitchToPage(pageNameConnections)
+			connectionPages.SwitchToPage(pageNameConnectionSelection)
 
 		} else if event.Key() == tcell.KeyF2 {
 			connectionString := form.GetFormItem(1).(*tview.InputField).GetText()
