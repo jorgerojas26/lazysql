@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -364,6 +365,27 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.UpdateSidebar()
 			}
 		})
+	} else if command == commands.ExpandInExternalEditor && runtime.GOOS == "linux" {
+		textarea := tview.NewTextArea()
+		sqlEditor := &SQLEditor{
+			TextArea: textarea,
+			state: &SQLEditorState{
+				isFocused: false,
+			},
+		}
+		selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+		// Set the text from file
+		sqlEditor.SetText(selectedCell.Text, true)
+		text := openExternalEditor4Field(sqlEditor)
+		text = strings.Replace(text, "\n", "", -1)
+		if selectedCell.Text != text {
+			selectedCell.Text = text
+			table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
+				if table.GetShowSidebar() {
+					table.UpdateSidebar()
+				}
+			})
+		}
 	} else if command == commands.GotoNext {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)

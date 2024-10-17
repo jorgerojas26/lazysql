@@ -88,6 +88,7 @@ var Keymaps = KeymapSystem{
 		TableGroup: {
 			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit, Description: "Change cell"},
+			Bind{Key: Key{Char: 'e'}, Cmd: cmd.ExpandInExternalEditor, Description: "Expand cell InExternalEditor"},
 			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete row"},
 			Bind{Key: Key{Char: 'w'}, Cmd: cmd.GotoNext, Description: "Go to next cell"},
 			Bind{Key: Key{Char: 'b'}, Cmd: cmd.GotoPrev, Description: "Go to previous cell"},
@@ -128,6 +129,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'g'}, Cmd: cmd.GotoStart, Description: "Focus first field"},
 			Bind{Key: Key{Char: 'G'}, Cmd: cmd.GotoEnd, Description: "Focus last field"},
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit, Description: "Edit field"},
+			Bind{Key: Key{Char: 'c'}, Cmd: cmd.ExpandInExternalEditor, Description: "Expand field InExternalEditor"},
 			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.CommitEdit, Description: "Add edit to pending changes"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.DiscardEdit, Description: "Discard edit"},
 		},

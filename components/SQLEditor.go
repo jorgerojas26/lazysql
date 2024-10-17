@@ -144,6 +144,55 @@ func openExternalEditor(s *SQLEditor) string {
 	return string(updatedContent)
 }
 
+func openExternalEditor4Field(s *SQLEditor) string {
+	// Current folder as path of temporary file
+	path := "./lazysql.data"
+
+	editor := getEditor()
+	terminal := getTerminal()
+
+	// Create a temporary file with the current SQL query content
+	content := []byte(s.GetText())
+
+	/*
+		0644 Permission
+		* User: read & write
+		* Group: read
+		* Other: read
+	*/
+
+	err := os.WriteFile(path, content, 0644)
+	if err != nil {
+		return s.GetText()
+	}
+
+	// Remove the temporary file with the end of function
+	defer os.Remove(path)
+
+	// Setup command
+	cmd := exec.Command(terminal, "-e", editor, path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+
+	// ----
+	// cmd.Stderr = os.Stderr
+	// ----
+
+	err = cmd.Run()
+	if err != nil {
+		return s.GetText()
+	}
+
+	// Read the updated content from the temporary file
+	updatedContent, err := os.ReadFile(path)
+	if err != nil {
+		return s.GetText()
+	}
+
+	// Convert to string before returning
+	return string(updatedContent)
+}
+
 // Function to select editor
 func getEditor() string {
 	editor := os.Getenv("SQL_EDITOR")
