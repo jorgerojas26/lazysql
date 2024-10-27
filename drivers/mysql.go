@@ -329,9 +329,11 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	paginatedResults = append(paginatedResults, columns)
 
 	for paginatedRows.Next() {
+		nullStringSlice := make([]sql.NullString, len(columns))
+
 		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
+		for i := range nullStringSlice {
+			rowValues[i] = &nullStringSlice[i]
 		}
 
 		err = paginatedRows.Scan(rowValues...)
@@ -340,8 +342,16 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 		}
 
 		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+		for _, col := range nullStringSlice {
+			if col.Valid {
+				if col.String == "" {
+					row = append(row, "EMPTY&")
+				} else {
+					row = append(row, col.String)
+				}
+			} else {
+				row = append(row, "NULL&")
+			}
 		}
 
 		paginatedResults = append(paginatedResults, row)
@@ -353,6 +363,7 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	if err := paginatedRows.Close(); err != nil {
 		return nil, 0, err
 	}
+
 	countQuery := "SELECT COUNT(*) FROM "
 	countQuery += fmt.Sprintf("`%s`.", database)
 	countQuery += fmt.Sprintf("`%s`", table)
@@ -445,9 +456,14 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 		valuesPlaceholder := []string{}
 
 		for _, cell := range change.Values {
+			columnNames = append(columnNames, cell.Column)
+
 			switch cell.Type {
-			case models.Empty, models.Null, models.String:
-				columnNames = append(columnNames, cell.Column)
+			case models.Default:
+				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
+			case models.Null:
+				valuesPlaceholder = append(valuesPlaceholder, "NULL")
+			default:
 				valuesPlaceholder = append(valuesPlaceholder, "?")
 			}
 		}
@@ -456,8 +472,6 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 			switch cell.Type {
 			case models.Empty:
 				values = append(values, "")
-			case models.Null:
-				values = append(values, sql.NullString{})
 			case models.String:
 				values = append(values, cell.Value)
 			}
@@ -481,9 +495,9 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 
 			for i, column := range columnNames {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = ?", column)
+					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
 				} else {
-					queryStr += fmt.Sprintf(", `%s` = ?", column)
+					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
 				}
 			}
 

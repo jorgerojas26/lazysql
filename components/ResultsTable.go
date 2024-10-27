@@ -88,7 +88,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 
 	pagination := NewPagination()
 
-	sidebar := NewSidebar()
+	sidebar := NewSidebar(dbdriver.GetProvider())
 
 	table := &ResultsTable{
 		Table:      tview.NewTable(),
@@ -221,7 +221,7 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			tableCell.SetText(params.NewValue)
 
 			cellValue := models.CellValue{
-				Type:             models.String,
+				Type:             params.Type,
 				Column:           params.ColumnName,
 				Value:            params.NewValue,
 				TableColumnIndex: changedColumnIndex,
@@ -240,10 +240,16 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 	for i, row := range rows {
 		for j, cell := range row {
 			tableCell := tview.NewTableCell(cell)
+			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
+
+			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
+				tableCell.SetText(strings.Replace(cell, "&", "", 1))
+				tableCell.SetStyle(table.GetItalicStyle())
+				tableCell.SetReference(cell)
+			}
+
 			tableCell.SetSelectable(i > 0)
 			tableCell.SetExpansion(1)
-
-			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			table.SetCell(i, j, tableCell)
 		}
@@ -278,7 +284,7 @@ func (table *ResultsTable) AddInsertedRows() {
 			tableCell.SetExpansion(1)
 			tableCell.SetReference(inserts[i].PrimaryKeyValue)
 
-			tableCell.SetTextColor(tcell.ColorWhite.TrueColor())
+			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 			tableCell.SetBackgroundColor(colorTableInsert)
 
 			table.SetCell(rowIndex, j, tableCell)
@@ -295,13 +301,15 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		tableCell.SetBackgroundColor(tcell.ColorDarkGreen)
 
 		switch cell.Type {
-		case models.Null:
-		case models.Default:
-		case models.String:
-			tableCell.SetText("")
+		case models.Null, models.Empty, models.Default:
+			tableCell.SetText(strings.Replace(cell.Value.(string), "&", "", 1))
+			tableCell.SetStyle(table.GetItalicStyle())
+			// tableCell.SetText("")
+
 			tableCell.SetTextColor(app.Styles.InverseTextColor)
 		}
 
+		tableCell.SetBackgroundColor(colorTableInsert)
 		table.SetCell(index, i, tableCell)
 	}
 
@@ -400,7 +408,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			for i, insertedRow := range *table.state.listOfDbChanges {
 				cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
 
-				if cellReference != nil && insertedRow.PrimaryKeyValue == cellReference.(string) {
+				if cellReference != nil && insertedRow.PrimaryKeyValue == cellReference {
 					isAnInsertedRow = true
 					indexOfInsertedRow = i
 				}
@@ -421,6 +429,24 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 
 		}
+	} else if command == commands.SetValue {
+		table.SetIsEditing(true)
+		table.SetInputCapture(nil)
+
+		cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+		x, y, _ := cell.GetLastPosition()
+
+		list := NewSetValueList(table.DBDriver.GetProvider())
+
+		list.OnFinish(func(selection models.CellValueType, value string) {
+			table.FinishSettingValue()
+
+			if selection >= 0 {
+				table.AppendNewChange(models.DmlUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+			}
+		})
+
+		list.Show(x, y, 30)
 	} else if command == commands.ToggleSidebar {
 		table.ShowSidebar(!table.GetShowSidebar())
 	} else if command == commands.FocusSidebar {
@@ -471,7 +497,13 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 			if i == 0 && headerColor != 0 {
 				cell.SetTextColor(headerColor)
 			} else {
-				cell.SetTextColor(rowColor)
+				cellReference := cell.GetReference()
+
+				if cellReference != nil && (cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&") && (cell.BackgroundColor != colorTableDelete && cell.BackgroundColor != colorTableChange && cell.BackgroundColor != colorTableInsert) {
+					cell.SetStyle(table.GetItalicStyle())
+				} else {
+					cell.SetTextColor(rowColor)
+				}
 			}
 		}
 	}
@@ -563,6 +595,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				if strings.Contains(queryLower, "select") {
 					table.SetLoading(true)
 					App.Draw()
+
 					rows, err := table.DBDriver.ExecuteQuery(query)
 					table.Pagination.SetTotalRecords(len(rows))
 					table.Pagination.SetLimit(len(rows))
@@ -992,7 +1025,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 	tableCell := table.GetCell(rowIndex, colIndex)
 	tableCellReference := tableCell.GetReference()
 
-	isAnInsertedRow := tableCellReference != nil
+	isAnInsertedRow := tableCellReference != nil && tableCellReference.(string) != "NULL&" && tableCellReference.(string) != "EMPTY&" && tableCellReference.(string) != "DEFAULT&"
 
 	if isAnInsertedRow {
 		table.MutateInsertedRowCell(tableCellReference.(string), value)
@@ -1000,6 +1033,15 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 	}
 
 	primaryKeyValue, primaryKeyColumnName := table.GetPrimaryKeyValue(rowIndex)
+
+	if changeType == models.DmlUpdateType {
+		switch value.Type {
+		case models.Null, models.Empty, models.Default:
+			tableCell.SetText(value.Value.(string))
+			tableCell.SetStyle(tcell.StyleDefault.Italic(true))
+			tableCell.SetReference(value.Value.(string) + "&")
+		}
+	}
 
 	for i, dmlChange := range *table.state.listOfDbChanges {
 		if dmlChange.Table == tableName && dmlChange.Type == changeType && dmlChange.PrimaryKeyValue == primaryKeyValue {
@@ -1046,10 +1088,11 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 	if !dmlChangeAlreadyExists {
 
 		switch changeType {
-		case models.DmlUpdateType:
-			table.SetCellColor(rowIndex, colIndex, colorTableChange)
 		case models.DmlDeleteType:
 			table.SetRowColor(rowIndex, colorTableDelete)
+		case models.DmlUpdateType:
+			tableCell.SetStyle(tcell.StyleDefault.Background(colorTableChange))
+			table.SetCellColor(rowIndex, colIndex, colorTableChange)
 		}
 
 		newDmlChange := models.DbDmlChange{
@@ -1303,6 +1346,16 @@ func (table *ResultsTable) search() {
 	})
 
 	table.SetInputCapture(nil)
+}
+
+func (table *ResultsTable) FinishSettingValue() {
+	table.SetIsEditing(false)
+	table.SetInputCapture(table.tableInputCapture)
+	App.SetFocus(table)
+}
+
+func (table *ResultsTable) GetItalicStyle() tcell.Style {
+	return tcell.StyleDefault.Foreground(tview.Styles.InverseTextColor).Italic(true)
 }
 
 func (table *ResultsTable) ShowSidebar(show bool) {
