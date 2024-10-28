@@ -555,8 +555,14 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 
 			copy(args, values)
 
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
-			args = append(args, change.PrimaryKeyValue)
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				args = append(args, pki.Value)
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
@@ -567,17 +573,50 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Table)
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+
+			args := make([]interface{}, len(change.PrimaryKeyInfo))
+
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				args[i] = pki.Value
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
-				Args:  []interface{}{change.PrimaryKeyValue},
+				Args:  args,
 			}
 
 			queries = append(queries, newQuery)
 		}
 	}
 	return queriesInTransaction(db.Connection, queries)
+}
+
+func (db *SQLite) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+	columns, err := db.GetTableColumns(database, table)
+	if err != nil {
+		return nil, err
+	}
+
+	indexOfPkColumn := -1
+
+	for i, col := range columns[0] {
+		if col == "pk" {
+			indexOfPkColumn = i
+		}
+	}
+
+	for i, col := range columns {
+		if i > 0 && col[indexOfPkColumn] != "0" {
+			primaryKeyColumnName = append(primaryKeyColumnName, col[0])
+		}
+	}
+
+	return primaryKeyColumnName, nil
 }
 
 func (db *SQLite) SetProvider(provider string) {

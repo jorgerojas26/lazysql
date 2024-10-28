@@ -8,6 +8,7 @@ import (
 
 	"github.com/xo/dburl"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -505,8 +506,14 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 
 			copy(args, values)
 
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
-			args = append(args, change.PrimaryKeyValue)
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				args = append(args, pki.Value)
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
@@ -517,17 +524,70 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Database, change.Table)
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+
+			deleteArgs := make([]interface{}, len(change.PrimaryKeyInfo))
+
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				deleteArgs[i] = pki.Value
+			}
+
+			logger.Info("deleteArgs", map[string]any{"deleteArgs": deleteArgs})
 
 			newQuery := models.Query{
 				Query: queryStr,
-				Args:  []interface{}{change.PrimaryKeyValue},
+				Args:  deleteArgs,
 			}
 
 			queries = append(queries, newQuery)
 		}
 	}
 	return queriesInTransaction(db.Connection, queries)
+}
+
+func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	rows, err := db.Connection.Query(`
+	SELECT column_name
+	FROM information_schema.key_column_usage
+	WHERE table_schema = ? AND table_name = ? AND constraint_name = ?
+	`, database, table, "PRIMARY")
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var colName string
+		err = rows.Scan(&colName)
+		if err != nil {
+			return nil, err
+		}
+
+		if rows.Err() != nil {
+			return nil, rows.Err()
+		}
+
+		primaryKeyColumnName = append(primaryKeyColumnName, colName)
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	return
 }
 
 func (db *MySQL) SetProvider(provider string) {

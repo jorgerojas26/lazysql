@@ -50,13 +50,21 @@ const (
 	DmlInsertType
 )
 
+type PrimaryKeyInfo struct {
+	Name  string
+	Value string
+}
+
+func (pki PrimaryKeyInfo) Equal(other PrimaryKeyInfo) bool {
+	return pki.Name == other.Name && pki.Value == other.Value
+}
+
 type DbDmlChange struct {
-	Database             string
-	Table                string
-	PrimaryKeyColumnName string
-	PrimaryKeyValue      string
-	Values               []CellValue
-	Type                 DmlType
+	Database       string
+	Table          string
+	PrimaryKeyInfo []PrimaryKeyInfo
+	Values         []CellValue
+	Type           DmlType
 }
 
 type DatabaseTableColumn struct {
