@@ -326,7 +326,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
 
-	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu}
+	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu, commands.Refresh}
 
 	if helpers.ContainsCommand(menuCommands, command) {
 		table.Select(1, 0)
@@ -350,6 +350,14 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		case commands.IndexesMenu:
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
+		case commands.Refresh:
+			if table.Loading != nil {
+				app.App.SetFocus(table.Loading)
+			}
+			table.Menu.SetSelectedOption(1)
+			if err := table.FetchRecords(nil); err != nil {
+				return event
+			}
 		}
 	}
 
