@@ -42,6 +42,7 @@ const (
 	TabClose
 
 	// Operations
+	Refresh
 	UnfocusEditor
 	Copy
 	Edit
