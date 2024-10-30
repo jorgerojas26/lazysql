@@ -713,14 +713,18 @@ func (table *ResultsTable) GetColumnNameByIndex(index int) string {
 }
 
 func (table *ResultsTable) GetColumnIndexByName(columnName string) int {
-	for i := 0; i < table.GetColumnCount(); i++ {
-		cell := table.GetCell(0, i)
-		if cell.Text == columnName {
-			return i
+	cols := table.GetColumns()
+	logger.Info("GetColumnIndexByName", map[string]any{"cols": cols})
+	index := -1
+
+	for i, col := range cols {
+		if i > 0 && col[0] == columnName {
+			index = i - 1 // Because the first column is the column names
+			break
 		}
 	}
 
-	return -1
+	return index
 }
 
 func (table *ResultsTable) GetIsLoading() bool {
@@ -1144,6 +1148,7 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
 		primaryKeyValue := table.GetCell(rowIndex, table.GetColumnIndexByName(primaryKeyColumnName)).Text
+		logger.Info("GetPrimaryKeyValue", map[string]any{"primaryKeyValue": primaryKeyValue})
 		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
 
