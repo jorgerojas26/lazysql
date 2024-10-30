@@ -18,20 +18,21 @@ import (
 )
 
 type ResultsTableState struct {
-	listOfDbChanges *[]models.DbDmlChange
-	error           string
-	currentSort     string
-	databaseName    string
-	tableName       string
-	records         [][]string
-	columns         [][]string
-	constraints     [][]string
-	foreignKeys     [][]string
-	indexes         [][]string
-	isEditing       bool
-	isFiltering     bool
-	isLoading       bool
-	showSidebar     bool
+	listOfDbChanges       *[]models.DbDmlChange
+	error                 string
+	currentSort           string
+	databaseName          string
+	tableName             string
+	primaryKeyColumnNames []string
+	columns               [][]string
+	constraints           [][]string
+	foreignKeys           [][]string
+	indexes               [][]string
+	records               [][]string
+	isEditing             bool
+	isFiltering           bool
+	isLoading             bool
+	showSidebar           bool
 }
 
 type ResultsTable struct {
@@ -282,7 +283,7 @@ func (table *ResultsTable) AddInsertedRows() {
 		for j, cell := range row {
 			tableCell := tview.NewTableCell(cell.Value.(string))
 			tableCell.SetExpansion(1)
-			tableCell.SetReference(inserts[i].PrimaryKeyValue)
+			tableCell.SetReference(inserts[i].PrimaryKeyInfo[0].Value)
 
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 			tableCell.SetBackgroundColor(colorTableInsert)
@@ -416,7 +417,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			for i, insertedRow := range *table.state.listOfDbChanges {
 				cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
 
-				if cellReference != nil && insertedRow.PrimaryKeyValue == cellReference {
+				if cellReference != nil && insertedRow.PrimaryKeyInfo[0].Value == cellReference {
 					isAnInsertedRow = true
 					indexOfInsertedRow = i
 				}
@@ -720,14 +721,18 @@ func (table *ResultsTable) GetColumnNameByIndex(index int) string {
 }
 
 func (table *ResultsTable) GetColumnIndexByName(columnName string) int {
-	for i := 0; i < table.GetColumnCount(); i++ {
-		cell := table.GetCell(0, i)
-		if cell.Text == columnName {
-			return i
+	cols := table.GetColumns()
+	logger.Info("GetColumnIndexByName", map[string]any{"cols": cols})
+	index := -1
+
+	for i, col := range cols {
+		if i > 0 && col[0] == columnName {
+			index = i - 1 // Because the first column is the column names
+			break
 		}
 	}
 
-	return -1
+	return index
 }
 
 func (table *ResultsTable) GetIsLoading() bool {
@@ -740,6 +745,10 @@ func (table *ResultsTable) GetIsFiltering() bool {
 
 func (table *ResultsTable) GetShowSidebar() bool {
 	return table.state.showSidebar
+}
+
+func (table *ResultsTable) GetPrimaryKeyColumnNames() []string {
+	return table.state.primaryKeyColumnNames
 }
 
 // Setters
@@ -889,6 +898,10 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	}
 }
 
+func (table *ResultsTable) SetPrimaryKeyColumnNames(primaryKeyColumnNames []string) {
+	table.state.primaryKeyColumnNames = primaryKeyColumnNames
+}
+
 func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 	tableName := table.GetTableName()
 	databaseName := table.GetDatabaseName()
@@ -915,6 +928,9 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 		constraints, _ := table.DBDriver.GetConstraints(databaseName, tableName)
 		foreignKeys, _ := table.DBDriver.GetForeignKeys(databaseName, tableName)
 		indexes, _ := table.DBDriver.GetIndexes(databaseName, tableName)
+		primaryKeyColumnNames, _ := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+
+		logger.Info("FetchRecords", map[string]any{"primaryKeyColumnNames": primaryKeyColumnNames})
 
 		if len(records) > 0 {
 			table.SetRecords(records)
@@ -924,6 +940,7 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 		table.SetConstraints(constraints)
 		table.SetForeignKeys(foreignKeys)
 		table.SetIndexes(indexes)
+		table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
 		table.Select(1, 0)
 
 		table.Pagination.SetTotalRecords(totalRecords)
@@ -1001,7 +1018,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 func (table *ResultsTable) CheckIfRowIsInserted(rowID string) bool {
 	for _, dmlChange := range *table.state.listOfDbChanges {
-		if dmlChange.Type == models.DmlInsertType && dmlChange.PrimaryKeyValue == rowID {
+		if dmlChange.Type == models.DmlInsertType && dmlChange.PrimaryKeyInfo[0].Value == rowID {
 			return true
 		}
 	}
@@ -1011,7 +1028,7 @@ func (table *ResultsTable) CheckIfRowIsInserted(rowID string) bool {
 
 func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.CellValue) {
 	for i, dmlChange := range *table.state.listOfDbChanges {
-		if dmlChange.PrimaryKeyValue == rowID && dmlChange.Type == models.DmlInsertType {
+		if dmlChange.PrimaryKeyInfo[0].Value == rowID && dmlChange.Type == models.DmlInsertType {
 			for j, v := range dmlChange.Values {
 				if v.Column == newValue.Column {
 					(*table.state.listOfDbChanges)[i].Values[j] = newValue
@@ -1040,7 +1057,12 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 		return
 	}
 
-	primaryKeyValue, primaryKeyColumnName := table.GetPrimaryKeyValue(rowIndex)
+	rowPrimaryKeyInfo := table.GetPrimaryKeyValue(rowIndex)
+
+	if len(rowPrimaryKeyInfo) == 0 {
+		table.SetError(fmt.Sprintf("Primary key not found for row %d", rowIndex), nil)
+		return
+	}
 
 	if changeType == models.DmlUpdateType {
 		switch value.Type {
@@ -1052,7 +1074,16 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 	}
 
 	for i, dmlChange := range *table.state.listOfDbChanges {
-		if dmlChange.Table == tableName && dmlChange.Type == changeType && dmlChange.PrimaryKeyValue == primaryKeyValue {
+		changeExistOnSameCell := false
+
+		for _, value := range dmlChange.Values {
+			if value.TableRowIndex == rowIndex && value.TableColumnIndex == colIndex {
+				changeExistOnSameCell = true
+				break
+			}
+		}
+
+		if dmlChange.Table == tableName && dmlChange.Type == changeType && changeExistOnSameCell {
 			dmlChangeAlreadyExists = true
 
 			changeForColExists := false
@@ -1104,12 +1135,11 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 		}
 
 		newDmlChange := models.DbDmlChange{
-			Type:                 changeType,
-			Database:             databaseName,
-			Table:                tableName,
-			Values:               []models.CellValue{value},
-			PrimaryKeyColumnName: primaryKeyColumnName,
-			PrimaryKeyValue:      primaryKeyValue,
+			Type:           changeType,
+			Database:       databaseName,
+			Table:          tableName,
+			Values:         []models.CellValue{value},
+			PrimaryKeyInfo: rowPrimaryKeyInfo,
 		}
 
 		*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newDmlChange)
@@ -1119,101 +1149,18 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 	logger.Info("AppendNewChange", map[string]any{"listOfDbChanges": *table.state.listOfDbChanges})
 }
 
-func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) (string, string) {
-	provider := table.DBDriver.GetProvider()
-	columns := table.GetColumns()
-	constraints := table.GetConstraints()
+func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyInfo {
+	primaryKeyColumnNames := table.GetPrimaryKeyColumnNames()
 
-	primaryKeyColumnName := ""
-	primaryKeyValue := ""
+	info := []models.PrimaryKeyInfo{}
 
-	switch provider {
-	case drivers.DriverMySQL:
-		keyColumnIndex := -1
-		primaryKeyColumnIndex := -1
-
-		for i, col := range columns[0] {
-			if col == "Key" {
-				keyColumnIndex = i
-			}
-		}
-
-		for i, col := range columns {
-			if col[keyColumnIndex] == "PRI" {
-				primaryKeyColumnIndex = i - 1
-				primaryKeyColumnName = col[0]
-			}
-		}
-
-		if primaryKeyColumnIndex != -1 {
-			primaryKeyValue = table.GetRecords()[rowIndex][primaryKeyColumnIndex]
-		}
-
-	case drivers.DriverPostgres:
-		keyColumnIndex := -1
-		constraintTypeColumnIndex := -1
-		constraintNameColumnIndex := -1
-		pKeyName := ""
-		primaryKeyColumnIndex := -1
-
-		for i, constraint := range constraints[0] {
-			if constraint == "constraint_type" {
-				constraintTypeColumnIndex = i
-			}
-			if constraint == "column_name" {
-				constraintNameColumnIndex = i
-			}
-		}
-
-		for _, col := range constraints {
-			if col[constraintTypeColumnIndex] == "PRIMARY KEY" {
-				pKeyName = col[constraintNameColumnIndex]
-				break
-			}
-		}
-
-		primaryKeyColumnName = pKeyName
-		for i, col := range columns[0] {
-			if col == "column_name" {
-				keyColumnIndex = i
-				break
-			}
-		}
-
-		for i, col := range columns {
-			if col[keyColumnIndex] == pKeyName {
-				primaryKeyColumnIndex = i - 1
-				break
-			}
-		}
-
-		if primaryKeyColumnIndex != -1 {
-			primaryKeyValue = table.GetRecords()[rowIndex][primaryKeyColumnIndex]
-		}
-
-	case drivers.DriverSqlite:
-		keyColumnIndex := -1
-		primaryKeyColumnIndex := -1
-
-		for i, col := range columns[0] {
-			if col == "pk" {
-				keyColumnIndex = i
-			}
-		}
-
-		for i, col := range columns {
-			if col[keyColumnIndex] == "1" {
-				primaryKeyColumnIndex = i - 1
-				primaryKeyColumnName = col[0]
-			}
-		}
-
-		if primaryKeyColumnIndex != -1 {
-			primaryKeyValue = table.GetRecords()[rowIndex][primaryKeyColumnIndex]
-		}
+	for _, primaryKeyColumnName := range primaryKeyColumnNames {
+		primaryKeyValue := table.GetCell(rowIndex, table.GetColumnIndexByName(primaryKeyColumnName)).Text
+		logger.Info("GetPrimaryKeyValue", map[string]any{"primaryKeyValue": primaryKeyValue})
+		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
 
-	return primaryKeyValue, primaryKeyColumnName
+	return info
 }
 
 func (table *ResultsTable) SetRowColor(rowIndex int, color tcell.Color) {
@@ -1239,12 +1186,11 @@ func (table *ResultsTable) appendNewRow() {
 	}
 
 	newInsert := models.DbDmlChange{
-		Type:                 models.DmlInsertType,
-		Database:             table.GetDatabaseName(),
-		Table:                table.GetTableName(),
-		Values:               newRow,
-		PrimaryKeyColumnName: "",
-		PrimaryKeyValue:      newRowUUID,
+		Type:           models.DmlInsertType,
+		Database:       table.GetDatabaseName(),
+		Table:          table.GetTableName(),
+		Values:         newRow,
+		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: newRowUUID}},
 	}
 
 	*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newInsert)

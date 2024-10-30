@@ -812,8 +812,15 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 				}
 			}
 
-			queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", change.PrimaryKeyColumnName, wherePlaceholder+1)
-			args = append(args, change.PrimaryKeyValue)
+			for i, pki := range change.PrimaryKeyInfo {
+				wherePlaceholder++
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", pki.Name, wherePlaceholder)
+				} else {
+					queryStr += fmt.Sprintf(" AND \"%s\" = $%d", pki.Name, wherePlaceholder)
+				}
+				args = append(args, pki.Value)
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
@@ -823,17 +830,89 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 			queries = append(queries, newQuery)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM " + formattedTableName
-			queryStr += fmt.Sprintf(" WHERE %s = $1", change.PrimaryKeyColumnName)
+			args := make([]interface{}, len(change.PrimaryKeyInfo))
+
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", pki.Name, i+1)
+				} else {
+					queryStr += fmt.Sprintf(" AND \"%s\" = $%d", pki.Name, i+1)
+				}
+				args[i] = pki.Value
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
-				Args:  []interface{}{change.PrimaryKeyValue},
+				Args:  args,
 			}
 
 			queries = append(queries, newQuery)
 		}
 	}
 	return queriesInTransaction(db.Connection, queries)
+}
+
+func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			_ = db.SwitchDatabase(db.PreviousDatabase)
+		}
+	}()
+
+	tableName := splitTableString[1]
+
+	row, err := db.Connection.Query(`
+	SELECT a.attname AS column_name
+	FROM pg_index i
+	JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+	WHERE i.indrelid = $1::regclass AND i.indisprimary
+	`, tableName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer row.Close()
+
+	for row.Next() {
+		var colName string
+		err = row.Scan(&colName)
+		if err != nil {
+			return nil, err
+		}
+
+		if row.Err() != nil {
+			return nil, row.Err()
+		}
+
+		primaryKeyColumnName = append(primaryKeyColumnName, colName)
+	}
+
+	if row.Err() != nil {
+		return nil, row.Err()
+	}
+
+	return primaryKeyColumnName, nil
 }
 
 func (db *Postgres) SetProvider(provider string) {
