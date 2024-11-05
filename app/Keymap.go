@@ -107,8 +107,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '}'}, Cmd: cmd.TabLast, Description: "Switch to last tab"},
 			Bind{Key: Key{Char: 'X'}, Cmd: cmd.TabClose, Description: "Close tab"},
 			// Pages
-			Bind{Key: Key{Char: '>'}, Cmd: cmd.PageNext, Description: "Switch to next page"},
-			Bind{Key: Key{Char: '<'}, Cmd: cmd.PagePrev, Description: "Switch to previous page"},
+			Bind{Key: Key{Char: 'N'}, Cmd: cmd.PageNext, Description: "Switch to next page"},
+			Bind{Key: Key{Char: 'P'}, Cmd: cmd.PagePrev, Description: "Switch to previous page"},
 			Bind{Key: Key{Char: '1'}, Cmd: cmd.RecordsMenu, Description: "Switch to records menu"},
 			Bind{Key: Key{Char: '2'}, Cmd: cmd.ColumnsMenu, Description: "Switch to columns menu"},
 			Bind{Key: Key{Char: '3'}, Cmd: cmd.ConstraintsMenu, Description: "Switch to constraints menu"},
