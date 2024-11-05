@@ -176,6 +176,7 @@ Support for multiple RDBMS is a work in progress.
 | [        | Focus previous tab                   |
 | ]        | Focus next tab                       |
 | X        | Close current tab                    |
+| R        | Refresh the current table            |
 
 ### Tree
 

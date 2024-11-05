@@ -529,9 +529,11 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	records = append(records, columns)
 
 	for paginatedRows.Next() {
+		nullStringSlice := make([]sql.NullString, len(columns))
+
 		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
+		for i := range nullStringSlice {
+			rowValues[i] = &nullStringSlice[i]
 		}
 
 		if err := paginatedRows.Scan(rowValues...); err != nil {
@@ -539,13 +541,22 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		}
 
 		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+		for _, col := range nullStringSlice {
+			if col.Valid {
+				if col.String == "" {
+					row = append(row, "EMPTY&")
+				} else {
+					row = append(row, col.String)
+				}
+			} else {
+				row = append(row, "NULL&")
+			}
 		}
 
 		records = append(records, row)
 
 	}
+
 	if err := paginatedRows.Err(); err != nil {
 		return nil, 0, err
 	}
@@ -736,9 +747,14 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 		placeholderIndex := 1
 
 		for _, cell := range change.Values {
+			columnNames = append(columnNames, cell.Column)
+
 			switch cell.Type {
-			case models.Empty, models.Null, models.String:
-				columnNames = append(columnNames, cell.Column)
+			case models.Default:
+				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
+			case models.Null:
+				valuesPlaceholder = append(valuesPlaceholder, "NULL")
+			default:
 				valuesPlaceholder = append(valuesPlaceholder, fmt.Sprintf("$%d", placeholderIndex))
 				placeholderIndex++
 			}
@@ -748,8 +764,6 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 			switch cell.Type {
 			case models.Empty:
 				values = append(values, "")
-			case models.Null:
-				values = append(values, sql.NullString{})
 			case models.String:
 				values = append(values, cell.Value)
 			}
@@ -780,9 +794,9 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 
 			for i, column := range columnNames {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" SET \"%s\" = $1", column)
+					queryStr += fmt.Sprintf(" SET \"%s\" = %s", column, valuesPlaceholder[i])
 				} else {
-					queryStr += fmt.Sprintf(", \"%s\" = $%d", column, i+1)
+					queryStr += fmt.Sprintf(", \"%s\" = %s", column, valuesPlaceholder[i])
 				}
 			}
 
@@ -790,8 +804,23 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 
 			copy(args, values)
 
-			queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", change.PrimaryKeyColumnName, len(columnNames)+1)
-			args = append(args, change.PrimaryKeyValue)
+			wherePlaceholder := 0
+
+			for _, placeholder := range valuesPlaceholder {
+				if strings.Contains(placeholder, "$") {
+					wherePlaceholder++
+				}
+			}
+
+			for i, pki := range change.PrimaryKeyInfo {
+				wherePlaceholder++
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", pki.Name, wherePlaceholder)
+				} else {
+					queryStr += fmt.Sprintf(" AND \"%s\" = $%d", pki.Name, wherePlaceholder)
+				}
+				args = append(args, pki.Value)
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
@@ -801,17 +830,89 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 			queries = append(queries, newQuery)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM " + formattedTableName
-			queryStr += fmt.Sprintf(" WHERE %s = $1", change.PrimaryKeyColumnName)
+			args := make([]interface{}, len(change.PrimaryKeyInfo))
+
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", pki.Name, i+1)
+				} else {
+					queryStr += fmt.Sprintf(" AND \"%s\" = $%d", pki.Name, i+1)
+				}
+				args[i] = pki.Value
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
-				Args:  []interface{}{change.PrimaryKeyValue},
+				Args:  args,
 			}
 
 			queries = append(queries, newQuery)
 		}
 	}
 	return queriesInTransaction(db.Connection, queries)
+}
+
+func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	if database != db.CurrentDatabase {
+		err = db.SwitchDatabase(database)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			_ = db.SwitchDatabase(db.PreviousDatabase)
+		}
+	}()
+
+	tableName := splitTableString[1]
+
+	row, err := db.Connection.Query(`
+	SELECT a.attname AS column_name
+	FROM pg_index i
+	JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+	WHERE i.indrelid = $1::regclass AND i.indisprimary
+	`, tableName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer row.Close()
+
+	for row.Next() {
+		var colName string
+		err = row.Scan(&colName)
+		if err != nil {
+			return nil, err
+		}
+
+		if row.Err() != nil {
+			return nil, row.Err()
+		}
+
+		primaryKeyColumnName = append(primaryKeyColumnName, colName)
+	}
+
+	if row.Err() != nil {
+		return nil, row.Err()
+	}
+
+	return primaryKeyColumnName, nil
 }
 
 func (db *Postgres) SetProvider(provider string) {

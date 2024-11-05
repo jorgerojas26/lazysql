@@ -29,6 +29,9 @@ const (
 	// Connections
 	pageNameConnectionSelection string = "ConnectionSelection"
 	pageNameConnectionForm      string = "ConnectionForm"
+
+	// SetValueList
+	pageNameSetValue string = "SetValue"
 )
 
 // Tabs

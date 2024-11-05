@@ -8,6 +8,7 @@ import (
 
 	"github.com/xo/dburl"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -329,9 +330,11 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	paginatedResults = append(paginatedResults, columns)
 
 	for paginatedRows.Next() {
+		nullStringSlice := make([]sql.NullString, len(columns))
+
 		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
+		for i := range nullStringSlice {
+			rowValues[i] = &nullStringSlice[i]
 		}
 
 		err = paginatedRows.Scan(rowValues...)
@@ -340,8 +343,16 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 		}
 
 		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+		for _, col := range nullStringSlice {
+			if col.Valid {
+				if col.String == "" {
+					row = append(row, "EMPTY&")
+				} else {
+					row = append(row, col.String)
+				}
+			} else {
+				row = append(row, "NULL&")
+			}
 		}
 
 		paginatedResults = append(paginatedResults, row)
@@ -353,6 +364,7 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	if err := paginatedRows.Close(); err != nil {
 		return nil, 0, err
 	}
+
 	countQuery := "SELECT COUNT(*) FROM "
 	countQuery += fmt.Sprintf("`%s`.", database)
 	countQuery += fmt.Sprintf("`%s`", table)
@@ -445,9 +457,14 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 		valuesPlaceholder := []string{}
 
 		for _, cell := range change.Values {
+			columnNames = append(columnNames, cell.Column)
+
 			switch cell.Type {
-			case models.Empty, models.Null, models.String:
-				columnNames = append(columnNames, cell.Column)
+			case models.Default:
+				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
+			case models.Null:
+				valuesPlaceholder = append(valuesPlaceholder, "NULL")
+			default:
 				valuesPlaceholder = append(valuesPlaceholder, "?")
 			}
 		}
@@ -456,8 +473,6 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 			switch cell.Type {
 			case models.Empty:
 				values = append(values, "")
-			case models.Null:
-				values = append(values, sql.NullString{})
 			case models.String:
 				values = append(values, cell.Value)
 			}
@@ -481,9 +496,9 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 
 			for i, column := range columnNames {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = ?", column)
+					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
 				} else {
-					queryStr += fmt.Sprintf(", `%s` = ?", column)
+					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
 				}
 			}
 
@@ -491,8 +506,14 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 
 			copy(args, values)
 
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
-			args = append(args, change.PrimaryKeyValue)
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				args = append(args, pki.Value)
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
@@ -503,17 +524,70 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Database, change.Table)
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+
+			deleteArgs := make([]interface{}, len(change.PrimaryKeyInfo))
+
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				deleteArgs[i] = pki.Value
+			}
+
+			logger.Info("deleteArgs", map[string]any{"deleteArgs": deleteArgs})
 
 			newQuery := models.Query{
 				Query: queryStr,
-				Args:  []interface{}{change.PrimaryKeyValue},
+				Args:  deleteArgs,
 			}
 
 			queries = append(queries, newQuery)
 		}
 	}
 	return queriesInTransaction(db.Connection, queries)
+}
+
+func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	rows, err := db.Connection.Query(`
+	SELECT column_name
+	FROM information_schema.key_column_usage
+	WHERE table_schema = ? AND table_name = ? AND constraint_name = ?
+	`, database, table, "PRIMARY")
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var colName string
+		err = rows.Scan(&colName)
+		if err != nil {
+			return nil, err
+		}
+
+		if rows.Err() != nil {
+			return nil, rows.Err()
+		}
+
+		primaryKeyColumnName = append(primaryKeyColumnName, colName)
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	return
 }
 
 func (db *MySQL) SetProvider(provider string) {

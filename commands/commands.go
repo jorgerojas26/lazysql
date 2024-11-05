@@ -42,6 +42,7 @@ const (
 	TabClose
 
 	// Operations
+	Refresh
 	UnfocusEditor
 	Copy
 	Edit
@@ -63,6 +64,7 @@ const (
 	PreviousFoundNode
 	TreeCollapseAll
 	ExpandAll
+	SetValue
 	FocusSidebar
 	UnfocusSidebar
 	ToggleSidebar
@@ -187,6 +189,8 @@ func (c Command) String() string {
 		return "TreeCollapseAll"
 	case ExpandAll:
 		return "ExpandAll"
+	case SetValue:
+		return "SetValue"
 	case FocusSidebar:
 		return "FocusSidebar"
 	case ToggleSidebar:
@@ -198,5 +202,6 @@ func (c Command) String() string {
 	case DiscardEdit:
 		return "DiscardEdit"
 	}
+
 	return "Unknown"
 }

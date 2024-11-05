@@ -97,7 +97,9 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell to clipboard"},
 			Bind{Key: Key{Char: 'o'}, Cmd: cmd.AppendNewRow, Description: "Append new row"},
 			Bind{Key: Key{Char: 'J'}, Cmd: cmd.SortDesc, Description: "Sort descending"},
+			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh the current table"},
 			Bind{Key: Key{Char: 'K'}, Cmd: cmd.SortAsc, Description: "Sort ascending"},
+			Bind{Key: Key{Char: 'C'}, Cmd: cmd.SetValue, Description: "Toggle value menu to put values like NULL, EMPTY or DEFAULT"},
 			// Tabs
 			Bind{Key: Key{Char: '['}, Cmd: cmd.TabPrev, Description: "Switch to previous tab"},
 			Bind{Key: Key{Char: ']'}, Cmd: cmd.TabNext, Description: "Switch to next tab"},
@@ -132,6 +134,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.ExpandInExternalEditor, Description: "Expand field InExternalEditor"},
 			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.CommitEdit, Description: "Add edit to pending changes"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.DiscardEdit, Description: "Discard edit"},
+			Bind{Key: Key{Char: 'C'}, Cmd: cmd.SetValue, Description: "Toggle value menu to put values like NULL, EMPTY or DEFAULT"},
 		},
 	},
 }

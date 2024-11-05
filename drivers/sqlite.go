@@ -9,7 +9,6 @@ import (
 	// import sqlite driver
 	_ "modernc.org/sqlite"
 
-	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -323,9 +322,12 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 	paginatedResults = append(paginatedResults, columns)
 
 	for paginatedRows.Next() {
+		nullStringSlice := make([]sql.NullString, len(columns))
+
 		rowValues := make([]interface{}, len(columns))
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
+
+		for i := range nullStringSlice {
+			rowValues[i] = &nullStringSlice[i]
 		}
 
 		err = paginatedRows.Scan(rowValues...)
@@ -334,8 +336,16 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		}
 
 		var row []string
-		for _, col := range rowValues {
-			row = append(row, string(*col.(*sql.RawBytes)))
+		for _, col := range nullStringSlice {
+			if col.Valid {
+				if col.String == "" {
+					row = append(row, "EMPTY&")
+				} else {
+					row = append(row, col.String)
+				}
+			} else {
+				row = append(row, "NULL&")
+			}
 		}
 
 		paginatedResults = append(paginatedResults, row)
@@ -475,28 +485,28 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 		values := []interface{}{}
 		valuesPlaceholder := []string{}
 
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty, models.Null, models.String:
-				columnNames = append(columnNames, cell.Column)
-				valuesPlaceholder = append(valuesPlaceholder, "?")
-			}
-		}
-		logger.Info("Column names", map[string]any{"columnNames": columnNames})
-
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty:
-				values = append(values, "")
-			case models.Null:
-				values = append(values, sql.NullString{})
-			case models.String:
-				values = append(values, cell.Value)
-			}
-		}
-
 		switch change.Type {
 		case models.DmlInsertType:
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Null:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "NULL")
+				case models.Empty, models.String:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "?")
+				}
+			}
+
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Empty:
+					values = append(values, "")
+				case models.String:
+					values = append(values, cell.Value)
+				}
+			}
+
 			queryStr := "INSERT INTO "
 			queryStr += db.formatTableName(change.Table)
 			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
@@ -508,14 +518,36 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 
 			queries = append(queries, newQuery)
 		case models.DmlUpdateType:
+
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Null:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "NULL")
+				case models.Empty, models.String:
+					columnNames = append(columnNames, cell.Column)
+					valuesPlaceholder = append(valuesPlaceholder, "?")
+					/// Leaves "DEFAULT" type out because it's not supported by sqlite
+				}
+			}
+
+			for _, cell := range change.Values {
+				switch cell.Type {
+				case models.Empty:
+					values = append(values, "")
+				case models.String:
+					values = append(values, cell.Value)
+				}
+			}
+
 			queryStr := "UPDATE "
 			queryStr += db.formatTableName(change.Table)
 
 			for i, column := range columnNames {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = ?", column)
+					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
 				} else {
-					queryStr += fmt.Sprintf(", `%s` = ?", column)
+					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
 				}
 			}
 
@@ -523,8 +555,14 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 
 			copy(args, values)
 
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
-			args = append(args, change.PrimaryKeyValue)
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				args = append(args, pki.Value)
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
@@ -535,17 +573,50 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 		case models.DmlDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Table)
-			queryStr += fmt.Sprintf(" WHERE %s = ?", change.PrimaryKeyColumnName)
+
+			args := make([]interface{}, len(change.PrimaryKeyInfo))
+
+			for i, pki := range change.PrimaryKeyInfo {
+				if i == 0 {
+					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
+				} else {
+					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
+				}
+				args[i] = pki.Value
+			}
 
 			newQuery := models.Query{
 				Query: queryStr,
-				Args:  []interface{}{change.PrimaryKeyValue},
+				Args:  args,
 			}
 
 			queries = append(queries, newQuery)
 		}
 	}
 	return queriesInTransaction(db.Connection, queries)
+}
+
+func (db *SQLite) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+	columns, err := db.GetTableColumns(database, table)
+	if err != nil {
+		return nil, err
+	}
+
+	indexOfPkColumn := -1
+
+	for i, col := range columns[0] {
+		if col == "pk" {
+			indexOfPkColumn = i
+		}
+	}
+
+	for i, col := range columns {
+		if i > 0 && col[indexOfPkColumn] != "0" {
+			primaryKeyColumnName = append(primaryKeyColumnName, col[0])
+		}
+	}
+
+	return primaryKeyColumnName, nil
 }
 
 func (db *SQLite) SetProvider(provider string) {
