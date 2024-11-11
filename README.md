@@ -132,6 +132,8 @@ makepkg -si
 
 ## Usage
 
+> For a list of keyboard shortcuts press `?`
+
 Open the TUI with:
 ```bash
 $ lazysql
