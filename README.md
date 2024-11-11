@@ -132,9 +132,22 @@ makepkg -si
 
 ## Usage
 
+Open the TUI with:
 ```bash
 $ lazysql
 ```
+
+### Connect to a DB
+
+1. start `lazysql`
+2. create a new connection (press `n`)
+3. provide a name for the connection as well as the URL to connect to (see <a href="#example-connection-urls">example connection URL</a>)
+4. connect to the DB (press `F3`)
+
+If you already have a connection set up:
+1. start `lazysql`
+2. select the right connection (press `j` and `h` for navigation)
+3. connect to the DB (press `c`)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
