@@ -191,10 +191,10 @@ inside the <a href="#execute-sql-querys">SQL Editor</a>.
 
 > To remove the filter, focuse the filter input (press `/`) and press `<Esc>`.
 
-### Insert row
+### Insert a row
 
 0. [Open a table](#openview-a-table)
-1. Press `1` to switch the the record tab
+1. Press `1` to switch to the record tab
 2. Press `o` to insert a new row
 3. Fill out all columns
 4. Press `<Ctrl+S>` to save the changes
