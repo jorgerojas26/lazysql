@@ -199,6 +199,14 @@ inside the <a href="#execute-sql-querys">SQL Editor</a>.
 3. Fill out all columns
 4. Press `<Ctrl+S>` to save the changes
 
+### Edit a column
+
+0. [Open a table](#openview-a-table)
+1. Press `1` to switch to the record tab
+2. Move to the column you want to edit
+3. Press `c` to edit, Press `<Enter>` to submit
+4. Press `<Ctrl+S>` to save the changes
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Support
