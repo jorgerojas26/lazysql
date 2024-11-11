@@ -159,7 +159,7 @@ If you already have a connection set up:
 2. select the right connection (press `j` and `h` for navigation)
 3. connect to the DB (press `c`)
 
-### Create table
+### Create a table
 
 There is currently no way to create a table from the TUI.
 However you can run the query to create the table as a SQL-Query, 
@@ -175,7 +175,7 @@ inside the <a href="#execute-sql-querys">SQL Editor</a>.
 
 ### Open/view a table
 
-1. Expand table-tree by pressing `e`
+1. Expand the table-tree by pressing `e`
 2. Select the table you want to view
 3. Press `<Enter>` to open the table
 
@@ -187,9 +187,9 @@ inside the <a href="#execute-sql-querys">SQL Editor</a>.
 0. [Open a table](#openview-a-table)
 1. Press `/` to focus the filter input
 2. Write a `WHERE`-clause to filter the table
-3. Press <Enter> to submit your filter
+3. Press `<Enter>` to submit your filter
 
-> To remove the filter focuse the filter input (press `/`) and press `<Esc>`.
+> To remove the filter, focuse the filter input (press `/`) and press `<Esc>`.
 
 ### Insert row
 
