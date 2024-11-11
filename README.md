@@ -179,7 +179,7 @@ inside the <a href="#execute-sql-querys">SQL Editor</a>.
 2. Select the table you want to view
 3. Press `<Enter>` to open the table
 
-> To switch back to the table-tree press `H`
+> To switch back to the table-tree press `H` \
 > To switch back to the table press `L`
 
 ### Filter rows
