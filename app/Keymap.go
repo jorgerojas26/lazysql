@@ -80,6 +80,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'p'}, Cmd: cmd.PreviousFoundNode, Description: "Go to previous found node"},
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.TreeCollapseAll, Description: "Collapse all"},
 			Bind{Key: Key{Char: 'e'}, Cmd: cmd.ExpandAll, Description: "Expand all"},
+			Bind{Key: Key{Char: 'r'}, Cmd: cmd.Refresh, Description: "Refresh tree"},
 		},
 		TreeFilterGroup: {
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusTreeFilter, Description: "Unfocus tree filter"},
