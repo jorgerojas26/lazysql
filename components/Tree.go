@@ -547,46 +547,29 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		databases = []string{dbName}
 	}
 
-	if tree.GetSelectedDatabase() == "" {
-		for _, database := range databases {
-			childNode := tview.NewTreeNode(database)
-			childNode.SetExpanded(false)
-			childNode.SetReference(database)
-			childNode.SetColor(app.Styles.PrimaryTextColor)
-			rootNode.AddChild(childNode)
+	for _, database := range databases {
+		childNode := tview.NewTreeNode(database)
+		childNode.SetExpanded(false)
+		childNode.SetReference(database)
+		childNode.SetColor(app.Styles.PrimaryTextColor)
+		rootNode.AddChild(childNode)
 
-			go func(database string, node *tview.TreeNode) {
-				tables, err := tree.DBDriver.GetTables(database)
-				if err != nil {
-					logger.Error(err.Error(), nil)
-					return
-				}
+		go func(database string, node *tview.TreeNode) {
+			tables, err := tree.DBDriver.GetTables(database)
+			if err != nil {
+				logger.Error(err.Error(), nil)
+				return
+			}
 
-				tree.databasesToNodes(tables, node, true)
-				App.Draw()
-			}(database, childNode)
-		}
+			tree.databasesToNodes(tables, node, true)
+			App.Draw()
+		}(database, childNode)
 	}
 }
 
 func (tree *Tree) Refresh(dbName string) {
 	rootNode := tree.GetRoot()
-	if rootNode == nil {
-		return
-	}
-	// remove existing Children
 	rootNode.ClearChildren()
 	// readd nodes
 	tree.InitializeNodes(dbName)
-	// reset search
-	tree.search("")
-
-	/** TODO:
-	check if the currently opened table was deleted
-	- if deleted
-		- selecedTable and selectedDatabase need to be reset
-		- close Table view
-	- if not
-		- do nothing
-	*/
 }
