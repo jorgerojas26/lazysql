@@ -333,7 +333,7 @@ func (tree *Tree) search(searchText string) {
 	if lowerSearchText == "" {
 		rootNode.Walk(func(_, parent *tview.TreeNode) bool {
 			if parent != nil && parent != rootNode && parent.IsExpanded() {
-				parent.SetExpanded(true)
+				parent.SetExpanded(false)
 			}
 			return true
 		})
