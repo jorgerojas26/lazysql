@@ -326,28 +326,33 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 
 func (tree *Tree) search(searchText string) {
 	rootNode := tree.GetRoot()
+	currNode := tree.GetCurrentNode()
 	lowerSearchText := strings.ToLower(searchText)
 	tree.state.searchFoundNodes = []*tview.TreeNode{}
 
 	if lowerSearchText == "" {
 		rootNode.Walk(func(_, parent *tview.TreeNode) bool {
 			if parent != nil && parent != rootNode && parent.IsExpanded() {
-				parent.SetExpanded(false)
+				parent.SetExpanded(true)
 			}
 			return true
 		})
 		return
 	}
 
-	// filteredNodes := make([]*TreeStateNode, 0, len(treeNodes))
+	var searchStartNode *tview.TreeNode
+	if currNode != nil && currNode.IsExpanded() {
+		// search between tables if theres a curentdatabase selected
+		searchStartNode = currNode
+	} else {
+		// if there's no current database selected, search within the database names only
+		searchStartNode = rootNode
+	}
 
-	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
+	searchStartNode.Walk(func(node, parent *tview.TreeNode) bool {
 		nodeText := strings.ToLower(node.GetText())
 
 		if strings.Contains(nodeText, lowerSearchText) {
-			if parent != nil {
-				parent.SetExpanded(true)
-			}
 			tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
 			tree.SetCurrentNode(node)
 			tree.state.currentFocusFoundNode = node
