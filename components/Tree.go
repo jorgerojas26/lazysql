@@ -570,6 +570,6 @@ func (tree *Tree) InitializeNodes(dbName string) {
 func (tree *Tree) Refresh(dbName string) {
 	rootNode := tree.GetRoot()
 	rootNode.ClearChildren()
-	// readd nodes
+	// re-add nodes
 	tree.InitializeNodes(dbName)
 }
