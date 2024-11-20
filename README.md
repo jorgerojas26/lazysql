@@ -157,7 +157,7 @@ To launch lazysql and connect to database at [connection_url].
 If you already have a connection set up:
 1. start `lazysql`
 2. select the right connection (press `j` and `h` for navigation)
-3. connect to the DB (press `c`)
+3. connect to the DB (press `c` or `<Enter>`)
 
 ### Create a table
 
@@ -172,11 +172,19 @@ inside the <a href="#execute-sql-querys">SQL Editor</a>.
 3. Press `<Ctrl+R>` to execute the SQL query
 
 > To switch back to the table-tree press `H`
+>
+> After executing a `SELECT`-query a table will be displayed under the SQL-Editor
+> with the query-result. \
+> To switch focus back to SQL-Editor press `/`
 
 ### Open/view a table
 
-1. Expand the table-tree by pressing `e`
+1. Expand the table-tree by pressing `e` or `<Enter>`
 2. Select the table you want to view
+    - next node `j`
+    - previous node `k`
+    - last node `G`
+    - first node `g`
 3. Press `<Enter>` to open the table
 
 > To switch back to the table-tree press `H` \
@@ -184,28 +192,28 @@ inside the <a href="#execute-sql-querys">SQL Editor</a>.
 
 ### Filter rows
 
-0. [Open a table](#openview-a-table)
-1. Press `/` to focus the filter input
-2. Write a `WHERE`-clause to filter the table
-3. Press `<Enter>` to submit your filter
+1. [Open a table](#openview-a-table)
+2. Press `/` to focus the filter input
+3. Write a `WHERE`-clause to filter the table
+4. Press `<Enter>` to submit your filter
 
 > To remove the filter, focuse the filter input (press `/`) and press `<Esc>`.
 
 ### Insert a row
 
-0. [Open a table](#openview-a-table)
-1. Press `1` to switch to the record tab
-2. Press `o` to insert a new row
-3. Fill out all columns
-4. Press `<Ctrl+S>` to save the changes
+1. [Open a table](#openview-a-table)
+2. Press `1` to switch to the record tab
+3. Press `o` to insert a new row
+4. Fill out all columns
+5. Press `<Ctrl+S>` to save the changes
 
 ### Edit a column
 
-0. [Open a table](#openview-a-table)
-1. Press `1` to switch to the record tab
-2. Move to the column you want to edit
-3. Press `c` to edit, Press `<Enter>` to submit
-4. Press `<Ctrl+S>` to save the changes
+1. [Open a table](#openview-a-table)
+2. Press `1` to switch to the record tab
+3. Move to the column you want to edit
+4. Press `c` to edit, Press `<Enter>` to submit
+5. Press `<Ctrl+S>` to save the changes
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
