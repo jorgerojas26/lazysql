@@ -17,6 +17,8 @@ var Styles = Theme{
 }
 
 func init() {
+	App.EnablePaste(true)
+
 	theme := tview.Theme{
 		PrimitiveBackgroundColor:    tcell.ColorDefault,
 		ContrastBackgroundColor:     tcell.ColorBlue,
