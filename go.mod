@@ -9,6 +9,7 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
+	github.com/mitchellh/go-linereader v0.0.0-20190213213312-1b945b3263eb
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/rivo/tview v0.0.0-20241103174730-c76f7879f592
 	github.com/xo/dburl v0.23.2
