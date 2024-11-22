@@ -98,13 +98,13 @@ func (db *Postgres) GetTables(database string) (tables map[string][]string, err 
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			_ = db.SwitchDatabase(db.PreviousDatabase)
-		}
-	}()
+		defer func() {
+			if err != nil {
+				_ = db.SwitchDatabase(db.PreviousDatabase)
+			}
+		}()
+	}
 
 	query := "SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = $1"
 	rows, err := db.Connection.Query(query, database)
@@ -151,13 +151,13 @@ func (db *Postgres) GetTableColumns(database, table string) (results [][]string,
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			_ = db.SwitchDatabase(db.PreviousDatabase)
-		}
-	}()
+		defer func() {
+			if err != nil {
+				_ = db.SwitchDatabase(db.PreviousDatabase)
+			}
+		}()
+	}
 
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
@@ -223,13 +223,13 @@ func (db *Postgres) GetConstraints(database, table string) (constraints [][]stri
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			_ = db.SwitchDatabase(db.PreviousDatabase)
-		}
-	}()
+		defer func() {
+			if err != nil {
+				_ = db.SwitchDatabase(db.PreviousDatabase)
+			}
+		}()
+	}
 
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
@@ -306,13 +306,13 @@ func (db *Postgres) GetForeignKeys(database, table string) (foreignKeys [][]stri
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			_ = db.SwitchDatabase(db.PreviousDatabase)
-		}
-	}()
+		defer func() {
+			if err != nil {
+				_ = db.SwitchDatabase(db.PreviousDatabase)
+			}
+		}()
+	}
 
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
@@ -390,13 +390,13 @@ func (db *Postgres) GetIndexes(database, table string) (indexes [][]string, err 
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			_ = db.SwitchDatabase(db.PreviousDatabase)
-		}
-	}()
+		defer func() {
+			if err != nil {
+				_ = db.SwitchDatabase(db.PreviousDatabase)
+			}
+		}()
+	}
 
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
@@ -483,15 +483,13 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		if err != nil {
 			return nil, 0, err
 		}
-	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			if database != db.PreviousDatabase {
+		defer func() {
+			if err != nil {
 				_ = db.SwitchDatabase(db.PreviousDatabase)
 			}
-		}
-	}()
+		}()
+	}
 
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
@@ -872,13 +870,13 @@ func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) (primaryKey
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			_ = db.SwitchDatabase(db.PreviousDatabase)
-		}
-	}()
+		defer func() {
+			if err != nil {
+				_ = db.SwitchDatabase(db.PreviousDatabase)
+			}
+		}()
+	}
 
 	tableName := splitTableString[1]
 

@@ -812,23 +812,11 @@ func (table *ResultsTable) SetResultsInfo(text string) {
 }
 
 func (table *ResultsTable) SetLoading(show bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Error("ResultsTable.go:800 => Recovered from panic", map[string]any{"error": r})
-			_ = table.Page.HidePage(pageNameTableLoading)
-			if table.state.error != "" {
-				App.SetFocus(table.Error)
-			} else {
-				App.SetFocus(table)
-			}
-		}
-	}()
-
 	table.state.isLoading = show
+
 	if show {
 		table.Page.ShowPage(pageNameTableLoading)
 		App.SetFocus(table.Loading)
-		App.ForceDraw()
 	} else {
 		table.Page.HidePage(pageNameTableLoading)
 		if table.state.error != "" {
@@ -836,8 +824,9 @@ func (table *ResultsTable) SetLoading(show bool) {
 		} else {
 			App.SetFocus(table)
 		}
-		App.ForceDraw()
 	}
+
+	App.ForceDraw()
 }
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
