@@ -37,7 +37,7 @@ func NewConnectionsTable() *ConnectionsTable {
 	connections, err := helpers.LoadConnections()
 
 	if err != nil {
-		table.SetError(err.Error())
+		table.SetError(err)
 	} else {
 		table.SetConnections(connections)
 	}
@@ -74,8 +74,7 @@ func (ct *ConnectionsTable) SetConnections(connections []models.Connection) {
 	App.ForceDraw()
 }
 
-func (ct *ConnectionsTable) SetError(error string) {
-	ct.error = error
-
-	ct.errorTextView.SetText(error)
+func (ct *ConnectionsTable) SetError(err error) {
+	ct.error = err.Error()
+	ct.errorTextView.SetText(ct.error)
 }
