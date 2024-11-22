@@ -107,7 +107,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 						err := helpers.SaveConnectionConfig(newConnections)
 						if err != nil {
-							ConnectionListTable.SetError(err.Error())
+							ConnectionListTable.SetError(err)
 						} else {
 							ConnectionListTable.SetConnections(newConnections)
 						}
