@@ -1220,68 +1220,67 @@ func (table *ResultsTable) search() {
 
 	table.Filter.Input.SetAutocompleteFunc(func(currentText string) []string {
 		split := strings.Split(currentText, " ")
-		comparators := []string{"=", "!=", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"}
+		comparators := []string{
+			"=", "!=",
+			">", "<",
+			">=", "<=",
+			"between", "not between",
+			"ilike", "not ilike",
+			"in", "not in",
+			"is", "is not",
+			"like", "not like",
+			"regexp", "not regexp",
+		}
 
-		if len(split) == 1 {
-			columns := table.GetColumns()
-			columnNames := []string{}
+		matches := []string{}
 
-			for i, col := range columns {
-				if i > 0 {
-					columnNames = append(columnNames, col[0])
+		switch len(split) {
+		case 1:
+			for _, col := range table.GetColumns()[1:] {
+				matches = append(matches, col[0])
+			}
+
+		case 2:
+			for _, comparator := range comparators {
+				if strings.HasPrefix(comparator, split[1]) {
+					matches = append(matches, fmt.Sprintf("%s %s", split[0], comparator))
 				}
 			}
 
-			return columnNames
-		} else if len(split) == 2 {
-
-			for i, comparator := range comparators {
-				comparators[i] = fmt.Sprintf("%s %s", split[0], strings.ToLower(comparator))
-			}
-
-			return comparators
-		} else if len(split) == 3 {
-
-			ret := true
-
+		case 3:
 			switch split[1] {
 			case "not":
-				comparators = []string{"between", "in", "like"}
+				comparators = []string{"between", "ilike", "in", "like", "regexp"}
 			case "is":
 				comparators = []string{"not", "null"}
 			default:
-				ret = false
+				return matches
 			}
-
-			if ret {
-				for i, comparator := range comparators {
-					comparators[i] = fmt.Sprintf("%s %s %s", split[0], split[1], strings.ToLower(comparator))
+			for _, comparator := range comparators {
+				if strings.HasPrefix(comparator, split[2]) {
+					matches = append(matches, fmt.Sprintf("%s %s %s", split[0], split[1], comparator))
 				}
-				return comparators
 			}
 
-		} else if len(split) == 4 {
-			ret := true
-
+		case 4:
 			switch split[2] {
 			case "not":
 				comparators = []string{"null"}
 			case "is":
 				comparators = []string{"not", "null"}
 			default:
-				ret = false
+				return matches
 			}
-
-			if ret {
-				for i, comparator := range comparators {
-					comparators[i] = fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], strings.ToLower(comparator))
+			for _, comparator := range comparators {
+				if strings.HasPrefix(comparator, split[3]) {
+					matches = append(matches,
+						fmt.Sprintf("%s %s %s %s", split[0], split[1], split[2], comparator),
+					)
 				}
-
-				return comparators
 			}
 		}
 
-		return []string{}
+		return matches
 	})
 
 	table.Filter.Input.SetAutocompletedFunc(func(text string, _ int, source int) bool {
