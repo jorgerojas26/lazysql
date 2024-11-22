@@ -2,6 +2,9 @@ package components
 
 import (
 	"fmt"
+	"maps"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -291,7 +294,16 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
 	node.ClearChildren()
 
-	for key, values := range children {
+	// Sort the keys and use them to loop over the
+	// children so they are always in the same order.
+	sortedKeys := slices.Sorted(maps.Keys(children))
+
+	for _, key := range sortedKeys {
+		values := children[key]
+
+		// Sort the values.
+		sort.Strings(values)
+
 		var rootNode *tview.TreeNode
 
 		nodeReference := node.GetReference().(string)
