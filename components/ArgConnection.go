@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
@@ -12,13 +13,19 @@ import (
 func InitFromArg(connectionString string) {
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
-		fmt.Printf("Could not parse connection string: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Could not parse connection string: %s\n", err)
 		os.Exit(1)
 	}
+	DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
+
+	if DBName == "NULL" {
+		DBName = ""
+	}
+
 	connection := models.Connection{
-		Name:     connectionString,
+		Name:     "",
 		Provider: parsed.Driver,
-		DBName:   connectionString,
+		DBName:   DBName,
 		URL:      connectionString,
 	}
 	var newDbDriver drivers.Driver
@@ -33,8 +40,8 @@ func InitFromArg(connectionString string) {
 	err = newDbDriver.Connect(connection.URL)
 
 	if err != nil {
-		fmt.Printf("Could not connect to database %s: %s\n", connectionString, err)
+		fmt.Fprintf(os.Stderr, "Could not connect to database %s: %s\n", connectionString, err)
 		os.Exit(1)
 	}
-	MainPages.AddPage(connection.URL, NewHomePage(connection, newDbDriver).Flex, true, true)
+	MainPages.AddAndSwitchToPage(connection.URL, NewHomePage(connection, newDbDriver).Flex, true)
 }
