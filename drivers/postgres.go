@@ -861,9 +861,12 @@ func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) (primaryKey
 
 	splitTableString := strings.Split(table, ".")
 
-	if len(splitTableString) == 1 {
+	if len(splitTableString) != 2 {
 		return nil, errors.New("table must be in the format schema.table")
 	}
+
+	schemaName := splitTableString[0]
+	tableName := splitTableString[1]
 
 	if database != db.CurrentDatabase {
 		err = db.SwitchDatabase(database)
@@ -878,15 +881,20 @@ func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) (primaryKey
 		}()
 	}
 
-	tableName := splitTableString[1]
-
 	row, err := db.Connection.Query(`
-	SELECT a.attname AS column_name
-	FROM pg_index i
-	JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-	WHERE i.indrelid = $1::regclass AND i.indisprimary
-	`, tableName)
+		SELECT
+			a.attname AS column_name
+		FROM
+			pg_index i
+			JOIN pg_class c ON c.oid = i.indrelid
+			JOIN pg_attribute a ON a.attrelid = c.oid
+				AND a.attnum = ANY (i.indkey)
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE
+			relname = $2 AND nspname = $1 AND indisprimary
+	`, schemaName, tableName)
 	if err != nil {
+		logger.Error("GetPrimaryKeyColumnNames", map[string]any{"error": err.Error()})
 		return nil, err
 	}
 
