@@ -353,10 +353,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 
 		home.Tree.ForceRemoveHighlight()
-		home.Tree.search("")
-		home.Tree.FoundNodeCountInput.SetText("")
-		home.Tree.SetBorderPadding(0, 0, 0, 0)
-		home.Tree.Filter.SetText("")
+		home.Tree.ClearSearch()
 		app.App.SetFocus(home.Tree.Filter)
 		home.Tree.SetIsFiltering(true)
 	}
