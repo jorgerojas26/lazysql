@@ -63,38 +63,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	tree.SetCurrentNode(rootNode)
 
 	tree.SetFocusFunc(func() {
-		var databases []string
-
-		if dbName == "" {
-			dbs, err := tree.DBDriver.GetDatabases()
-			if err != nil {
-				panic(err.Error())
-			}
-			databases = dbs
-		} else {
-			databases = []string{dbName}
-		}
-
-		if tree.GetSelectedDatabase() == "" {
-			for _, database := range databases {
-				childNode := tview.NewTreeNode(database)
-				childNode.SetExpanded(false)
-				childNode.SetReference(database)
-				childNode.SetColor(app.Styles.PrimaryTextColor)
-				rootNode.AddChild(childNode)
-
-				go func(database string, node *tview.TreeNode) {
-					tables, err := tree.DBDriver.GetTables(database)
-					if err != nil {
-						logger.Error(err.Error(), nil)
-						return
-					}
-
-					tree.databasesToNodes(tables, node, true)
-					App.Draw()
-				}(database, childNode)
-			}
-		}
+		tree.InitializeNodes(dbName)
 		tree.SetFocusFunc(nil)
 	})
 
@@ -205,6 +174,8 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			tree.CollapseAll()
 		case commands.ExpandAll:
 			tree.ExpandAll()
+		case commands.Refresh:
+			tree.Refresh(dbName)
 		}
 		return nil
 	})
@@ -568,4 +539,49 @@ func (tree *Tree) ExpandAll() {
 		}
 		return true
 	})
+}
+
+func (tree *Tree) InitializeNodes(dbName string) {
+	rootNode := tree.GetRoot()
+	if rootNode == nil {
+		panic("Internal Error: No tree root")
+	}
+
+	var databases []string
+
+	if dbName == "" {
+		dbs, err := tree.DBDriver.GetDatabases()
+		if err != nil {
+			panic(err.Error())
+		}
+		databases = dbs
+	} else {
+		databases = []string{dbName}
+	}
+
+	for _, database := range databases {
+		childNode := tview.NewTreeNode(database)
+		childNode.SetExpanded(false)
+		childNode.SetReference(database)
+		childNode.SetColor(app.Styles.PrimaryTextColor)
+		rootNode.AddChild(childNode)
+
+		go func(database string, node *tview.TreeNode) {
+			tables, err := tree.DBDriver.GetTables(database)
+			if err != nil {
+				logger.Error(err.Error(), nil)
+				return
+			}
+
+			tree.databasesToNodes(tables, node, true)
+			App.Draw()
+		}(database, childNode)
+	}
+}
+
+func (tree *Tree) Refresh(dbName string) {
+	rootNode := tree.GetRoot()
+	rootNode.ClearChildren()
+	// re-add nodes
+	tree.InitializeNodes(dbName)
 }
