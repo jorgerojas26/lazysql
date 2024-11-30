@@ -347,6 +347,15 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			// })
 			MainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
+	case commands.SearchGlobal:
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
+			home.focusLeftWrapper()
+		}
+
+		home.Tree.ForceRemoveHighlight()
+		home.Tree.ClearSearch()
+		app.App.SetFocus(home.Tree.Filter)
+		home.Tree.SetIsFiltering(true)
 	}
 
 	return event

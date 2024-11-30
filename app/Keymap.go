@@ -58,6 +58,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
 			Bind{Key: Key{Code: tcell.KeyBackspace2}, Cmd: cmd.SwitchToConnectionsView, Description: "Switch to connections list"},
 			Bind{Key: Key{Char: '?'}, Cmd: cmd.HelpPopup, Description: "Help"},
+			Bind{Key: Key{Code: tcell.KeyCtrlP}, Cmd: cmd.SearchGlobal, Description: "Global search"},
 		},
 		ConnectionGroup: {
 			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},
