@@ -350,14 +350,15 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case commands.SearchGlobal:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
 			home.focusLeftWrapper()
-			home.Tree.ForceRemoveHighlight()
-			home.Tree.search("")
-			home.Tree.FoundNodeCountInput.SetText("")
-			home.Tree.SetBorderPadding(0, 0, 0, 0)
-			home.Tree.Filter.SetText("")
-			app.App.SetFocus(home.Tree.Filter)
-			home.Tree.SetIsFiltering(true)
 		}
+
+		home.Tree.ForceRemoveHighlight()
+		home.Tree.search("")
+		home.Tree.FoundNodeCountInput.SetText("")
+		home.Tree.SetBorderPadding(0, 0, 0, 0)
+		home.Tree.Filter.SetText("")
+		app.App.SetFocus(home.Tree.Filter)
+		home.Tree.SetIsFiltering(true)
 	}
 
 	return event
