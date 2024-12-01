@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -16,45 +17,40 @@ import (
 var version = "dev"
 
 func main() {
-	rawLogLvl := flag.String("loglvl", "info", "Log level")
+	logLevel := flag.String("loglevel", "info", "Log level")
 	logFile := flag.String("logfile", "", "Log file")
 	flag.Parse()
 
-	logLvl, parseError := logger.ParseLogLevel(*rawLogLvl)
-	if parseError != nil {
-		panic(parseError)
+	slogLevel, err := logger.ParseLogLevel(*logLevel)
+	if err != nil {
+		log.Fatalf("Error parsing log level: %v", err)
 	}
-	logger.SetLevel(logLvl)
+	logger.SetLevel(slogLevel)
 
 	if *logFile != "" {
-		fileError := logger.SetFile(*logFile)
-		if fileError != nil {
-			panic(fileError)
+		if err := logger.SetFile(*logFile); err != nil {
+			log.Fatalf("Error setting log file: %v", err)
 		}
 	}
 
 	logger.Info("Starting LazySQL...", nil)
 
-	mysqlError := mysql.SetLogger(log.New(io.Discard, "", 0))
-	if mysqlError != nil {
-		panic(mysqlError)
+	if err := mysql.SetLogger(log.New(io.Discard, "", 0)); err != nil {
+		log.Fatalf("Error setting MySQL logger: %v", err)
 	}
 
-	// check if "version" arg is passed
+	// Check if "version" arg is passed.
 	argsWithProg := os.Args
 
 	if len(argsWithProg) > 1 {
 		switch argsWithProg[1] {
 		case "version":
-			println("LazySQL version: ", version)
+			fmt.Println("LazySQL version: ", version)
 			os.Exit(0)
 		}
 	}
 
-	if err := app.App.
-		SetRoot(components.MainPages, true).
-		EnableMouse(true).
-		Run(); err != nil {
-		panic(err)
+	if err = app.App.Run(components.MainPages); err != nil {
+		log.Fatalf("Error running app: %v", err)
 	}
 }
