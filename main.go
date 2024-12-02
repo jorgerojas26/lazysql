@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -46,7 +47,11 @@ func main() {
 			fmt.Println("LazySQL version: ", version)
 			os.Exit(0)
 		default:
-			components.InitFromArg(argsWithProg[1])
+			err := components.InitFromArg(argsWithProg[1])
+			if err != nil {
+				fmt.Println(os.Stderr, err) 
+				os.Exit(1)
+			}
 		}
 	}
 
