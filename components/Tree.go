@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -356,7 +357,7 @@ func (tree *Tree) search(searchText string) {
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
 		nodeText := strings.ToLower(node.GetText())
 
-		if strings.Contains(nodeText, lowerSearchText) {
+		if fuzzy.Match(lowerSearchText, nodeText) {
 			if parent != nil {
 				parent.SetExpanded(true)
 			}
@@ -364,6 +365,7 @@ func (tree *Tree) search(searchText string) {
 			tree.SetCurrentNode(node)
 			tree.state.currentFocusFoundNode = node
 		}
+
 		return true
 	})
 
