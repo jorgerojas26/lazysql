@@ -234,6 +234,9 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			table.AppendNewChange(models.DmlUpdateType, row, changedColumnIndex, cellValue)
 
 			App.ForceDraw()
+		case eventSidebarError:
+			errorMessage := stateChange.Value.(string)
+			table.SetError(errorMessage, nil)
 		}
 	}
 }
@@ -952,6 +955,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	inputField.SetText(cell.Text)
 	inputField.SetFieldBackgroundColor(app.Styles.PrimaryTextColor)
 	inputField.SetFieldTextColor(app.Styles.PrimitiveBackgroundColor)
+	inputField.SetBorder(true)
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
@@ -1001,7 +1005,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	})
 
 	x, y, width := cell.GetLastPosition()
-	inputField.SetRect(x, y, width+1, 1)
+	inputField.SetRect(x-1, y-1, width+3, 3)
 	table.Page.AddPage(pageNameTableEditCell, inputField, false, true)
 	App.SetFocus(inputField)
 }

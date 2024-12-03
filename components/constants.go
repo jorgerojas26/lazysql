@@ -45,6 +45,7 @@ const (
 	eventSidebarUnfocusing    string = "UnfocusingSidebar"
 	eventSidebarToggling      string = "TogglingSidebar"
 	eventSidebarCommitEditing string = "CommitEditingSidebar"
+	eventSidebarError         string = "ErrorSidebar"
 
 	eventSQLEditorQuery  string = "Query"
 	eventSQLEditorEscape string = "Escape"
