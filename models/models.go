@@ -9,6 +9,12 @@ type Connection struct {
 	Provider string
 	DBName   string
 	URL      string
+	Commands []*Command
+}
+
+type Command struct {
+	Command     string
+	WaitForPort string
 }
 
 type StateChange struct {

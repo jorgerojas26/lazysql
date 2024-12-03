@@ -80,6 +80,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	loadingModal := tview.NewModal()
 	loadingModal.SetText("Loading...")
 	loadingModal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	loadingModal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	loadingModal.SetTextColor(app.Styles.SecondaryTextColor)
 
 	pages := tview.NewPages()
