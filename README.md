@@ -133,12 +133,12 @@ makepkg -si
 
 ## Usage
 
-```bash
+```console
 $ lazysql
 ```
 
 To launch lazysql with the ability to pick from the saved connections.
-```bash
+```console
 $ lazysql [connection_url]
 ```
 
