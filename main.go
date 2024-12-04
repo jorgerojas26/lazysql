@@ -49,7 +49,7 @@ func main() {
 		default:
 			err := components.InitFromArg(argsWithProg[1])
 			if err != nil {
-				fmt.Println(os.Stderr, err) 
+				fmt.Fprintln(os.Stderr, err) 
 				os.Exit(1)
 			}
 		}
