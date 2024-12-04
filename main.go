@@ -41,6 +41,7 @@ func main() {
 
 	// Check if "version" arg is passed.
 	argsWithProg := os.Args
+
 	if len(argsWithProg) > 1 {
 		switch argsWithProg[1] {
 		case "version":
