@@ -58,15 +58,18 @@ func main() {
 
 	args := flag.Args()
 
-	if len(args) > 1 {
-		fmt.Fprintln(os.Stderr, "Only a single connection is allowed")
-		os.Exit(1)
-	} else if len(args) == 1 {
+	switch len(args) {
+	case 0:
+		// nothing to do. Launch into the connection picker.
+	case 1:
 		err := components.InitFromArg(args[0])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	default:
+		fmt.Fprintln(os.Stderr, "Only a single connection is allowed")
+		os.Exit(1)
 	}
 
 	if err = app.App.Run(components.MainPages); err != nil {
