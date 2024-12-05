@@ -17,9 +17,26 @@ import (
 var version = "dev"
 
 func main() {
+	flag.Usage = func() {
+		f := flag.CommandLine.Output()
+		fmt.Fprintln(f, "lazysql")
+		fmt.Fprintln(f, "")
+		fmt.Fprintf(f, "Usage:  %s [options] [connection_url]\n\n", os.Args[0])
+		fmt.Fprintln(f, "  connection_url")
+		fmt.Fprintln(f, "        database URL to connect to. Omit to start in picker mode")
+		fmt.Fprintln(f, "")
+		fmt.Fprintln(f, "Options:")
+		flag.PrintDefaults()
+	}
+	printVersion := flag.Bool("version", false, "Show version")
 	logLevel := flag.String("loglevel", "info", "Log level")
 	logFile := flag.String("logfile", "", "Log file")
 	flag.Parse()
+
+	if *printVersion {
+		println("LazySQL version: ", version)
+		os.Exit(0)
+	}
 
 	slogLevel, err := logger.ParseLogLevel(*logLevel)
 	if err != nil {
@@ -39,20 +56,16 @@ func main() {
 		log.Fatalf("Error setting MySQL logger: %v", err)
 	}
 
-	// Check if "version" arg is passed.
-	argsWithProg := os.Args
+	args := flag.Args()
 
-	if len(argsWithProg) > 1 {
-		switch argsWithProg[1] {
-		case "version":
-			fmt.Println("LazySQL version: ", version)
-			os.Exit(0)
-		default:
-			err := components.InitFromArg(argsWithProg[1])
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err) 
-				os.Exit(1)
-			}
+	if len(args) > 1 {
+		fmt.Fprintln(os.Stderr, "Only a single connection is allowed")
+		os.Exit(1)
+	} else if len(args) == 1 {
+		err := components.InitFromArg(args[0])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}
 
