@@ -64,12 +64,10 @@ func main() {
 	case 1:
 		err := components.InitFromArg(args[0])
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			log.Fatal(err)
 		}
 	default:
-		fmt.Fprintln(os.Stderr, "Only a single connection is allowed")
-		os.Exit(1)
+		log.Fatal("Only a single connection is allowed")
 	}
 
 	if err = app.App.Run(components.MainPages); err != nil {
