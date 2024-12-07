@@ -883,16 +883,22 @@ func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) (primaryKey
 
 	row, err := db.Connection.Query(`
 		SELECT
-			a.attname AS column_name
+				a.attname AS column_name
 		FROM
-			pg_index i
-			JOIN pg_class c ON c.oid = i.indrelid
-			JOIN pg_attribute a ON a.attrelid = c.oid
-				AND a.attnum = ANY (i.indkey)
-			JOIN pg_namespace n ON n.oid = c.relnamespace
+				pg_index i
+		JOIN pg_class c ON c.oid = i.indrelid
+		JOIN pg_attribute a ON a.attrelid = c.oid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
 		WHERE
-			relname = $2 AND nspname = $1 AND indisprimary
-	`, schemaName, tableName)
+				relname = $2
+				AND nspname = $1
+				AND indisprimary
+				AND EXISTS (
+						SELECT 1
+						FROM generate_subscripts(i.indkey, 1) AS s
+						WHERE a.attnum = i.indkey[s]
+				);
+`, schemaName, tableName)
 	if err != nil {
 		logger.Error("GetPrimaryKeyColumnNames", map[string]any{"error": err.Error()})
 		return nil, err
