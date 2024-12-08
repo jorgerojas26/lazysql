@@ -4,3 +4,6 @@ tmp/main
 
 dist/
 test.db
+
+.vscode/
+logs/

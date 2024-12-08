@@ -46,6 +46,7 @@ const (
 	UnfocusEditor
 	Copy
 	Edit
+	ExpandInExternalEditor
 	CommitEdit
 	DiscardEdit
 	Save
@@ -134,6 +135,8 @@ func (c Command) String() string {
 		return "Copy"
 	case Edit:
 		return "Edit"
+	case ExpandInExternalEditor:
+		return "ExpandInExternalEditor"
 	case Save:
 		return "Save"
 	case Delete:
