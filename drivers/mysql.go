@@ -448,7 +448,7 @@ func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
+func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) (err error) {
 	var queries []models.Query
 
 	for _, change := range changes {
@@ -479,7 +479,7 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 		}
 
 		switch change.Type {
-		case models.DmlInsertType:
+		case models.DMLInsertType:
 			queryStr := "INSERT INTO "
 			queryStr += db.formatTableName(change.Database, change.Table)
 			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
@@ -490,7 +490,7 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 			}
 
 			queries = append(queries, newQuery)
-		case models.DmlUpdateType:
+		case models.DMLUpdateType:
 			queryStr := "UPDATE "
 			queryStr += db.formatTableName(change.Database, change.Table)
 
@@ -521,7 +521,7 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DbDmlChange) (err error)
 			}
 
 			queries = append(queries, newQuery)
-		case models.DmlDeleteType:
+		case models.DMLDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Database, change.Table)
 
