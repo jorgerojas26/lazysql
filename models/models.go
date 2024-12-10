@@ -29,7 +29,7 @@ type ConnectionPages struct {
 
 type (
 	CellValueType int8
-	DmlType       int8
+	DMLType       int8
 )
 
 // This is not a direct map of the database types, but rather a way to represent them in the UI.
@@ -51,9 +51,9 @@ type CellValue struct {
 }
 
 const (
-	DmlUpdateType DmlType = iota
-	DmlDeleteType
-	DmlInsertType
+	DMLUpdateType DMLType = iota
+	DMLDeleteType
+	DMLInsertType
 )
 
 type PrimaryKeyInfo struct {
@@ -65,12 +65,12 @@ func (pki PrimaryKeyInfo) Equal(other PrimaryKeyInfo) bool {
 	return pki.Name == other.Name && pki.Value == other.Value
 }
 
-type DbDmlChange struct {
+type DBDMLChange struct {
 	Database       string
 	Table          string
 	PrimaryKeyInfo []PrimaryKeyInfo
 	Values         []CellValue
-	Type           DmlType
+	Type           DMLType
 }
 
 type DatabaseTableColumn struct {

@@ -735,7 +735,7 @@ func (db *Postgres) ExecuteQuery(query string) (results [][]string, err error) {
 	return
 }
 
-func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
+func (db *Postgres) ExecutePendingChanges(changes []models.DBDMLChange) (err error) {
 	var queries []models.Query
 
 	for _, change := range changes {
@@ -776,7 +776,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 
 		switch change.Type {
 
-		case models.DmlInsertType:
+		case models.DMLInsertType:
 
 			queryStr := "INSERT INTO " + formattedTableName
 			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
@@ -787,7 +787,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 			}
 
 			queries = append(queries, newQuery)
-		case models.DmlUpdateType:
+		case models.DMLUpdateType:
 			queryStr := "UPDATE " + formattedTableName
 
 			for i, column := range columnNames {
@@ -826,7 +826,7 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DbDmlChange) (err err
 			}
 
 			queries = append(queries, newQuery)
-		case models.DmlDeleteType:
+		case models.DMLDeleteType:
 			queryStr := "DELETE FROM " + formattedTableName
 			args := make([]interface{}, len(change.PrimaryKeyInfo))
 
