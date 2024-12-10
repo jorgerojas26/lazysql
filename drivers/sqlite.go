@@ -477,7 +477,7 @@ func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error) {
+func (db *SQLite) ExecutePendingChanges(changes []models.DBDMLChange) (err error) {
 	var queries []models.Query
 
 	for _, change := range changes {
@@ -486,7 +486,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 		valuesPlaceholder := []string{}
 
 		switch change.Type {
-		case models.DmlInsertType:
+		case models.DMLInsertType:
 			for _, cell := range change.Values {
 				switch cell.Type {
 				case models.Null:
@@ -517,7 +517,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 			}
 
 			queries = append(queries, newQuery)
-		case models.DmlUpdateType:
+		case models.DMLUpdateType:
 
 			for _, cell := range change.Values {
 				switch cell.Type {
@@ -570,7 +570,7 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DbDmlChange) (err error
 			}
 
 			queries = append(queries, newQuery)
-		case models.DmlDeleteType:
+		case models.DMLDeleteType:
 			queryStr := "DELETE FROM "
 			queryStr += db.formatTableName(change.Table)
 
