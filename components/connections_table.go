@@ -5,7 +5,6 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -16,6 +15,8 @@ type ConnectionsTable struct {
 	error         string
 	connections   []models.Connection
 }
+
+var connectionsTable *ConnectionsTable
 
 func NewConnectionsTable() *ConnectionsTable {
 	wrapper := tview.NewFlex()
@@ -33,23 +34,16 @@ func NewConnectionsTable() *ConnectionsTable {
 	table.SetSelectedStyle(tcell.StyleDefault.Foreground(app.Styles.SecondaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
 
 	wrapper.AddItem(table, 0, 1, true)
+	table.SetConnections(app.App.Connections())
 
-	connections, err := helpers.LoadConnections()
+	connectionsTable = table
 
-	if err != nil {
-		table.SetError(err)
-	} else {
-		table.SetConnections(connections)
-	}
-
-	return table
+	return connectionsTable
 }
 
 func (ct *ConnectionsTable) AddConnection(connection models.Connection) {
 	rowCount := ct.GetRowCount()
-
 	ct.SetCellSimple(rowCount, 0, connection.Name)
-
 	ct.connections = append(ct.connections, connection)
 }
 

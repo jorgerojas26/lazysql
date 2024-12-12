@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/app"
 )
 
 type PaginationState struct {
@@ -17,8 +19,6 @@ type Pagination struct {
 	state    *PaginationState
 	textView *tview.TextView
 }
-
-var defaultPageSize = 300
 
 func NewPagination() *Pagination {
 	wrapper := tview.NewFlex()
@@ -36,11 +36,10 @@ func NewPagination() *Pagination {
 		textView: textView,
 		state: &PaginationState{
 			Offset:       0,
-			Limit:        defaultPageSize,
+			Limit:        app.App.Config().DefaultPageSize,
 			TotalRecords: 0,
 		},
 	}
-
 }
 
 func (pagination *Pagination) GetOffset() int {
