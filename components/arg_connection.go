@@ -26,20 +26,22 @@ func InitFromArg(connectionString string) error {
 		DBName:   DBName,
 		URL:      connectionString,
 	}
-	var newDbDriver drivers.Driver
+
+	var newDBDriver drivers.Driver
 	switch connection.Provider {
 	case drivers.DriverMySQL:
-		newDbDriver = &drivers.MySQL{}
+		newDBDriver = &drivers.MySQL{}
 	case drivers.DriverPostgres:
-		newDbDriver = &drivers.Postgres{}
+		newDBDriver = &drivers.Postgres{}
 	case drivers.DriverSqlite:
-		newDbDriver = &drivers.SQLite{}
+		newDBDriver = &drivers.SQLite{}
 	}
-	err = newDbDriver.Connect(connection.URL)
 
+	err = newDBDriver.Connect(connection.URL)
 	if err != nil {
 		return fmt.Errorf("Could not connect to database %s: %s", connectionString, err)
 	}
-	MainPages.AddAndSwitchToPage(connection.URL, NewHomePage(connection, newDbDriver).Flex, true)
+	MainPages.AddAndSwitchToPage(connection.URL, NewHomePage(connection, newDBDriver).Flex, true)
+
 	return nil
 }

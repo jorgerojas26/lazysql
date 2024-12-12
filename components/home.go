@@ -23,7 +23,7 @@ type Home struct {
 	HelpModal       *HelpModal
 	DBDriver        drivers.Driver
 	FocusedWrapper  string
-	ListOfDBChanges []models.DbDmlChange
+	ListOfDBChanges []models.DBDMLChange
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
@@ -43,7 +43,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		HelpStatus:      NewHelpStatus(),
 		HelpModal:       NewHelpModal(),
 		DBDriver:        dbdriver,
-		ListOfDBChanges: []models.DbDmlChange{},
+		ListOfDBChanges: []models.DBDMLChange{},
 	}
 
 	go home.subscribeToTreeChanges()
@@ -317,7 +317,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 					if err != nil {
 						table.SetError(err.Error(), nil)
 					} else {
-						home.ListOfDBChanges = []models.DbDmlChange{}
+						home.ListOfDBChanges = []models.DBDMLChange{}
 
 						table.FetchRecords(nil)
 						home.Tree.ForceRemoveHighlight()
