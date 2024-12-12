@@ -6,9 +6,11 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 )
 
-var MainPages = tview.NewPages()
+var mainPages *tview.Pages
 
-func init() {
-	MainPages.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
-	MainPages.AddPage(pageNameConnections, NewConnectionPages().Flex, true, true)
+func MainPages() *tview.Pages {
+	mainPages = tview.NewPages()
+	mainPages.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	mainPages.AddPage(pageNameConnections, NewConnectionPages().Flex, true, true)
+	return mainPages
 }

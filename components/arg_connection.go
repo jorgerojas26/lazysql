@@ -41,7 +41,7 @@ func InitFromArg(connectionString string) error {
 	if err != nil {
 		return fmt.Errorf("Could not connect to database %s: %s", connectionString, err)
 	}
-	MainPages.AddAndSwitchToPage(connection.URL, NewHomePage(connection, newDBDriver).Flex, true)
+	mainPages.AddAndSwitchToPage(connection.URL, NewHomePage(connection, newDBDriver).Flex, true)
 
 	return nil
 }

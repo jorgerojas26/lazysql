@@ -1138,7 +1138,6 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	}
 
 	if !dmlChangeAlreadyExists {
-
 		switch changeType {
 		case models.DMLDeleteType:
 			table.SetRowColor(rowIndex, colorTableDelete)
@@ -1156,7 +1155,6 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 		}
 
 		*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newDMLChange)
-
 	}
 
 	logger.Info("AppendNewChange", map[string]any{"listOfDbChanges": *table.state.listOfDBChanges})
