@@ -28,7 +28,7 @@ func LoadConfig() (Config, error) {
 
 	for idx, cfg := range config.Connections {
 		cfg.ParseURL()
-		config.Connections[idx].URL = cfg.URL // can be better than this
+		config.Connections[idx].URL = cfg.URL
 	}
 
 	return config, nil
