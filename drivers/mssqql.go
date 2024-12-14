@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/helpers/errorlist"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 	"github.com/xo/dburl"
@@ -333,13 +332,6 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 		return errors.New("table column is required")
 	}
 
-	// if update into empty value is using "''" instead of ""
-	// then uncomment following condition
-	//
-	// if value == "" {
-	// 	return errors.New("column value can not be empty")
-	// }
-
 	if primaryKeyColumnName == "" {
 		return errors.New("primary key column is required")
 	}
@@ -453,7 +445,7 @@ func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	}
 
 	queries := make([]models.Query, 0)
-	errlist := errorlist.New(nil)
+	errlist := make([]error, 0)
 
 	for _, change := range changes {
 		if change.Table == "" {
