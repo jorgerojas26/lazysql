@@ -9,5 +9,5 @@ const (
 	DriverMySQL    string = "mysql"
 	DriverPostgres string = "postgres"
 	DriverSqlite   string = "sqlite3"
-	DriverMsSQL    string = "sqlserver"
+	DriverMSSQL    string = "sqlserver"
 )

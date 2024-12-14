@@ -14,7 +14,7 @@ import (
 	_ "github.com/microsoft/go-mssqldb"
 )
 
-type MsSQL struct {
+type MSSQL struct {
 	Connection *sql.DB
 	Provider   string
 }
@@ -23,16 +23,16 @@ const (
 	mssqlDefaulPort = "1433"
 )
 
-func (db *MsSQL) TestConnection(urlstr string) error {
+func (db *MSSQL) TestConnection(urlstr string) error {
 	return db.Connect(urlstr)
 }
 
-func (db *MsSQL) Connect(urlstr string) error {
+func (db *MSSQL) Connect(urlstr string) error {
 	if urlstr == "" {
 		return errors.New("url string can not be empty")
 	}
 
-	db.SetProvider(DriverMsSQL)
+	db.SetProvider(DriverMSSQL)
 
 	var err error
 
@@ -48,7 +48,7 @@ func (db *MsSQL) Connect(urlstr string) error {
 	return nil
 }
 
-func (db *MsSQL) GetDatabases() ([]string, error) {
+func (db *MSSQL) GetDatabases() ([]string, error) {
 	databases := make([]string, 0)
 
 	query := `
@@ -80,7 +80,7 @@ func (db *MsSQL) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *MsSQL) GetTables(database string) (map[string][]string, error) {
+func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -116,7 +116,7 @@ func (db *MsSQL) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *MsSQL) GetTableColumns(database, table string) ([][]string, error) {
+func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
 	query := `
 		SELECT
 			column_name, data_type, is_nullable, column_default
@@ -132,7 +132,7 @@ func (db *MsSQL) GetTableColumns(database, table string) ([][]string, error) {
 	return db.getTableInformations(query, database, table)
 }
 
-func (db *MsSQL) GetConstraints(database, table string) ([][]string, error) {
+func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
 	query := `
 		SELECT
 				tc.constraint_name,
@@ -162,7 +162,7 @@ func (db *MsSQL) GetConstraints(database, table string) ([][]string, error) {
 	return db.getTableInformations(query, database, table)
 }
 
-func (db *MsSQL) GetForeignKeys(database, table string) ([][]string, error) {
+func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
 	query := `
 		SELECT
 				tc.constraint_name,
@@ -192,7 +192,7 @@ func (db *MsSQL) GetForeignKeys(database, table string) ([][]string, error) {
 	return db.getTableInformations(query, database, table)
 }
 
-func (db *MsSQL) GetIndexes(database, table string) ([][]string, error) {
+func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
 	query := `
 		SELECT 
 				t.name AS table_name,
@@ -237,7 +237,7 @@ func (db *MsSQL) GetIndexes(database, table string) ([][]string, error) {
 	return db.getTableInformations(query, database, table)
 }
 
-func (db *MsSQL) GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, error) {
+func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, error) {
 	if database == "" {
 		return nil, 0, errors.New("database name is required")
 	}
@@ -320,7 +320,7 @@ func (db *MsSQL) GetRecords(database, table, where, sort string, offset, limit i
 	return results, totalRecords, nil
 }
 
-func (db *MsSQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
 	if database == "" {
 		return errors.New("database name is required")
 	}
@@ -357,7 +357,7 @@ func (db *MsSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 	return err
 }
 
-func (db *MsSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
 	if database == "" {
 		return errors.New("database name is required")
 	}
@@ -383,7 +383,7 @@ func (db *MsSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 	return err
 }
 
-func (db *MsSQL) ExecuteDMLStatement(query string) (string, error) {
+func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
 	if query == "" {
 		return "", errors.New("query is required")
 	}
@@ -401,7 +401,7 @@ func (db *MsSQL) ExecuteDMLStatement(query string) (string, error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MsSQL) ExecuteQuery(query string) ([][]string, error) {
+func (db *MSSQL) ExecuteQuery(query string) ([][]string, error) {
 	if query == "" {
 		return nil, errors.New("query can not be empty")
 	}
@@ -447,7 +447,7 @@ func (db *MsSQL) ExecuteQuery(query string) ([][]string, error) {
 	return results, nil
 }
 
-func (db *MsSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	if len(changes) <= 0 {
 		return nil
 	}
@@ -573,7 +573,7 @@ func (db *MsSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	return queriesInTransaction(db.Connection, queries)
 }
 
-func (db *MsSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, error) {
+func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -643,11 +643,11 @@ func (db *MsSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 	return pkColumnName, nil
 }
 
-func (db *MsSQL) SetProvider(provider string) {
+func (db *MSSQL) SetProvider(provider string) {
 	db.Provider = provider
 }
 
-func (db *MsSQL) GetProvider() string {
+func (db *MSSQL) GetProvider() string {
 	return db.Provider
 }
 
@@ -662,7 +662,7 @@ func (db *MsSQL) GetProvider() string {
 //
 //   - database name, used for filtering table_catalog
 //   - table name, used for filtering table_name
-func (db *MsSQL) getTableInformations(query, database, table string) ([][]string, error) {
+func (db *MSSQL) getTableInformations(query, database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
