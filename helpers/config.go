@@ -13,15 +13,25 @@ type Config struct {
 	Connections []models.Connection `toml:"database"`
 }
 
-func LoadConfig() (config Config, err error) {
+func LoadConfig() (Config, error) {
+	config := Config{}
+
 	file, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".config", "lazysql", "config.toml"))
 	if err != nil {
-		return
+		return config, err
 	}
 
 	err = toml.Unmarshal(file, &config)
+	if err != nil {
+		return config, err
+	}
 
-	return
+	for idx, cfg := range config.Connections {
+		cfg.ParseURL()
+		config.Connections[idx].URL = cfg.URL // can be better than this
+	}
+
+	return config, nil
 }
 
 func LoadConnections() (connections []models.Connection, err error) {
