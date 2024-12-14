@@ -89,7 +89,7 @@ func (db *MsSQL) GetTables(database string) (map[string][]string, error) {
 
 	query := `
 		SELECT
-			CONCAT(schema_name(schema_id), '.', name) AS name
+			name
 		FROM
 			sys.tables
 	`
@@ -125,9 +125,7 @@ func (db *MsSQL) GetTableColumns(database, table string) ([][]string, error) {
 		WHERE
 			table_catalog = @p1
 		AND
-			table_schema = @p2
-		AND
-			table_name = @p3
+			table_name = @p2
 		ORDER BY
 			ordinal_position
 	`
@@ -159,9 +157,7 @@ func (db *MsSQL) GetConstraints(database, table string) ([][]string, error) {
 		AND
 				tc.table_catalog = @p1
 		AND
-				tc.table_schema = @p2
-		AND
-				tc.table_name = @p3
+				tc.table_name = @p2
 	`
 	return db.getTableInformations(query, database, table)
 }
@@ -191,9 +187,7 @@ func (db *MsSQL) GetForeignKeys(database, table string) ([][]string, error) {
 		AND
 				tc.table_catalog = @p1
 		AND
-				tc.table_schema = @p2
-		AND
-				tc.table_name = @p3
+				tc.table_name = @p2
 	`
 	return db.getTableInformations(query, database, table)
 }
@@ -236,9 +230,7 @@ func (db *MsSQL) GetIndexes(database, table string) ([][]string, error) {
 		WHERE 
 				DB_NAME() = @p1
 		AND
-				s.name = @p2
-		AND
-				t.name = @p3
+				t.name = @p2
 		ORDER BY 
 				i.type_desc
 	`
@@ -584,15 +576,6 @@ func (db *MsSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	splitTableString := strings.Split(table, ".")
-
-	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
-	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
-
 	pkColumnName := make([]string, 0)
 	query := `
 		SELECT 
@@ -624,11 +607,9 @@ func (db *MsSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		WHERE 
 				DB_NAME() = @p2
 		AND
-				s.name = @p3
-		AND
-				t.name = @p4
+				t.name = @p3
 	`
-	rows, err := db.Connection.Query(query, "PK", database, tableSchema, tableName)
+	rows, err := db.Connection.Query(query, "PK", database, table)
 	if err != nil {
 		return nil, err
 	}
@@ -674,7 +655,6 @@ func (db *MsSQL) GetProvider() string {
 // getTableInformations requires following parameter:
 //
 //   - database name, used for filtering table_catalog
-//   - schema name, used for filtering table_schema
 //   - table name, used for filtering table_name
 func (db *MsSQL) getTableInformations(query, database, table string) ([][]string, error) {
 	if database == "" {
@@ -689,17 +669,8 @@ func (db *MsSQL) getTableInformations(query, database, table string) ([][]string
 		return nil, errors.New("query can not be empty")
 	}
 
-	splitTableString := strings.Split(table, ".")
-
-	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
-	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
-
 	results := make([][]string, 0)
-	rows, err := db.Connection.Query(query, database, tableSchema, tableName)
+	rows, err := db.Connection.Query(query, database, table)
 	if err != nil {
 		return nil, err
 	}
