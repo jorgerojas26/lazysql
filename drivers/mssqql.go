@@ -507,9 +507,9 @@ func (db *MsSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 
 			for i, column := range columnNames {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
+					queryStr += fmt.Sprintf(" SET %s = %s", column, valuesPlaceholder[i])
 				} else {
-					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
+					queryStr += fmt.Sprintf(", %s = %s", column, valuesPlaceholder[i])
 				}
 			}
 
@@ -517,11 +517,15 @@ func (db *MsSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 
 			copy(args, values)
 
+			// start counting from valuesPlaceholder
+			// then add 1 by 1 on loop
+			updateCounterParams := len(valuesPlaceholder)
 			for i, pki := range change.PrimaryKeyInfo {
+				updateCounterParams += 1
 				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = @p%d", pki.Name, i+1)
+					queryStr += fmt.Sprintf(" WHERE %s = @p%d", pki.Name, updateCounterParams)
 				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = @p%d", pki.Name, i+1)
+					queryStr += fmt.Sprintf(" AND %s = @p%d", pki.Name, updateCounterParams)
 				}
 				args = append(args, pki.Value)
 			}
@@ -531,6 +535,8 @@ func (db *MsSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 				Args:  args,
 			}
 
+			// EZ way to log
+			// _ = os.WriteFile("/tmp/lazysql", []byte(queryStr+"\n"), 0644)
 			queries = append(queries, newQuery)
 		case models.DMLDeleteType:
 			queryStr := fmt.Sprintf("DELETE FROM %s", change.Table)
@@ -539,9 +545,9 @@ func (db *MsSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 
 			for i, pki := range change.PrimaryKeyInfo {
 				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = @p%d", pki.Name, i+1)
+					queryStr += fmt.Sprintf(" WHERE %s = @p%d", pki.Name, i+1)
 				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = @p%d", pki.Name, i+1)
+					queryStr += fmt.Sprintf(" AND %s = @p%d", pki.Name, i+1)
 				}
 				deleteArgs[i] = pki.Value
 			}
