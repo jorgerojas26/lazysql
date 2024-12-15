@@ -236,12 +236,11 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		if tab != nil {
 			table := tab.Content
 
-			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
+			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
+				table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
 				table.FetchRecords(nil)
-
 			}
-
 		}
 
 	case commands.PageNext:
@@ -250,7 +249,8 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		if tab != nil {
 			table := tab.Content
 
-			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) || table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
+			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
+				table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
 				table.FetchRecords(nil)
 			}
