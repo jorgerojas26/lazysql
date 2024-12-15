@@ -1,11 +1,14 @@
 package helpers
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -26,12 +29,41 @@ func LoadConfig() (Config, error) {
 		return config, err
 	}
 
-	for idx, cfg := range config.Connections {
-		cfg.ParseURL()
-		config.Connections[idx].URL = cfg.URL
+	for idx, conn := range config.Connections {
+		config.Connections[idx].URL = ParseConfigURL(&conn)
 	}
 
 	return config, nil
+}
+
+// ParseConfigURL will manually parse config url if url empty
+//
+// it main purpose is for handling username & password with special characters
+//
+// only sqlserver for now
+func ParseConfigURL(conn *models.Connection) string {
+	if conn.URL != "" {
+		return conn.URL
+	}
+
+	// only sqlserver for now
+	if conn.Provider != drivers.DriverMSSQL {
+		return conn.URL
+	}
+
+	user := url.QueryEscape(conn.Username)
+	pass := url.QueryEscape(conn.Password)
+
+	return fmt.Sprintf(
+		"%s://%s:%s@%s:%s?database=%s%s",
+		conn.Provider,
+		user,
+		pass,
+		conn.Hostname,
+		conn.Port,
+		conn.DBName,
+		conn.URLParams,
+	)
 }
 
 func LoadConnections() (connections []models.Connection, err error) {

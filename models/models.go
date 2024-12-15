@@ -1,9 +1,6 @@
 package models
 
 import (
-	"fmt"
-	"net/url"
-
 	"github.com/rivo/tview"
 )
 
@@ -23,38 +20,6 @@ type Connection struct {
 	URLParams string
 
 	Commands []*Command
-}
-
-// ParseURL will manually parse url if url empty
-//
-// for handling username & password with special characters
-//
-// only sqlserver for now
-//
-// need to refactor if wanted to reuse driver list in drivers/constants.go
-func (c *Connection) ParseURL() {
-	if c.URL != "" {
-		return
-	}
-
-	// only sqlserver for now
-	if c.Provider != "sqlserver" {
-		return
-	}
-
-	user := url.QueryEscape(c.Username)
-	pass := url.QueryEscape(c.Password)
-
-	c.URL = fmt.Sprintf(
-		"%s://%s:%s@%s:%s?database=%s%s",
-		c.Provider,
-		user,
-		pass,
-		c.Hostname,
-		c.Port,
-		c.DBName,
-		c.URLParams,
-	)
 }
 
 type Command struct {
