@@ -549,6 +549,11 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 
 	countQuery := "SELECT COUNT(*) FROM "
 	countQuery += formattedTableName
+
+	if where != "" {
+		countQuery += fmt.Sprintf(" %s", where)
+	}
+
 	row := db.Connection.QueryRow(countQuery)
 
 	var totalRecords int
