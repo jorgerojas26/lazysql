@@ -120,6 +120,9 @@ var Keymaps = KeymapSystem{
 			// Sidebar
 			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Toggle sidebar"},
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
+			Bind{Key: Key{Code: tcell.KeyCtrlI}, Cmd: cmd.CopyRowAsInsert, Description: "Copy as INSERT VALUES"},
+			Bind{Key: Key{Code: tcell.KeyCtrlU}, Cmd: cmd.CopyRowAsUpdate, Description: "Copy as UPDATE SET"},
+			Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: cmd.CopyRowAsSelect, Description: "Copy as SELECT WHERE"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},

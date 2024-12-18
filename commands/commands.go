@@ -77,6 +77,9 @@ const (
 
 	// CopyRow Command
 	CopyRow
+	CopyRowAsInsert
+	CopyRowAsUpdate
+	CopyRowAsSelect
 )
 
 func (c Command) String() string {
@@ -205,6 +208,12 @@ func (c Command) String() string {
 		return "DiscardEdit"
 	case CopyRow:
 		return "CopyRow"
+	case CopyRowAsInsert:
+		return "CopyRowAsInsert"
+	case CopyRowAsUpdate:
+		return "CopyRowAsUpdate"
+	case CopyRowAsSelect:
+		return "CopyRowAsSelect"
 	}
 
 	return "Unknown"

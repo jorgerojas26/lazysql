@@ -482,6 +482,18 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if err != nil {
 			table.SetError(err.Error(), nil)
 		}
+	} else if command == commands.CopyRowAsInsert {
+		if err := table.copyRowAsSQL("INSERT"); err != nil {
+			table.SetError(err.Error(), nil)
+		}
+	} else if command == commands.CopyRowAsUpdate {
+		if err := table.copyRowAsSQL("UPDATE"); err != nil {
+			table.SetError(err.Error(), nil)
+		}
+	} else if command == commands.CopyRowAsSelect {
+		if err := table.copyRowAsSQL("SELECT"); err != nil {
+			table.SetError(err.Error(), nil)
+		}
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -1384,4 +1396,57 @@ func (table *ResultsTable) UpdateSidebar() {
 		}
 
 	}
+}
+
+func (table *ResultsTable) copyRowAsSQL(format string) error {
+	row, _ := table.GetSelection()
+	var values []string
+	var columns []string
+	var whereConditions []string
+
+	// 获取列名和值
+	for col := 0; col < table.GetColumnCount(); col++ {
+		header := table.GetCell(0, col).Text
+		cell := table.GetCell(row, col)
+		columns = append(columns, header)
+
+		// 处理值的格式
+		value := cell.Text
+		if value == "NULL" {
+			values = append(values, "NULL")
+			whereConditions = append(whereConditions, fmt.Sprintf("`%s` IS NULL", header))
+		} else {
+			values = append(values, fmt.Sprintf("'%s'", value))
+			whereConditions = append(whereConditions, fmt.Sprintf("`%s` = '%s'", header, value))
+		}
+	}
+
+	var sql string
+	switch format {
+	case "INSERT":
+		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);",
+			table.GetTitle(),
+			strings.Join(columns, ", "),
+			strings.Join(values, ", "))
+
+	case "UPDATE":
+		var sets []string
+		for i := range columns {
+			sets = append(sets, fmt.Sprintf("%s = %s", columns[i], values[i]))
+		}
+		// 假设第一列是主键
+		sql = fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s;",
+			table.GetTitle(),
+			strings.Join(sets, ", "),
+			columns[0],
+			values[0])
+
+	case "SELECT":
+		sql = fmt.Sprintf("SELECT * FROM %s WHERE %s;",
+			table.GetTitle(),
+			strings.Join(whereConditions, " AND "))
+	}
+
+	clipboard := lib.NewClipboard()
+	return clipboard.Write(sql)
 }
