@@ -49,6 +49,7 @@ const (
 
 	eventSQLEditorQuery  string = "Query"
 	eventSQLEditorEscape string = "Escape"
+	eventSQLEditorError  string = "Error"
 
 	eventResultsTableFiltering string = "FilteringResultsTable"
 
