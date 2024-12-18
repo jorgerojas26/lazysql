@@ -603,13 +603,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 		case eventSQLEditorQuery:
 			query := stateChange.Value.(string)
 			if query != "" {
-				queryLower := strings.ToLower(query)
-
-				if strings.Contains(queryLower, "select") {
+				queryLower := strings.ToLower(strings.TrimSpace(query))
+				if strings.Contains(queryLower, "select") || strings.Contains(queryLower, "show") {
 					table.SetLoading(true)
 					App.Draw()
 
 					rows, err := table.DBDriver.ExecuteQuery(query)
+
 					table.Pagination.SetTotalRecords(len(rows))
 					table.Pagination.SetLimit(len(rows))
 
