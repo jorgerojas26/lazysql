@@ -14,7 +14,6 @@ type ResultsTableFilter struct {
 	Label         *tview.TextView
 	currentFilter string
 	subscribers   []chan models.StateChange
-	filtering     bool
 }
 
 func NewResultsFilter() *ResultsTableFilter {
@@ -74,16 +73,8 @@ func (filter *ResultsTableFilter) Publish(message string) {
 	}
 }
 
-func (filter *ResultsTableFilter) GetIsFiltering() bool {
-	return filter.filtering
-}
-
 func (filter *ResultsTableFilter) GetCurrentFilter() string {
 	return filter.currentFilter
-}
-
-func (filter *ResultsTableFilter) SetIsFiltering(filtering bool) {
-	filter.filtering = filtering
 }
 
 // Function to blur

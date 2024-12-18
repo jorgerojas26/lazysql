@@ -74,7 +74,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		}
 	})
 
-	MainPages.AddPage(connection.URL, home, true, false)
+	mainPages.AddPage(connection.URL, home, true, false)
 	return home
 }
 
@@ -109,7 +109,9 @@ func (home *Home) subscribeToTreeChanges() {
 				home.focusLeftWrapper()
 			})
 
-			if len(results) > 1 && !table.GetShowSidebar() { // 1 because the row 0 is the column names
+			// Show sidebar if there is more then 1 row (row 0 are
+			// the column names) and the sidebar is not disabled.
+			if !App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
 				table.ShowSidebar(true)
 			}
 
@@ -296,7 +298,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		App.ForceDraw()
 	case commands.SwitchToConnectionsView:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
-			MainPages.SwitchToPage(pageNameConnections)
+			mainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
 		if tab == nil || (!table.GetIsEditing() && !table.GetIsFiltering()) {
@@ -307,7 +309,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			confirmationModal := NewConfirmationModal("")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-				MainPages.RemovePage(pageNameConfirmation)
+				mainPages.RemovePage(pageNameConfirmation)
 				confirmationModal = nil
 
 				if buttonLabel == "Yes" {
@@ -327,7 +329,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				}
 			})
 
-			MainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
+			mainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
 		}
 	case commands.HelpPopup:
 		if table == nil || !table.GetIsEditing() {
@@ -340,7 +342,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			// 	}
 			// 	return event
 			// })
-			MainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
+			mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
 	}
 

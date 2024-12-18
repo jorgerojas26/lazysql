@@ -56,12 +56,22 @@ func main() {
 		log.Fatalf("Error setting MySQL logger: %v", err)
 	}
 
+	// First load the config.
+	if err = app.LoadConfig(); err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
+	// Now we can initialize the main pages.
+	mainPages := components.MainPages()
+
+	// Parse the command line arguments.
 	args := flag.Args()
 
 	switch len(args) {
 	case 0:
-		// nothing to do. Launch into the connection picker.
+		// Launch into the connection picker.
 	case 1:
+		// Set a connection from the command line.
 		err := components.InitFromArg(args[0])
 		if err != nil {
 			log.Fatal(err)
@@ -70,7 +80,7 @@ func main() {
 		log.Fatal("Only a single connection is allowed")
 	}
 
-	if err = app.App.Run(components.MainPages); err != nil {
+	if err = app.App.Run(mainPages); err != nil {
 		log.Fatalf("Error running app: %v", err)
 	}
 }
