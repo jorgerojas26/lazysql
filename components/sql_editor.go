@@ -10,6 +10,7 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -51,6 +52,14 @@ func NewSQLEditor() *SQLEditor {
 				text := openExternalEditor(sqlEditor)
 				sqlEditor.SetText(text, true)
 			}
+
+		case commands.Copy:
+			text := sqlEditor.GetText()
+			clipboard := lib.NewClipboard()
+			if err := clipboard.Write(text); err != nil {
+				sqlEditor.Publish(eventSQLEditorError, err.Error())
+			}
+			return nil
 		}
 
 		return event

@@ -83,6 +83,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.TreeCollapseAll, Description: "Collapse all"},
 			Bind{Key: Key{Char: 'e'}, Cmd: cmd.ExpandAll, Description: "Expand all"},
 			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh tree"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy node name"},
 		},
 		TreeFilterGroup: {
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusTreeFilter, Description: "Unfocus tree filter"},
@@ -96,7 +97,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'b'}, Cmd: cmd.GotoPrev, Description: "Go to previous cell"},
 			Bind{Key: Key{Char: '$'}, Cmd: cmd.GotoEnd, Description: "Go to last cell"},
 			Bind{Key: Key{Char: '0'}, Cmd: cmd.GotoStart, Description: "Go to first cell"},
-			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value to clipboard"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value"},
+			Bind{Key: Key{Char: 'Y'}, Cmd: cmd.CopyRow, Description: "Copy entire row"},
 			Bind{Key: Key{Char: 'o'}, Cmd: cmd.AppendNewRow, Description: "Append new row"},
 			Bind{Key: Key{Char: 'J'}, Cmd: cmd.SortDesc, Description: "Sort descending"},
 			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh the current table"},
@@ -119,11 +121,15 @@ var Keymaps = KeymapSystem{
 			// Sidebar
 			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Toggle sidebar"},
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
+			Bind{Key: Key{Code: tcell.KeyCtrlI}, Cmd: cmd.CopyRowAsInsert, Description: "Copy as INSERT VALUES"},
+			Bind{Key: Key{Code: tcell.KeyCtrlU}, Cmd: cmd.CopyRowAsUpdate, Description: "Copy as UPDATE SET"},
+			Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: cmd.CopyRowAsSelect, Description: "Copy as SELECT WHERE"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusEditor, Description: "Unfocus editor"},
 			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: cmd.OpenInExternalEditor, Description: "Open in external editor"},
+			Bind{Key: Key{Code: tcell.KeyCtrlY}, Cmd: cmd.Copy, Description: "Copy editor text"},
 		},
 		SidebarGroup: {
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.UnfocusSidebar, Description: "Focus table"},

@@ -14,6 +14,7 @@ import (
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -176,6 +177,19 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			tree.ExpandAll()
 		case commands.Refresh:
 			tree.Refresh(dbName)
+		case commands.Copy:
+			node := tree.GetCurrentNode()
+			if node == nil {
+				return event
+			}
+
+			nodeRef := node.GetReference().(string)
+			clipboard := lib.NewClipboard()
+			if err := clipboard.Write(nodeRef); err != nil {
+				// 处理错误
+				return event
+			}
+			return nil
 		}
 		return nil
 	})
