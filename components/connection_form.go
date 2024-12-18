@@ -180,6 +180,8 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		db = &drivers.Postgres{}
 	case drivers.DriverSqlite:
 		db = &drivers.SQLite{}
+	case drivers.DriverMSSQL:
+		db = &drivers.MSSQL{}
 	}
 
 	err = db.TestConnection(connectionString)
