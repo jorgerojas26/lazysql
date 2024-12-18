@@ -83,6 +83,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.TreeCollapseAll, Description: "Collapse all"},
 			Bind{Key: Key{Char: 'e'}, Cmd: cmd.ExpandAll, Description: "Expand all"},
 			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh tree"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy node name"},
 		},
 		TreeFilterGroup: {
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusTreeFilter, Description: "Unfocus tree filter"},
