@@ -466,6 +466,22 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.GetShowSidebar() {
 			App.SetFocus(table.Sidebar)
 		}
+	} else if command == commands.CopyRow {
+		row, _ := table.GetSelection()
+		var rowData []string
+
+		// 获取所有列的数据
+		for col := 0; col < table.GetColumnCount(); col++ {
+			cell := table.GetCell(row, col)
+			rowData = append(rowData, cell.Text)
+		}
+
+		// 用制表符连接数据
+		clipboard := strings.Join(rowData, "\t")
+		err := lib.NewClipboard().Write(clipboard)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
 	}
 
 	if len(table.GetRecords()) > 0 {
