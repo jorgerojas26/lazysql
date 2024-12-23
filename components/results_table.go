@@ -494,6 +494,14 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if err := table.copyRowAsSQL("SELECT"); err != nil {
 			table.SetError(err.Error(), nil)
 		}
+	} else if command == commands.CopyAsMenu {
+		// Get current selected cell position
+		row, col := table.GetSelection()
+		x, y, _, _ := table.GetRect()
+
+		// Show copy menu
+		copyAsList := NewCopyAsList(table)
+		copyAsList.Show(x+col*10, y+row, 30) // Adjust position and width
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -1449,4 +1457,17 @@ func (table *ResultsTable) copyRowAsSQL(format string) error {
 
 	clipboard := lib.NewClipboard()
 	return clipboard.Write(sql)
+}
+
+func (table *ResultsTable) HandleCommand(command commands.Command) {
+	switch command {
+	case commands.CopyAsMenu:
+		// Get current selected cell position
+		row, col := table.GetSelection()
+		x, y, _, _ := table.GetRect()
+
+		// Show copy menu
+		copyAsList := NewCopyAsList(table)
+		copyAsList.Show(x+col*10, y+row, 30) // Adjust position and width
+	}
 }

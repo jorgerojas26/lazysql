@@ -45,6 +45,7 @@ const (
 	EditorGroup     = "editor"
 	ConnectionGroup = "connection"
 	SidebarGroup    = "sidebar"
+	CopyAsMenuGroup = "copyas"
 )
 
 // Define a global KeymapSystem object with default keybinds
@@ -124,6 +125,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyCtrlI}, Cmd: cmd.CopyRowAsInsert, Description: "Copy as INSERT VALUES"},
 			Bind{Key: Key{Code: tcell.KeyCtrlU}, Cmd: cmd.CopyRowAsUpdate, Description: "Copy as UPDATE SET"},
 			Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: cmd.CopyRowAsSelect, Description: "Copy as SELECT WHERE"},
+			Bind{Key: Key{Code: tcell.KeyCtrlY}, Cmd: cmd.CopyAsMenu, Description: "Copy as menu"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
@@ -143,6 +145,12 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.DiscardEdit, Description: "Discard edit"},
 			Bind{Key: Key{Char: 'C'}, Cmd: cmd.SetValue, Description: "Toggle value menu to put values like NULL, EMPTY or DEFAULT"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy value to clipboard"},
+		},
+		CopyAsMenuGroup: {
+			Bind{Key: Key{Char: 'i'}, Cmd: cmd.CopyRowAsInsert, Description: "Copy as INSERT"},
+			Bind{Key: Key{Char: 'u'}, Cmd: cmd.CopyRowAsUpdate, Description: "Copy as UPDATE"},
+			Bind{Key: Key{Char: 's'}, Cmd: cmd.CopyRowAsSelect, Description: "Copy as SELECT"},
+			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.Quit, Description: "Close menu"},
 		},
 	},
 }

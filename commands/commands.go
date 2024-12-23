@@ -80,6 +80,9 @@ const (
 	CopyRowAsInsert
 	CopyRowAsUpdate
 	CopyRowAsSelect
+
+	// CopyAsMenu Command
+	CopyAsMenu
 )
 
 func (c Command) String() string {
@@ -214,6 +217,8 @@ func (c Command) String() string {
 		return "CopyRowAsUpdate"
 	case CopyRowAsSelect:
 		return "CopyRowAsSelect"
+	case CopyAsMenu:
+		return "CopyAsMenu"
 	}
 
 	return "Unknown"

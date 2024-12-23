@@ -32,6 +32,9 @@ const (
 
 	// SetValueList
 	pageNameSetValue string = "SetValue"
+
+	// CopyAs
+	pageNameCopyAs = "copyAs"
 )
 
 // Tabs
