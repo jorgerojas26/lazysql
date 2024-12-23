@@ -469,14 +469,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.CopyRow {
 		row, _ := table.GetSelection()
 		var rowData []string
-
-		// 获取所有列的数据
+		// Get data from all columns
 		for col := 0; col < table.GetColumnCount(); col++ {
 			cell := table.GetCell(row, col)
 			rowData = append(rowData, cell.Text)
 		}
 
-		// 用制表符连接数据
+		// Join data with tab character
 		clipboard := strings.Join(rowData, "\t")
 		err := lib.NewClipboard().Write(clipboard)
 		if err != nil {
@@ -1400,13 +1399,13 @@ func (table *ResultsTable) copyRowAsSQL(format string) error {
 	var columns []string
 	var whereConditions []string
 
-	// 获取列名和值
+	// Get column names and values
 	for col := 0; col < table.GetColumnCount(); col++ {
 		header := table.GetCell(0, col).Text
 		cell := table.GetCell(row, col)
 		columns = append(columns, header)
 
-		// 处理值的格式
+		// Handle value formatting
 		value := cell.Text
 		if value == "NULL" {
 			values = append(values, "NULL")
@@ -1430,7 +1429,7 @@ func (table *ResultsTable) copyRowAsSQL(format string) error {
 		for i := range columns {
 			sets = append(sets, fmt.Sprintf("%s = %s", columns[i], values[i]))
 		}
-		// 假设第一列是主键
+		// Assume first column is primary key
 		sql = fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s;",
 			table.GetTitle(),
 			strings.Join(sets, ", "),

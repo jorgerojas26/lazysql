@@ -186,7 +186,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			nodeRef := node.GetReference().(string)
 			clipboard := lib.NewClipboard()
 			if err := clipboard.Write(nodeRef); err != nil {
-				// 处理错误
+				// handle error
 				return event
 			}
 			return nil
