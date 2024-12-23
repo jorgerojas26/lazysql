@@ -482,18 +482,6 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if err != nil {
 			table.SetError(err.Error(), nil)
 		}
-	} else if command == commands.CopyRowAsInsert {
-		if err := table.copyRowAsSQL("INSERT"); err != nil {
-			table.SetError(err.Error(), nil)
-		}
-	} else if command == commands.CopyRowAsUpdate {
-		if err := table.copyRowAsSQL("UPDATE"); err != nil {
-			table.SetError(err.Error(), nil)
-		}
-	} else if command == commands.CopyRowAsSelect {
-		if err := table.copyRowAsSQL("SELECT"); err != nil {
-			table.SetError(err.Error(), nil)
-		}
 	} else if command == commands.CopyAsMenu {
 		// Get current selected cell position
 		row, col := table.GetSelection()
@@ -1458,7 +1446,6 @@ func (table *ResultsTable) copyRowAsSQL(format string) error {
 	clipboard := lib.NewClipboard()
 	return clipboard.Write(sql)
 }
-
 func (table *ResultsTable) HandleCommand(command commands.Command) {
 	switch command {
 	case commands.CopyAsMenu:
