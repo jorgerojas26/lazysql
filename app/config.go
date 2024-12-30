@@ -26,7 +26,11 @@ func defaultConfig() *Config {
 }
 
 func LoadConfig() error {
-	file, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".config", "lazysql", "config.toml"))
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return err
+	}
+	file, err := os.ReadFile(filepath.Join(configDir, "lazysql", "config.toml"))
 	if err != nil {
 		return err
 	}
@@ -46,11 +50,14 @@ func LoadConfig() error {
 func (c *Config) SaveConnections(connections []models.Connection) error {
 	c.Connections = connections
 
-	directoriesPath := filepath.Join(os.Getenv("HOME"), ".config", "lazysql")
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return err
+	}
+	directoriesPath := filepath.Join(configDir, "lazysql")
 	configFilePath := filepath.Join(directoriesPath, "config.toml")
 
-	err := os.MkdirAll(directoriesPath, 0o755)
-	if err != nil {
+	if err = os.MkdirAll(directoriesPath, 0o755); err != nil {
 		return err
 	}
 
