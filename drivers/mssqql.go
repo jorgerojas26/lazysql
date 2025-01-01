@@ -18,10 +18,6 @@ type MSSQL struct {
 	Provider   string
 }
 
-const (
-	mssqlDefaulPort = "1433"
-)
-
 func (db *MSSQL) TestConnection(urlstr string) error {
 	return db.Connect(urlstr)
 }
@@ -251,7 +247,8 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	results := make([][]string, 0)
 
-	query := fmt.Sprintf("SELECT * FROM %s", table)
+	query := "SELECT * FROM "
+	query += table
 
 	if where != "" {
 		query += fmt.Sprintf(" %s", where)
@@ -340,10 +337,13 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 		return errors.New("primary key value is required")
 	}
 
-	query := fmt.Sprintf(
-		"UPDATE %s SET %s = @p1 WHERE %s = @p2",
-		table, column, primaryKeyColumnName,
-	)
+	query := "UPDATE "
+	query += table
+	query += " SET "
+	query += column
+	query += " = @p1 WHERE "
+	query += primaryKeyColumnName
+	query += " = @p2"
 	_, err := db.Connection.Exec(query, value, primaryKeyValue)
 
 	return err
@@ -366,10 +366,11 @@ func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 		return errors.New("primary key value is required")
 	}
 
-	query := fmt.Sprintf(
-		"DELETE FROM %s WHERE %s = @p1",
-		table, primaryKeyColumnName,
-	)
+	query := "DELETE FROM "
+	query += table
+	query += " WHERE "
+	query += primaryKeyColumnName
+	query += " = @p1"
 	_, err := db.Connection.Exec(query, primaryKeyValue)
 
 	return err
@@ -513,7 +514,7 @@ func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 			// then add 1 by 1 on loop
 			updateCounterParams := len(valuesPlaceholder)
 			for i, pki := range change.PrimaryKeyInfo {
-				updateCounterParams += 1
+				updateCounterParams++
 				if i == 0 {
 					queryStr += fmt.Sprintf(" WHERE %s = @p%d", pki.Name, updateCounterParams)
 				} else {
