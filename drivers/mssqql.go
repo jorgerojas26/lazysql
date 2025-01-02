@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/helpers/logger"
-	"github.com/jorgerojas26/lazysql/models"
+	// mssql driver
+	_ "github.com/microsoft/go-mssqldb"
 	"github.com/xo/dburl"
 
-	_ "github.com/microsoft/go-mssqldb"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 type MSSQL struct {
