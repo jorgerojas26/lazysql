@@ -5,10 +5,20 @@ import (
 )
 
 type Connection struct {
-	Name     string
-	Provider string
-	DBName   string
-	URL      string
+	Name string
+
+	// either use this directly
+	URL string
+
+	// or parse manually
+	Provider  string
+	Username  string
+	Password  string
+	Hostname  string
+	Port      string
+	DBName    string
+	URLParams string
+
 	Commands []*Command
 }
 

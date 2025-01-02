@@ -917,11 +917,30 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 			table.SetIsFiltering(false)
 		}
 
-		columns, _ := table.DBDriver.GetTableColumns(databaseName, tableName)
-		constraints, _ := table.DBDriver.GetConstraints(databaseName, tableName)
-		foreignKeys, _ := table.DBDriver.GetForeignKeys(databaseName, tableName)
-		indexes, _ := table.DBDriver.GetIndexes(databaseName, tableName)
-		primaryKeyColumnNames, _ := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+		columns, err := table.DBDriver.GetTableColumns(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		constraints, err := table.DBDriver.GetConstraints(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		foreignKeys, err := table.DBDriver.GetForeignKeys(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		indexes, err := table.DBDriver.GetIndexes(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		primaryKeyColumnNames, err := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
 
 		logger.Info("FetchRecords", map[string]any{"primaryKeyColumnNames": primaryKeyColumnNames})
 
