@@ -70,7 +70,7 @@ func (pagination *Pagination) SetTotalRecords(total int) {
 		offset++
 	}
 
-	limit := pagination.GetLimit() + offset
+	limit := pagination.GetLimit() + pagination.GetOffset()
 	if limit > total {
 		limit = total
 	}
