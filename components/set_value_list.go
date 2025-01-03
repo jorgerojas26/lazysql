@@ -78,13 +78,13 @@ func (list *SetValueList) OnFinish(callback func(selection models.CellValueType,
 
 func (list *SetValueList) Show(x, y, width int) {
 	list.SetRect(x, y, width, len(VALUES)*2+1)
-	MainPages.AddPage(pageNameSetValue, list, false, true)
+	mainPages.AddPage(pageNameSetValue, list, false, true)
 	App.SetFocus(list)
 	App.ForceDraw()
 }
 
 func (list *SetValueList) Hide() {
-	MainPages.RemovePage(pageNameSetValue)
+	mainPages.RemovePage(pageNameSetValue)
 	App.SetFocus(list)
 	App.ForceDraw()
 }

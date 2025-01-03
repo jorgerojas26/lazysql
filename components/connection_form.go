@@ -95,7 +95,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				return event
 			}
 
-			databases, _ := helpers.LoadConnections()
+			databases := app.App.Connections()
 			newDatabases := make([]models.Connection, len(databases))
 
 			DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
@@ -115,7 +115,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			case actionNewConnection:
 
 				newDatabases = append(databases, parsedDatabaseData)
-				err := helpers.SaveConnectionConfig(newDatabases)
+				err := app.App.SaveConnections(newDatabases)
 				if err != nil {
 					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 					return event
@@ -123,7 +123,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 			case actionEditConnection:
 				newDatabases = make([]models.Connection, len(databases))
-				row, _ := ConnectionListTable.GetSelection()
+				row, _ := connectionsTable.GetSelection()
 
 				for i, database := range databases {
 					if i == row {
@@ -143,7 +143,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 					}
 				}
 
-				err := helpers.SaveConnectionConfig(newDatabases)
+				err := app.App.SaveConnections(newDatabases)
 				if err != nil {
 					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 					return event
@@ -151,7 +151,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				}
 			}
 
-			ConnectionListTable.SetConnections(newDatabases)
+			connectionsTable.SetConnections(newDatabases)
 			connectionPages.SwitchToPage(pageNameConnectionSelection)
 
 		} else if event.Key() == tcell.KeyF2 {

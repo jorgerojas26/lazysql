@@ -9,6 +9,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 var (
@@ -19,6 +21,7 @@ var (
 type Application struct {
 	*tview.Application
 
+	config    *Config
 	context   context.Context
 	cancelFn  context.CancelFunc
 	waitGroup sync.WaitGroup
@@ -35,6 +38,7 @@ func init() {
 
 	App = &Application{
 		Application: tview.NewApplication(),
+		config:      defaultConfig(),
 		context:     ctx,
 		cancelFn:    cancel,
 	}
@@ -66,6 +70,21 @@ func init() {
 // Context returns the application context.
 func (a *Application) Context() context.Context {
 	return a.context
+}
+
+// Config returns the application configuration.
+func (a *Application) Config() *models.AppConfig {
+	return a.config.AppConfig
+}
+
+// Connections returns the database connections.
+func (a *Application) Connections() []models.Connection {
+	return a.config.Connections
+}
+
+// SaveConnections saves the database connections.
+func (a *Application) SaveConnections(connections []models.Connection) error {
+	return a.config.SaveConnections(connections)
 }
 
 // Register adds a task to the wait group and returns a

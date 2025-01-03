@@ -19,8 +19,6 @@ type ConnectionSelection struct {
 	StatusText *tview.TextView
 }
 
-var ConnectionListTable = NewConnectionsTable()
-
 func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *models.ConnectionPages) *ConnectionSelection {
 	wrapper := tview.NewFlex()
 
@@ -66,7 +64,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	statusText := tview.NewTextView()
 	statusText.SetBorderPadding(1, 1, 0, 0)
 
-	wrapper.AddItem(ConnectionListTable, 0, 1, true)
+	wrapper.AddItem(NewConnectionsTable(), 0, 1, true)
 	wrapper.AddItem(statusText, 4, 0, false)
 	wrapper.AddItem(buttonsWrapper, 3, 0, false)
 
@@ -76,12 +74,12 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	}
 
 	wrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		connections := ConnectionListTable.GetConnections()
+		connections := connectionsTable.GetConnections()
 
 		command := app.Keymaps.Group(app.ConnectionGroup).Resolve(event)
 
 		if len(connections) != 0 {
-			row, _ := ConnectionListTable.GetSelection()
+			row, _ := connectionsTable.GetSelection()
 			selectedConnection := connections[row]
 
 			switch command {
@@ -99,23 +97,23 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 				confirmationModal := NewConfirmationModal("")
 
 				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-					MainPages.RemovePage(pageNameConfirmation)
+					mainPages.RemovePage(pageNameConfirmation)
 					confirmationModal = nil
 
 					if buttonLabel == "Yes" {
 						newConnections := append(connections[:row], connections[row+1:]...)
 
-						err := helpers.SaveConnectionConfig(newConnections)
+						err := app.App.SaveConnections(newConnections)
 						if err != nil {
-							ConnectionListTable.SetError(err)
+							connectionsTable.SetError(err)
 						} else {
-							ConnectionListTable.SetConnections(newConnections)
+							connectionsTable.SetConnections(newConnections)
 						}
 
 					}
 				})
 
-				MainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
+				mainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
 
 				return nil
 			}
@@ -141,8 +139,8 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 }
 
 func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Application {
-	if MainPages.HasPage(connection.Name) {
-		MainPages.SwitchToPage(connection.Name)
+	if mainPages.HasPage(connection.Name) {
+		mainPages.SwitchToPage(connection.Name)
 		return App.Draw()
 	}
 
@@ -204,8 +202,8 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		return App.Draw()
 	}
 
-	selectedRow, selectedCol := ConnectionListTable.GetSelection()
-	cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
+	selectedRow, selectedCol := connectionsTable.GetSelection()
+	cell := connectionsTable.GetCell(selectedRow, selectedCol)
 	cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
 	cs.StatusText.SetText("")
 
@@ -213,7 +211,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 	newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
 	newHome.Tree.Wrapper.SetTitle(connection.Name)
 
-	MainPages.AddAndSwitchToPage(connection.Name, newHome, true)
+	mainPages.AddAndSwitchToPage(connection.Name, newHome, true)
 	App.SetFocus(newHome.Tree)
 
 	return App.Draw()

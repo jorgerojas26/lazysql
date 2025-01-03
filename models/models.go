@@ -4,6 +4,11 @@ import (
 	"github.com/rivo/tview"
 )
 
+type AppConfig struct {
+	DefaultPageSize int
+	DisableSidebar  bool
+}
+
 type Connection struct {
 	Name string
 
