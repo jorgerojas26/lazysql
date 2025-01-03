@@ -225,7 +225,7 @@ You can update the tree by pressing `R`, so you can see your newly created table
 - [x] MySQL
 - [x] PostgreSQL
 - [x] SQLite
-- [ ] MSSQL
+- [x] MSSQL
 - [ ] MongoDB
 
 Support for multiple RDBMS is a work in progress.
