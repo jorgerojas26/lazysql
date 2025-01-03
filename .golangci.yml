@@ -105,6 +105,10 @@ linters-settings:
       # report when replacing `errors.New(fmt.Sprintf())` with `fmt.Errorf()` is possible
       - name: errorf
 
+      # enforces conventions on source file names
+      - name: filename-format
+        arguments: ["^[_a-z][_a-z0-9]*\\.go$"]
+
       # incrementing an integer variable by 1 is recommended to be done using the `++` operator
       - name: increment-decrement
 
@@ -140,6 +144,7 @@ linters-settings:
 
       # warns when initialism, variable or package naming conventions are not followed.
       - name: var-naming
+        arguments: [[], ["DB", "DML"]]
 
       # if-then-else conditional with identical implementations in both branches is an error.
       - name: identical-branches

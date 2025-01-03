@@ -8,6 +8,7 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -289,6 +290,17 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 		list.Show(x, y, 30)
 
 		return nil
+	case commands.Copy:
+		currentItemIndex := sidebar.GetCurrentFieldIndex()
+		item := sidebar.Flex.GetItem(currentItemIndex).(*tview.TextArea)
+		text := item.GetText()
+
+		clipboard := lib.NewClipboard()
+
+		err := clipboard.Write(text)
+		if err != nil {
+			sidebar.Publish(models.StateChange{Key: eventSidebarError, Value: err.Error()})
+		}
 	}
 	return event
 }
