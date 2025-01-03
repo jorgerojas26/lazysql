@@ -37,21 +37,25 @@ func NewSQLEditor() *SQLEditor {
 	sqlEditor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		command := app.Keymaps.Group(app.EditorGroup).Resolve(event)
 
-		if command == commands.Execute {
+		switch command {
+		case commands.Execute:
 			sqlEditor.Publish(eventSQLEditorQuery, sqlEditor.GetText())
 			return nil
-		} else if command == commands.UnfocusEditor {
+
+		case commands.UnfocusEditor:
 			sqlEditor.Publish(eventSQLEditorEscape, "")
-		} else if command == commands.OpenInExternalEditor && runtime.GOOS == "linux" {
-			// ----- THIS IS A LINUX-ONLY FEATURE, for now
 
-			text := openExternalEditor(sqlEditor)
-
-			// Set the text from file
-			sqlEditor.SetText(text, true)
+		case commands.OpenInExternalEditor:
+			// THIS IS A LINUX-ONLY FEATURE (for now)
+			if runtime.GOOS == "linux" {
+				text := openExternalEditor(sqlEditor)
+				sqlEditor.SetText(text, true)
+			}
 		}
+
 		return event
 	})
+
 	return sqlEditor
 }
 
@@ -112,7 +116,7 @@ func openExternalEditor(s *SQLEditor) string {
 		* Other: read
 	*/
 
-	err := os.WriteFile(path, content, 0644)
+	err := os.WriteFile(path, content, 0o644)
 	if err != nil {
 		return s.GetText()
 	}

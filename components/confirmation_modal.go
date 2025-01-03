@@ -20,6 +20,7 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	}
 	modal.AddButtons([]string{"Yes", "No"})
 	modal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	modal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	modal.SetButtonActivatedStyle(tcell.StyleDefault.
 		Background(app.Styles.InverseTextColor).
 		Foreground(app.Styles.ContrastSecondaryTextColor),

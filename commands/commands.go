@@ -165,6 +165,8 @@ func (c Command) String() string {
 		return "EditConnection"
 	case DeleteConnection:
 		return "DeleteConnection"
+	case Refresh:
+		return "Refresh"
 	case UnfocusEditor:
 		return "UnfocusEditor"
 	case RecordsMenu:

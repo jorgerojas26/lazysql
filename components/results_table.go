@@ -18,7 +18,7 @@ import (
 )
 
 type ResultsTableState struct {
-	listOfDbChanges       *[]models.DbDmlChange
+	listOfDBChanges       *[]models.DBDMLChange
 	error                 string
 	currentSort           string
 	databaseName          string
@@ -53,7 +53,7 @@ type ResultsTable struct {
 	DBDriver    drivers.Driver
 }
 
-func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
+func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -62,7 +62,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 		indexes:         [][]string{},
 		isEditing:       false,
 		isLoading:       false,
-		listOfDbChanges: listOfDbChanges,
+		listOfDBChanges: listOfDBChanges,
 		showSidebar:     false,
 	}
 
@@ -80,6 +80,7 @@ func NewResultsTable(listOfDbChanges *[]models.DbDmlChange, tree *Tree, dbdriver
 	loadingModal := tview.NewModal()
 	loadingModal.SetText("Loading...")
 	loadingModal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	loadingModal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	loadingModal.SetTextColor(app.Styles.SecondaryTextColor)
 
 	pages := tview.NewPages()
@@ -230,9 +231,12 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			}
 
 			logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
-			table.AppendNewChange(models.DmlUpdateType, row, changedColumnIndex, cellValue)
+			table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
 
 			App.ForceDraw()
+		case eventSidebarError:
+			errorMessage := stateChange.Value.(string)
+			table.SetError(errorMessage, nil)
 		}
 	}
 }
@@ -258,10 +262,10 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 }
 
 func (table *ResultsTable) AddInsertedRows() {
-	inserts := make([]models.DbDmlChange, 0)
+	inserts := make([]models.DBDMLChange, 0)
 
-	for _, change := range *table.state.listOfDbChanges {
-		if change.Type == models.DmlInsertType {
+	for _, change := range *table.state.listOfDBChanges {
+		if change.Type == models.DMLInsertType {
 			inserts = append(inserts, change)
 		}
 	}
@@ -414,7 +418,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			isAnInsertedRow := false
 			indexOfInsertedRow := -1
 
-			for i, insertedRow := range *table.state.listOfDbChanges {
+			for i, insertedRow := range *table.state.listOfDBChanges {
 				cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
 
 				if cellReference != nil && insertedRow.PrimaryKeyInfo[0].Value == cellReference {
@@ -424,7 +428,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			}
 
 			if isAnInsertedRow {
-				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:indexOfInsertedRow], (*table.state.listOfDbChanges)[indexOfInsertedRow+1:]...)
+				*table.state.listOfDBChanges = append((*table.state.listOfDBChanges)[:indexOfInsertedRow], (*table.state.listOfDBChanges)[indexOfInsertedRow+1:]...)
 				table.RemoveRow(selectedRowIndex)
 				if selectedRowIndex-1 != 0 {
 					table.Select(selectedRowIndex-1, 0)
@@ -434,7 +438,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					}
 				}
 			} else {
-				table.AppendNewChange(models.DmlDeleteType, selectedRowIndex, -1, models.CellValue{})
+				table.AppendNewChange(models.DMLDeleteType, selectedRowIndex, -1, models.CellValue{})
 			}
 
 		}
@@ -451,7 +455,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.FinishSettingValue()
 
 			if selection >= 0 {
-				table.AppendNewChange(models.DmlUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+				table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
 			}
 		})
 
@@ -913,11 +917,30 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 			table.SetIsFiltering(false)
 		}
 
-		columns, _ := table.DBDriver.GetTableColumns(databaseName, tableName)
-		constraints, _ := table.DBDriver.GetConstraints(databaseName, tableName)
-		foreignKeys, _ := table.DBDriver.GetForeignKeys(databaseName, tableName)
-		indexes, _ := table.DBDriver.GetIndexes(databaseName, tableName)
-		primaryKeyColumnNames, _ := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+		columns, err := table.DBDriver.GetTableColumns(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		constraints, err := table.DBDriver.GetConstraints(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		foreignKeys, err := table.DBDriver.GetForeignKeys(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		indexes, err := table.DBDriver.GetIndexes(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+
+		primaryKeyColumnNames, err := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
 
 		logger.Info("FetchRecords", map[string]any{"primaryKeyColumnNames": primaryKeyColumnNames})
 
@@ -951,6 +974,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	inputField.SetText(cell.Text)
 	inputField.SetFieldBackgroundColor(app.Styles.PrimaryTextColor)
 	inputField.SetFieldTextColor(app.Styles.PrimitiveBackgroundColor)
+	inputField.SetBorder(true)
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
@@ -962,7 +986,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 			cell.SetText(newValue)
 
 			if currentValue != newValue {
-				table.AppendNewChange(models.DmlUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
+				table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
 			}
 
 			switch key {
@@ -1000,14 +1024,14 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	})
 
 	x, y, width := cell.GetLastPosition()
-	inputField.SetRect(x, y, width+1, 1)
+	inputField.SetRect(x-1, y-1, width+3, 3)
 	table.Page.AddPage(pageNameTableEditCell, inputField, false, true)
 	App.SetFocus(inputField)
 }
 
 func (table *ResultsTable) CheckIfRowIsInserted(rowID string) bool {
-	for _, dmlChange := range *table.state.listOfDbChanges {
-		if dmlChange.Type == models.DmlInsertType && dmlChange.PrimaryKeyInfo[0].Value == rowID {
+	for _, dmlChange := range *table.state.listOfDBChanges {
+		if dmlChange.Type == models.DMLInsertType && dmlChange.PrimaryKeyInfo[0].Value == rowID {
 			return true
 		}
 	}
@@ -1016,11 +1040,11 @@ func (table *ResultsTable) CheckIfRowIsInserted(rowID string) bool {
 }
 
 func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.CellValue) {
-	for i, dmlChange := range *table.state.listOfDbChanges {
-		if dmlChange.PrimaryKeyInfo[0].Value == rowID && dmlChange.Type == models.DmlInsertType {
+	for i, dmlChange := range *table.state.listOfDBChanges {
+		if dmlChange.PrimaryKeyInfo[0].Value == rowID && dmlChange.Type == models.DMLInsertType {
 			for j, v := range dmlChange.Values {
 				if v.Column == newValue.Column {
-					(*table.state.listOfDbChanges)[i].Values[j] = newValue
+					(*table.state.listOfDBChanges)[i].Values[j] = newValue
 					break
 				}
 			}
@@ -1028,7 +1052,7 @@ func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.C
 	}
 }
 
-func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex int, colIndex int, value models.CellValue) {
+func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex int, colIndex int, value models.CellValue) {
 	databaseName := table.GetDatabaseName()
 	tableName := table.GetTableName()
 
@@ -1053,7 +1077,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 		return
 	}
 
-	if changeType == models.DmlUpdateType {
+	if changeType == models.DMLUpdateType {
 		switch value.Type {
 		case models.Null, models.Empty, models.Default:
 			tableCell.SetText(value.Value.(string))
@@ -1062,7 +1086,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 		}
 	}
 
-	for i, dmlChange := range *table.state.listOfDbChanges {
+	for i, dmlChange := range *table.state.listOfDBChanges {
 		changeExistOnSameCell := false
 
 		for _, value := range dmlChange.Values {
@@ -1087,27 +1111,27 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 			}
 
 			switch changeType {
-			case models.DmlUpdateType:
+			case models.DMLUpdateType:
 				originalValue := table.GetRecords()[rowIndex][colIndex]
 
 				if changeForColExists {
 					if originalValue == value.Value {
-						if len((*table.state.listOfDbChanges)[i].Values) == 1 {
-							*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:i], (*table.state.listOfDbChanges)[i+1:]...)
+						if len((*table.state.listOfDBChanges)[i].Values) == 1 {
+							*table.state.listOfDBChanges = append((*table.state.listOfDBChanges)[:i], (*table.state.listOfDBChanges)[i+1:]...)
 						} else {
-							(*table.state.listOfDbChanges)[i].Values = append((*table.state.listOfDbChanges)[i].Values[:valueIndex], (*table.state.listOfDbChanges)[i].Values[valueIndex+1:]...)
+							(*table.state.listOfDBChanges)[i].Values = append((*table.state.listOfDBChanges)[i].Values[:valueIndex], (*table.state.listOfDBChanges)[i].Values[valueIndex+1:]...)
 						}
 						table.SetCellColor(rowIndex, colIndex, app.Styles.PrimitiveBackgroundColor)
 					} else {
-						(*table.state.listOfDbChanges)[i].Values[valueIndex] = value
+						(*table.state.listOfDBChanges)[i].Values[valueIndex] = value
 					}
 				} else {
-					(*table.state.listOfDbChanges)[i].Values = append((*table.state.listOfDbChanges)[i].Values, value)
+					(*table.state.listOfDBChanges)[i].Values = append((*table.state.listOfDBChanges)[i].Values, value)
 					table.SetCellColor(rowIndex, colIndex, colorTableChange)
 				}
 
-			case models.DmlDeleteType:
-				*table.state.listOfDbChanges = append((*table.state.listOfDbChanges)[:i], (*table.state.listOfDbChanges)[i+1:]...)
+			case models.DMLDeleteType:
+				*table.state.listOfDBChanges = append((*table.state.listOfDBChanges)[:i], (*table.state.listOfDBChanges)[i+1:]...)
 				table.SetRowColor(rowIndex, app.Styles.PrimitiveBackgroundColor)
 			}
 		}
@@ -1116,14 +1140,14 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 	if !dmlChangeAlreadyExists {
 
 		switch changeType {
-		case models.DmlDeleteType:
+		case models.DMLDeleteType:
 			table.SetRowColor(rowIndex, colorTableDelete)
-		case models.DmlUpdateType:
+		case models.DMLUpdateType:
 			tableCell.SetStyle(tcell.StyleDefault.Background(colorTableChange))
 			table.SetCellColor(rowIndex, colIndex, colorTableChange)
 		}
 
-		newDmlChange := models.DbDmlChange{
+		newDMLChange := models.DBDMLChange{
 			Type:           changeType,
 			Database:       databaseName,
 			Table:          tableName,
@@ -1131,11 +1155,11 @@ func (table *ResultsTable) AppendNewChange(changeType models.DmlType, rowIndex i
 			PrimaryKeyInfo: rowPrimaryKeyInfo,
 		}
 
-		*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newDmlChange)
+		*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newDMLChange)
 
 	}
 
-	logger.Info("AppendNewChange", map[string]any{"listOfDbChanges": *table.state.listOfDbChanges})
+	logger.Info("AppendNewChange", map[string]any{"listOfDbChanges": *table.state.listOfDBChanges})
 }
 
 func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyInfo {
@@ -1174,15 +1198,15 @@ func (table *ResultsTable) appendNewRow() {
 		}
 	}
 
-	newInsert := models.DbDmlChange{
-		Type:           models.DmlInsertType,
+	newInsert := models.DBDMLChange{
+		Type:           models.DMLInsertType,
 		Database:       table.GetDatabaseName(),
 		Table:          table.GetTableName(),
 		Values:         newRow,
 		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: newRowUUID}},
 	}
 
-	*table.state.listOfDbChanges = append(*table.state.listOfDbChanges, newInsert)
+	*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newInsert)
 
 	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
 
@@ -1348,8 +1372,8 @@ func (table *ResultsTable) UpdateSidebar() {
 
 			pendingEditExist := false
 
-			for _, dmlChange := range *table.state.listOfDbChanges {
-				if dmlChange.Type == models.DmlUpdateType {
+			for _, dmlChange := range *table.state.listOfDBChanges {
+				if dmlChange.Type == models.DMLUpdateType {
 					for _, v := range dmlChange.Values {
 						if v.Column == name && v.TableRowIndex == selectedRow && v.TableColumnIndex == i-1 {
 							pendingEditExist = true

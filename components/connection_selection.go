@@ -140,50 +140,81 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 	return cs
 }
 
-func (cs *ConnectionSelection) Connect(connection models.Connection) {
-	if MainPages.HasPage(connection.URL) {
-		MainPages.SwitchToPage(connection.URL)
-		App.Draw()
-	} else {
-		cs.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
-		App.Draw()
+func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Application {
+	if MainPages.HasPage(connection.Name) {
+		MainPages.SwitchToPage(connection.Name)
+		return App.Draw()
+	}
 
-		var newDbDriver drivers.Driver
-
-		switch connection.Provider {
-		case drivers.DriverMySQL:
-			newDbDriver = &drivers.MySQL{}
-		case drivers.DriverPostgres:
-			newDbDriver = &drivers.Postgres{}
-		case drivers.DriverSqlite:
-			newDbDriver = &drivers.SQLite{}
-		}
-
-		err := newDbDriver.Connect(connection.URL)
-
+	if len(connection.Commands) > 0 {
+		port, err := helpers.GetFreePort()
 		if err != nil {
 			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-			App.Draw()
-		} else {
-			newHome := NewHomePage(connection, newDbDriver)
-
-			MainPages.AddAndSwitchToPage(connection.URL, newHome, true)
-
-			cs.StatusText.SetText("")
-			App.Draw()
-
-			selectedRow, selectedCol := ConnectionListTable.GetSelection()
-			cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
-			cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
-
-			ConnectionListTable.SetCell(selectedRow, selectedCol, cell)
-
-			MainPages.SwitchToPage(connection.URL)
-			newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
-			newHome.Tree.Wrapper.SetTitle(fmt.Sprintf("%s (%s)", connection.Name, strings.ToUpper(connection.Provider)))
-			App.SetFocus(newHome.Tree)
-			App.Draw()
+			return App.Draw()
 		}
 
+		// Replace ${port} with the actual port.
+		connection.URL = strings.ReplaceAll(connection.URL, "${port}", port)
+
+		for i, command := range connection.Commands {
+			message := fmt.Sprintf("Running command %d/%d...", i+1, len(connection.Commands))
+			cs.StatusText.SetText(message).SetTextColor(app.Styles.TertiaryTextColor)
+			App.Draw()
+
+			cmd := strings.ReplaceAll(command.Command, "${port}", port)
+			if err := helpers.RunCommand(App.Context(), cmd, App.Register()); err != nil {
+				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				return App.Draw()
+			}
+
+			if command.WaitForPort != "" {
+				port := strings.ReplaceAll(command.WaitForPort, "${port}", port)
+
+				message := fmt.Sprintf("Waiting for port %s...", port)
+				cs.StatusText.SetText(message).SetTextColor(app.Styles.TertiaryTextColor)
+				App.Draw()
+
+				if err := helpers.WaitForPort(App.Context(), port); err != nil {
+					cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					return App.Draw()
+				}
+			}
+		}
 	}
+
+	cs.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
+	App.Draw()
+
+	var newDBDriver drivers.Driver
+
+	switch connection.Provider {
+	case drivers.DriverMySQL:
+		newDBDriver = &drivers.MySQL{}
+	case drivers.DriverPostgres:
+		newDBDriver = &drivers.Postgres{}
+	case drivers.DriverSqlite:
+		newDBDriver = &drivers.SQLite{}
+	case drivers.DriverMSSQL:
+		newDBDriver = &drivers.MSSQL{}
+	}
+
+	err := newDBDriver.Connect(connection.URL)
+	if err != nil {
+		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return App.Draw()
+	}
+
+	selectedRow, selectedCol := ConnectionListTable.GetSelection()
+	cell := ConnectionListTable.GetCell(selectedRow, selectedCol)
+	cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
+	cs.StatusText.SetText("")
+
+	newHome := NewHomePage(connection, newDBDriver)
+	newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
+	newHome.Tree.Wrapper.SetTitle(connection.Name)
+
+	MainPages.AddAndSwitchToPage(connection.Name, newHome, true)
+	App.SetFocus(newHome.Tree)
+
+	return App.Draw()
 }

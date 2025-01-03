@@ -38,6 +38,7 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li><a href="#commands">Commands</a></li>
     <li><a href="#keybindings">Keybindings</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -132,9 +133,89 @@ makepkg -si
 
 ## Usage
 
-```bash
+> For a list of keyboard shortcuts press `?`
+
+Open the TUI with:
+```console
 $ lazysql
 ```
+
+To launch lazysql with the ability to pick from the saved connections.
+```console
+$ lazysql [connection_url]
+```
+
+To launch lazysql and connect to database at [connection_url].
+
+### Connect to a DB
+
+1. Start `lazysql`
+2. Create a new connection (press `n`)
+3. Provide a name for the connection as well as the URL to connect to (see <a href="#example-connection-urls">example connection URL</a>)
+4. Connect to the DB (press `<Enter>`)
+
+If you already have a connection set up:
+1. Start `lazysql`
+2. Select the right connection (press `j` and `h` for navigation)
+3. Connect to the DB (press `c` or `<Enter>`)
+
+### Create a table
+
+There is currently no way to create a table from the TUI.
+However you can run the query to create the table as a SQL-Query, 
+inside the <a href="#execute-sql-querys">SQL Editor</a>.
+
+You can update the tree by pressing `R`, so you can see your newly created table.
+
+### Execute SQL querys
+
+1. Press `<Ctrl+E>` to open the built-in SQL Editor
+2. Write the SQL query
+3. Press `<Ctrl+R>` to execute the SQL query
+
+> To switch back to the table-tree press `H`
+>
+> After executing a `SELECT`-query a table will be displayed under the SQL-Editor
+> with the query-result. \
+> To switch focus back to SQL-Editor press `/`
+
+### Open/view a table
+
+1. Expand the table-tree by pressing `e` or `<Enter>`
+2. Select the table you want to view
+    - next node `j`
+    - previous node `k`
+    - last node `G`
+    - first node `g`
+3. Press `<Enter>` to open the table
+
+> To switch back to the table-tree press `H` \
+> To switch back to the table press `L`
+
+### Filter rows
+
+1. [Open a table](#openview-a-table)
+2. Press `/` to focus the filter input
+3. Write a `WHERE`-clause to filter the table
+4. Press `<Enter>` to submit your filter
+
+> To remove the filter, focuse the filter input (press `/`) and press `<Esc>`.
+
+### Insert a row
+
+1. [Open a table](#openview-a-table)
+2. Press `1` to switch to the record tab
+3. Press `o` to insert a new row
+4. Fill out all columns
+5. Press `<Ctrl+S>` to save the changes
+
+### Edit a column
+
+1. [Open a table](#openview-a-table)
+2. Press `1` to switch to the record tab
+3. Move to the column you want to edit
+4. Press `c` to edit, Press `<Enter>` to submit
+5. Press `<Ctrl+S>` to save the changes
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -143,10 +224,61 @@ $ lazysql
 - [x] MySQL
 - [x] PostgreSQL
 - [x] SQLite
-- [ ] MSSQL
+- [x] MSSQL
 - [ ] MongoDB
 
 Support for multiple RDBMS is a work in progress.
+
+<!-- COMMANDS -->
+
+## Commands
+
+In some cases, mostly when connecting to remote databases, it might be necessary to run a custom command
+before being able to connect to the database. For example when you can only access the database through
+a remote bastion, you would probably first need to open an SSH tunnel by running the following command
+in a separate terminal:
+
+```bash
+ssh remote-bastion -L 5432:localhost:5432
+```
+
+In order to make it easier to run these commands, lazysql supports running custom commands before connecting
+to the database. You can define these commands in the configuration file like this:
+
+```toml
+[[database]]
+Name = 'server'
+Provider = 'postgres'
+DBName = 'foo'
+URL = 'postgres://postgres:password@localhost:${port}/foo'
+Commands = [
+  { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' }
+]
+```
+
+The `Command` field is required and can contain any command that you would normally run in your terminal.
+The `WaitForPort` field is optional and can be used to wait for a specific port to be open before continuing.
+
+When you define the `${port}` variable in the URL field, lazysql will automatically replace it with a random
+free port number. This port number will then be used in the connection URL and is available in the `Commands`
+field so that you can use it to configure the command.
+
+You can even chain commands to, for example, connect to a remote server and then to a postgres container
+running in a remote k8s cluster:
+
+```toml
+[[database]]
+Name = 'container'
+Provider = 'postgres'
+DBName = 'foo'
+URL = 'postgres://postgres:password@localhost:${port}/foo'
+Commands = [
+  { Command = 'ssh -tt remote-bastion -L 6443:localhost:6443', WaitForPort = '6443' },
+  { Command = 'kubectl port-forward service/postgres ${port}:5432 --kubeconfig /path/to/kube.conf', WaitForPort = '${port}' }
+]
+```
+
+<!-- KEYBINDINGS -->
 
 ## Keybindings
 
@@ -157,7 +289,7 @@ Support for multiple RDBMS is a work in progress.
 | q         | Quit                           |
 | CTRL + e  | Open SQL editor                |
 | Backspace | Return to connection selection |
-| ?         | Show keybindings popup                |
+| ?         | Show keybindings popup         |
 
 ### Table
 
@@ -191,7 +323,7 @@ Support for multiple RDBMS is a work in progress.
 | Key          | Action                            |
 | ------------ | --------------------------------- |
 | CTRL + R     | Run the SQL statement             |
-| CTRL + Space | Open external editor (Linux only)  |
+| CTRL + Space | Open external editor (Linux only) |
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.
 
