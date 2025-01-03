@@ -172,7 +172,6 @@ You can update the tree by pressing `R`, so you can see your newly created table
 1. Press `<Ctrl+E>` to open the built-in SQL Editor
 2. Write the SQL query
 3. Press `<Ctrl+R>` to execute the SQL query
-4. While focused on the results table, press `/` to go back to the SQL Editor.
 
 > To switch back to the table-tree press `H`
 >
