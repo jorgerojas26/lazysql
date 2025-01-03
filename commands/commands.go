@@ -74,6 +74,15 @@ const (
 	TestConnection
 	EditConnection
 	DeleteConnection
+
+	// CopyRow Command
+	CopyRow
+	CopyRowAsInsert
+	CopyRowAsUpdate
+	CopyRowAsSelect
+
+	// CopyAsMenu Command
+	CopyAsMenu
 )
 
 func (c Command) String() string {
@@ -200,6 +209,16 @@ func (c Command) String() string {
 		return "CommitEdit"
 	case DiscardEdit:
 		return "DiscardEdit"
+	case CopyRow:
+		return "CopyRow"
+	case CopyRowAsInsert:
+		return "CopyRowAsInsert"
+	case CopyRowAsUpdate:
+		return "CopyRowAsUpdate"
+	case CopyRowAsSelect:
+		return "CopyRowAsSelect"
+	case CopyAsMenu:
+		return "CopyAsMenu"
 	}
 
 	return "Unknown"

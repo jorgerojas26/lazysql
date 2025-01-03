@@ -466,6 +466,29 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.GetShowSidebar() {
 			App.SetFocus(table.Sidebar)
 		}
+	} else if command == commands.CopyRow {
+		row, _ := table.GetSelection()
+		var rowData []string
+		// Get data from all columns
+		for col := 0; col < table.GetColumnCount(); col++ {
+			cell := table.GetCell(row, col)
+			rowData = append(rowData, cell.Text)
+		}
+
+		// Join data with tab character
+		clipboard := strings.Join(rowData, "\t")
+		err := lib.NewClipboard().Write(clipboard)
+		if err != nil {
+			table.SetError(err.Error(), nil)
+		}
+	} else if command == commands.CopyAsMenu {
+		// Get current selected cell position
+		row, col := table.GetSelection()
+		x, y, _, _ := table.GetRect()
+
+		// Show copy menu
+		copyAsList := NewCopyAsList(table)
+		copyAsList.Show(x+col*10, y+row, 30) // Adjust position and width
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -603,13 +626,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 		case eventSQLEditorQuery:
 			query := stateChange.Value.(string)
 			if query != "" {
-				queryLower := strings.ToLower(query)
-
-				if strings.Contains(queryLower, "select") {
+				queryLower := strings.ToLower(strings.TrimSpace(query))
+				if strings.Contains(queryLower, "select") || strings.Contains(queryLower, "show") {
 					table.SetLoading(true)
 					App.Draw()
 
 					rows, err := table.DBDriver.ExecuteQuery(query)
+
 					table.Pagination.SetTotalRecords(len(rows))
 					table.Pagination.SetLimit(len(rows))
 
@@ -1384,5 +1407,70 @@ func (table *ResultsTable) UpdateSidebar() {
 			table.Sidebar.AddField(title, text, sidebarWidth, pendingEditExist)
 		}
 
+	}
+}
+
+func (table *ResultsTable) copyRowAsSQL(format string) error {
+	row, _ := table.GetSelection()
+	var values []string
+	var columns []string
+	var whereConditions []string
+
+	// Get column names and values
+	for col := 0; col < table.GetColumnCount(); col++ {
+		header := table.GetCell(0, col).Text
+		cell := table.GetCell(row, col)
+		columns = append(columns, header)
+
+		// Handle value formatting
+		value := cell.Text
+		if value == "NULL" {
+			values = append(values, "NULL")
+			whereConditions = append(whereConditions, fmt.Sprintf("`%s` IS NULL", header))
+		} else {
+			values = append(values, fmt.Sprintf("'%s'", value))
+			whereConditions = append(whereConditions, fmt.Sprintf("`%s` = '%s'", header, value))
+		}
+	}
+
+	var sql string
+	switch format {
+	case "INSERT":
+		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);",
+			table.GetTitle(),
+			strings.Join(columns, ", "),
+			strings.Join(values, ", "))
+
+	case "UPDATE":
+		var sets []string
+		for i := range columns {
+			sets = append(sets, fmt.Sprintf("%s = %s", columns[i], values[i]))
+		}
+		// Assume first column is primary key
+		sql = fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s;",
+			table.GetTitle(),
+			strings.Join(sets, ", "),
+			columns[0],
+			values[0])
+
+	case "SELECT":
+		sql = fmt.Sprintf("SELECT * FROM %s WHERE %s;",
+			table.GetTitle(),
+			strings.Join(whereConditions, " AND "))
+	}
+
+	clipboard := lib.NewClipboard()
+	return clipboard.Write(sql)
+}
+func (table *ResultsTable) HandleCommand(command commands.Command) {
+	switch command {
+	case commands.CopyAsMenu:
+		// Get current selected cell position
+		row, col := table.GetSelection()
+		x, y, _, _ := table.GetRect()
+
+		// Show copy menu
+		copyAsList := NewCopyAsList(table)
+		copyAsList.Show(x+col*10, y+row, 30) // Adjust position and width
 	}
 }

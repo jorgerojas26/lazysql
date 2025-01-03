@@ -32,6 +32,9 @@ const (
 
 	// SetValueList
 	pageNameSetValue string = "SetValue"
+
+	// CopyAs
+	pageNameCopyAs = "copyAs"
 )
 
 // Tabs
@@ -49,6 +52,7 @@ const (
 
 	eventSQLEditorQuery  string = "Query"
 	eventSQLEditorEscape string = "Escape"
+	eventSQLEditorError  string = "Error"
 
 	eventResultsTableFiltering string = "FilteringResultsTable"
 

@@ -45,6 +45,7 @@ const (
 	EditorGroup     = "editor"
 	ConnectionGroup = "connection"
 	SidebarGroup    = "sidebar"
+	CopyAsMenuGroup = "copyas"
 )
 
 // Define a global KeymapSystem object with default keybinds
@@ -83,6 +84,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.TreeCollapseAll, Description: "Collapse all"},
 			Bind{Key: Key{Char: 'e'}, Cmd: cmd.ExpandAll, Description: "Expand all"},
 			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh tree"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy node name"},
 		},
 		TreeFilterGroup: {
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusTreeFilter, Description: "Unfocus tree filter"},
@@ -96,7 +98,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'b'}, Cmd: cmd.GotoPrev, Description: "Go to previous cell"},
 			Bind{Key: Key{Char: '$'}, Cmd: cmd.GotoEnd, Description: "Go to last cell"},
 			Bind{Key: Key{Char: '0'}, Cmd: cmd.GotoStart, Description: "Go to first cell"},
-			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value to clipboard"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value"},
+			Bind{Key: Key{Char: 'Y'}, Cmd: cmd.CopyRow, Description: "Copy entire row"},
 			Bind{Key: Key{Char: 'o'}, Cmd: cmd.AppendNewRow, Description: "Append new row"},
 			Bind{Key: Key{Char: 'J'}, Cmd: cmd.SortDesc, Description: "Sort descending"},
 			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh the current table"},
@@ -119,11 +122,13 @@ var Keymaps = KeymapSystem{
 			// Sidebar
 			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Toggle sidebar"},
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
+			Bind{Key: Key{Code: tcell.KeyCtrlY}, Cmd: cmd.CopyAsMenu, Description: "Copy as menu"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusEditor, Description: "Unfocus editor"},
 			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: cmd.OpenInExternalEditor, Description: "Open in external editor"},
+			Bind{Key: Key{Code: tcell.KeyCtrlY}, Cmd: cmd.Copy, Description: "Copy editor text"},
 		},
 		SidebarGroup: {
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.UnfocusSidebar, Description: "Focus table"},
@@ -137,6 +142,12 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.DiscardEdit, Description: "Discard edit"},
 			Bind{Key: Key{Char: 'C'}, Cmd: cmd.SetValue, Description: "Toggle value menu to put values like NULL, EMPTY or DEFAULT"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy value to clipboard"},
+		},
+		CopyAsMenuGroup: {
+			Bind{Key: Key{Char: 'i'}, Cmd: cmd.CopyRowAsInsert, Description: "Copy as INSERT"},
+			Bind{Key: Key{Char: 'u'}, Cmd: cmd.CopyRowAsUpdate, Description: "Copy as UPDATE"},
+			Bind{Key: Key{Char: 's'}, Cmd: cmd.CopyRowAsSelect, Description: "Copy as SELECT"},
+			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.Quit, Description: "Close menu"},
 		},
 	},
 }
