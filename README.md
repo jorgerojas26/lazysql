@@ -149,15 +149,15 @@ To launch lazysql and connect to database at [connection_url].
 
 ### Connect to a DB
 
-1. start `lazysql`
-2. create a new connection (press `n`)
-3. provide a name for the connection as well as the URL to connect to (see <a href="#example-connection-urls">example connection URL</a>)
-4. connect to the DB (press `F3`)
+1. Start `lazysql`
+2. Create a new connection (press `n`)
+3. Provide a name for the connection as well as the URL to connect to (see <a href="#example-connection-urls">example connection URL</a>)
+4. Connect to the DB (press `<Enter>`)
 
 If you already have a connection set up:
-1. start `lazysql`
-2. select the right connection (press `j` and `h` for navigation)
-3. connect to the DB (press `c` or `<Enter>`)
+1. Start `lazysql`
+2. Select the right connection (press `j` and `h` for navigation)
+3. Connect to the DB (press `c` or `<Enter>`)
 
 ### Create a table
 
@@ -165,11 +165,14 @@ There is currently no way to create a table from the TUI.
 However you can run the query to create the table as a SQL-Query, 
 inside the <a href="#execute-sql-querys">SQL Editor</a>.
 
+You can update the tree by pressing `R`, so you can see your newly created table.
+
 ### Execute SQL querys
 
 1. Press `<Ctrl+E>` to open the built-in SQL Editor
 2. Write the SQL query
 3. Press `<Ctrl+R>` to execute the SQL query
+4. While focused on the results table, press `/` to go back to the SQL Editor.
 
 > To switch back to the table-tree press `H`
 >
