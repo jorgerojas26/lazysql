@@ -38,8 +38,9 @@ func LoadConfig() error {
 	if err != nil {
 		return err
 	}
+
 	file, err := os.ReadFile(configFile)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
