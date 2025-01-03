@@ -131,6 +131,43 @@ makepkg -si
 
 <!-- USAGE EXAMPLES -->
 
+## Configuration
+
+If the `XDG_CONFIG_HOME` environment variable is set, the configuration file will be located at:
+
+- `${XDG_CONFIG_HOME}/lazysql/config.toml`
+
+If not, the configuration file will be located at:
+
+- Windows: `%APPDATA%\lazysql\config.toml`
+- macOS: `~/Library/Application Support/lazysql/config.toml`
+- Linux: `~/.config/lazysql/config.toml`
+
+The configuration file is a TOML file and can be used to define multiple connections.
+
+### Example configuration
+
+```toml
+[[database]]
+Name = 'Production database'
+Provider = 'postgres'
+DBName = 'foo'
+URL = 'postgres://postgres:urlencodedpassword@localhost:${port}/foo'
+Commands = [
+  { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' }
+]
+[[database]]
+Name = 'Development database'
+Provider = 'postgres'
+DBName = 'foo'
+URL = 'postgres://postgres:urlencodedpassword@localhost:5432/foo'
+[application]
+DefaultPageSize = 300
+DisableSidebar = false
+```
+
+The `[aplication]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
+
 ## Usage
 
 > For a list of keyboard shortcuts press `?`
