@@ -26,9 +26,13 @@ func defaultConfig() *Config {
 }
 
 func defaultConfigFile() (string, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = dir
 	}
 	return filepath.Join(configDir, "lazysql", "config.toml"), nil
 }
