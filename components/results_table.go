@@ -615,30 +615,19 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 					if err != nil {
 						table.SetLoading(false)
-						App.Draw()
 						table.SetError(err.Error(), nil)
+						App.Draw()
 					} else {
 						table.UpdateRows(rows)
-						table.SetIsFiltering(false)
-
-						if len(rows) > 1 {
-							App.SetFocus(table)
-							table.HighlightTable()
-							table.Editor.SetBlur()
-							table.SetInputCapture(table.tableInputCapture)
-							App.Draw()
-						} else if len(rows) == 1 {
-							table.SetInputCapture(nil)
-							App.SetFocus(table.Editor)
-							table.Editor.Highlight()
-							table.RemoveHighlightTable()
-							table.SetIsFiltering(true)
-							App.Draw()
-						}
 						table.SetLoading(false)
+						table.SetIsFiltering(false)
+						table.HighlightTable()
+						table.Editor.SetBlur()
+						table.SetInputCapture(table.tableInputCapture)
+						table.EditorPages.SwitchToPage(pageNameTableEditorTable)
+						App.SetFocus(table)
+						App.Draw()
 					}
-					table.EditorPages.SwitchToPage(pageNameTableEditorTable)
-					App.Draw()
 				} else {
 					table.SetRecords([][]string{})
 					table.SetLoading(true)
