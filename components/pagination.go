@@ -66,11 +66,11 @@ func (pagination *Pagination) SetTotalRecords(total int) {
 	pagination.state.TotalRecords = total
 
 	offset := pagination.GetOffset()
+	limit := pagination.GetLimit() + offset
+
 	if offset < total {
 		offset++
 	}
-
-	limit := pagination.GetLimit() + pagination.GetOffset()
 	if limit > total {
 		limit = total
 	}
@@ -84,11 +84,14 @@ func (pagination *Pagination) SetLimit(limit int) {
 	offset := pagination.GetOffset()
 	total := pagination.GetTotalRecords()
 
+	if offset < total {
+		offset++
+	}
 	if limit > total {
 		limit = total
 	}
 
-	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset+1, limit, total))
+	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset, limit, total))
 }
 
 func (pagination *Pagination) SetOffset(offset int) {
@@ -97,9 +100,12 @@ func (pagination *Pagination) SetOffset(offset int) {
 	limit := pagination.GetLimit() + offset
 	total := pagination.GetTotalRecords()
 
+	if offset < total {
+		offset++
+	}
 	if limit > total {
 		limit = total
 	}
 
-	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset+1, limit, total))
+	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset, limit, total))
 }

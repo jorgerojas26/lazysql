@@ -672,19 +672,19 @@ func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error)
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *Postgres) ExecuteQuery(query string) ([][]string, error) {
+func (db *Postgres) ExecuteQuery(query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	results := [][]string{columns}
+	records := make([][]string, 0)
 	for rows.Next() {
 		rowValues := make([]interface{}, len(columns))
 		for i := range columns {
@@ -693,7 +693,7 @@ func (db *Postgres) ExecuteQuery(query string) ([][]string, error) {
 
 		err = rows.Scan(rowValues...)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		var row []string
@@ -701,13 +701,16 @@ func (db *Postgres) ExecuteQuery(query string) ([][]string, error) {
 			row = append(row, string(*col.(*sql.RawBytes)))
 		}
 
-		results = append(results, row)
+		records = append(records, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return results, nil
+	// Prepend the columns to the records.
+	results := append([][]string{columns}, records...)
+
+	return results, len(records), nil
 }
 
 func (db *Postgres) ExecutePendingChanges(changes []models.DBDMLChange) error {

@@ -609,9 +609,9 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					table.SetLoading(true)
 					App.Draw()
 
-					rows, err := table.DBDriver.ExecuteQuery(query)
-					table.Pagination.SetTotalRecords(len(rows))
-					table.Pagination.SetLimit(len(rows))
+					rows, records, err := table.DBDriver.ExecuteQuery(query)
+					table.Pagination.SetTotalRecords(records)
+					table.Pagination.SetLimit(records)
 
 					if err != nil {
 						table.SetLoading(false)
