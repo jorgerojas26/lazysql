@@ -17,9 +17,12 @@ type Driver interface {
 	UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
 	DeleteRecord(database, table string, primaryKeyColumnName, primaryKeyValue string) error
 	ExecuteDMLStatement(query string) (string, error)
-	ExecuteQuery(query string) ([][]string, error)
+	ExecuteQuery(query string) ([][]string, int, error)
 	ExecutePendingChanges(changes []models.DBDMLChange) error
-	SetProvider(provider string) // NOTE: This is used to get the primary key from the database table until i find a better way to do it. See ResultsTable.go GetPrimaryKeyValue function
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
+
+	// NOTE: This is used to get the primary key from the database table until I
+	// find a better way to do it. See *ResultsTable.GetPrimaryKeyValue()
+	SetProvider(provider string)
 }

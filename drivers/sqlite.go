@@ -139,7 +139,7 @@ func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err erro
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error) {
@@ -189,7 +189,7 @@ func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error) {
@@ -236,7 +236,7 @@ func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
@@ -283,7 +283,7 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
@@ -365,23 +365,22 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		return nil, 0, err
 	}
 
-	return
+	return paginatedResults, totalRecords, nil
 }
 
-func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
+func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	results = append(results, columns)
-
+	records := make([][]string, 0)
 	for rows.Next() {
 		rowValues := make([]interface{}, len(columns))
 		for i := range columns {
@@ -390,7 +389,7 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 
 		err = rows.Scan(rowValues...)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		var row []string
@@ -402,13 +401,16 @@ func (db *SQLite) ExecuteQuery(query string) (results [][]string, err error) {
 			}
 		}
 
-		results = append(results, row)
+		records = append(records, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return
+	// Prepend the columns to the records.
+	results := append([][]string{columns}, records...)
+
+	return results, len(records), nil
 }
 
 func (db *SQLite) UpdateRecord(_, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {

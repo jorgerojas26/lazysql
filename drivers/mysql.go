@@ -139,7 +139,7 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *MySQL) GetConstraints(database, table string) (results [][]string, err error) {
@@ -188,7 +188,7 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err error) {
@@ -237,7 +237,7 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *MySQL) GetIndexes(database, table string) (results [][]string, err error) {
@@ -287,7 +287,7 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 		return nil, err
 	}
 
-	return
+	return results, nil
 }
 
 func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
@@ -373,23 +373,22 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 		return nil, 0, err
 	}
 
-	return
+	return paginatedResults, totalRecords, nil
 }
 
-func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
+func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	results = append(results, columns)
-
+	records := make([][]string, 0)
 	for rows.Next() {
 		rowValues := make([]interface{}, len(columns))
 		for i := range columns {
@@ -398,7 +397,7 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 
 		err = rows.Scan(rowValues...)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		var row []string
@@ -406,13 +405,16 @@ func (db *MySQL) ExecuteQuery(query string) (results [][]string, err error) {
 			row = append(row, string(*col.(*sql.RawBytes)))
 		}
 
-		results = append(results, row)
+		records = append(records, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return
+	// Prepend the columns to the records.
+	results := append([][]string{columns}, records...)
+
+	return results, len(records), nil
 }
 
 func (db *MySQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
@@ -587,7 +589,7 @@ func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyCol
 		return nil, rows.Err()
 	}
 
-	return
+	return primaryKeyColumnName, nil
 }
 
 func (db *MySQL) SetProvider(provider string) {

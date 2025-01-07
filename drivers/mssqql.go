@@ -190,7 +190,7 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
 
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
 	query := `
-		SELECT 
+		SELECT
 				t.name AS table_name,
 				i.name AS index_name,
 				i.is_unique AS is_unique,
@@ -201,33 +201,33 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
 				ic.is_included_column AS is_included,
 				i.has_filter AS has_filter,
 				i.filter_definition AS filter_definition
-		FROM 
-				sys.tables t 
+		FROM
+				sys.tables t
 		INNER JOIN
-				sys.schemas s 
+				sys.schemas s
 					ON
 						t.schema_id = s.schema_id
 		INNER JOIN
-				sys.indexes i 
+				sys.indexes i
 					ON
 						t.object_id = i.object_id
 		INNER JOIN
-				sys.index_columns ic 
+				sys.index_columns ic
 					ON
 						i.object_id = ic.object_id
 					AND
 						i.index_id = ic.index_id
 		INNER JOIN
-				sys.columns c 
+				sys.columns c
 					ON
 						t.object_id = c.object_id
 					AND
 						ic.column_id = c.column_id
-		WHERE 
+		WHERE
 				DB_NAME() = @p1
 		AND
 				t.name = @p2
-		ORDER BY 
+		ORDER BY
 				i.type_desc
 	`
 	return db.getTableInformations(query, database, table)
@@ -395,26 +395,24 @@ func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MSSQL) ExecuteQuery(query string) ([][]string, error) {
+func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
 	if query == "" {
-		return nil, errors.New("query can not be empty")
+		return nil, 0, errors.New("query can not be empty")
 	}
 
-	results := make([][]string, 0)
 	rows, err := db.Connection.Query(query)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	results = append(results, columns)
-
+	records := make([][]string, 0)
 	for rows.Next() {
 		rowValues := make([]any, len(columns))
 
@@ -423,7 +421,7 @@ func (db *MSSQL) ExecuteQuery(query string) ([][]string, error) {
 		}
 
 		if err := rows.Scan(rowValues...); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		var row []string
@@ -431,14 +429,17 @@ func (db *MSSQL) ExecuteQuery(query string) ([][]string, error) {
 			row = append(row, string(*col.(*sql.RawBytes)))
 		}
 
-		results = append(results, row)
+		records = append(records, row)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return results, nil
+	// Prepend the columns to the records.
+	results := append([][]string{columns}, records...)
+
+	return results, len(records), nil
 }
 
 func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
@@ -578,9 +579,9 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 
 	pkColumnName := make([]string, 0)
 	query := `
-		SELECT 
+		SELECT
 				c.name AS column_name
-		FROM 
+		FROM
 				sys.tables t
 		INNER JOIN
 			sys.schemas s
@@ -604,7 +605,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 					ic.column_id = c.column_id
 				AND
 					t.object_id = c.object_id
-		WHERE 
+		WHERE
 				DB_NAME() = @p2
 		AND
 				t.name = @p3
