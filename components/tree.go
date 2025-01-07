@@ -187,19 +187,14 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			filterText := tree.Filter.GetText()
 
 			if filterText == "" {
-				tree.search("")
-				tree.FoundNodeCountInput.SetText("")
-				tree.SetBorderPadding(0, 0, 0, 0)
+				tree.ClearSearch()
 			} else {
 				tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", len(tree.state.searchFoundNodes), len(tree.state.searchFoundNodes)))
 				tree.SetBorderPadding(1, 0, 0, 0)
 			}
 
 		case tcell.KeyEscape:
-			tree.search("")
-			tree.FoundNodeCountInput.SetText("")
-			tree.SetBorderPadding(0, 0, 0, 0)
-			tree.Filter.SetText("")
+			tree.ClearSearch()
 		}
 
 		tree.SetIsFiltering(false)
@@ -584,4 +579,11 @@ func (tree *Tree) Refresh(dbName string) {
 	rootNode.ClearChildren()
 	// re-add nodes
 	tree.InitializeNodes(dbName)
+}
+
+func (tree *Tree) ClearSearch() {
+	tree.search("")
+	tree.FoundNodeCountInput.SetText("")
+	tree.SetBorderPadding(0, 0, 0, 0)
+	tree.Filter.SetText("")
 }
