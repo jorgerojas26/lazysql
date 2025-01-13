@@ -346,6 +346,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		case commands.RecordsMenu:
 			table.Menu.SetSelectedOption(1)
 			table.UpdateRows(table.GetRecords())
+			table.colorChangedCells()
 			table.AddInsertedRows()
 		case commands.ColumnsMenu:
 			table.Menu.SetSelectedOption(2)
@@ -744,6 +745,7 @@ func (table *ResultsTable) GetPrimaryKeyColumnNames() []string {
 func (table *ResultsTable) SetRecords(rows [][]string) {
 	table.state.records = rows
 	table.UpdateRows(rows)
+	table.colorChangedCells()
 }
 
 func (table *ResultsTable) SetColumns(columns [][]string) {
@@ -1389,4 +1391,17 @@ func (table *ResultsTable) isAnInsertedRow(rowIndex int) (isAnInsertedRow bool, 
 
 	}
 	return false, -1
+}
+
+func (table *ResultsTable) colorChangedCells() {
+	for _, dmlChange := range *table.state.listOfDBChanges {
+		switch dmlChange.Type {
+		case models.DMLDeleteType:
+			table.SetRowColor(dmlChange.Values[0].TableRowIndex, colorTableDelete)
+		case models.DMLUpdateType:
+			for _, value := range dmlChange.Values {
+				table.SetCellColor(value.TableRowIndex, value.TableColumnIndex, colorTableChange)
+			}
+		}
+	}
 }
