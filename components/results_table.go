@@ -304,7 +304,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		// Appended rows have a reference to the row UUID so we can identify them later
 		// Also, rows that have columns marked to be UPDATED will have a reference to the type of the new value (NULL, EMPTY, DEFAULT)
 		// So, the cell reference will be used to determine if the row/column is an inserted row or if it's an UPDATED row
-		// I'm sure there is a better way to do this, but it works for now
+		// there might be a better way to do this, but it works for now
 		tableCell.SetReference(UUID)
 		tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 		tableCell.SetBackgroundColor(tcell.ColorDarkGreen)
