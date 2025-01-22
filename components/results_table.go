@@ -1375,20 +1375,21 @@ func (table *ResultsTable) UpdateSidebar() {
 
 func (table *ResultsTable) isAnInsertedRow(rowIndex int) (isAnInsertedRow bool, DBChangeIndex int) {
 	for i, dmlChange := range *table.state.listOfDBChanges {
-		values := dmlChange.Values
-
-		for _, value := range values {
-			if value.TableRowIndex == rowIndex {
-				cellReference := table.GetCell(rowIndex, 0).GetReference()
-
-				isAnInsertedRow := cellReference != nil && cellReference.(string) != "NULL&" && cellReference.(string) != "EMPTY&" && cellReference.(string) != "DEFAULT&"
-
-				if isAnInsertedRow {
-					return true, i
-				}
+		for _, value := range dmlChange.Values {
+			if value.TableRowIndex != rowIndex {
+				continue
 			}
+			cellReference := table.GetCell(rowIndex, 0).GetReference()
+			if cellReference == nil {
+				break
+			}
+			switch cellReference.(string) {
+			case "NULL&", "EMPTY&", "DEFAULT&":
+			default:
+				return true, i
+			}
+			break
 		}
-
 	}
 	return false, -1
 }
