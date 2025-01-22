@@ -301,6 +301,10 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 	for i, cell := range cells {
 		tableCell := tview.NewTableCell(cell.Value.(string))
 		tableCell.SetExpansion(1)
+		// Appended rows have a reference to the row UUID so we can identify them later
+		// Also, rows that have columns marked to be UPDATED will have a reference to the type of the new value (NULL, EMPTY, DEFAULT)
+		// So, the cell reference will be used to determine if the row/column is an inserted row or if it's an UPDATED row
+		// there might be a better way to do this, but it works for now
 		tableCell.SetReference(UUID)
 		tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 		tableCell.SetBackgroundColor(tcell.ColorDarkGreen)
@@ -342,6 +346,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		case commands.RecordsMenu:
 			table.Menu.SetSelectedOption(1)
 			table.UpdateRows(table.GetRecords())
+			table.colorChangedCells()
 			table.AddInsertedRows()
 		case commands.ColumnsMenu:
 			table.Menu.SetSelectedOption(2)
@@ -415,17 +420,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		}
 	} else if command == commands.Delete {
 		if table.Menu.GetSelectedOption() == 1 {
-			isAnInsertedRow := false
-			indexOfInsertedRow := -1
 
-			for i, insertedRow := range *table.state.listOfDBChanges {
-				cellReference := table.GetCell(selectedRowIndex, 0).GetReference()
-
-				if cellReference != nil && insertedRow.PrimaryKeyInfo[0].Value == cellReference {
-					isAnInsertedRow = true
-					indexOfInsertedRow = i
-				}
-			}
+			isAnInsertedRow, indexOfInsertedRow := table.isAnInsertedRow(selectedRowIndex)
 
 			if isAnInsertedRow {
 				*table.state.listOfDBChanges = append((*table.state.listOfDBChanges)[:indexOfInsertedRow], (*table.state.listOfDBChanges)[indexOfInsertedRow+1:]...)
@@ -438,7 +434,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					}
 				}
 			} else {
-				table.AppendNewChange(models.DMLDeleteType, selectedRowIndex, -1, models.CellValue{})
+				table.AppendNewChange(models.DMLDeleteType, selectedRowIndex, -1, models.CellValue{TableColumnIndex: -1, TableRowIndex: selectedRowIndex})
 			}
 
 		}
@@ -749,6 +745,7 @@ func (table *ResultsTable) GetPrimaryKeyColumnNames() []string {
 func (table *ResultsTable) SetRecords(rows [][]string) {
 	table.state.records = rows
 	table.UpdateRows(rows)
+	table.colorChangedCells()
 }
 
 func (table *ResultsTable) SetColumns(columns [][]string) {
@@ -1048,11 +1045,11 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	dmlChangeAlreadyExists := false
 
 	// If the column has a reference, it means it's an inserted rowIndex
-	// These is maybe a better way to detect it is an inserted row
+	// There is maybe a better way to detect it is an inserted row
 	tableCell := table.GetCell(rowIndex, colIndex)
 	tableCellReference := tableCell.GetReference()
 
-	isAnInsertedRow := tableCellReference != nil && tableCellReference.(string) != "NULL&" && tableCellReference.(string) != "EMPTY&" && tableCellReference.(string) != "DEFAULT&"
+	isAnInsertedRow, _ := table.isAnInsertedRow(rowIndex)
 
 	if isAnInsertedRow {
 		table.MutateInsertedRowCell(tableCellReference.(string), value)
@@ -1373,5 +1370,39 @@ func (table *ResultsTable) UpdateSidebar() {
 			table.Sidebar.AddField(title, text, sidebarWidth, pendingEditExist)
 		}
 
+	}
+}
+
+func (table *ResultsTable) isAnInsertedRow(rowIndex int) (isAnInsertedRow bool, DBChangeIndex int) {
+	for i, dmlChange := range *table.state.listOfDBChanges {
+		for _, value := range dmlChange.Values {
+			if value.TableRowIndex != rowIndex {
+				continue
+			}
+			cellReference := table.GetCell(rowIndex, 0).GetReference()
+			if cellReference == nil {
+				break
+			}
+			switch cellReference.(string) {
+			case "NULL&", "EMPTY&", "DEFAULT&":
+			default:
+				return true, i
+			}
+			break
+		}
+	}
+	return false, -1
+}
+
+func (table *ResultsTable) colorChangedCells() {
+	for _, dmlChange := range *table.state.listOfDBChanges {
+		switch dmlChange.Type {
+		case models.DMLDeleteType:
+			table.SetRowColor(dmlChange.Values[0].TableRowIndex, colorTableDelete)
+		case models.DMLUpdateType:
+			for _, value := range dmlChange.Values {
+				table.SetCellColor(value.TableRowIndex, value.TableColumnIndex, colorTableChange)
+			}
+		}
 	}
 }
