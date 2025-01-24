@@ -54,6 +54,7 @@ const (
 	Quit
 	Execute
 	OpenInExternalEditor
+	RefreshExternalFile
 	AppendNewRow
 	SortAsc
 	SortDesc
@@ -146,6 +147,8 @@ func (c Command) String() string {
 		return "Execute"
 	case OpenInExternalEditor:
 		return "OpenInExternalEditor"
+	case RefreshExternalFile:
+		return "RefreshExternalFile"
 	case AppendNewRow:
 		return "AppendNewRow"
 	case SortAsc:

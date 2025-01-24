@@ -51,6 +51,11 @@ func NewSQLEditor() *SQLEditor {
 				text := openExternalEditor(sqlEditor)
 				sqlEditor.SetText(text, true)
 			}
+		case commands.RefreshExternalFile:
+
+			text := refreshExternalFile(sqlEditor)
+			sqlEditor.SetText(text, true)
+			sqlEditor.Publish(eventSQLEditorQuery, sqlEditor.GetText())
 		}
 
 		return event
@@ -90,6 +95,23 @@ func (s *SQLEditor) Highlight() {
 func (s *SQLEditor) SetBlur() {
 	s.SetBorderColor(app.Styles.InverseTextColor)
 	s.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.InverseTextColor))
+}
+
+/*
+Function to refresh the external temporary file (lazysql.sql) from the CWD and load it to the SQLEditor instance
+TODO: ability to pass the name of the file to load.
+*/
+func refreshExternalFile(s *SQLEditor) string {
+
+	// Current folder as path of temporary file
+	path := "./lazysql.sql"
+
+	updatedContent, err := os.ReadFile(path)
+
+	if err != nil {
+		return s.GetText()
+	}
+	return string(updatedContent)
 }
 
 /*

@@ -124,6 +124,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusEditor, Description: "Unfocus editor"},
 			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: cmd.OpenInExternalEditor, Description: "Open in external editor"},
+			Bind{Key: Key{Code: tcell.KeyF2}, Cmd: cmd.RefreshExternalFile, Description: "Refresh external file and execute query"},
 		},
 		SidebarGroup: {
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.UnfocusSidebar, Description: "Focus table"},
