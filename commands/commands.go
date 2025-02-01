@@ -51,6 +51,7 @@ const (
 	Save
 	Delete
 	Search
+	SearchGlobal
 	Quit
 	Execute
 	OpenInExternalEditor
@@ -140,6 +141,8 @@ func (c Command) String() string {
 		return "Delete"
 	case Search:
 		return "Search"
+	case SearchGlobal:
+		return "SearchGlobal"
 	case Quit:
 		return "Quit"
 	case Execute:
