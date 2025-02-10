@@ -37,20 +37,21 @@ type ResultsTableState struct {
 
 type ResultsTable struct {
 	*tview.Table
-	state       *ResultsTableState
-	Page        *tview.Pages
-	Wrapper     *tview.Flex
-	Menu        *ResultsTableMenu
-	Filter      *ResultsTableFilter
-	Error       *tview.Modal
-	Loading     *tview.Modal
-	Pagination  *Pagination
-	Editor      *SQLEditor
-	EditorPages *tview.Pages
-	ResultsInfo *tview.TextView
-	Tree        *Tree
-	Sidebar     *Sidebar
-	DBDriver    drivers.Driver
+	state            *ResultsTableState
+	Page             *tview.Pages
+	Wrapper          *tview.Flex
+	Menu             *ResultsTableMenu
+	Filter           *ResultsTableFilter
+	Error            *tview.Modal
+	Loading          *tview.Modal
+	Pagination       *Pagination
+	Editor           *SQLEditor
+	EditorPages      *tview.Pages
+	ResultsInfo      *tview.TextView
+	Tree             *Tree
+	Sidebar          *Sidebar
+	SidebarContainer *tview.Flex
+	DBDriver         drivers.Driver
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
@@ -104,18 +105,22 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		Tree:       tree,
 		DBDriver:   dbdriver,
 		Sidebar:    sidebar,
+		// SidebarContainer is only used when AppConfig.SidebarOverlay is false.
+		SidebarContainer: tview.NewFlex(),
 	}
+
+	// When AppConfig.SidebarOverlay is true, the sidebar is added as a page to the table.Page.
+	// When AppConfig.SidebarOverlay is false, the sidebar is added as a page to the table.SidebarContainer.
+	table.Page.AddPage(pageNameSidebar, table.Sidebar, false, false)
 
 	table.SetSelectable(true, true)
 	table.SetBorders(true)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
-	table.Page.AddPage(pageNameSidebar, table.Sidebar, false, false)
 
 	table.SetSelectionChangedFunc(func(row, col int) {
 		if table.GetShowSidebar() {
-			logger.Info("table.SetSelectionChangedFunc", map[string]any{"row": row, "col": col})
 			go table.UpdateSidebar()
 		}
 	})
@@ -133,10 +138,23 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 	table.Menu = menu
 	table.Filter = filter
 
-	table.Wrapper.AddItem(menu.Flex, 3, 0, false)
-	table.Wrapper.AddItem(filter.Flex, 3, 0, false)
-	table.Wrapper.AddItem(table, 0, 1, true)
-	table.Wrapper.AddItem(table.Pagination, 3, 0, false)
+	if App.Config().SidebarOverlay {
+		table.Wrapper.AddItem(menu, 3, 0, false)
+		table.Wrapper.AddItem(filter, 3, 0, false)
+		table.Wrapper.AddItem(table, 0, 1, true)
+		table.Wrapper.AddItem(table.Pagination, 3, 0, false)
+	} else {
+		tableContainer := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
+		tableContainer.AddItem(menu, 3, 0, false)
+		tableContainer.AddItem(filter, 3, 0, false)
+		tableContainer.AddItem(table, 0, 1, true)
+		tableContainer.AddItem(table.Pagination, 3, 0, false)
+		tableContainer.SetBorder(true)
+
+		table.SidebarContainer.AddItem(tableContainer, 0, 4, true)
+
+		table.Wrapper.AddItem(table.SidebarContainer, 0, 1, true)
+	}
 
 	go table.subscribeToFilterChanges()
 
@@ -1313,10 +1331,19 @@ func (table *ResultsTable) ShowSidebar(show bool) {
 
 	if show {
 		table.UpdateSidebar()
-		table.Page.SendToFront(pageNameSidebar)
-		table.Page.ShowPage(pageNameSidebar)
+
+		if App.Config().SidebarOverlay {
+			table.Page.SendToFront(pageNameSidebar)
+			table.Page.ShowPage(pageNameSidebar)
+		} else {
+			table.SidebarContainer.AddItem(table.Sidebar, 0, 1, true)
+		}
 	} else {
-		table.Page.HidePage(pageNameSidebar)
+		if App.Config().SidebarOverlay {
+			table.Page.HidePage(pageNameSidebar)
+		} else {
+			table.SidebarContainer.RemoveItem(table.Sidebar)
+		}
 		App.SetFocus(table)
 	}
 }
@@ -1326,21 +1353,18 @@ func (table *ResultsTable) UpdateSidebar() {
 	selectedRow, _ := table.GetSelection()
 
 	if selectedRow > 0 {
-		tableX, _, _, tableHeight := table.GetRect()
-		_, _, tableInnerWidth, _ := table.GetInnerRect()
-		_, tableMenuY, _, tableMenuHeight := table.Menu.GetRect()
-		_, _, _, tableFilterHeight := table.Filter.GetRect()
-		_, _, _, tablePaginationHeight := table.Pagination.GetRect()
 
-		sidebarWidth := (tableInnerWidth / 4)
-		sidebarHeight := tableHeight + tableMenuHeight + tableFilterHeight + tablePaginationHeight + 1
+		if App.Config().SidebarOverlay {
+			table.recomputeSidebarPosition()
+		}
 
-		table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, sidebarHeight)
 		table.Sidebar.Clear()
 
 		for i := 1; i < len(columns); i++ {
 			name := columns[i][0]
 			colType := columns[i][1]
+
+			sidebarWidth := table.getSidebarWidth()
 
 			text := table.GetCell(selectedRow, i-1).Text
 			title := name
@@ -1371,6 +1395,31 @@ func (table *ResultsTable) UpdateSidebar() {
 		}
 
 	}
+}
+
+func (table *ResultsTable) getSidebarWidth() int {
+	if App.Config().SidebarOverlay {
+		_, _, tableInnerWidth, _ := table.GetInnerRect()
+		return (tableInnerWidth / 4)
+	}
+
+	_, _, width, _ := table.SidebarContainer.GetInnerRect()
+
+	return width
+}
+
+// Only used when AppConfig.SidebarOverlay is true.
+func (table *ResultsTable) recomputeSidebarPosition() {
+	tableX, _, _, tableHeight := table.GetRect()
+	_, _, tableInnerWidth, _ := table.GetInnerRect()
+	_, tableMenuY, _, tableMenuHeight := table.Menu.GetRect()
+	_, _, _, tableFilterHeight := table.Filter.GetRect()
+	_, _, _, tablePaginationHeight := table.Pagination.GetRect()
+
+	sidebarWidth := (tableInnerWidth / 4)
+	sidebarHeight := tableHeight + tableMenuHeight + tableFilterHeight + tablePaginationHeight + 1
+
+	table.Sidebar.SetRect(tableX+tableInnerWidth-sidebarWidth, tableMenuY, sidebarWidth, sidebarHeight)
 }
 
 func (table *ResultsTable) isAnInsertedRow(rowIndex int) (isAnInsertedRow bool, DBChangeIndex int) {

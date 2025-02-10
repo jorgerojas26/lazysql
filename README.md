@@ -164,6 +164,7 @@ URL = 'postgres://postgres:urlencodedpassword@localhost:5432/foo'
 [application]
 DefaultPageSize = 300
 DisableSidebar = false
+SidebarOverlay = false
 ```
 
 The `[aplication]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.

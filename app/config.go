@@ -21,6 +21,7 @@ func defaultConfig() *Config {
 	return &Config{
 		AppConfig: &models.AppConfig{
 			DefaultPageSize: 300,
+			SidebarOverlay:  false,
 		},
 	}
 }

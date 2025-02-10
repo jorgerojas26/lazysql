@@ -7,6 +7,7 @@ import (
 type AppConfig struct {
 	DefaultPageSize int
 	DisableSidebar  bool
+	SidebarOverlay  bool
 }
 
 type Connection struct {
