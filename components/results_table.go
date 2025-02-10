@@ -110,7 +110,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 	}
 
 	// When AppConfig.SidebarOverlay is true, the sidebar is added as a page to the table.Page.
-	// When AppConfig.SidebarOverlay is false, the sidebar is added as a page to the table.SidebarContainer.
+	// When AppConfig.SidebarOverlay is false, the sidebar is added to the table.SidebarContainer.
 	table.Page.AddPage(pageNameSidebar, table.Sidebar, false, false)
 
 	table.SetSelectable(true, true)
