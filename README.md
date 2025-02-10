@@ -61,7 +61,7 @@ I wanted to have a tool like that, but for SQL. I didn't find one that fits my n
 
 I live in the terminal, so if you are like me, this tool can become handy for you too.
 
-This is my first Open Source project, also, this is my first Go project. I am not a brilliant programmer. I am just a typical JavaScript developer that wanted to learn a new language, I also wanted a TUI SQL Client, so white and bottled.
+This is my first Open Source project, also, this is my first Go project. I am not a brilliant programmer. I am just a typical JavaScript developer that wanted to learn a new language, I also wanted a TUI SQL Client, so blanca y en botella, leche! (white and bottled).
 
 This project is in ALPHA stage, please feel free to complain about my spaghetti code.
 
