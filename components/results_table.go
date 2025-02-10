@@ -119,7 +119,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 	table.SetInputCapture(table.tableInputCapture)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 
-	table.SetSelectionChangedFunc(func(row, col int) {
+	table.SetSelectionChangedFunc(func(_, _ int) {
 		if table.GetShowSidebar() {
 			go table.UpdateSidebar()
 		}
