@@ -318,18 +318,39 @@ func (tree *Tree) search(searchText string) {
 		return
 	}
 
-	// filteredNodes := make([]*TreeStateNode, 0, len(treeNodes))
+	parts := strings.SplitN(lowerSearchText, " ", 2)
+	databaseNameFilter := ""
+	tableNameFilter := ""
+
+	if len(parts) == 1 {
+		tableNameFilter = parts[0]
+	} else {
+		databaseNameFilter = parts[0]
+		tableNameFilter = parts[1]
+	}
 
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
 		nodeText := strings.ToLower(node.GetText())
 
-		if fuzzy.Match(lowerSearchText, nodeText) {
-			if parent != nil {
-				parent.SetExpanded(true)
+		if databaseNameFilter == "" {
+			if fuzzy.Match(tableNameFilter, nodeText) {
+				if parent != nil {
+					parent.SetExpanded(true)
+				}
+				tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
+				tree.SetCurrentNode(node)
+				tree.state.currentFocusFoundNode = node
 			}
-			tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
-			tree.SetCurrentNode(node)
-			tree.state.currentFocusFoundNode = node
+		} else {
+			if fuzzy.Match(tableNameFilter, nodeText) && parent != nil {
+				parentText := strings.ToLower(parent.GetText())
+				if fuzzy.Match(databaseNameFilter, parentText) {
+					parent.SetExpanded(true)
+					tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
+					tree.SetCurrentNode(node)
+					tree.state.currentFocusFoundNode = node
+				}
+			}
 		}
 
 		return true
