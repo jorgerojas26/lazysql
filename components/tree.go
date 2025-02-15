@@ -203,24 +203,8 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		App.SetFocus(tree)
 	})
 
-	tree.Filter.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() != tcell.KeyEscape && event.Key() != tcell.KeyEnter {
-			isBackSpace := event.Key() == tcell.KeyBackspace2
-
-			filterText := tree.Filter.GetText()
-
-			if isBackSpace {
-				if len(filterText) > 0 {
-					tree.search(filterText[:len(filterText)-1])
-				} else {
-					tree.search("")
-				}
-			} else {
-				tree.search(filterText + string(event.Rune()))
-			}
-		}
-
-		return event
+	tree.Filter.SetChangedFunc(func(text string) {
+		go tree.search(text)
 	})
 
 	tree.Filter.SetFieldStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.PrimaryTextColor))
@@ -355,8 +339,6 @@ func (tree *Tree) search(searchText string) {
 
 		return true
 	})
-
-	App.ForceDraw()
 }
 
 // Subscribe to changes in the tree state
