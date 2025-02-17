@@ -160,8 +160,7 @@ linters-settings:
   dupword:
     # Keywords used to ignore detection.
     # Default: []
-    ignore:
-    #  - "blah" # this will accept "blah blah …" as a valid duplicate word
+    ignore: []
 
   gosec:
     # To specify a set of rules to explicitly exclude.
@@ -178,11 +177,8 @@ linters-settings:
 
     # List of words to ignore
     # among the one defined in https://github.com/golangci/misspell/blob/master/words.go
-    ignore-words:
-    #  - valor
-    #  - and
+    ignore-words: []
 
     # Extra word corrections.
-    extra-words:
-    #  - typo: "whattever"
-    #    correction: "whatever"
+    extra-words: []
+
