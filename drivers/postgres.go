@@ -830,7 +830,7 @@ func (db *Postgres) SwitchDatabase(database string) error {
 		return err
 	}
 
-	db.Connection = NewDB(connection, db)
+	db.Connection = connection
 	db.PreviousDatabase = db.CurrentDatabase
 	db.CurrentDatabase = database
 
