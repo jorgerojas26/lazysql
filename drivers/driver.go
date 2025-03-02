@@ -22,6 +22,13 @@ type Driver interface {
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
 
+	FormatArg(arg any) string
+	FormatReference(reference string) string
+	FormatPlaceholder(index int) string
+
+	// This converts a DML change to a query string with arg values
+	DMLChangeToQueryString(change models.DBDMLChange) (string, error)
+
 	// NOTE: This is used to get the primary key from the database table until I
 	// find a better way to do it. See *ResultsTable.GetPrimaryKeyValue()
 	SetProvider(provider string)

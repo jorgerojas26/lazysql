@@ -4,13 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	// mssql driver
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/xo/dburl"
 
-	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -443,126 +441,21 @@ func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
 }
 
 func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
-	if len(changes) <= 0 {
-		return nil
-	}
-
-	queries := make([]models.Query, 0)
-	errlist := make([]error, 0)
+	var queries []models.Query
 
 	for _, change := range changes {
-		if change.Table == "" {
-			errlist = append(errlist, errors.New("table name is required"))
-			continue
-		}
 
-		columnNames := make([]string, 0)
-		valuesPlaceholder := make([]string, 0)
-		values := make([]any, 0)
-
-		for i, cell := range change.Values {
-			columnNames = append(columnNames, cell.Column)
-
-			switch cell.Type {
-			case models.Default:
-				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
-			case models.Null:
-				valuesPlaceholder = append(valuesPlaceholder, "NULL")
-			default:
-				valuesPlaceholder = append(valuesPlaceholder, fmt.Sprintf("@p%d", i+1))
-			}
-		}
-
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty:
-				values = append(values, "")
-			case models.String:
-				values = append(values, cell.Value)
-			}
-		}
+		formattedTableName := change.Table
 
 		switch change.Type {
+
 		case models.DMLInsertType:
-			queryStr := fmt.Sprintf(
-				"INSERT INTO %s (%s) VALUES (%s)",
-				change.Table,
-				strings.Join(columnNames, ", "),
-				strings.Join(valuesPlaceholder, ", "),
-			)
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  values,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
 		case models.DMLUpdateType:
-			queryStr := fmt.Sprintf("UPDATE %s", change.Table)
-
-			for i, column := range columnNames {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" SET %s = %s", column, valuesPlaceholder[i])
-				} else {
-					queryStr += fmt.Sprintf(", %s = %s", column, valuesPlaceholder[i])
-				}
-			}
-
-			args := make([]any, len(values))
-
-			copy(args, values)
-
-			// start counting from valuesPlaceholder
-			// then add 1 by 1 on loop
-			updateCounterParams := len(valuesPlaceholder)
-			for i, pki := range change.PrimaryKeyInfo {
-				updateCounterParams++
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE %s = @p%d", pki.Name, updateCounterParams)
-				} else {
-					queryStr += fmt.Sprintf(" AND %s = @p%d", pki.Name, updateCounterParams)
-				}
-				args = append(args, pki.Value)
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			// EZ way to log
-			// _ = os.WriteFile("/tmp/lazysql", []byte(queryStr+"\n"), 0644)
-			queries = append(queries, newQuery)
+			queries = append(queries, buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db))
 		case models.DMLDeleteType:
-			queryStr := fmt.Sprintf("DELETE FROM %s", change.Table)
-
-			deleteArgs := make([]any, len(change.PrimaryKeyInfo))
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE %s = @p%d", pki.Name, i+1)
-				} else {
-					queryStr += fmt.Sprintf(" AND %s = @p%d", pki.Name, i+1)
-				}
-				deleteArgs[i] = pki.Value
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  deleteArgs,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db))
 		}
-	}
-
-	// log loop errlist
-	if len(errlist) > 0 {
-		errmap := make(map[string]any)
-		for i, e := range errlist {
-			errmap[fmt.Sprintf("%d:", i+1)] = e
-		}
-		logger.Error("ExecutePendingChanges", errmap)
 	}
 
 	return queriesInTransaction(db.Connection, queries)
@@ -606,7 +499,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 				AND
 					t.object_id = c.object_id
 		WHERE
-				DB_NAME() = @p2
+	_, err := db.Connection.Exec(query, value, primaryKeyValue)
 		AND
 				t.name = @p3
 	`
@@ -709,4 +602,48 @@ func (db *MSSQL) getTableInformations(query, database, table string) ([][]string
 	}
 
 	return results, nil
+}
+
+func (db *MSSQL) FormatArg(arg interface{}) string {
+	switch v := arg.(type) {
+
+	case int, int64:
+		return fmt.Sprintf("%v", v)
+	case float64:
+		return fmt.Sprintf("%v", v)
+	case string:
+		return fmt.Sprintf("'%s'", v)
+	case []byte:
+		return fmt.Sprintf("'%s'", string(v))
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func (db *MSSQL) FormatReference(reference string) string {
+	return reference
+}
+
+func (db *MSSQL) FormatPlaceholder(index int) string {
+	return fmt.Sprintf("@p%d", index)
+}
+
+func (db *MSSQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
+	var queryStr string
+
+	formattedTableName := change.Table
+
+	columnNames, values := getColNamesAndArgsAsString(change.Values, db)
+
+	switch change.Type {
+	case models.DMLInsertType:
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, values)
+	case models.DMLUpdateType:
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
+	case models.DMLDeleteType:
+		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
+
+	}
+
+	return queryStr, nil
 }

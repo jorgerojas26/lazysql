@@ -479,122 +479,24 @@ func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *SQLite) ExecutePendingChanges(changes []models.DBDMLChange) (err error) {
+func (db *SQLite) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	var queries []models.Query
 
 	for _, change := range changes {
-		columnNames := []string{}
-		values := []interface{}{}
-		valuesPlaceholder := []string{}
+
+		formattedTableName := db.formatTableName(change.Table)
 
 		switch change.Type {
+
 		case models.DMLInsertType:
-			for _, cell := range change.Values {
-				switch cell.Type {
-				case models.Null:
-					columnNames = append(columnNames, cell.Column)
-					valuesPlaceholder = append(valuesPlaceholder, "NULL")
-				case models.Empty, models.String:
-					columnNames = append(columnNames, cell.Column)
-					valuesPlaceholder = append(valuesPlaceholder, "?")
-				}
-			}
-
-			for _, cell := range change.Values {
-				switch cell.Type {
-				case models.Empty:
-					values = append(values, "")
-				case models.String:
-					values = append(values, cell.Value)
-				}
-			}
-
-			queryStr := "INSERT INTO "
-			queryStr += db.formatTableName(change.Table)
-			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  values,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
 		case models.DMLUpdateType:
-
-			for _, cell := range change.Values {
-				switch cell.Type {
-				case models.Null:
-					columnNames = append(columnNames, cell.Column)
-					valuesPlaceholder = append(valuesPlaceholder, "NULL")
-				case models.Empty, models.String:
-					columnNames = append(columnNames, cell.Column)
-					valuesPlaceholder = append(valuesPlaceholder, "?")
-					/// Leaves "DEFAULT" type out because it's not supported by sqlite
-				}
-			}
-
-			for _, cell := range change.Values {
-				switch cell.Type {
-				case models.Empty:
-					values = append(values, "")
-				case models.String:
-					values = append(values, cell.Value)
-				}
-			}
-
-			queryStr := "UPDATE "
-			queryStr += db.formatTableName(change.Table)
-
-			for i, column := range columnNames {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
-				} else {
-					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
-				}
-			}
-
-			args := make([]interface{}, len(values))
-
-			copy(args, values)
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
-				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
-				}
-				args = append(args, pki.Value)
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db))
 		case models.DMLDeleteType:
-			queryStr := "DELETE FROM "
-			queryStr += db.formatTableName(change.Table)
-
-			args := make([]interface{}, len(change.PrimaryKeyInfo))
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
-				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
-				}
-				args[i] = pki.Value
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db))
 		}
 	}
+
 	return queriesInTransaction(db.Connection, queries)
 }
 
@@ -631,4 +533,48 @@ func (db *SQLite) GetProvider() string {
 
 func (db *SQLite) formatTableName(table string) string {
 	return fmt.Sprintf("`%s`", table)
+}
+
+func (db *SQLite) FormatArg(arg interface{}) string {
+	switch v := arg.(type) {
+
+	case int, int64:
+		return fmt.Sprintf("%d", v)
+	case float64:
+		return fmt.Sprintf("%f", v)
+	case string:
+		return fmt.Sprintf("'%s'", v)
+	case []byte:
+		return fmt.Sprintf("'%s'", string(v))
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func (db *SQLite) FormatReference(reference string) string {
+	return fmt.Sprintf("`%s`", reference)
+}
+
+func (db *SQLite) FormatPlaceholder(_ int) string {
+	return "?"
+}
+
+func (db *SQLite) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
+	var queryStr string
+
+	formattedTableName := db.formatTableName(change.Table)
+
+	columnNames, sanitizedValues := getColNamesAndArgsAsString(change.Values, db)
+
+	switch change.Type {
+	case models.DMLInsertType:
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, sanitizedValues)
+	case models.DMLUpdateType:
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, sanitizedValues, change.PrimaryKeyInfo, db)
+	case models.DMLDeleteType:
+		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
+
+	}
+
+	return queryStr, nil
 }

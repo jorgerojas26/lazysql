@@ -4,11 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/xo/dburl"
 
-	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -422,7 +420,7 @@ func (db *MySQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 	query += db.formatTableName(database, table)
 	query += fmt.Sprintf(" SET %s = ? WHERE %s = ?", column, primaryKeyColumnName)
 
-	_, err := db.Connection.Exec(query, value, primaryKeyValue)
+	_, err := db.Connection.Exec(query, fmt.Sprintf("'%s'", value), primaryKeyValue)
 
 	return err
 }
@@ -450,104 +448,24 @@ func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) (err error) {
+func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	var queries []models.Query
 
 	for _, change := range changes {
-		columnNames := []string{}
-		values := []interface{}{}
-		valuesPlaceholder := []string{}
 
-		for _, cell := range change.Values {
-			columnNames = append(columnNames, cell.Column)
-
-			switch cell.Type {
-			case models.Default:
-				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
-			case models.Null:
-				valuesPlaceholder = append(valuesPlaceholder, "NULL")
-			default:
-				valuesPlaceholder = append(valuesPlaceholder, "?")
-			}
-		}
-
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty:
-				values = append(values, "")
-			case models.String:
-				values = append(values, cell.Value)
-			}
-		}
+		formattedTableName := db.formatTableName(change.Database, change.Table)
 
 		switch change.Type {
+
 		case models.DMLInsertType:
-			queryStr := "INSERT INTO "
-			queryStr += db.formatTableName(change.Database, change.Table)
-			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  values,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
 		case models.DMLUpdateType:
-			queryStr := "UPDATE "
-			queryStr += db.formatTableName(change.Database, change.Table)
-
-			for i, column := range columnNames {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
-				} else {
-					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
-				}
-			}
-
-			args := make([]interface{}, len(values))
-
-			copy(args, values)
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
-				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
-				}
-				args = append(args, pki.Value)
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db))
 		case models.DMLDeleteType:
-			queryStr := "DELETE FROM "
-			queryStr += db.formatTableName(change.Database, change.Table)
-
-			deleteArgs := make([]interface{}, len(change.PrimaryKeyInfo))
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
-				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
-				}
-				deleteArgs[i] = pki.Value
-			}
-
-			logger.Info("deleteArgs", map[string]any{"deleteArgs": deleteArgs})
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  deleteArgs,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db))
 		}
 	}
+
 	return queriesInTransaction(db.Connection, queries)
 }
 
@@ -602,4 +520,48 @@ func (db *MySQL) GetProvider() string {
 
 func (db *MySQL) formatTableName(database, table string) string {
 	return fmt.Sprintf("`%s`.`%s`", database, table)
+}
+
+func (db *MySQL) FormatArg(arg interface{}) string {
+	switch v := arg.(type) {
+
+	case int, int64:
+		return fmt.Sprintf("%d", v)
+	case float64:
+		return fmt.Sprintf("%f", v)
+	case string:
+		return fmt.Sprintf("'%s'", v)
+	case []byte:
+		return fmt.Sprintf("'%s'", string(v))
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func (db *MySQL) FormatReference(reference string) string {
+	return fmt.Sprintf("`%s`", reference)
+}
+
+func (db *MySQL) FormatPlaceholder(_ int) string {
+	return "?"
+}
+
+func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
+	var queryStr string
+
+	formattedTableName := db.formatTableName(change.Database, change.Table)
+
+	columnNames, values := getColNamesAndArgsAsString(change.Values, db)
+
+	switch change.Type {
+	case models.DMLInsertType:
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, values)
+	case models.DMLUpdateType:
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
+	case models.DMLDeleteType:
+		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
+
+	}
+
+	return queryStr, nil
 }

@@ -38,13 +38,14 @@ func (c KeymapSystem) Resolve(event *tcell.EventKey) cmd.Command {
 }
 
 const (
-	HomeGroup       = "home"
-	TreeGroup       = "tree"
-	TreeFilterGroup = "treefilter"
-	TableGroup      = "table"
-	EditorGroup     = "editor"
-	ConnectionGroup = "connection"
-	SidebarGroup    = "sidebar"
+	HomeGroup         = "home"
+	TreeGroup         = "tree"
+	TreeFilterGroup   = "treefilter"
+	TableGroup        = "table"
+	EditorGroup       = "editor"
+	ConnectionGroup   = "connection"
+	SidebarGroup      = "sidebar"
+	QueryPreviewGroup = "querypreview"
 )
 
 // Define a global KeymapSystem object with default keybinds
@@ -138,6 +139,12 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.DiscardEdit, Description: "Discard edit"},
 			Bind{Key: Key{Char: 'C'}, Cmd: cmd.SetValue, Description: "Toggle value menu to put values like NULL, EMPTY or DEFAULT"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy value to clipboard"},
+		},
+		QueryPreviewGroup: {
+			Bind{Key: Key{Code: tcell.KeyCtrlS}, Cmd: cmd.Save, Description: "Execute queries"},
+			Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy query to clipboard"},
+			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete query"},
 		},
 	},
 }

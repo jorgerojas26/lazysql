@@ -306,30 +306,13 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	case commands.Save:
 		if (len(home.ListOfDBChanges) > 0) && !table.GetIsEditing() {
-			confirmationModal := NewConfirmationModal("")
-
-			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-				mainPages.RemovePage(pageNameConfirmation)
-				confirmationModal = nil
-
-				if buttonLabel == "Yes" {
-
-					err := home.DBDriver.ExecutePendingChanges(home.ListOfDBChanges)
-
-					if err != nil {
-						table.SetError(err.Error(), nil)
-					} else {
-						home.ListOfDBChanges = []models.DBDMLChange{}
-
-						table.FetchRecords(nil)
-						home.Tree.ForceRemoveHighlight()
-
-					}
-
-				}
+			queryPreviewModal := NewQueryPreviewModal(&home.ListOfDBChanges, home.DBDriver, func() {
+				home.ListOfDBChanges = []models.DBDMLChange{}
+				table.FetchRecords(nil)
+				home.Tree.ForceRemoveHighlight()
 			})
 
-			mainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
+			mainPages.AddPage(pageNameDMLPreview, queryPreviewModal, true, true)
 		}
 	case commands.HelpPopup:
 		if table == nil || !table.GetIsEditing() {

@@ -729,7 +729,6 @@ func (table *ResultsTable) GetColumnNameByIndex(index int) string {
 
 func (table *ResultsTable) GetColumnIndexByName(columnName string) int {
 	cols := table.GetColumns()
-	logger.Info("GetColumnIndexByName", map[string]any{"cols": cols})
 	index := -1
 
 	for i, col := range cols {
@@ -946,8 +945,6 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 			table.SetError(err.Error(), nil)
 		}
 
-		logger.Info("FetchRecords", map[string]any{"primaryKeyColumnNames": primaryKeyColumnNames})
-
 		if len(records) > 0 {
 			table.SetRecords(records)
 		}
@@ -1160,8 +1157,6 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 
 		*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newDMLChange)
 	}
-
-	logger.Info("AppendNewChange", map[string]any{"listOfDbChanges": *table.state.listOfDBChanges})
 }
 
 func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyInfo {
@@ -1171,7 +1166,6 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
 		primaryKeyValue := table.GetCell(rowIndex, table.GetColumnIndexByName(primaryKeyColumnName)).Text
-		logger.Info("GetPrimaryKeyValue", map[string]any{"primaryKeyValue": primaryKeyValue})
 		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
 

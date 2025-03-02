@@ -37,6 +37,7 @@ func (db *Postgres) Connect(urlstr string) error {
 	if err != nil {
 		return err
 	}
+
 	db.Connection = connection
 
 	err = db.Connection.Ping()
@@ -85,8 +86,6 @@ func (db *Postgres) GetDatabases() ([]string, error) {
 }
 
 func (db *Postgres) GetTables(database string) (map[string][]string, error) {
-	logger.Info("GetTables", map[string]any{"database": database})
-
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -459,9 +458,9 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		return nil, 0, errors.New("table name is required")
 	}
 
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return nil, 0, errors.New("table must be in the format schema.table")
+	formattedTableName, err := db.formatTableName(table)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	if database != db.CurrentDatabase {
@@ -476,11 +475,6 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 			}
 		}()
 	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
-
-	formattedTableName := db.formatTableName(tableSchema, tableName)
 
 	query := "SELECT * FROM "
 	query += formattedTableName
@@ -584,9 +578,10 @@ func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColum
 		return errors.New("primary key value is required")
 	}
 
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return errors.New("table must be in the format schema.table")
+	formattedTableName, formatErr := db.formatTableName(table)
+
+	if formatErr != nil {
+		return formatErr
 	}
 
 	switchDatabaseOnError := false
@@ -597,11 +592,6 @@ func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColum
 		}
 		switchDatabaseOnError = true
 	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
-
-	formattedTableName := db.formatTableName(tableSchema, tableName)
 
 	query := "UPDATE "
 	query += formattedTableName
@@ -629,9 +619,9 @@ func (db *Postgres) DeleteRecord(database, table, primaryKeyColumnName, primaryK
 		return errors.New("primary key value is required")
 	}
 
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return errors.New("table must be in the format schema.table")
+	formattedTableName, formatErr := db.formatTableName(table)
+	if formatErr != nil {
+		return formatErr
 	}
 
 	switchDatabaseOnError := false
@@ -642,11 +632,6 @@ func (db *Postgres) DeleteRecord(database, table, primaryKeyColumnName, primaryK
 		}
 		switchDatabaseOnError = true
 	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
-
-	formattedTableName := db.formatTableName(tableSchema, tableName)
 
 	query := "DELETE FROM "
 	query += formattedTableName
@@ -717,112 +702,20 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	var queries []models.Query
 
 	for _, change := range changes {
-		columnNames := []string{}
-		values := []interface{}{}
-		valuesPlaceholder := []string{}
-		placeholderIndex := 1
 
-		for _, cell := range change.Values {
-			columnNames = append(columnNames, cell.Column)
-
-			switch cell.Type {
-			case models.Default:
-				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
-			case models.Null:
-				valuesPlaceholder = append(valuesPlaceholder, "NULL")
-			default:
-				valuesPlaceholder = append(valuesPlaceholder, fmt.Sprintf("$%d", placeholderIndex))
-				placeholderIndex++
-			}
+		formattedTableName, formatErr := db.formatTableName(change.Table)
+		if formatErr != nil {
+			return formatErr
 		}
-
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty:
-				values = append(values, "")
-			case models.String:
-				values = append(values, cell.Value)
-			}
-		}
-
-		splitTableString := strings.Split(change.Table, ".")
-
-		tableSchema := splitTableString[0]
-		tableName := splitTableString[1]
-
-		formattedTableName := db.formatTableName(tableSchema, tableName)
 
 		switch change.Type {
 
 		case models.DMLInsertType:
-
-			queryStr := "INSERT INTO " + formattedTableName
-			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  values,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
 		case models.DMLUpdateType:
-			queryStr := "UPDATE " + formattedTableName
-
-			for i, column := range columnNames {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" SET \"%s\" = %s", column, valuesPlaceholder[i])
-				} else {
-					queryStr += fmt.Sprintf(", \"%s\" = %s", column, valuesPlaceholder[i])
-				}
-			}
-
-			args := make([]interface{}, len(values))
-
-			copy(args, values)
-
-			wherePlaceholder := 0
-
-			for _, placeholder := range valuesPlaceholder {
-				if strings.Contains(placeholder, "$") {
-					wherePlaceholder++
-				}
-			}
-
-			for i, pki := range change.PrimaryKeyInfo {
-				wherePlaceholder++
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", pki.Name, wherePlaceholder)
-				} else {
-					queryStr += fmt.Sprintf(" AND \"%s\" = $%d", pki.Name, wherePlaceholder)
-				}
-				args = append(args, pki.Value)
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db))
 		case models.DMLDeleteType:
-			queryStr := "DELETE FROM " + formattedTableName
-			args := make([]interface{}, len(change.PrimaryKeyInfo))
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE \"%s\" = $%d", pki.Name, i+1)
-				} else {
-					queryStr += fmt.Sprintf(" AND \"%s\" = $%d", pki.Name, i+1)
-				}
-				args[i] = pki.Value
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db))
 		}
 	}
 
@@ -937,13 +830,69 @@ func (db *Postgres) SwitchDatabase(database string) error {
 		return err
 	}
 
-	db.Connection = connection
+	db.Connection = NewDB(connection, db)
 	db.PreviousDatabase = db.CurrentDatabase
 	db.CurrentDatabase = database
 
 	return nil
 }
 
-func (db *Postgres) formatTableName(database, table string) string {
-	return fmt.Sprintf("\"%s\".\"%s\"", database, table)
+func (db *Postgres) formatTableName(table string) (string, error) {
+	splitTableString := strings.Split(table, ".")
+
+	if len(splitTableString) == 1 {
+		return "", errors.New("table must be in the format schema.table")
+	}
+
+	tableSchema := splitTableString[0]
+	tableName := splitTableString[1]
+
+	return fmt.Sprintf("\"%s\".\"%s\"", tableSchema, tableName), nil
+}
+
+func (db *Postgres) FormatArg(arg interface{}) string {
+	switch v := arg.(type) {
+
+	case int, int64:
+		return fmt.Sprintf("%v", v)
+	case float64:
+		return fmt.Sprintf("%f", v)
+	case string:
+		return fmt.Sprintf("'%s'", v)
+	case []byte:
+		return fmt.Sprintf("'%s'", string(v))
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func (db *Postgres) FormatReference(reference string) string {
+	return fmt.Sprintf("\"%s\"", reference)
+}
+
+func (db *Postgres) FormatPlaceholder(index int) string {
+	return fmt.Sprintf("$%d", index)
+}
+
+func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
+	var queryStr string
+
+	formattedTableName, err := db.formatTableName(change.Table)
+	if err != nil {
+		return "", err
+	}
+
+	columnNames, sanitizedValues := getColNamesAndArgsAsString(change.Values, db)
+
+	switch change.Type {
+	case models.DMLInsertType:
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, sanitizedValues)
+	case models.DMLUpdateType:
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, sanitizedValues, change.PrimaryKeyInfo, db)
+	case models.DMLDeleteType:
+		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
+
+	}
+
+	return queryStr, nil
 }

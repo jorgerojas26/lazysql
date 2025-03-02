@@ -12,7 +12,7 @@ import (
 func InitFromArg(connectionString string) error {
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
-		return fmt.Errorf("Could not parse connection string: %s", err)
+		return fmt.Errorf("could not parse connection string: %s", err)
 	}
 	DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
 
@@ -39,7 +39,7 @@ func InitFromArg(connectionString string) error {
 
 	err = newDBDriver.Connect(connection.URL)
 	if err != nil {
-		return fmt.Errorf("Could not connect to database %s: %s", connectionString, err)
+		return fmt.Errorf("could not connect to database %s: %s", connectionString, err)
 	}
 	mainPages.AddAndSwitchToPage(connection.URL, NewHomePage(connection, newDBDriver).Flex, true)
 
