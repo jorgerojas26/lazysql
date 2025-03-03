@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -24,7 +23,6 @@ func queriesInTransaction(db *sql.DB, queries []models.Query) (err error) {
 	}()
 
 	for _, query := range queries {
-		logger.Info(query.Query, map[string]any{"args": query.Args})
 		if _, err := trx.Exec(query.Query, query.Args...); err != nil {
 			return err
 		}
@@ -35,9 +33,15 @@ func queriesInTransaction(db *sql.DB, queries []models.Query) (err error) {
 	return nil
 }
 
-func buildInsertQueryString(formattedTableName string, columns []string, values []string) string {
+func buildInsertQueryString(formattedTableName string, columns []string, values []any, driver Driver) string {
+	sanitizedValues := make([]string, len(values))
+
+	for i, v := range values {
+		sanitizedValues[i] = fmt.Sprintf("%v", driver.FormatArg(v))
+	}
+
 	queryStr := "INSERT INTO " + formattedTableName
-	queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columns, ", "), strings.Join(values, ", "))
+	queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columns, ", "), strings.Join(sanitizedValues, ", "))
 
 	return queryStr
 }
@@ -57,10 +61,26 @@ func buildInsertQuery(formattedTableName string, values []models.CellValue, driv
 	return newQuery
 }
 
-func buildUpdateQueryString(sanitizedTableName string, sanitizedColNames []string, sanitizedArgs []string, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) string {
+func buildUpdateQueryString(sanitizedTableName string, colNames []string, args []any, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) string {
 	queryStr := "UPDATE " + sanitizedTableName
 
-	sanitizedPrimaryKeyInfo := sanitizePrimaryKeyInfo(primaryKeyInfo, driver)
+	sanitizedColNames := make([]string, len(colNames))
+	for i, colName := range colNames {
+		sanitizedColNames[i] = driver.FormatReference(colName)
+	}
+
+	sanitizedPrimaryKeyInfo := make([]models.PrimaryKeyInfo, len(primaryKeyInfo))
+	for i, pki := range primaryKeyInfo {
+		sanitizedPrimaryKeyInfo[i] = models.PrimaryKeyInfo{
+			Name:  driver.FormatReference(pki.Name),
+			Value: driver.FormatArg(pki.Value),
+		}
+	}
+
+	sanitizedArgs := make([]any, len(args))
+	for i, arg := range args {
+		sanitizedArgs[i] = driver.FormatArg(arg)
+	}
 
 	for i, sanitizedColName := range sanitizedColNames {
 		if i == 0 {
@@ -72,9 +92,9 @@ func buildUpdateQueryString(sanitizedTableName string, sanitizedColNames []strin
 
 	for i, sanitizedPki := range sanitizedPrimaryKeyInfo {
 		if i == 0 {
-			queryStr += fmt.Sprintf(" WHERE %s = %s", sanitizedPki.Name, driver.FormatArg(sanitizedPki.Value))
+			queryStr += fmt.Sprintf(" WHERE %s = %s", sanitizedPki.Name, sanitizedPki.Value)
 		} else {
-			queryStr += fmt.Sprintf(" AND %s = %s", sanitizedPki.Name, driver.FormatArg(sanitizedPki.Value))
+			queryStr += fmt.Sprintf(" AND %s = %s", sanitizedPki.Name, sanitizedPki.Value)
 		}
 	}
 
@@ -82,9 +102,27 @@ func buildUpdateQueryString(sanitizedTableName string, sanitizedColNames []strin
 }
 
 func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) models.Query {
-	sanitizedCols, sanitizedArgs := getColNamesAndArgs(values, driver)
-	sanitizedPrimaryKeyInfo := sanitizePrimaryKeyInfo(primaryKeyInfo, driver)
 	placeholders := buildPlaceholders(values, driver)
+
+	sanitizedCols := make([]string, len(values))
+	for i, value := range values {
+		sanitizedCols[i] = driver.FormatReference(value.Column)
+	}
+
+	args := make([]any, len(values))
+	for i, value := range values {
+		if value.Value != nil {
+			args[i] = value.Value
+		}
+	}
+
+	sanitizedPrimaryKeyInfo := make([]models.PrimaryKeyInfo, len(primaryKeyInfo))
+	for i, primaryKey := range primaryKeyInfo {
+		sanitizedPrimaryKeyInfo[i] = models.PrimaryKeyInfo{
+			Name:  driver.FormatReference(primaryKey.Name),
+			Value: primaryKey.Value,
+		}
+	}
 
 	queryStr := "UPDATE " + sanitizedTableName
 
@@ -107,12 +145,12 @@ func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, prim
 		} else {
 			queryStr += fmt.Sprintf(" AND %s = %s", reference, placeholder)
 		}
-		sanitizedArgs = append(sanitizedArgs, sanitizedPki.Value)
+		args = append(args, sanitizedPki.Value)
 	}
 
 	newQuery := models.Query{
 		Query: queryStr,
-		Args:  sanitizedArgs,
+		Args:  args,
 	}
 
 	return newQuery
@@ -121,7 +159,13 @@ func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, prim
 func buildDeleteQueryString(sanitizedTableName string, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) string {
 	queryStr := "DELETE FROM " + sanitizedTableName
 
-	sanitizedPrimaryKeyInfo := sanitizePrimaryKeyInfo(primaryKeyInfo, driver)
+	sanitizedPrimaryKeyInfo := make([]models.PrimaryKeyInfo, len(primaryKeyInfo))
+	for i, pki := range primaryKeyInfo {
+		sanitizedPrimaryKeyInfo[i] = models.PrimaryKeyInfo{
+			Name:  driver.FormatReference(pki.Name),
+			Value: driver.FormatArg(pki.Value),
+		}
+	}
 
 	for i, sanitizedPki := range sanitizedPrimaryKeyInfo {
 		if i == 0 {
@@ -136,7 +180,7 @@ func buildDeleteQueryString(sanitizedTableName string, primaryKeyInfo []models.P
 
 func buildDeleteQuery(formattedTableName string, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) models.Query {
 	queryStr := "DELETE FROM " + formattedTableName
-	args := make([]interface{}, len(primaryKeyInfo))
+	args := make([]any, len(primaryKeyInfo))
 
 	sanitizedPrimaryKeyInfo := sanitizePrimaryKeyInfo(primaryKeyInfo, driver)
 
@@ -171,30 +215,38 @@ func sanitizePrimaryKeyInfo(primaryKeyInfo []models.PrimaryKeyInfo, driver Drive
 	return sanitizedPrimaryKeyInfo
 }
 
-func getColNamesAndArgsAsString(values []models.CellValue, driver Driver) ([]string, []string) {
+func getColNamesAndArgsAsString(values []models.CellValue) ([]string, []any) {
 	cols := []string{}
-	v := []string{}
+	v := []any{}
 
 	for _, cell := range values {
-		cols = append(cols, driver.FormatReference(cell.Column))
+
+		cols = append(cols, cell.Column)
 
 		switch cell.Type {
 		case models.Empty:
 			v = append(v, "")
-		case models.String:
-			v = append(v, driver.FormatArg(cell.Value))
+		case models.Null:
+			v = append(v, "NULL")
+		case models.Default:
+			v = append(v, "DEFAULT")
+		default:
+			v = append(v, cell.Value)
 		}
 	}
 
 	return cols, v
 }
 
-func getColNamesAndArgs(values []models.CellValue, driver Driver) ([]string, []interface{}) {
+func getColNamesAndArgs(values []models.CellValue, driver Driver) ([]string, []any) {
 	cols := []string{}
-	v := []interface{}{}
+	v := []any{}
 
 	for _, cell := range values {
-		cols = append(cols, driver.FormatReference(cell.Column))
+
+		if cell.Type != models.Default {
+			cols = append(cols, driver.FormatReference(cell.Column))
+		}
 
 		switch cell.Type {
 		case models.Empty:
@@ -214,9 +266,11 @@ func buildPlaceholders(values []models.CellValue, driver Driver) []string {
 	for i, cell := range values {
 		switch cell.Type {
 		case models.Empty:
-			placeholders = append(placeholders, "DEFAULT")
+			placeholders = append(placeholders, "")
 		case models.Null:
 			placeholders = append(placeholders, "NULL")
+		case models.Default:
+			placeholders = append(placeholders, "DEFAULT")
 		default:
 			placeholders = append(placeholders, driver.FormatPlaceholder(i+1))
 		}

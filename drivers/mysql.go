@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/xo/dburl"
 
@@ -149,7 +150,7 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	query := "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_SCHEMA = ? AND TABLE_NAME = ?"
+	query := "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
 
 	rows, err := db.Connection.Query(query, database, table)
 	if err != nil {
@@ -198,7 +199,7 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	query := "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
+	query := "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
 
 	rows, err := db.Connection.Query(query, database, table)
 	if err != nil {
@@ -420,7 +421,7 @@ func (db *MySQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 	query += db.formatTableName(database, table)
 	query += fmt.Sprintf(" SET %s = ? WHERE %s = ?", column, primaryKeyColumnName)
 
-	_, err := db.Connection.Exec(query, fmt.Sprintf("'%s'", value), primaryKeyValue)
+	_, err := db.Connection.Exec(query, value, primaryKeyValue)
 
 	return err
 }
@@ -478,11 +479,7 @@ func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyCol
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query(`
-	SELECT column_name
-	FROM information_schema.key_column_usage
-	WHERE table_schema = ? AND table_name = ? AND constraint_name = ?
-	`, database, table, "PRIMARY")
+	rows, err := db.Connection.Query("SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = ? AND table_name = ? AND constraint_name = ?", database, table, "PRIMARY")
 	if err != nil {
 		return nil, err
 	}
@@ -522,17 +519,27 @@ func (db *MySQL) formatTableName(database, table string) string {
 	return fmt.Sprintf("`%s`.`%s`", database, table)
 }
 
-func (db *MySQL) FormatArg(arg interface{}) string {
-	switch v := arg.(type) {
+func (db *MySQL) FormatArg(arg any) string {
+	if arg == "NULL" || arg == "DEFAULT" {
+		return fmt.Sprintf("%v", arg)
+	}
 
+	switch v := arg.(type) {
 	case int, int64:
 		return fmt.Sprintf("%d", v)
-	case float64:
-		return fmt.Sprintf("%f", v)
+	case float64, float32:
+		s := fmt.Sprintf("%f", v)
+		trimmed := strings.TrimRight(s, "0")
+		if strings.HasSuffix(trimmed, ".") {
+			trimmed += "0"
+		}
+		return trimmed
 	case string:
-		return fmt.Sprintf("'%s'", v)
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	case []byte:
-		return fmt.Sprintf("'%s'", string(v))
+		escaped := strings.ReplaceAll(string(v), "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
@@ -551,11 +558,11 @@ func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 
 	formattedTableName := db.formatTableName(change.Database, change.Table)
 
-	columnNames, values := getColNamesAndArgsAsString(change.Values, db)
+	columnNames, values := getColNamesAndArgsAsString(change.Values)
 
 	switch change.Type {
 	case models.DMLInsertType:
-		queryStr = buildInsertQueryString(formattedTableName, columnNames, values)
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, values, db)
 	case models.DMLUpdateType:
 		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
 	case models.DMLDeleteType:

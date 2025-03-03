@@ -882,13 +882,13 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 		return "", err
 	}
 
-	columnNames, sanitizedValues := getColNamesAndArgsAsString(change.Values, db)
+	columnNames, values := getColNamesAndArgsAsString(change.Values)
 
 	switch change.Type {
 	case models.DMLInsertType:
-		queryStr = buildInsertQueryString(formattedTableName, columnNames, sanitizedValues)
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, values, db)
 	case models.DMLUpdateType:
-		queryStr = buildUpdateQueryString(formattedTableName, columnNames, sanitizedValues, change.PrimaryKeyInfo, db)
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
 	case models.DMLDeleteType:
 		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
 

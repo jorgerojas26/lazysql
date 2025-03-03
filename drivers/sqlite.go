@@ -113,7 +113,7 @@ func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err erro
 	results = append(results, columns[1:])
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -164,7 +164,7 @@ func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -197,7 +197,9 @@ func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query("PRAGMA foreign_key_list(" + table + ")")
+	formattedTableName := db.formatTableName(table)
+
+	rows, err := db.Connection.Query("PRAGMA foreign_key_list(" + formattedTableName + ")")
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +246,8 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query("PRAGMA index_list(" + table + ")")
+	formattedTableName := db.formatTableName(table)
+	rows, err := db.Connection.Query("PRAGMA index_list(" + formattedTableName + ")")
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +261,7 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -460,7 +463,7 @@ func (db *SQLite) DeleteRecord(_, table, primaryKeyColumnName, primaryKeyValue s
 	query += db.formatTableName(table)
 	query += fmt.Sprintf(" WHERE %s = ?", primaryKeyColumnName)
 
-	_, err := db.Connection.Exec(query)
+	_, err := db.Connection.Exec(query, primaryKeyValue)
 
 	return err
 }
@@ -535,17 +538,35 @@ func (db *SQLite) formatTableName(table string) string {
 	return fmt.Sprintf("`%s`", table)
 }
 
-func (db *SQLite) FormatArg(arg interface{}) string {
-	switch v := arg.(type) {
+func (db *SQLite) FormatArg(arg any) string {
+	if arg == "NULL" || arg == "DEFAULT" {
+		return fmt.Sprintf("%v", arg)
+	}
 
+	switch v := arg.(type) {
 	case int, int64:
 		return fmt.Sprintf("%d", v)
-	case float64:
-		return fmt.Sprintf("%f", v)
+	case float64, float32:
+		s := fmt.Sprintf("%f", v)
+		trimmed := strings.TrimRight(s, "0")
+		if strings.HasSuffix(trimmed, ".") {
+			trimmed += "0"
+		}
+		return trimmed
 	case string:
-		return fmt.Sprintf("'%s'", v)
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	case []byte:
-		return fmt.Sprintf("'%s'", string(v))
+		escaped := strings.ReplaceAll(string(v), "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
+	case bool:
+		if v {
+			return "1"
+		}
+
+		return "0"
+	case nil:
+		return "NULL"
 	default:
 		return fmt.Sprintf("%v", v)
 	}
@@ -564,13 +585,13 @@ func (db *SQLite) DMLChangeToQueryString(change models.DBDMLChange) (string, err
 
 	formattedTableName := db.formatTableName(change.Table)
 
-	columnNames, sanitizedValues := getColNamesAndArgsAsString(change.Values, db)
+	columnNames, values := getColNamesAndArgsAsString(change.Values)
 
 	switch change.Type {
 	case models.DMLInsertType:
-		queryStr = buildInsertQueryString(formattedTableName, columnNames, sanitizedValues)
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, values, db)
 	case models.DMLUpdateType:
-		queryStr = buildUpdateQueryString(formattedTableName, columnNames, sanitizedValues, change.PrimaryKeyInfo, db)
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
 	case models.DMLDeleteType:
 		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
 
