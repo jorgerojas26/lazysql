@@ -174,7 +174,7 @@ func (db *Postgres) GetTableColumns(database, table string) ([][]string, error) 
 
 	results := [][]string{columns}
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
@@ -256,7 +256,7 @@ func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
 
 	constraints := [][]string{columns}
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -337,7 +337,7 @@ func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
 
 	foreignKeys := [][]string{columns}
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -427,7 +427,7 @@ func (db *Postgres) GetIndexes(database, table string) ([][]string, error) {
 
 	indexes := [][]string{columns}
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -508,7 +508,7 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
 
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range nullStringSlice {
 			rowValues[i] = &nullStringSlice[i]
 		}
@@ -671,7 +671,7 @@ func (db *Postgres) ExecuteQuery(query string) ([][]string, int, error) {
 
 	records := make([][]string, 0)
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -850,17 +850,29 @@ func (db *Postgres) formatTableName(table string) (string, error) {
 	return fmt.Sprintf("\"%s\".\"%s\"", tableSchema, tableName), nil
 }
 
-func (db *Postgres) FormatArg(arg interface{}) string {
-	switch v := arg.(type) {
+func (db *Postgres) FormatArg(arg any) string {
+	if arg == "NULL" || arg == "DEFAULT" {
+		return fmt.Sprintf("%v", arg)
+	}
 
+	switch v := arg.(type) {
 	case int, int64:
-		return fmt.Sprintf("%v", v)
-	case float64:
-		return fmt.Sprintf("%f", v)
+		return fmt.Sprintf("%d", v)
+	case float64, float32:
+		s := fmt.Sprintf("%f", v)
+		trimmed := strings.TrimRight(s, "0")
+		if strings.HasSuffix(trimmed, ".") {
+			trimmed += "0"
+		}
+		return trimmed
 	case string:
-		return fmt.Sprintf("'%s'", v)
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	case []byte:
-		return fmt.Sprintf("'%s'", string(v))
+		escaped := strings.ReplaceAll(string(v), "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
+	case nil:
+		return "NULL"
 	default:
 		return fmt.Sprintf("%v", v)
 	}
