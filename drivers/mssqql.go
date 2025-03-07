@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	// mssql driver
 	_ "github.com/microsoft/go-mssqldb"
@@ -81,12 +82,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := `
-		SELECT
-			name
-		FROM
-			sys.tables
-	`
+	query := `SELECT name FROM sys.tables`
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
@@ -158,31 +154,26 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
 
 func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
 	query := `
-		SELECT
-				tc.constraint_name,
-				kcu.column_name,
-				tc.constraint_type
-		FROM
-				information_schema.table_constraints AS tc
-		JOIN
-				information_schema.key_column_usage AS kcu
-					ON
-							tc.constraint_name = kcu.constraint_name
-					AND
-							tc.table_schema = kcu.table_schema
-		JOIN
-				information_schema.constraint_column_usage AS ccu
-					ON
-							ccu.constraint_name = tc.constraint_name
-					AND
-							ccu.table_schema = tc.table_schema
-		WHERE
-				tc.constraint_type = 'FOREIGN KEY'
-		AND
-				tc.table_catalog = @p1
-		AND
-				tc.table_name = @p2
-	`
+        SELECT 
+            fk.name AS constraint_name,
+            c.name AS column_name,
+            QUOTENAME(DB_NAME(DB_ID())) AS current_database,
+            OBJECT_NAME(fk.referenced_object_id) AS referenced_table,
+            rc.name AS referenced_column,
+            fk.delete_referential_action_desc AS delete_rule,
+            fk.update_referential_action_desc AS update_rule
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc 
+            ON fk.object_id = fkc.constraint_object_id
+        INNER JOIN sys.columns c 
+            ON fkc.parent_column_id = c.column_id 
+            AND fkc.parent_object_id = c.object_id
+        INNER JOIN sys.columns rc 
+            ON fkc.referenced_column_id = rc.column_id 
+            AND fkc.referenced_object_id = rc.object_id
+        WHERE DB_NAME(DB_ID()) = @p1
+          AND OBJECT_NAME(fk.parent_object_id) = @p2
+    `
 	return db.getTableInformations(query, database, table)
 }
 
@@ -247,7 +238,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	results := make([][]string, 0)
 
 	query := "SELECT * FROM "
-	query += table
+	query += db.FormatReference(table)
 
 	if where != "" {
 		query += fmt.Sprintf(" %s", where)
@@ -255,8 +246,9 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	// since in mssql order is mandatory when using pagination
 	if sort == "" {
-		sort = "(SELECT NULL)"
+		sort = "(SELECT NULL ORDER BY (SELECT NULL))"
 	}
+
 	query += fmt.Sprintf(" ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", sort)
 
 	rows, err := db.Connection.Query(query, offset, limit)
@@ -307,7 +299,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	}
 
 	totalRecords := 0
-	row := db.Connection.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+	row := db.Connection.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", db.FormatReference(table)))
 	if err := row.Scan(&totalRecords); err != nil {
 		return nil, 0, err
 	}
@@ -442,10 +434,9 @@ func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
 
 func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	var queries []models.Query
-
 	for _, change := range changes {
 
-		formattedTableName := change.Table
+		formattedTableName := db.FormatReference(change.Table)
 
 		switch change.Type {
 
@@ -471,39 +462,30 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 	}
 
 	pkColumnName := make([]string, 0)
-	query := `
-		SELECT
-				c.name AS column_name
+	query := `SELECT
+			c.name AS column_name
 		FROM
-				sys.tables t
+			sys.tables t
 		INNER JOIN
 			sys.schemas s
-				ON
-					t.schema_id = s.schema_id
+				ON t.schema_id = s.schema_id
 		INNER JOIN
 			sys.key_constraints kc
-				ON
-					t.object_id = kc.parent_object_id
-				AND
-					kc.type = @p1
+				ON t.object_id = kc.parent_object_id
+				AND kc.type = @p1
 		INNER JOIN
 			sys.index_columns ic
-				ON
-					kc.unique_index_id = ic.index_id
-				AND
-					t.object_id = ic.object_id
+				ON kc.unique_index_id = ic.index_id
+				AND t.object_id = ic.object_id
 		INNER JOIN
 			sys.columns c
-				ON
-					ic.column_id = c.column_id
-				AND
-					t.object_id = c.object_id
-		WHERE
-	_, err := db.Connection.Exec(query, value, primaryKeyValue)
-		AND
-				t.name = @p3
-	`
-	rows, err := db.Connection.Query(query, "PK", database, table)
+				ON ic.column_id = c.column_id
+				AND t.object_id = c.object_id
+		WHERE 
+			s.name = @p2
+			AND t.name = @p3
+		ORDER BY ic.key_ordinal`
+	rows, err := db.Connection.Query(query, "PK", "dbo", table)
 	if err != nil {
 		return nil, err
 	}
@@ -604,7 +586,7 @@ func (db *MSSQL) getTableInformations(query, database, table string) ([][]string
 	return results, nil
 }
 
-func (db *MSSQL) FormatArg(arg interface{}) string {
+func (db *MSSQL) FormatArg(arg any) string {
 	switch v := arg.(type) {
 
 	case int, int64:
@@ -612,16 +594,19 @@ func (db *MSSQL) FormatArg(arg interface{}) string {
 	case float64:
 		return fmt.Sprintf("%v", v)
 	case string:
-		return fmt.Sprintf("'%s'", v)
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	case []byte:
-		return fmt.Sprintf("'%s'", string(v))
+		return fmt.Sprintf("0x%x", v)
+	case nil:
+		return "NULL"
 	default:
 		return fmt.Sprintf("%v", v)
 	}
 }
 
 func (db *MSSQL) FormatReference(reference string) string {
-	return reference
+	return fmt.Sprintf("[%s]", reference)
 }
 
 func (db *MSSQL) FormatPlaceholder(index int) string {
@@ -631,7 +616,7 @@ func (db *MSSQL) FormatPlaceholder(index int) string {
 func (db *MSSQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
 	var queryStr string
 
-	formattedTableName := change.Table
+	formattedTableName := db.FormatReference(change.Table)
 
 	columnNames, values := getColNamesAndArgsAsString(change.Values)
 
