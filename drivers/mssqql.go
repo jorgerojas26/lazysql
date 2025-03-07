@@ -108,17 +108,18 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
 	query := `
-		SELECT
-			column_name, data_type, is_nullable, column_default
-		FROM
-			information_schema.columns
-		WHERE
-			table_catalog = @p1
-		AND
-			table_name = @p2
-		ORDER BY
-			ordinal_position
-	`
+        SELECT
+            c.name AS column_name,
+            t.name AS data_type,
+            c.is_nullable,
+            def.definition AS column_default
+        FROM sys.columns c
+        INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
+        LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
+        WHERE c.object_id = OBJECT_ID(@p2)
+        AND t.name <> 'sysname'  -- Filter out sysname
+        ORDER BY c.column_id;
+    `
 	return db.getTableInformations(query, database, table)
 }
 
@@ -246,7 +247,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	// since in mssql order is mandatory when using pagination
 	if sort == "" {
-		sort = "(SELECT NULL ORDER BY (SELECT NULL))"
+		sort = "(SELECT NULL)"
 	}
 
 	query += fmt.Sprintf(" ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", sort)
