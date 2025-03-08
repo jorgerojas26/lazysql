@@ -159,7 +159,7 @@ func (modal *QueryPreviewModal) populateTable() {
 			return
 		}
 
-		cell := tview.NewTableCell(queryStr)
+		cell := tview.NewTableCell(tview.Escape(queryStr))
 		cell.SetExpansion(1)
 
 		modal.Table.SetCell(i, 0, cell)
