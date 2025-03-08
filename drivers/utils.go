@@ -47,8 +47,23 @@ func buildInsertQueryString(formattedTableName string, columns []string, values 
 }
 
 func buildInsertQuery(formattedTableName string, values []models.CellValue, driver Driver) models.Query {
-	cols, args := getColNamesAndArgs(values, driver)
-	placeholders := buildPlaceholders(values, driver)
+	cols := make([]string, 0, len(values))
+	args := make([]any, 0, len(values))
+	placeholders := make([]string, 0, len(values))
+
+	index := 1
+
+	for _, value := range values {
+		if value.Type != models.Default {
+			cols = append(cols, driver.FormatReference(value.Column))
+		}
+
+		if value.Value != nil && value.Type != models.Default {
+			placeholders = append(placeholders, driver.FormatPlaceholder(index))
+			args = append(args, value.Value)
+			index++
+		}
+	}
 
 	queryStr := "INSERT INTO " + formattedTableName
 	queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(cols, ", "), strings.Join(placeholders, ", "))
@@ -238,32 +253,12 @@ func getColNamesAndArgsAsString(values []models.CellValue) ([]string, []any) {
 	return cols, v
 }
 
-func getColNamesAndArgs(values []models.CellValue, driver Driver) ([]string, []any) {
-	cols := []string{}
-	v := []any{}
-
-	for _, cell := range values {
-
-		if cell.Type != models.Default {
-			cols = append(cols, driver.FormatReference(cell.Column))
-		}
-
-		switch cell.Type {
-		case models.Empty:
-			v = append(v, "")
-		case models.String:
-			// This must not be sanitized because it's used as the placeholder arg
-			v = append(v, cell.Value)
-		}
-	}
-
-	return cols, v
-}
-
 func buildPlaceholders(values []models.CellValue, driver Driver) []string {
 	placeholders := []string{}
 
-	for i, cell := range values {
+	index := 1
+
+	for _, cell := range values {
 		switch cell.Type {
 		case models.Empty:
 			placeholders = append(placeholders, "")
@@ -272,7 +267,8 @@ func buildPlaceholders(values []models.CellValue, driver Driver) []string {
 		case models.Default:
 			placeholders = append(placeholders, "DEFAULT")
 		default:
-			placeholders = append(placeholders, driver.FormatPlaceholder(i+1))
+			placeholders = append(placeholders, driver.FormatPlaceholder(index))
+			index++
 		}
 	}
 	return placeholders
