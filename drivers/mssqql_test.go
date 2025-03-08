@@ -61,7 +61,7 @@ func TestMSSQL_FormatArg_SpecialCharacters(t *testing.T) {
 
 // --- Fixed: Schema Handling in Primary Keys ---
 func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {
 		t.Fatalf("Error creating mock: %v", err)
 	}
@@ -72,9 +72,12 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"column_name"}).
 		AddRow("id")
 
+	schemaRow := sqlmock.NewRows([]string{"CurrentSchema"}).AddRow("dbo")
+
+	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
+
 	// Match exact query structure with schema
-	mock.ExpectQuery(`
-		SELECT
+	mock.ExpectQuery(`SELECT
 			c.name AS column_name
 		FROM
 			sys.tables t
@@ -117,7 +120,7 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 
 // --- Fixed: Foreign Key Test Alignment ---
 func TestMSSQL_GetForeignKeys(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {
 		t.Fatalf("Error creating mock: %v", err)
 	}
@@ -148,8 +151,9 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
         SELECT 
             fk.name AS constraint_name,
             c.name AS column_name,
-            QUOTENAME\(DB_NAME\(DB_ID\(\)\)\) AS current_database,
-            OBJECT_NAME\(fk.referenced_object_id\) AS referenced_table,
+            DB_NAME(DB_ID(@p1)) AS current_database,
+            OBJECT_SCHEMA_NAME(fk.referenced_object_id, DB_ID(@p1)) + '.' + 
+            OBJECT_NAME(fk.referenced_object_id, DB_ID(@p1)) AS referenced_table,
             rc.name AS referenced_column,
             fk.delete_referential_action_desc AS delete_rule,
             fk.update_referential_action_desc AS update_rule
@@ -162,8 +166,12 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
         INNER JOIN sys.columns rc 
             ON fkc.referenced_column_id = rc.column_id 
             AND fkc.referenced_object_id = rc.object_id
-        WHERE DB_NAME\(DB_ID\(\)\) = \@p1 
-          AND OBJECT_NAME\(fk.parent_object_id\) = \@p2
+        INNER JOIN sys.tables t 
+            ON fk.parent_object_id = t.object_id
+        INNER JOIN sys.schemas s 
+            ON t.schema_id = s.schema_id
+        WHERE t.name = @p2
+          AND DB_NAME(DB_ID(@p1)) = @p1
     `).WithArgs(DBNameMSSQL, tableNameMSSQL).WillReturnRows(rows)
 
 	constraints, err := pg.GetForeignKeys(DBNameMSSQL, tableNameMSSQL)
@@ -249,7 +257,7 @@ func TestMSSQL_DMLChangeToQueryString(t *testing.T) {
 
 // --- Fixed: Index Test with MSSQL Specifics ---
 func TestMSSQL_GetIndexes(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {
 		t.Fatalf("Error creating mock: %v", err)
 	}
@@ -282,48 +290,41 @@ func TestMSSQL_GetIndexes(t *testing.T) {
 		"name",
 	)
 
+	schemaRow := sqlmock.NewRows([]string{"CurrentSchema"}).AddRow("dbo")
+
+	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
+
 	mock.ExpectQuery(`
-		SELECT
-				t.name AS table_name,
-				i.name AS index_name,
-				i.is_unique AS is_unique,
-				i.is_primary_key AS is_primary_key,
-				i.type_desc AS index_type,
-				c.name AS column_name,
-				ic.key_ordinal AS seq_in_index,
-				ic.is_included_column AS is_included,
-				i.has_filter AS has_filter,
-				i.filter_definition AS filter_definition
-		FROM
-				sys.tables t
-		INNER JOIN
-				sys.schemas s
-					ON
-						t.schema_id = s.schema_id
-		INNER JOIN
-				sys.indexes i
-					ON
-						t.object_id = i.object_id
-		INNER JOIN
-				sys.index_columns ic
-					ON
-						i.object_id = ic.object_id
-					AND
-						i.index_id = ic.index_id
-		INNER JOIN
-				sys.columns c
-					ON
-						t.object_id = c.object_id
-					AND
-						ic.column_id = c.column_id
-		WHERE
-				DB_NAME\(\) = \@p1
-		AND
-				t.name = \@p2
-		ORDER BY
-				i.type_desc
-	`).
-		WithArgs(DBNameMSSQL, tableNameMSSQL).
+        SELECT
+            t.name AS table_name,
+            i.name AS index_name,
+            CAST(i.is_unique AS BIT) AS is_unique,
+            CAST(i.is_primary_key AS BIT) AS is_primary_key,
+            i.type_desc AS index_type,
+            c.name AS column_name,
+            ic.key_ordinal AS seq_in_index,
+            CAST(ic.is_included_column AS BIT) AS is_included,
+            CAST(i.has_filter AS BIT) AS has_filter,
+            i.filter_definition
+        FROM sys.tables t
+        INNER JOIN sys.schemas s 
+            ON t.schema_id = s.schema_id
+        INNER JOIN sys.databases d 
+            ON d.name = @p1
+        INNER JOIN sys.indexes i 
+            ON t.object_id = i.object_id
+        INNER JOIN sys.index_columns ic 
+            ON i.object_id = ic.object_id 
+            AND i.index_id = ic.index_id
+        INNER JOIN sys.columns c 
+            ON ic.column_id = c.column_id 
+            AND t.object_id = c.object_id
+        WHERE t.name = @p2
+          AND s.name = @p3
+          AND DB_ID(@p1) = d.database_id
+        ORDER BY i.type_desc
+    `).
+		WithArgs(DBNameMSSQL, tableNameMSSQL, schemaMSSQL).
 		WillReturnRows(rows)
 
 	indexes, err := pg.GetIndexes(DBNameMSSQL, tableNameMSSQL)

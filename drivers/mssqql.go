@@ -193,17 +193,19 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
         SELECT
             t.name AS table_name,
             i.name AS index_name,
-            i.is_unique,
-            i.is_primary_key,
+            CAST(i.is_unique AS BIT) AS is_unique,
+            CAST(i.is_primary_key AS BIT) AS is_primary_key,
             i.type_desc AS index_type,
             c.name AS column_name,
             ic.key_ordinal AS seq_in_index,
-            ic.is_included_column AS is_included,
-            i.has_filter,
+            CAST(ic.is_included_column AS BIT) AS is_included,
+            CAST(i.has_filter AS BIT) AS has_filter,
             i.filter_definition
         FROM sys.tables t
         INNER JOIN sys.schemas s 
             ON t.schema_id = s.schema_id
+        INNER JOIN sys.databases d 
+            ON d.name = @p1
         INNER JOIN sys.indexes i 
             ON t.object_id = i.object_id
         INNER JOIN sys.index_columns ic 
@@ -211,10 +213,10 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
             AND i.index_id = ic.index_id
         INNER JOIN sys.columns c 
             ON ic.column_id = c.column_id 
-            AND ic.object_id = c.object_id
+            AND t.object_id = c.object_id
         WHERE t.name = @p2
           AND s.name = @p3
-          AND DB_NAME() = @p1
+          AND DB_ID(@p1) = d.database_id
         ORDER BY i.type_desc
     `
 	return db.getTableInformations(query, database, table, currentSchema)
