@@ -20,6 +20,7 @@ type QueryPreviewModal struct {
 	Queries  *[]models.DBDMLChange
 	Table    *tview.Table
 	DBDriver drivers.Driver
+	Error    *tview.Modal
 }
 
 func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver, onFinish func()) *QueryPreviewModal {
@@ -43,6 +44,14 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	table.SetSelectable(true, false)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 
+	errorModal := tview.NewModal()
+	errorModal.AddButtons([]string{"Ok"})
+	errorModal.SetText("An error occurred")
+	errorModal.SetBackgroundColor(tcell.ColorRed)
+	errorModal.SetTextColor(app.Styles.PrimaryTextColor)
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
+	errorModal.SetFocus(0)
+
 	keybindings := tview.NewTextView()
 	keybindings.SetDynamicColors(true)
 	keybindings.SetRegions(true)
@@ -62,6 +71,7 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 		Queries:   queries,
 		Table:     table,
 		DBDriver:  dbdriver,
+		Error:     errorModal,
 	}
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -76,6 +86,7 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 				if buttonLabel == "Yes" {
 					err := dbdriver.ExecutePendingChanges(*queries)
 					if err != nil {
+						r.SetError(err.Error())
 						logger.Info("Error saving queries", map[string]any{"error": err.Error()})
 						return
 					}
@@ -124,6 +135,18 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	r.populateTable()
 
 	return r
+}
+
+func (modal *QueryPreviewModal) SetError(err string) {
+	modal.Error.SetText(err)
+
+	modal.Error.SetDoneFunc(func(_ int, _ string) {
+		mainPages.RemovePage(pageNameQueryPreviewError)
+	})
+
+	mainPages.AddPage(pageNameQueryPreviewError, modal.Error, true, true)
+	mainPages.ShowPage(pageNameQueryPreviewError)
+	App.SetFocus(modal.Error)
 }
 
 func (modal *QueryPreviewModal) populateTable() {

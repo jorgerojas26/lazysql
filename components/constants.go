@@ -23,6 +23,7 @@ const (
 	pageNameTableEditorTable       string = "TableEditorTable"
 	pageNameTableEditorResultsInfo string = "TableEditorResultsInfo"
 	pageNameTableEditCell          string = "TableEditCell"
+	pageNameQueryPreviewError      string = "QueryPreviewError"
 
 	// Sidebar
 	pageNameSidebar string = "Sidebar"
