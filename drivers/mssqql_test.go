@@ -390,3 +390,47 @@ func TestMSSQL_ExecutePendingChanges(t *testing.T) {
 		t.Errorf("Unfulfilled expectations: %s", err)
 	}
 }
+
+func TestMSSQL_GetRecords(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	pg := &MSSQL{Connection: db}
+
+	rows := sqlmock.NewRows([]string{"id", "name"}).
+		AddRow(1, "Alice").
+		AddRow(2, "Bob")
+
+	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM \\[%s\\] ORDER BY \\(SELECT NULL\\) OFFSET \\@p1 ROWS FETCH NEXT \\@p2 ROWS ONLY", tableNameMSSQL)).
+		WithArgs(0, DefaultRowLimit).
+		WillReturnRows(rows)
+
+	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM \\[%s\\]", tableNameMSSQL)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+	records, total, err := pg.GetRecords(DBNameMSSQL, tableNameMSSQL, "", "", 0, DefaultRowLimit)
+	if err != nil {
+		t.Fatalf("GetRecords failed: %v", err)
+	}
+
+	expected := [][]string{
+		{"id", "name"},
+		{"1", "Alice"},
+		{"2", "Bob"},
+	}
+
+	if !reflect.DeepEqual(records, expected) {
+		t.Fatalf("Expected %v, got %v", expected, records)
+	}
+
+	if total != 2 {
+		t.Fatalf("Expected total 2, got %d", total)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
