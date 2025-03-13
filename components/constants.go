@@ -14,6 +14,7 @@ const (
 	pageNameHelp         string = "Help"
 	pageNameConfirmation string = "Confirmation"
 	pageNameConnections  string = "Connections"
+	pageNameDMLPreview   string = "DMLPreview"
 
 	// Results table
 	pageNameTable                  string = "Table"
@@ -22,6 +23,7 @@ const (
 	pageNameTableEditorTable       string = "TableEditorTable"
 	pageNameTableEditorResultsInfo string = "TableEditorResultsInfo"
 	pageNameTableEditCell          string = "TableEditCell"
+	pageNameQueryPreviewError      string = "QueryPreviewError"
 
 	// Sidebar
 	pageNameSidebar string = "Sidebar"

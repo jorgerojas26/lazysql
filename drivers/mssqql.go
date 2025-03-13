@@ -83,12 +83,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := `
-		SELECT
-			name
-		FROM
-			sys.tables
-	`
+	query := `SELECT name FROM sys.tables`
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
@@ -114,123 +109,117 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
 	query := `
-		SELECT
-			column_name, data_type, is_nullable, column_default
-		FROM
-			information_schema.columns
-		WHERE
-			table_catalog = @p1
-		AND
-			table_name = @p2
-		ORDER BY
-			ordinal_position
-	`
-	return db.getTableInformations(query, database, table)
+        SELECT
+            c.name AS column_name,
+            t.name AS data_type,
+            c.is_nullable,
+            def.definition AS column_default
+        FROM sys.columns c
+        INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
+        LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
+        WHERE c.object_id = OBJECT_ID(@p2)
+        AND t.name <> 'sysname'
+        ORDER BY c.column_id;
+    `
+	return db.getTableInformations(query, database, table, "")
 }
 
-func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
+func (db *MSSQL) GetConstraints(_, table string) ([][]string, error) {
+	currentSchema, err := db.getCurrentSchema()
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT
-				tc.constraint_name,
-				kcu.column_name,
-				tc.constraint_type
-		FROM
-				information_schema.table_constraints AS tc
-		JOIN
-				information_schema.key_column_usage AS kcu
-					ON
-							tc.constraint_name = kcu.constraint_name
-					AND
-							tc.table_schema = kcu.table_schema
-		JOIN
-				information_schema.constraint_column_usage AS ccu
-					ON
-							ccu.constraint_name = tc.constraint_name
-					AND
-							ccu.table_schema = tc.table_schema
-		WHERE NOT
-				tc.constraint_type = 'FOREIGN KEY'
-		AND
-				tc.table_catalog = @p1
-		AND
-				tc.table_name = @p2
-	`
-	return db.getTableInformations(query, database, table)
+        SELECT 
+            kc.name AS constraint_name,
+            c.name AS column_name,
+            kc.type_desc AS constraint_type
+        FROM sys.key_constraints kc
+        INNER JOIN sys.tables t 
+            ON kc.parent_object_id = t.object_id
+        INNER JOIN sys.schemas s 
+            ON t.schema_id = s.schema_id
+        INNER JOIN sys.index_columns ic 
+            ON kc.unique_index_id = ic.index_id 
+            AND kc.parent_object_id = ic.object_id
+        INNER JOIN sys.columns c 
+            ON ic.column_id = c.column_id 
+            AND ic.object_id = c.object_id
+        WHERE s.name = @p1
+          AND t.name = @p2
+          AND kc.type IN ('PK', 'UQ')  -- Primary keys and unique constraints
+    `
+	return db.getTableInformations(query, currentSchema, table, "")
 }
 
 func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
 	query := `
-		SELECT
-				tc.constraint_name,
-				kcu.column_name,
-				tc.constraint_type
-		FROM
-				information_schema.table_constraints AS tc
-		JOIN
-				information_schema.key_column_usage AS kcu
-					ON
-							tc.constraint_name = kcu.constraint_name
-					AND
-							tc.table_schema = kcu.table_schema
-		JOIN
-				information_schema.constraint_column_usage AS ccu
-					ON
-							ccu.constraint_name = tc.constraint_name
-					AND
-							ccu.table_schema = tc.table_schema
-		WHERE
-				tc.constraint_type = 'FOREIGN KEY'
-		AND
-				tc.table_catalog = @p1
-		AND
-				tc.table_name = @p2
-	`
-	return db.getTableInformations(query, database, table)
+        SELECT 
+            fk.name AS constraint_name,
+            c.name AS column_name,
+            DB_NAME(DB_ID(@p1)) AS current_database,
+            OBJECT_SCHEMA_NAME(fk.referenced_object_id, DB_ID(@p1)) + '.' + 
+            OBJECT_NAME(fk.referenced_object_id, DB_ID(@p1)) AS referenced_table,
+            rc.name AS referenced_column,
+            fk.delete_referential_action_desc AS delete_rule,
+            fk.update_referential_action_desc AS update_rule
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc 
+            ON fk.object_id = fkc.constraint_object_id
+        INNER JOIN sys.columns c 
+            ON fkc.parent_column_id = c.column_id 
+            AND fkc.parent_object_id = c.object_id
+        INNER JOIN sys.columns rc 
+            ON fkc.referenced_column_id = rc.column_id 
+            AND fkc.referenced_object_id = rc.object_id
+        INNER JOIN sys.tables t 
+            ON fk.parent_object_id = t.object_id
+        INNER JOIN sys.schemas s 
+            ON t.schema_id = s.schema_id
+        WHERE t.name = @p2
+          AND DB_NAME(DB_ID(@p1)) = @p1
+    `
+	return db.getTableInformations(query, database, table, "")
 }
 
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
+	currentSchema, err := db.getCurrentSchema()
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT
-				t.name AS table_name,
-				i.name AS index_name,
-				i.is_unique AS is_unique,
-				i.is_primary_key AS is_primary_key,
-				i.type_desc AS index_type,
-				c.name AS column_name,
-				ic.key_ordinal AS seq_in_index,
-				ic.is_included_column AS is_included,
-				i.has_filter AS has_filter,
-				i.filter_definition AS filter_definition
-		FROM
-				sys.tables t
-		INNER JOIN
-				sys.schemas s
-					ON
-						t.schema_id = s.schema_id
-		INNER JOIN
-				sys.indexes i
-					ON
-						t.object_id = i.object_id
-		INNER JOIN
-				sys.index_columns ic
-					ON
-						i.object_id = ic.object_id
-					AND
-						i.index_id = ic.index_id
-		INNER JOIN
-				sys.columns c
-					ON
-						t.object_id = c.object_id
-					AND
-						ic.column_id = c.column_id
-		WHERE
-				DB_NAME() = @p1
-		AND
-				t.name = @p2
-		ORDER BY
-				i.type_desc
-	`
-	return db.getTableInformations(query, database, table)
+        SELECT
+            t.name AS table_name,
+            i.name AS index_name,
+            CAST(i.is_unique AS BIT) AS is_unique,
+            CAST(i.is_primary_key AS BIT) AS is_primary_key,
+            i.type_desc AS index_type,
+            c.name AS column_name,
+            ic.key_ordinal AS seq_in_index,
+            CAST(ic.is_included_column AS BIT) AS is_included,
+            CAST(i.has_filter AS BIT) AS has_filter,
+            i.filter_definition
+        FROM sys.tables t
+        INNER JOIN sys.schemas s 
+            ON t.schema_id = s.schema_id
+        INNER JOIN sys.databases d 
+            ON d.name = @p1
+        INNER JOIN sys.indexes i 
+            ON t.object_id = i.object_id
+        INNER JOIN sys.index_columns ic 
+            ON i.object_id = ic.object_id 
+            AND i.index_id = ic.index_id
+        INNER JOIN sys.columns c 
+            ON ic.column_id = c.column_id 
+            AND t.object_id = c.object_id
+        WHERE t.name = @p2
+          AND s.name = @p3
+          AND DB_ID(@p1) = d.database_id
+        ORDER BY i.type_desc
+    `
+	return db.getTableInformations(query, database, table, currentSchema)
 }
 
 func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, error) {
@@ -249,7 +238,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	results := make([][]string, 0)
 
 	query := "SELECT * FROM "
-	query += table
+	query += db.FormatReference(table)
 
 	if where != "" {
 		query += fmt.Sprintf(" %s", where)
@@ -259,6 +248,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	if sort == "" {
 		sort = "(SELECT NULL)"
 	}
+
 	query += fmt.Sprintf(" ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", sort)
 
 	rows, err := db.Connection.Query(query, offset, limit)
@@ -309,7 +299,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	}
 
 	totalRecords := 0
-	row := db.Connection.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+	row := db.Connection.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", db.FormatReference(table)))
 	if err := row.Scan(&totalRecords); err != nil {
 		return nil, 0, err
 	}
@@ -443,127 +433,24 @@ func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
 }
 
 func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
-	if len(changes) <= 0 {
-		return nil
-	}
-
-	queries := make([]models.Query, 0)
-	errlist := make([]error, 0)
+	var queries []models.Query
 
 	for _, change := range changes {
-		if change.Table == "" {
-			errlist = append(errlist, errors.New("table name is required"))
-			continue
-		}
 
-		columnNames := make([]string, 0)
-		valuesPlaceholder := make([]string, 0)
-		values := make([]any, 0)
-
-		for i, cell := range change.Values {
-			columnNames = append(columnNames, cell.Column)
-
-			switch cell.Type {
-			case models.Default:
-				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
-			case models.Null:
-				valuesPlaceholder = append(valuesPlaceholder, "NULL")
-			default:
-				valuesPlaceholder = append(valuesPlaceholder, fmt.Sprintf("@p%d", i+1))
-			}
-		}
-
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty:
-				values = append(values, "")
-			case models.String:
-				values = append(values, cell.Value)
-			}
-		}
+		formattedTableName := db.FormatReference(change.Table)
 
 		switch change.Type {
+
 		case models.DMLInsertType:
-			queryStr := fmt.Sprintf(
-				"INSERT INTO %s (%s) VALUES (%s)",
-				change.Table,
-				strings.Join(columnNames, ", "),
-				strings.Join(valuesPlaceholder, ", "),
-			)
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  values,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
 		case models.DMLUpdateType:
-			queryStr := fmt.Sprintf("UPDATE %s", change.Table)
-
-			for i, column := range columnNames {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" SET %s = %s", column, valuesPlaceholder[i])
-				} else {
-					queryStr += fmt.Sprintf(", %s = %s", column, valuesPlaceholder[i])
-				}
-			}
-
-			args := make([]any, len(values))
-
-			copy(args, values)
-
-			// start counting from valuesPlaceholder
-			// then add 1 by 1 on loop
-			updateCounterParams := len(valuesPlaceholder)
-			for i, pki := range change.PrimaryKeyInfo {
-				updateCounterParams++
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE %s = @p%d", pki.Name, updateCounterParams)
-				} else {
-					queryStr += fmt.Sprintf(" AND %s = @p%d", pki.Name, updateCounterParams)
-				}
-				args = append(args, pki.Value)
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			// EZ way to log
-			// _ = os.WriteFile("/tmp/lazysql", []byte(queryStr+"\n"), 0644)
-			queries = append(queries, newQuery)
+			queries = append(queries, buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db))
 		case models.DMLDeleteType:
-			queryStr := fmt.Sprintf("DELETE FROM %s", change.Table)
-
-			deleteArgs := make([]any, len(change.PrimaryKeyInfo))
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE %s = @p%d", pki.Name, i+1)
-				} else {
-					queryStr += fmt.Sprintf(" AND %s = @p%d", pki.Name, i+1)
-				}
-				deleteArgs[i] = pki.Value
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  deleteArgs,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db))
 		}
 	}
 
-	// log loop errlist
-	if len(errlist) > 0 {
-		errmap := make(map[string]any)
-		for i, e := range errlist {
-			errmap[fmt.Sprintf("%d:", i+1)] = e
-		}
-		logger.Error("ExecutePendingChanges", errmap)
-	}
+	logger.Info("queries", map[string]any{"queries": queries})
 
 	return queriesInTransaction(db.Connection, queries)
 }
@@ -577,40 +464,36 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		return nil, errors.New("table name is required")
 	}
 
+	currentSchema, err := db.getCurrentSchema()
+	if err != nil {
+		return nil, err
+	}
+
 	pkColumnName := make([]string, 0)
-	query := `
-		SELECT
-				c.name AS column_name
+	query := `SELECT
+			c.name AS column_name
 		FROM
-				sys.tables t
+			sys.tables t
 		INNER JOIN
 			sys.schemas s
-				ON
-					t.schema_id = s.schema_id
+				ON t.schema_id = s.schema_id
 		INNER JOIN
 			sys.key_constraints kc
-				ON
-					t.object_id = kc.parent_object_id
-				AND
-					kc.type = @p1
+				ON t.object_id = kc.parent_object_id
+				AND kc.type = @p1
 		INNER JOIN
 			sys.index_columns ic
-				ON
-					kc.unique_index_id = ic.index_id
-				AND
-					t.object_id = ic.object_id
+				ON kc.unique_index_id = ic.index_id
+				AND t.object_id = ic.object_id
 		INNER JOIN
 			sys.columns c
-				ON
-					ic.column_id = c.column_id
-				AND
-					t.object_id = c.object_id
-		WHERE
-				DB_NAME() = @p2
-		AND
-				t.name = @p3
-	`
-	rows, err := db.Connection.Query(query, "PK", database, table)
+				ON ic.column_id = c.column_id
+				AND t.object_id = c.object_id
+		WHERE 
+			s.name = @p2
+			AND t.name = @p3
+		ORDER BY ic.key_ordinal`
+	rows, err := db.Connection.Query(query, "PK", currentSchema, table)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +540,7 @@ func (db *MSSQL) GetProvider() string {
 //
 //   - database name, used for filtering table_catalog
 //   - table name, used for filtering table_name
-func (db *MSSQL) getTableInformations(query, database, table string) ([][]string, error) {
+func (db *MSSQL) getTableInformations(query, database, table, schema string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -671,7 +554,14 @@ func (db *MSSQL) getTableInformations(query, database, table string) ([][]string
 	}
 
 	results := make([][]string, 0)
-	rows, err := db.Connection.Query(query, database, table)
+
+	args := []any{database, table}
+
+	if schema != "" {
+		args = append(args, schema)
+	}
+
+	rows, err := db.Connection.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -709,4 +599,68 @@ func (db *MSSQL) getTableInformations(query, database, table string) ([][]string
 	}
 
 	return results, nil
+}
+
+func (db *MSSQL) FormatArg(arg any) string {
+	if arg == "NULL" || arg == "DEFAULT" {
+		return fmt.Sprintf("%v", arg)
+	}
+
+	switch v := arg.(type) {
+
+	case int, int64:
+		return fmt.Sprintf("%v", v)
+	case float64:
+		return fmt.Sprintf("%v", v)
+	case string:
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
+	case []byte:
+		return fmt.Sprintf("0x%x", v)
+	case nil:
+		return "NULL"
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func (db *MSSQL) FormatReference(reference string) string {
+	return fmt.Sprintf("[%s]", reference)
+}
+
+func (db *MSSQL) FormatPlaceholder(index int) string {
+	return fmt.Sprintf("@p%d", index)
+}
+
+func (db *MSSQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
+	var queryStr string
+
+	formattedTableName := db.FormatReference(change.Table)
+
+	columnNames, values := getColNamesAndArgsAsString(change.Values)
+
+	switch change.Type {
+	case models.DMLInsertType:
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, values, db)
+	case models.DMLUpdateType:
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
+	case models.DMLDeleteType:
+		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
+
+	}
+
+	return queryStr, nil
+}
+
+func (db *MSSQL) getCurrentSchema() (string, error) {
+	query := "SELECT SCHEMA_NAME() AS CurrentSchema"
+	row := db.Connection.QueryRow(query)
+
+	var currentSchema string
+	err := row.Scan(&currentSchema)
+	if err != nil {
+		return "", err
+	}
+
+	return currentSchema, nil
 }

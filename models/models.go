@@ -59,7 +59,7 @@ const (
 )
 
 type CellValue struct {
-	Value            interface{}
+	Value            any
 	Column           string
 	TableColumnIndex int
 	TableRowIndex    int
@@ -74,7 +74,7 @@ const (
 
 type PrimaryKeyInfo struct {
 	Name  string
-	Value string
+	Value any
 }
 
 func (pki PrimaryKeyInfo) Equal(other PrimaryKeyInfo) bool {

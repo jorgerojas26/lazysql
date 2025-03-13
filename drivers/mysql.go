@@ -8,7 +8,6 @@ import (
 
 	"github.com/xo/dburl"
 
-	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -151,7 +150,7 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	query := "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE where TABLE_SCHEMA = ? AND TABLE_NAME = ?"
+	query := "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
 
 	rows, err := db.Connection.Query(query, database, table)
 	if err != nil {
@@ -200,7 +199,7 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	query := "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE where REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
+	query := "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
 
 	rows, err := db.Connection.Query(query, database, table)
 	if err != nil {
@@ -450,104 +449,24 @@ func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) (err error) {
+func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 	var queries []models.Query
 
 	for _, change := range changes {
-		columnNames := []string{}
-		values := []interface{}{}
-		valuesPlaceholder := []string{}
 
-		for _, cell := range change.Values {
-			columnNames = append(columnNames, cell.Column)
-
-			switch cell.Type {
-			case models.Default:
-				valuesPlaceholder = append(valuesPlaceholder, "DEFAULT")
-			case models.Null:
-				valuesPlaceholder = append(valuesPlaceholder, "NULL")
-			default:
-				valuesPlaceholder = append(valuesPlaceholder, "?")
-			}
-		}
-
-		for _, cell := range change.Values {
-			switch cell.Type {
-			case models.Empty:
-				values = append(values, "")
-			case models.String:
-				values = append(values, cell.Value)
-			}
-		}
+		formattedTableName := db.formatTableName(change.Database, change.Table)
 
 		switch change.Type {
+
 		case models.DMLInsertType:
-			queryStr := "INSERT INTO "
-			queryStr += db.formatTableName(change.Database, change.Table)
-			queryStr += fmt.Sprintf(" (%s) VALUES (%s)", strings.Join(columnNames, ", "), strings.Join(valuesPlaceholder, ", "))
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  values,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
 		case models.DMLUpdateType:
-			queryStr := "UPDATE "
-			queryStr += db.formatTableName(change.Database, change.Table)
-
-			for i, column := range columnNames {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" SET `%s` = %s", column, valuesPlaceholder[i])
-				} else {
-					queryStr += fmt.Sprintf(", `%s` = %s", column, valuesPlaceholder[i])
-				}
-			}
-
-			args := make([]interface{}, len(values))
-
-			copy(args, values)
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
-				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
-				}
-				args = append(args, pki.Value)
-			}
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  args,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db))
 		case models.DMLDeleteType:
-			queryStr := "DELETE FROM "
-			queryStr += db.formatTableName(change.Database, change.Table)
-
-			deleteArgs := make([]interface{}, len(change.PrimaryKeyInfo))
-
-			for i, pki := range change.PrimaryKeyInfo {
-				if i == 0 {
-					queryStr += fmt.Sprintf(" WHERE `%s` = ?", pki.Name)
-				} else {
-					queryStr += fmt.Sprintf(" AND `%s` = ?", pki.Name)
-				}
-				deleteArgs[i] = pki.Value
-			}
-
-			logger.Info("deleteArgs", map[string]any{"deleteArgs": deleteArgs})
-
-			newQuery := models.Query{
-				Query: queryStr,
-				Args:  deleteArgs,
-			}
-
-			queries = append(queries, newQuery)
+			queries = append(queries, buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db))
 		}
 	}
+
 	return queriesInTransaction(db.Connection, queries)
 }
 
@@ -560,11 +479,7 @@ func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyCol
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query(`
-	SELECT column_name
-	FROM information_schema.key_column_usage
-	WHERE table_schema = ? AND table_name = ? AND constraint_name = ?
-	`, database, table, "PRIMARY")
+	rows, err := db.Connection.Query("SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = ? AND table_name = ? AND constraint_name = ?", database, table, "PRIMARY")
 	if err != nil {
 		return nil, err
 	}
@@ -602,4 +517,58 @@ func (db *MySQL) GetProvider() string {
 
 func (db *MySQL) formatTableName(database, table string) string {
 	return fmt.Sprintf("`%s`.`%s`", database, table)
+}
+
+func (db *MySQL) FormatArg(arg any) string {
+	if arg == "NULL" || arg == "DEFAULT" {
+		return fmt.Sprintf("%v", arg)
+	}
+
+	switch v := arg.(type) {
+	case int, int64:
+		return fmt.Sprintf("%d", v)
+	case float64, float32:
+		s := fmt.Sprintf("%f", v)
+		trimmed := strings.TrimRight(s, "0")
+		if strings.HasSuffix(trimmed, ".") {
+			trimmed += "0"
+		}
+		return trimmed
+	case string:
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
+	case []byte:
+		escaped := strings.ReplaceAll(string(v), "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func (db *MySQL) FormatReference(reference string) string {
+	return fmt.Sprintf("`%s`", reference)
+}
+
+func (db *MySQL) FormatPlaceholder(_ int) string {
+	return "?"
+}
+
+func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
+	var queryStr string
+
+	formattedTableName := db.formatTableName(change.Database, change.Table)
+
+	columnNames, values := getColNamesAndArgsAsString(change.Values)
+
+	switch change.Type {
+	case models.DMLInsertType:
+		queryStr = buildInsertQueryString(formattedTableName, columnNames, values, db)
+	case models.DMLUpdateType:
+		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
+	case models.DMLDeleteType:
+		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
+
+	}
+
+	return queryStr, nil
 }
