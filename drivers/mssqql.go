@@ -234,87 +234,87 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
 }
 
 func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, error) {
-	if database == "" {
-		return nil, 0, errors.New("database name is required")
-	}
+    if database == "" {
+        return nil, 0, errors.New("database name is required")
+    }
 
-	if table == "" {
-		return nil, 0, errors.New("table name is required")
-	}
+    if table == "" {
+        return nil, 0, errors.New("table name is required")
+    }
 
-	if limit == 0 {
-		limit = DefaultRowLimit
-	}
+    if limit == 0 {
+        limit = DefaultRowLimit
+    }
 
-	results := make([][]string, 0)
+    results := make([][]string, 0)
 
-	query := "SELECT * FROM "
-	query += table
+    query := "SELECT * FROM "
+    query += fmt.Sprintf("[%s]", table)
 
-	if where != "" {
-		query += fmt.Sprintf(" %s", where)
-	}
+    if where != "" {
+        query += fmt.Sprintf(" %s", where)
+    }
 
-	// since in mssql order is mandatory when using pagination
-	if sort == "" {
-		sort = "(SELECT NULL)"
-	}
-	query += fmt.Sprintf(" ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", sort)
+    // Since in MSSQL, ORDER BY is mandatory when using pagination
+    if sort == "" {
+        sort = "(SELECT NULL)"
+    }
+    query += fmt.Sprintf(" ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", sort)
 
-	rows, err := db.Connection.Query(query, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
+    rows, err := db.Connection.Query(query, offset, limit)
+    if err != nil {
+        return nil, 0, err
+    }
 
-	defer rows.Close()
+    defer rows.Close()
 
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, 0, err
-	}
+    columns, err := rows.Columns()
+    if err != nil {
+        return nil, 0, err
+    }
 
-	results = append(results, columns)
+    results = append(results, columns)
 
-	for rows.Next() {
-		rowValues := make([]any, len(columns))
+    for rows.Next() {
+        rowValues := make([]any, len(columns))
 
-		for i := range columns {
-			rowValues[i] = new(sql.RawBytes)
-		}
+        for i := range columns {
+            rowValues[i] = new(sql.RawBytes)
+        }
 
-		if err := rows.Scan(rowValues...); err != nil {
-			return nil, 0, err
-		}
+        if err := rows.Scan(rowValues...); err != nil {
+            return nil, 0, err
+        }
 
-		var row []string
-		for _, col := range rowValues {
-			if col == nil {
-				row = append(row, "NULL&")
-				continue
-			}
+        var row []string
+        for _, col := range rowValues {
+            if col == nil {
+                row = append(row, "NULL&")
+                continue
+            }
 
-			colval := string(*col.(*sql.RawBytes))
-			if colval == "" {
-				row = append(row, "EMPTY&")
-			} else {
-				row = append(row, string(*col.(*sql.RawBytes)))
-			}
-		}
+            colval := string(*col.(*sql.RawBytes))
+            if colval == "" {
+                row = append(row, "EMPTY&")
+            } else {
+                row = append(row, colval)
+            }
+        }
 
-		results = append(results, row)
-	}
+        results = append(results, row)
+    }
 
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
+    if err := rows.Err(); err != nil {
+        return nil, 0, err
+    }
 
-	totalRecords := 0
-	row := db.Connection.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
-	if err := row.Scan(&totalRecords); err != nil {
-		return nil, 0, err
-	}
+    totalRecords := 0
+    row := db.Connection.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM [%s]", table))
+    if err := row.Scan(&totalRecords); err != nil {
+        return nil, 0, err
+    }
 
-	return results, totalRecords, nil
+    return results, totalRecords, nil
 }
 
 func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
