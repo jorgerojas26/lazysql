@@ -299,13 +299,12 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 				}
 				row = append(row, guid.String())
 			} else {
-				// Handle non-GUID columns as strings
+				// Handle other columns as strings
 				colval := string(rawBytes)
 				if colval == "" {
-					row = append(row, "EMPTY&")
-				} else {
-					row = append(row, colval)
+					colVal = "EMPTY&"
 				}
+				row = append(row, colval)
 			}
 		}
 
