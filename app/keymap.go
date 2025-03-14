@@ -75,6 +75,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.Execute, Description: "Open"},
 			Bind{Key: Key{Char: 'j'}, Cmd: cmd.MoveDown, Description: "Go down"},
 			Bind{Key: Key{Code: tcell.KeyDown}, Cmd: cmd.MoveDown, Description: "Go down"},
+			Bind{Key: Key{Code: tcell.KeyCtrlU}, Cmd: cmd.PagePrev, Description: "Go page up"},
+			Bind{Key: Key{Code: tcell.KeyCtrlD}, Cmd: cmd.PageNext, Description: "Go page down"},
 			Bind{Key: Key{Char: 'k'}, Cmd: cmd.MoveUp, Description: "Go up"},
 			Bind{Key: Key{Code: tcell.KeyUp}, Cmd: cmd.MoveUp, Description: "Go up"},
 			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},

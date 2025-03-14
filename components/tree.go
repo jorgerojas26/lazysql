@@ -155,6 +155,10 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			}
 		case commands.GotoTop:
 			tree.SetCurrentNode(rootNode)
+		case commands.PageNext:
+			tree.Move(5)
+		case commands.PagePrev:
+			tree.Move(-5)
 		case commands.MoveDown:
 			tree.Move(1)
 		case commands.MoveUp:
