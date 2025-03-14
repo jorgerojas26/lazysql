@@ -343,8 +343,8 @@ Commands = [
 | K        | Sort ASC                             |
 | J        | Sort DESC                            |
 | H        | Focus tree panel                     |
-| [        | Focus previous tab                   |
-| ]        | Focus next tab                       |
+| CTRL+[   | Focus previous tab                   |
+| CTRL+]   | Focus next tab                       |
 | X        | Close current tab                    |
 | R        | Refresh the current table            |
 
