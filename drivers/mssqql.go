@@ -303,16 +303,16 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 					return nil, 0, fmt.Errorf("failed to parse GUID: %w", err)
 				}
 				row = append(row, guid.String())
-			} else {
-				// Handle other columns as strings
-				colval := string(*rawBytes)
-				if colval == "" {
-					colval = "EMPTY&"
-				}
-				row = append(row, colval)
+				continue
 			}
-		}
 
+			// Handle other columns as strings
+			colval := string(*rawBytes)
+			if colval == "" {
+				colval = "EMPTY&"
+			}
+			row = append(row, colval)
+		}
 		results = append(results, row)
 	}
 
