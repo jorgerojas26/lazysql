@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	// mssql driver
-	"github.com/google/uuid
-	// mssql driver
- 	_ "github.com/microsoft/go-mssqldb"
-	"github.com/xo/dburl""
+	"github.com/google/uuid"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
+	_ "github.com/microsoft/go-mssqldb"
+	"github.com/xo/dburl"
 )
 
 type MSSQL struct {
@@ -302,7 +300,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 				// Handle other columns as strings
 				colval := string(rawBytes)
 				if colval == "" {
-					colVal = "EMPTY&"
+					colval = "EMPTY&"
 				}
 				row = append(row, colval)
 			}
