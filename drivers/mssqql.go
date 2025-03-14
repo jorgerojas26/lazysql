@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	// mssql driver
 	_ "github.com/microsoft/go-mssqldb"
 
 	"github.com/jorgerojas26/lazysql/helpers/logger"
