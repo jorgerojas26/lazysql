@@ -8,10 +8,10 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/microsoft/go-mssqldb"
+	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
-	"github.com/xo/dburl"
 )
 
 type MSSQL struct {
