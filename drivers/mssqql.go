@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	// mssql driver - register MSSQL driver with database/sql
-	_ "github.com/microsoft/go-mssqldb"
 
 	"github.com/google/uuid"
+	// mssql driver
+	_ "github.com/microsoft/go-mssqldb"
+
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 	"github.com/xo/dburl"
