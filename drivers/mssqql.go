@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	// mssql driver
+	"github.com/google/uuid"
+	// ms sql
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/xo/dburl"
 
@@ -244,7 +245,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		query += fmt.Sprintf(" %s", where)
 	}
 
-	// since in mssql order is mandatory when using pagination
+	// Since in MSSQL, ORDER BY is mandatory when using pagination
 	if sort == "" {
 		sort = "(SELECT NULL)"
 	}
@@ -275,22 +276,43 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		if err := rows.Scan(rowValues...); err != nil {
 			return nil, 0, err
 		}
-
+		// Get column types to identify UNIQUEIDENTIFIER
+		columnTypes, err := rows.ColumnTypes()
+		if err != nil {
+			return nil, 0, err
+		}
 		var row []string
-		for _, col := range rowValues {
+		for i, col := range rowValues {
 			if col == nil {
 				row = append(row, "NULL&")
 				continue
 			}
 
-			colval := string(*col.(*sql.RawBytes))
-			if colval == "" {
-				row = append(row, "EMPTY&")
-			} else {
-				row = append(row, string(*col.(*sql.RawBytes)))
+			rawBytes, ok := col.(*sql.RawBytes)
+			if !ok {
+				return nil, 0, errors.New("unexpected type in column value")
 			}
-		}
 
+			columnType := columnTypes[i]
+			colType := columnType.DatabaseTypeName()
+
+			if colType == "UNIQUEIDENTIFIER" {
+				// Convert binary GUID to standard string format
+				guid, err := uuid.FromBytes(*rawBytes)
+				if err != nil {
+					return nil, 0, fmt.Errorf("failed to parse GUID: %w", err)
+				}
+				row = append(row, guid.String())
+				continue
+			}
+
+			// Handle other columns as strings
+			colval := string(*rawBytes)
+			if colval == "" {
+				colval = "EMPTY&"
+			}
+			row = append(row, colval)
+		}
 		results = append(results, row)
 	}
 
