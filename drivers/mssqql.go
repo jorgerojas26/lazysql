@@ -286,13 +286,11 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 				continue
 			}
 
-			// Correct type assertion
 			rawBytes, ok := col.(*sql.RawBytes)
 			if !ok {
 				return nil, 0, errors.New("unexpected type in column value")
 			}
 
-			// Correct column type assignment
 			columnType := columnTypes[i]
 			colType := columnType.DatabaseTypeName()
 
