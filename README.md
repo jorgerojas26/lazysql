@@ -350,11 +350,13 @@ Commands = [
 
 ### Tree
 
-| Key | Action                         |
-| --- | ------------------------------ |
-| L   | Focus table panel              |
-| G   | Focus last database tree node  |
-| g   | Focus first database tree node |
+| Key    | Action                         |
+| ------ | ------------------------------ |
+| L      | Focus table panel              |
+| G      | Focus last database tree node  |
+| g      | Focus first database tree node |
+| CTRL+u | Scroll 5 items up              |
+| CTRL+d | Scroll 5 items down            |
 
 ### SQL Editor
 
