@@ -286,19 +286,26 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 				continue
 			}
 
-			rawBytes := *col.(*sql.RawBytes)
-			colType := columnTypes[i].DatabaseTypeName()
+			// Correct type assertion
+			rawBytes, ok := col.(*sql.RawBytes)
+			if !ok {
+				return nil, 0, errors.New("unexpected type in column value")
+			}
+
+			// Correct column type assignment
+			columnType := columnTypes[i]
+			colType := columnType.DatabaseTypeName()
 
 			if colType == "UNIQUEIDENTIFIER" {
 				// Convert binary GUID to standard string format
-				guid, err := uuid.FromBytes(rawBytes)
+				guid, err := uuid.FromBytes(*rawBytes)
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to parse GUID: %w", err)
 				}
 				row = append(row, guid.String())
 			} else {
 				// Handle other columns as strings
-				colval := string(rawBytes)
+				colval := string(*rawBytes)
 				if colval == "" {
 					colval = "EMPTY&"
 				}
