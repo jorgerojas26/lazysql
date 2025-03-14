@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"strings"
 
-	"github.com/google/uuid"
+	// mssql driver
+	_ "github.com/microsoft/go-mssqldb"
+
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
-	_ "github.com/microsoft/go-mssqldb"
 	"github.com/xo/dburl"
 )
 
