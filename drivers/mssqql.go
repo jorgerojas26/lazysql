@@ -304,7 +304,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 				} else {
 					// Fallback to hex string if parsing fails
 					hexValue := hex.EncodeToString(*rawBytes)
-					row = append(row, "0x123"+hexValue) // Prefix with "0x" for clarity
+					row = append(row, "0x"+hexValue) // Prefix with "0x" for clarity
 					logger.Warn("Invalid GUID", map[string]any{
 						"table":  table,
 						"column": columns[i],
