@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -297,21 +298,32 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 			colType := columnType.DatabaseTypeName()
 
 			if colType == "UNIQUEIDENTIFIER" {
-				// Convert binary GUID to standard string format
-				guid, err := uuid.FromBytes(*rawBytes)
-				if err != nil {
-					return nil, 0, fmt.Errorf("failed to parse GUID: %w", err)
+				// Try to parse as a GUID
+				if guid, err := uuid.FromBytes(*rawBytes); err == nil {
+					row = append(row, guid.String()) // Use standard GUID format if valid
+				} else {
+					// Fallback to hex string if parsing fails
+					hexValue := hex.EncodeToString(*rawBytes)
+					row = append(row, "0x123"+hexValue) // Prefix with "0x" for clarity
+					logger.Warn("Invalid GUID", map[string]any{
+						"table":  table,
+						"column": columns[i],
+						"value":  hexValue,
+						"error":  err,
+					})
 				}
-				row = append(row, guid.String())
 				continue
 			}
 
 			// Handle other columns as strings
 			colval := string(*rawBytes)
-			if colval == "" {
-				colval = "EMPTY&"
+			// Check nullability and handle empty strings
+			nullable, _ := columnType.Nullable()
+			if nullable && colval == "" {
+				row = append(row, "NULL&") // show "NULL" instead if "EMPTY" when column is Nullable and it's set to null
+			} else {
+				row = append(row, colval)
 			}
-			row = append(row, colval)
 		}
 		results = append(results, row)
 	}
