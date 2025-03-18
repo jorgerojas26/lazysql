@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	// ms sql
+	// MSSQL driver
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/xo/dburl"
 
