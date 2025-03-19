@@ -282,6 +282,10 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		if err != nil {
 			return nil, 0, err
 		}
+
+		if len(columnTypes) != len(rowValues) {
+			return nil, 0, errors.New("unexported number of column")
+		}
 		var row []string
 		for i, col := range rowValues {
 			if col == nil {
