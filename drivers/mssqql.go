@@ -284,7 +284,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		}
 
 		if len(columnTypes) != len(rowValues) {
-			return nil, 0, errors.New("unexported number of column")
+			return nil, 0, errors.New("unexpected number of column")
 		}
 		var row []string
 		for i, col := range rowValues {
