@@ -2,11 +2,13 @@ package drivers
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 
-	// mssql driver
+	"github.com/google/uuid"
+	// MSSQL driver
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/xo/dburl"
 
@@ -244,7 +246,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		query += fmt.Sprintf(" %s", where)
 	}
 
-	// since in mssql order is mandatory when using pagination
+	// Since in MSSQL, ORDER BY is mandatory when using pagination
 	if sort == "" {
 		sort = "(SELECT NULL)"
 	}
@@ -275,22 +277,58 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		if err := rows.Scan(rowValues...); err != nil {
 			return nil, 0, err
 		}
+		// Get column types to identify UNIQUEIDENTIFIER
+		columnTypes, err := rows.ColumnTypes()
+		if err != nil {
+			return nil, 0, err
+		}
 
+		if len(columnTypes) != len(rowValues) {
+			return nil, 0, errors.New("unexpected number of column")
+		}
 		var row []string
-		for _, col := range rowValues {
+		for i, col := range rowValues {
 			if col == nil {
 				row = append(row, "NULL&")
 				continue
 			}
 
-			colval := string(*col.(*sql.RawBytes))
-			if colval == "" {
-				row = append(row, "EMPTY&")
+			rawBytes, ok := col.(*sql.RawBytes)
+			if !ok {
+				return nil, 0, errors.New("unexpected type in column value")
+			}
+
+			columnType := columnTypes[i]
+			colType := columnType.DatabaseTypeName()
+
+			if colType == "UNIQUEIDENTIFIER" {
+				// Try to parse as a GUID
+				if guid, err := uuid.FromBytes(*rawBytes); err == nil {
+					row = append(row, guid.String()) // Use standard GUID format if valid
+				} else {
+					// Fallback to hex string if parsing fails
+					hexValue := hex.EncodeToString(*rawBytes)
+					row = append(row, "0x"+hexValue) // Prefix with "0x" for clarity
+					logger.Warn("Invalid GUID", map[string]any{
+						"table":  table,
+						"column": columns[i],
+						"value":  hexValue,
+						"error":  err,
+					})
+				}
+				continue
+			}
+
+			// Handle other columns as strings
+			colval := string(*rawBytes)
+			// Check nullability and handle empty strings
+			nullable, _ := columnType.Nullable()
+			if nullable && colval == "" {
+				row = append(row, "NULL&") // show "NULL" instead if "EMPTY" when column is Nullable and it's set to null
 			} else {
-				row = append(row, string(*col.(*sql.RawBytes)))
+				row = append(row, colval)
 			}
 		}
-
 		results = append(results, row)
 	}
 
