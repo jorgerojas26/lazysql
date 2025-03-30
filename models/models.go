@@ -39,7 +39,7 @@ type StateChange struct {
 }
 
 type ConnectionPages struct {
-	*tview.Flex
+	*tview.Grid
 	*tview.Pages
 }
 
