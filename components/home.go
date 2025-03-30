@@ -206,11 +206,31 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 	switch command {
 	case commands.TabPrev:
-		home.focusTab(home.TabbedPane.SwitchToPreviousTab())
-		return nil
+
+		tab := home.TabbedPane.GetCurrentTab()
+
+		if tab != nil {
+			table := tab.Content
+			if !table.GetIsEditing() && !table.GetIsFiltering() {
+				home.focusTab(home.TabbedPane.SwitchToPreviousTab())
+				return nil
+			}
+
+		}
+
+		return event
 	case commands.TabNext:
-		home.focusTab(home.TabbedPane.SwitchToNextTab())
-		return nil
+		tab := home.TabbedPane.GetCurrentTab()
+
+		if tab != nil {
+			table := tab.Content
+			if !table.GetIsEditing() && !table.GetIsFiltering() {
+				home.focusTab(home.TabbedPane.SwitchToNextTab())
+				return nil
+			}
+		}
+
+		return event
 	case commands.TabFirst:
 		home.focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
