@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	// import sqlite driver
-	_ "modernc.org/sqlite"
-
 	"github.com/jorgerojas26/lazysql/models"
 )
 
