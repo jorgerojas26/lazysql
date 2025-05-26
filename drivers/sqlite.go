@@ -286,9 +286,9 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 	return results, nil
 }
 
-func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
+func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, queryString string, err error) {
 	if table == "" {
-		return nil, 0, errors.New("table name is required")
+		return nil, 0, "", errors.New("table name is required")
 	}
 
 	if limit == 0 {
@@ -308,15 +308,17 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 
 	query += " LIMIT ?, ?"
 
+	queryString = query // Capture the full query string
+
 	paginatedRows, err := db.Connection.Query(query, offset, limit)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 	defer paginatedRows.Close()
 
 	columns, err := paginatedRows.Columns()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 
 	paginatedResults = append(paginatedResults, columns)
@@ -332,7 +334,7 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 
 		err = paginatedRows.Scan(rowValues...)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, queryString, err
 		}
 
 		var row []string
@@ -351,21 +353,21 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		paginatedResults = append(paginatedResults, row)
 	}
 	if err := paginatedRows.Err(); err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 
 	countQuery := "SELECT COUNT(*) FROM "
 	countQuery += db.formatTableName(table)
 	row := db.Connection.QueryRow(countQuery)
 	if err := row.Scan(&totalRecords); err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 
-	return paginatedResults, totalRecords, nil
+	return paginatedResults, totalRecords, queryString, nil
 }
 
 func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {
