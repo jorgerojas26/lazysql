@@ -279,7 +279,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		}
 
 		if errScan := rows.Scan(rowValues...); errScan != nil {
-			return nil, 0, displayQueryString, errScan 
+			return nil, 0, displayQueryString, errScan
 		}
 		// Get column types to identify UNIQUEIDENTIFIER
 		columnTypes, err := rows.ColumnTypes()
@@ -350,6 +350,9 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	if err := countRow.Scan(&totalRecords); err != nil {
 		return results, 0, displayQueryString, err // Return display query even on count error
 	}
+
+	// Replace the limit and offset with actual values in the query string
+	displayQueryString = fmt.Sprintf("%s ORDER BY %s OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", baseQuery, sort, offset, limit)
 
 	return results, totalRecords, displayQueryString, nil
 }

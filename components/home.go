@@ -2,6 +2,8 @@ package components
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -9,21 +11,25 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/internal/history"
+	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
 type Home struct {
 	*tview.Flex
 
-	Tree            *Tree
-	TabbedPane      *TabbedPane
-	LeftWrapper     *tview.Flex
-	RightWrapper    *tview.Flex
-	HelpStatus      HelpStatus
-	HelpModal       *HelpModal
-	DBDriver        drivers.Driver
-	FocusedWrapper  string
-	ListOfDBChanges []models.DBDMLChange
+	Tree                 *Tree
+	TabbedPane           *TabbedPane
+	LeftWrapper          *tview.Flex
+	RightWrapper         *tview.Flex
+	HelpStatus           HelpStatus
+	HelpModal            *HelpModal
+	DBDriver             drivers.Driver
+	FocusedWrapper       string
+	ListOfDBChanges      []models.DBDMLChange
+	ConnectionIdentifier string
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
@@ -34,16 +40,27 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 
 	maincontent := tview.NewFlex()
 
+	connectionIdentifier := connection.Name
+	if connectionIdentifier == "" {
+		parsedURL, err := url.Parse(connection.URL)
+		if err == nil {
+			connectionIdentifier = history.SanitizeFilename(parsedURL.Host + strings.ReplaceAll(parsedURL.Path, "/", "_"))
+		} else {
+			connectionIdentifier = "unnamed_or_invalid_url_connection"
+		}
+	}
+
 	home := &Home{
-		Flex:            tview.NewFlex().SetDirection(tview.FlexRow),
-		Tree:            tree,
-		TabbedPane:      tabbedPane,
-		LeftWrapper:     leftWrapper,
-		RightWrapper:    rightWrapper,
-		HelpStatus:      NewHelpStatus(),
-		HelpModal:       NewHelpModal(),
-		DBDriver:        dbdriver,
-		ListOfDBChanges: []models.DBDMLChange{},
+		Flex:                 tview.NewFlex().SetDirection(tview.FlexRow),
+		Tree:                 tree,
+		TabbedPane:           tabbedPane,
+		LeftWrapper:          leftWrapper,
+		RightWrapper:         rightWrapper,
+		HelpStatus:           NewHelpStatus(),
+		HelpModal:            NewHelpModal(),
+		DBDriver:             dbdriver,
+		ListOfDBChanges:      []models.DBDMLChange{},
+		ConnectionIdentifier: connectionIdentifier,
 	}
 
 	go home.subscribeToTreeChanges()
@@ -97,12 +114,11 @@ func (home *Home) subscribeToTreeChanges() {
 				table = tab.Content
 				home.TabbedPane.SwitchToTabByReference(tab.Reference)
 			} else {
-				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver).WithFilter()
+				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithFilter()
 				table.SetDatabaseName(databaseName)
 				table.SetTableName(tableName)
 
 				home.TabbedPane.AppendTab(tableName, table, tabReference)
-
 			}
 
 			results := table.FetchRecords(func() {
@@ -111,7 +127,7 @@ func (home *Home) subscribeToTreeChanges() {
 
 			// Show sidebar if there is more then 1 row (row 0 are
 			// the column names) and the sidebar is not disabled.
-			if !App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
+			if !app.App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
 				table.ShowSidebar(true)
 			}
 
@@ -154,19 +170,19 @@ func (home *Home) focusTab(tab *Tab) {
 		if table.GetIsFiltering() {
 			go func() {
 				if table.Filter != nil {
-					App.SetFocus(table.Filter.Input)
+					app.App.SetFocus(table.Filter.Input)
 					table.Filter.HighlightLocal()
 				} else if table.Editor != nil {
-					App.SetFocus(table.Editor)
+					app.App.SetFocus(table.Editor)
 					table.Editor.Highlight()
 				}
 
 				table.RemoveHighlightTable()
-				App.Draw()
+				app.App.Draw()
 			}()
 		} else {
 			table.SetInputCapture(table.tableInputCapture)
-			App.SetFocus(table)
+			app.App.SetFocus(table)
 		}
 
 		if tab.Name == tabNameEditor {
@@ -194,7 +210,7 @@ func (home *Home) focusLeftWrapper() {
 
 	home.TabbedPane.SetBlur()
 
-	App.SetFocus(home.Tree)
+	app.App.SetFocus(home.Tree)
 
 	home.FocusedWrapper = focusedWrapperLeft
 }
@@ -309,24 +325,32 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.TabbedPane.SwitchToTabByName(tabNameEditor)
 			tab.Content.SetIsFiltering(true)
 		} else {
-			tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver).WithEditor()
+			tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithEditor()
 			home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 			tableWithEditor.SetIsFiltering(true)
 		}
 		home.HelpStatus.SetStatusOnEditorView()
 		home.focusRightWrapper()
-		App.ForceDraw()
+		app.App.ForceDraw()
 	case commands.SwitchToConnectionsView:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
 			mainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
 		if tab == nil || (!table.GetIsEditing() && !table.GetIsFiltering()) {
-			App.Stop()
+			app.App.Stop()
 		}
 	case commands.Save:
 		if (len(home.ListOfDBChanges) > 0) && !table.GetIsEditing() {
 			queryPreviewModal := NewQueryPreviewModal(&home.ListOfDBChanges, home.DBDriver, func() {
+				for _, change := range home.ListOfDBChanges {
+					queryString, err := home.DBDriver.DMLChangeToQueryString(change)
+					if err != nil {
+						logger.Error("Failed to convert DML change to query string", map[string]any{"error": err})
+						continue
+					}
+					history.AddQueryToHistory(home.ConnectionIdentifier, queryString)
+				}
 				home.ListOfDBChanges = []models.DBDMLChange{}
 				table.FetchRecords(nil)
 				home.Tree.ForceRemoveHighlight()
@@ -356,6 +380,64 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		home.Tree.ClearSearch()
 		app.App.SetFocus(home.Tree.Filter)
 		home.Tree.SetIsFiltering(true)
+	case commands.ToggleQueryHistory:
+		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
+
+			historyFilePath, err := history.GetHistoryFilePath(home.ConnectionIdentifier)
+			if err != nil {
+				logger.Error("Failed to get history file path", map[string]any{"error": err, "connection": home.ConnectionIdentifier})
+				// Optionally: show an error modal to the user
+				return nil // Command handled (by logging error)
+			}
+
+			// The limit from config is primarily for writing, but pass it to ReadHistory for potential future use.
+			// QueryHistoryModal will display all items passed to it after sorting.
+			historyLimit := app.App.Config().MaxQueryHistoryPerConnection
+			if historyLimit <= 0 { // Ensure a positive limit if not set or invalid in config
+				historyLimit = 100 // Default limit
+			}
+
+			historyItems, err := history.ReadHistory(historyFilePath, historyLimit)
+			if err != nil {
+				logger.Error("Failed to read query history", map[string]any{"error": err, "path": historyFilePath})
+				// Show empty history on error, or an error message to the user.
+				// For now, proceed with empty items.
+				historyItems = []models.QueryHistoryItem{}
+			}
+
+			queryHistoryModal := NewQueryHistoryModal(historyItems, func(selectedQuery string) {
+				// Action on query selection:
+				// 1. Copy to clipboard
+				cb := lib.NewClipboard()
+				err := cb.Write(selectedQuery)
+				if err != nil {
+					logger.Error("Failed to copy query history item to clipboard", map[string]any{"error": err})
+					// Optionally notify user of copy failure (e.g., via a short-lived status message)
+				} else {
+					// Optionally notify user of copy success
+					logger.Info("Query copied to clipboard from history.", map[string]any{"query": selectedQuery})
+				}
+
+				// 2. Close the modal
+				mainPages.RemovePage(pageNameQueryHistory)
+				app.App.SetFocus(home) // Or focus the previously focused element if tracked
+
+				// 3. (Future Phase) Paste into SQL Editor and focus editor
+				// if home.TabbedPane != nil {
+				//    editorTab := home.TabbedPane.GetTabByName(tabNameEditor)
+				//    if editorTab != nil && editorTab.Content != nil && editorTab.Content.Editor != nil {
+				//        editorTab.Content.Editor.SetText(selectedQuery, true) // Assuming SetText exists and takes (text, moveCursorToEnd)
+				//        home.focusRightWrapper() // Ensure right pane is focused
+				//        app.App.SetFocus(editorTab.Content.Editor) // Focus the editor
+				//    }
+				// }
+			})
+
+			mainPages.AddPage(pageNameQueryHistory, queryHistoryModal.GetPrimitive(), true, true)
+			// The QueryHistoryModal should set its own focus, typically on the filter input.
+			// If it doesn't, uncomment: app.App.SetFocus(queryHistoryModal.GetPrimitive())
+		}
+		return nil // Command handled
 	}
 
 	return event

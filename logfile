@@ -1,1 +1,3 @@
 {"timestamp":"2025-03-03T15:44:24-04:00","level":"INFO","message":"Starting LazySQL..."}
+{"timestamp":"2025-05-26T00:09:33-04:00","level":"INFO","message":"Starting LazySQL..."}
+{"timestamp":"2025-05-26T00:09:56-04:00","level":"INFO","message":"Query copied to clipboard from history.","additional_info":{"query":"select * from public.profile"}}

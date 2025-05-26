@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/xo/dburl"
@@ -375,6 +376,10 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 		// Return the main query string even if count fails, for debugging.
 		return paginatedResults, 0, queryString, err
 	}
+
+	// Replace the limit and offset with actual values in the query string
+	queryString = strings.Replace(queryString, "?", strconv.Itoa(offset), 1)
+	queryString = strings.Replace(queryString, "?", strconv.Itoa(limit), 1)
 
 	return paginatedResults, totalRecords, queryString, nil
 }

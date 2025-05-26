@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	// import postgresql driver
@@ -553,6 +554,10 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	if err := countRow.Scan(&totalRecords); err != nil {
 		return records, 0, queryString, err
 	}
+
+	// Replace the limit and offset with actual values in the query string
+	queryString = strings.Replace(queryString, "$1", strconv.Itoa(limit), 1)
+	queryString = strings.Replace(queryString, "$2", strconv.Itoa(offset), 1)
 
 	return records, totalRecords, queryString, nil
 }

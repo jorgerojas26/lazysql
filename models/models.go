@@ -1,13 +1,16 @@
 package models
 
 import (
+	"time"
+
 	"github.com/rivo/tview"
 )
 
 type AppConfig struct {
-	DefaultPageSize int
-	DisableSidebar  bool
-	SidebarOverlay  bool
+	DefaultPageSize              int
+	DisableSidebar               bool
+	SidebarOverlay               bool
+	MaxQueryHistoryPerConnection int
 }
 
 type Connection struct {
@@ -107,4 +110,10 @@ type SidebarEditingCommitParams struct {
 	ColumnName string
 	NewValue   string
 	Type       CellValueType
+}
+
+// QueryHistoryItem represents a single entry in the query history.
+type QueryHistoryItem struct {
+	QueryText string
+	Timestamp time.Time
 }

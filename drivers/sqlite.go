@@ -368,6 +368,9 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		return paginatedResults, 0, queryString, err
 	}
 
+	// Replace the limit and offset with actual values in the query string
+	queryString = strings.Replace(queryString, "?, ?", fmt.Sprintf("%d, %d", offset, limit), 1)
+
 	return paginatedResults, totalRecords, queryString, nil
 }
 
