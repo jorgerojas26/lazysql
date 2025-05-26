@@ -868,7 +868,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 			where = table.Filter.GetCurrentFilter()
 		}
 		table.SetLoading(true)
-		records, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+		records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 		table.SetLoading(false)
 
 		if err != nil {
@@ -921,12 +921,19 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 	}
 	sort := table.GetCurrentSort()
 
-	records, totalRecords, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+	records, totalRecords, executedQuery, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 
 	if err != nil {
 		table.SetError(err.Error(), onError)
 		table.SetLoading(false)
 	} else {
+		// Add filter query to history if a filter was applied and a query was executed
+		if where != "" && executedQuery != "" {
+			if err := history.AddQueryToHistory(table.connectionIdentifier, executedQuery); err != nil {
+				logger.Error("Failed to add filter query to history", map[string]any{"error": err, "query": executedQuery, "connection": table.connectionIdentifier})
+			}
+		}
+
 		if table.GetIsFiltering() {
 			table.SetIsFiltering(false)
 		}
