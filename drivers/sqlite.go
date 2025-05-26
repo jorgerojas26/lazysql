@@ -295,22 +295,20 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		limit = DefaultRowLimit
 	}
 
-	query := "SELECT * FROM "
-	query += db.formatTableName(table)
+	queryString = "SELECT * FROM "
+	queryString += db.formatTableName(table)
 
 	if where != "" {
-		query += fmt.Sprintf(" %s", where)
+		queryString += fmt.Sprintf(" %s", where)
 	}
 
 	if sort != "" {
-		query += fmt.Sprintf(" ORDER BY %s", sort)
+		queryString += fmt.Sprintf(" ORDER BY %s", sort)
 	}
 
-	query += " LIMIT ?, ?"
+	queryString += " LIMIT ?, ?"
 
-	queryString = query // Capture the full query string
-
-	paginatedRows, err := db.Connection.Query(query, offset, limit)
+	paginatedRows, err := db.Connection.Query(queryString, offset, limit)
 	if err != nil {
 		return nil, 0, queryString, err
 	}
@@ -362,9 +360,12 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 
 	countQuery := "SELECT COUNT(*) FROM "
 	countQuery += db.formatTableName(table)
-	row := db.Connection.QueryRow(countQuery)
-	if err := row.Scan(&totalRecords); err != nil {
-		return nil, 0, queryString, err
+	if where != "" { // Add WHERE clause to count query as well if it exists
+		countQuery += fmt.Sprintf(" %s", where)
+	}
+	countRow := db.Connection.QueryRow(countQuery)
+	if err := countRow.Scan(&totalRecords); err != nil {
+		return paginatedResults, 0, queryString, err
 	}
 
 	return paginatedResults, totalRecords, queryString, nil
