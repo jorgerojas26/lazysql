@@ -803,7 +803,7 @@ func TestMySQL_GetRecords_Error(t *testing.T) {
 				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit).WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, _, err := db.GetRecords("test_db", "test_table", "", "", 0, DefaultRowLimit)
+				_, _, _, err := db.GetRecords("test_db", "test_table", "", "", 0, DefaultRowLimit)
 				return err
 			},
 		},
@@ -813,7 +813,7 @@ func TestMySQL_GetRecords_Error(t *testing.T) {
 				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s WHERE id = 1 LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit).WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, _, err := db.GetRecords("test_db", "test_table", "WHERE id = 1", "", 0, DefaultRowLimit)
+				_, _, _, err := db.GetRecords("test_db", "test_table", "WHERE id = 1", "", 0, DefaultRowLimit)
 				return err
 			},
 		},
@@ -1397,7 +1397,7 @@ func TestMySQL_GetRecords(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	records, total, err := mysql.GetRecords(testDBNameMySQL, testDBTableNameMySQL, "", "", 0, DefaultRowLimit)
+	records, total, _, err := mysql.GetRecords(testDBNameMySQL, testDBTableNameMySQL, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
