@@ -224,67 +224,71 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
 	return db.getTableInformations(query, database, table, currentSchema)
 }
 
-func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, error) {
+func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) (results [][]string, totalRecords int, displayQueryString string, err error) {
 	if database == "" {
-		return nil, 0, errors.New("database name is required")
+		return nil, 0, "", errors.New("database name is required")
 	}
 
 	if table == "" {
-		return nil, 0, errors.New("table name is required")
+		return nil, 0, "", errors.New("table name is required")
 	}
 
 	if limit == 0 {
 		limit = DefaultRowLimit
 	}
 
-	results := make([][]string, 0)
+	results = make([][]string, 0)
 
-	query := "SELECT * FROM "
-	query += db.FormatReference(table)
+	baseQuery := "SELECT * FROM "
+	baseQuery += db.FormatReference(table)
 
 	if where != "" {
-		query += fmt.Sprintf(" %s", where)
+		baseQuery += fmt.Sprintf(" %s", where)
 	}
 
 	// Since in MSSQL, ORDER BY is mandatory when using pagination
 	if sort == "" {
-		sort = "(SELECT NULL)"
+		sort = "(SELECT NULL)" // Or use a primary key if available and sensible as a default
 	}
 
-	query += fmt.Sprintf(" ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", sort)
+	// Query for execution with placeholders
+	executableQuery := fmt.Sprintf("%s ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", baseQuery, sort)
 
-	rows, err := db.Connection.Query(query, offset, limit)
+	// Query for display with actual values
+	displayQueryString = fmt.Sprintf("%s ORDER BY %s OFFSET %s ROWS FETCH NEXT %s ROWS ONLY", baseQuery, sort, db.FormatArg(offset), db.FormatArg(limit))
+
+	rows, err := db.Connection.Query(executableQuery, offset, limit)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, displayQueryString, err // Return display query even on error
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, displayQueryString, err
 	}
 
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]any, len(columns))
+		rowValues := make([]interface{}, len(columns))
 
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		if err := rows.Scan(rowValues...); err != nil {
-			return nil, 0, err
+		if errScan := rows.Scan(rowValues...); errScan != nil {
+			return nil, 0, displayQueryString, errScan 
 		}
 		// Get column types to identify UNIQUEIDENTIFIER
 		columnTypes, err := rows.ColumnTypes()
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, displayQueryString, err
 		}
 
 		if len(columnTypes) != len(rowValues) {
-			return nil, 0, errors.New("unexpected number of column")
+			return nil, 0, displayQueryString, errors.New("unexpected number of column")
 		}
 		var row []string
 		for i, col := range rowValues {
@@ -295,7 +299,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 			rawBytes, ok := col.(*sql.RawBytes)
 			if !ok {
-				return nil, 0, errors.New("unexpected type in column value")
+				return nil, 0, displayQueryString, errors.New("unexpected type in column value")
 			}
 
 			columnType := columnTypes[i]
@@ -303,7 +307,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 			if colType == "UNIQUEIDENTIFIER" {
 				// Try to parse as a GUID
-				if guid, err := uuid.FromBytes(*rawBytes); err == nil {
+				if guid, errParse := uuid.FromBytes(*rawBytes); errParse == nil {
 					row = append(row, guid.String()) // Use standard GUID format if valid
 				} else {
 					// Fallback to hex string if parsing fails
@@ -313,7 +317,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 						"table":  table,
 						"column": columns[i],
 						"value":  hexValue,
-						"error":  err,
+						"error":  errParse,
 					})
 				}
 				continue
@@ -333,16 +337,21 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, 0, err
+		return nil, 0, displayQueryString, err
 	}
 
-	totalRecords := 0
-	row := db.Connection.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", db.FormatReference(table)))
-	if err := row.Scan(&totalRecords); err != nil {
-		return nil, 0, err
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", db.FormatReference(table))
+	if where != "" {
+		countQuery += fmt.Sprintf(" %s", where)
 	}
 
-	return results, totalRecords, nil
+	totalRecords = 0
+	countRow := db.Connection.QueryRow(countQuery)
+	if err := countRow.Scan(&totalRecords); err != nil {
+		return results, 0, displayQueryString, err // Return display query even on count error
+	}
+
+	return results, totalRecords, displayQueryString, nil
 }
 
 func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
