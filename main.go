@@ -17,6 +17,7 @@ import (
 var version = "dev"
 
 func main() {
+	defaultConfigPath, err := app.DefaultConfigFile()
 	flag.Usage = func() {
 		f := flag.CommandLine.Output()
 		fmt.Fprintln(f, "lazysql")
@@ -28,6 +29,7 @@ func main() {
 		fmt.Fprintln(f, "Options:")
 		flag.PrintDefaults()
 	}
+	configFile := flag.String("config", defaultConfigPath, "config file to use")
 	printVersion := flag.Bool("version", false, "Show version")
 	logLevel := flag.String("loglevel", "info", "Log level")
 	logFile := flag.String("logfile", "", "Log file")
@@ -57,7 +59,7 @@ func main() {
 	}
 
 	// First load the config.
-	if err = app.LoadConfig(); err != nil {
+	if err = app.LoadConfig(*configFile); err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
@@ -80,7 +82,7 @@ func main() {
 		log.Fatal("Only a single connection is allowed")
 	}
 
-	if err = app.App.Run(mainPages); err != nil {
+	if err = app.App.Run(mainPages, *configFile); err != nil {
 		log.Fatalf("Error running app: %v", err)
 	}
 }
