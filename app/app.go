@@ -102,8 +102,9 @@ func (a *Application) Register() func() {
 }
 
 // Run starts and blocks until the application is stopped.
-func (a *Application) Run(root *tview.Pages) error {
+func (a *Application) Run(root *tview.Pages, configFile string) error {
 	a.SetRoot(root, true)
+	a.config.ConfigFile = configFile
 	return a.Application.Run()
 }
 

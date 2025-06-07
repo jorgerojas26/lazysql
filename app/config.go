@@ -13,6 +13,7 @@ import (
 )
 
 type Config struct {
+	ConfigFile  string
 	AppConfig   *models.AppConfig   `toml:"application"`
 	Connections []models.Connection `toml:"database"`
 }
@@ -27,7 +28,7 @@ func defaultConfig() *Config {
 	}
 }
 
-func defaultConfigFile() (string, error) {
+func DefaultConfigFile() (string, error) {
 	configDir := os.Getenv("XDG_CONFIG_HOME")
 	if configDir == "" {
 		dir, err := os.UserConfigDir()
@@ -39,12 +40,7 @@ func defaultConfigFile() (string, error) {
 	return filepath.Join(configDir, "lazysql", "config.toml"), nil
 }
 
-func LoadConfig() error {
-	configFile, err := defaultConfigFile()
-	if err != nil {
-		return err
-	}
-
+func LoadConfig(configFile string) error {
 	file, err := os.ReadFile(configFile)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -65,16 +61,11 @@ func LoadConfig() error {
 func (c *Config) SaveConnections(connections []models.Connection) error {
 	c.Connections = connections
 
-	configFile, err := defaultConfigFile()
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(c.ConfigFile), 0o755); err != nil {
 		return err
 	}
 
-	if err = os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
-		return err
-	}
-
-	file, err := os.Create(configFile)
+	file, err := os.Create(c.ConfigFile)
 	if err != nil {
 		return err
 	}
