@@ -349,7 +349,10 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 						logger.Error("Failed to convert DML change to query string", map[string]any{"error": err})
 						continue
 					}
-					history.AddQueryToHistory(home.ConnectionIdentifier, queryString)
+					err = history.AddQueryToHistory(home.ConnectionIdentifier, queryString)
+					if err != nil {
+						logger.Error("Failed to add query to history", map[string]any{"error": err})
+					}
 				}
 				home.ListOfDBChanges = []models.DBDMLChange{}
 				table.FetchRecords(nil)

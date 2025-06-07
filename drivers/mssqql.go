@@ -340,7 +340,9 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		return nil, 0, displayQueryString, err
 	}
 
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", db.FormatReference(table))
+	countQuery := "SELECT COUNT(*) FROM "
+	countQuery += db.FormatReference(table)
+
 	if where != "" {
 		countQuery += fmt.Sprintf(" %s", where)
 	}

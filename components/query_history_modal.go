@@ -68,7 +68,7 @@ func NewQueryHistoryModal(history []models.QueryHistoryItem, onSelect func(query
 		qhm.filterTable(text)
 	})
 
-	qhm.table.SetSelectedFunc(func(row, column int) {
+	qhm.table.SetSelectedFunc(func(row int, _ int) {
 		if row > 0 && row-1 < len(qhm.displayedHistory) { // row 0 is header
 			selectedQuery := qhm.displayedHistory[row-1].QueryText
 			if qhm.onQuerySelected != nil {
