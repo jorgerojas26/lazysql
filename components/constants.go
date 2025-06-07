@@ -15,6 +15,7 @@ const (
 	pageNameConfirmation string = "Confirmation"
 	pageNameConnections  string = "Connections"
 	pageNameDMLPreview   string = "DMLPreview"
+	pageNameErrorModal   string = "ErrorModal" // Added new page name
 
 	// Results table
 	pageNameTable                  string = "Table"
@@ -34,6 +35,9 @@ const (
 
 	// SetValueList
 	pageNameSetValue string = "SetValue"
+
+	// Query History
+	pageNameQueryHistory string = "QueryHistoryModal"
 )
 
 // Tabs

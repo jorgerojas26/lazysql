@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	App    *Application
-	Styles *Theme
+	App            *Application
+	Styles         *Theme
+	QueryHistories map[string][]models.QueryHistoryItem
 )
 
 type Application struct {
@@ -46,6 +47,9 @@ func init() {
 	App.register()
 	App.EnableMouse(true)
 	App.EnablePaste(true)
+
+	// Initialize query history map
+	QueryHistories = make(map[string][]models.QueryHistoryItem)
 
 	Styles = &Theme{
 		Theme: tview.Theme{
