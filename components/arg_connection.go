@@ -37,6 +37,8 @@ func InitFromArg(connectionString string) error {
 		newDBDriver = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
 		newDBDriver = &drivers.MSSQL{}
+	default:
+		return fmt.Errorf("could not handle database driver %s", connection.Provider)
 	}
 
 	err = newDBDriver.Connect(connection.URL)
