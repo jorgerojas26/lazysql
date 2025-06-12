@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -13,7 +14,8 @@ import (
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 )
 
-func RunCommand(ctx context.Context, command string, doneFn func()) error {
+// [doneFn] is invoked when the [command] is completed with its stdout.
+func RunCommand(ctx context.Context, command string, doneFn func(output string)) error {
 	var cmd *exec.Cmd
 
 	parts := strings.Fields(command)
@@ -31,7 +33,10 @@ func RunCommand(ctx context.Context, command string, doneFn func()) error {
 
 	// Connect the pipe to stdout and stderr.
 	cmd.Stderr = pw
-	cmd.Stdout = pw
+	// Hook in to stdout. Write to the pipe for logging purposes and
+	// to the buffer for [doneFn]'s argument.
+	stdoutBytes := bytes.Buffer{}
+	cmd.Stdout = io.MultiWriter(pw, &stdoutBytes)
 
 	if err := cmd.Start(); err != nil {
 		return err
@@ -44,7 +49,7 @@ func RunCommand(ctx context.Context, command string, doneFn func()) error {
 
 		_ = pw.Close()
 		<-finishedCh
-		doneFn()
+		doneFn(stdoutBytes.String())
 	}()
 
 	// Wait for the command to start
