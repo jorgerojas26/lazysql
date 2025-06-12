@@ -152,9 +152,10 @@ The configuration file is a TOML file and can be used to define multiple connect
 Name = 'Production database'
 Provider = 'postgres'
 DBName = 'foo'
-URL = 'postgres://postgres:urlencodedpassword@localhost:${port}/foo'
+URL = 'postgres://${user}:urlencodedpassword@localhost:${port}/foo'
 Commands = [
-  { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' }
+  { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' },
+  { Command = 'whoami', SaveOutputTo = 'user' },
 ]
 [[database]]
 Name = 'Development database'
@@ -288,14 +289,16 @@ to the database. You can define these commands in the configuration file like th
 Name = 'server'
 Provider = 'postgres'
 DBName = 'foo'
-URL = 'postgres://postgres:password@localhost:${port}/foo'
+URL = 'postgres://${user}:password@localhost:${port}/foo'
 Commands = [
-  { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' }
+  { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' },
+  { Command = 'whoami', SaveOutputTo = 'user' },
 ]
 ```
 
 The `Command` field is required and can contain any command that you would normally run in your terminal.
 The `WaitForPort` field is optional and can be used to wait for a specific port to be open before continuing.
+The `SaveOutputTo` field is optional and can be used to make user-defined variables. The output (`stdout`) from the command will be saved into the variable, and the variable can be used in the URL or future commands via the `${VARIABLE}` syntax.
 
 When you define the `${port}` variable in the URL field, lazysql will automatically replace it with a random
 free port number. This port number will then be used in the connection URL and is available in the `Commands`
