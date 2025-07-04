@@ -579,24 +579,25 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 			if stateChange.Value != "" {
 				rows := table.FetchRecords(nil)
 
-				if len(rows) > 1 {
+				if len(rows) > 0 {
 					table.Menu.SetSelectedOption(1)
 					App.SetFocus(table)
 					table.HighlightTable()
 					table.Filter.HighlightLocal()
 					table.SetInputCapture(table.tableInputCapture)
 					App.ForceDraw()
-				} else if len(rows) == 1 {
+				}
+				/* else if len(rows) == 1 {
 					table.SetInputCapture(nil)
 					App.SetFocus(table.Filter.Input)
 					table.RemoveHighlightTable()
 					table.Filter.HighlightLocal()
 					table.SetIsFiltering(true)
 					App.ForceDraw()
-				}
+				} */
 
 			} else {
-				table.FetchRecords(nil)
+				// table.FetchRecords(nil)
 
 				table.SetInputCapture(table.tableInputCapture)
 				App.SetFocus(table)
