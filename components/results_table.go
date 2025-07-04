@@ -13,6 +13,7 @@ import (
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/internal/history"
 	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -37,24 +38,25 @@ type ResultsTableState struct {
 
 type ResultsTable struct {
 	*tview.Table
-	state            *ResultsTableState
-	Page             *tview.Pages
-	Wrapper          *tview.Flex
-	Menu             *ResultsTableMenu
-	Filter           *ResultsTableFilter
-	Error            *tview.Modal
-	Loading          *tview.Modal
-	Pagination       *Pagination
-	Editor           *SQLEditor
-	EditorPages      *tview.Pages
-	ResultsInfo      *tview.TextView
-	Tree             *Tree
-	Sidebar          *Sidebar
-	SidebarContainer *tview.Flex
-	DBDriver         drivers.Driver
+	state                *ResultsTableState
+	Page                 *tview.Pages
+	Wrapper              *tview.Flex
+	Menu                 *ResultsTableMenu
+	Filter               *ResultsTableFilter
+	Error                *tview.Modal
+	Loading              *tview.Modal
+	Pagination           *Pagination
+	Editor               *SQLEditor
+	EditorPages          *tview.Pages
+	ResultsInfo          *tview.TextView
+	Tree                 *Tree
+	Sidebar              *Sidebar
+	SidebarContainer     *tview.Flex
+	DBDriver             drivers.Driver
+	connectionIdentifier string
 }
 
-func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
+func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -106,7 +108,8 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		DBDriver:   dbdriver,
 		Sidebar:    sidebar,
 		// SidebarContainer is only used when AppConfig.SidebarOverlay is false.
-		SidebarContainer: tview.NewFlex(),
+		SidebarContainer:     tview.NewFlex(),
+		connectionIdentifier: connectionIdentifier,
 	}
 
 	// When AppConfig.SidebarOverlay is true, the sidebar is added as a page to the table.Page.
@@ -641,6 +644,10 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						table.SetInputCapture(table.tableInputCapture)
 						table.EditorPages.SwitchToPage(pageNameTableEditorTable)
 						App.SetFocus(table)
+						// Add successful SELECT query to history
+						if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
+							logger.Error("Failed to add SELECT query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+						}
 						App.Draw()
 					}
 				} else {
@@ -659,6 +666,10 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						table.SetLoading(false)
 						table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
 						App.SetFocus(table.Editor)
+						// Add successful DML query to history
+						if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
+							logger.Error("Failed to add DML query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+						}
 						App.Draw()
 					}
 				}
@@ -858,7 +869,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 			where = table.Filter.GetCurrentFilter()
 		}
 		table.SetLoading(true)
-		records, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+		records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 		table.SetLoading(false)
 
 		if err != nil {
@@ -911,12 +922,19 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 	}
 	sort := table.GetCurrentSort()
 
-	records, totalRecords, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+	records, totalRecords, executedQuery, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 
 	if err != nil {
 		table.SetError(err.Error(), onError)
 		table.SetLoading(false)
 	} else {
+		// Add filter query to history if a filter was applied and a query was executed
+		if where != "" && executedQuery != "" {
+			if err := history.AddQueryToHistory(table.connectionIdentifier, executedQuery); err != nil {
+				logger.Error("Failed to add filter query to history", map[string]any{"error": err, "query": executedQuery, "connection": table.connectionIdentifier})
+			}
+		}
+
 		if table.GetIsFiltering() {
 			table.SetIsFiltering(false)
 		}

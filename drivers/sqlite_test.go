@@ -273,7 +273,7 @@ func TestSQLite_GetRecords(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM %s", sqlite.formatTableName(testDBTableNameSQLite))).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	records, total, err := sqlite.GetRecords(testDBNameSQLite, testDBTableNameSQLite, "", "", 0, DefaultRowLimit)
+	records, total, _, err := sqlite.GetRecords(testDBNameSQLite, testDBTableNameSQLite, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
