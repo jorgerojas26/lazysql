@@ -81,9 +81,9 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 
 		// Remove colors on previously focused node
 		previousNodeText := previouslyFocusedNode.GetText()
-		splittedNodeText := strings.Split(previousNodeText, selectedNodeTextColor)
-		if len(splittedNodeText) > 1 {
-			previouslyFocusedNode.SetText(splittedNodeText[1])
+		splitNodeText := strings.Split(previousNodeText, selectedNodeTextColor)
+		if len(splitNodeText) > 1 {
+			previouslyFocusedNode.SetText(splitNodeText[1])
 		}
 		previouslyFocusedNode = node
 	})
