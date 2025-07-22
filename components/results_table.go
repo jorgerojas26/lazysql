@@ -1166,7 +1166,10 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 	info := []models.PrimaryKeyInfo{}
 
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
-		primaryKeyValue := table.GetCell(rowIndex, table.GetColumnIndexByName(primaryKeyColumnName)).Text
+		columnIndex := table.GetColumnIndexByName(primaryKeyColumnName)
+		records := table.GetRecords()
+		primaryKeyValue := records[rowIndex][columnIndex]
+
 		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
 
