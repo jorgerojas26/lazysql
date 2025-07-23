@@ -1055,6 +1055,8 @@ func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.C
 }
 
 func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex int, colIndex int, value models.CellValue) {
+	// case models.Empty:
+	// placeholders = append(placeholders, "")
 	databaseName := table.GetDatabaseName()
 	tableName := table.GetTableName()
 

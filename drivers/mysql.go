@@ -519,7 +519,41 @@ func (db *MySQL) formatTableName(database, table string) string {
 	return fmt.Sprintf("`%s`.`%s`", database, table)
 }
 
-func (db *MySQL) FormatArg(arg any) string {
+func (db *MySQL) FormatArg(arg any, colType models.CellValueType) any {
+	if colType == models.Null {
+		return sql.NullString{
+			String: "",
+			Valid:  false,
+		}
+	}
+
+	if colType == models.Default {
+		return fmt.Sprintf("%v", arg)
+	}
+
+	if colType == models.Empty {
+		return ""
+	}
+
+	if colType == models.String {
+		switch v := arg.(type) {
+		case int, int64:
+			return fmt.Sprintf("%d", v)
+		case float64, float32:
+			return fmt.Sprintf("%f", v)
+		case string:
+			return fmt.Sprintf("%s", v)
+		case []byte:
+			return fmt.Sprintf("%s", v)
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+
+	return fmt.Sprintf("%v", arg)
+}
+
+func (db *MySQL) FormatArgForQueryString(arg any) string {
 	if arg == "NULL" || arg == "DEFAULT" {
 		return fmt.Sprintf("%v", arg)
 	}

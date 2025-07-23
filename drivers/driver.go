@@ -22,7 +22,8 @@ type Driver interface {
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
 
-	FormatArg(arg any) string
+	FormatArg(arg any, colype models.CellValueType) any
+	FormatArgForQueryString(arg any) string
 	FormatReference(reference string) string
 	FormatPlaceholder(index int) string
 

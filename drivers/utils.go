@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -37,7 +38,7 @@ func buildInsertQueryString(formattedTableName string, columns []string, values 
 	sanitizedValues := make([]string, len(values))
 
 	for i, v := range values {
-		sanitizedValues[i] = fmt.Sprintf("%v", driver.FormatArg(v))
+		sanitizedValues[i] = fmt.Sprintf("%v", driver.FormatArgForQueryString(v))
 	}
 
 	queryStr := "INSERT INTO " + formattedTableName
@@ -88,13 +89,13 @@ func buildUpdateQueryString(sanitizedTableName string, colNames []string, args [
 	for i, pki := range primaryKeyInfo {
 		sanitizedPrimaryKeyInfo[i] = models.PrimaryKeyInfo{
 			Name:  driver.FormatReference(pki.Name),
-			Value: driver.FormatArg(pki.Value),
+			Value: driver.FormatArgForQueryString(pki.Value),
 		}
 	}
 
 	sanitizedArgs := make([]any, len(args))
 	for i, arg := range args {
-		sanitizedArgs[i] = driver.FormatArg(arg)
+		sanitizedArgs[i] = driver.FormatArgForQueryString(arg)
 	}
 
 	for i, sanitizedColName := range sanitizedColNames {
@@ -117,17 +118,25 @@ func buildUpdateQueryString(sanitizedTableName string, colNames []string, args [
 }
 
 func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) models.Query {
-	placeholders := buildPlaceholders(values, driver)
+	argsWithoutDefaults := []models.CellValue{}
 
-	sanitizedCols := make([]string, len(values))
-	for i, value := range values {
-		sanitizedCols[i] = driver.FormatReference(value.Column)
+	for _, arg := range values {
+		if arg.Type != models.Default {
+			argsWithoutDefaults = append(argsWithoutDefaults, arg)
+		}
 	}
 
-	args := make([]any, len(values))
-	for i, value := range values {
-		if value.Value != nil {
-			args[i] = value.Value
+	placeholders := buildPlaceholders(values, driver)
+
+	sanitizedCols := []string{}
+	for _, value := range values {
+		sanitizedCols = append(sanitizedCols, driver.FormatReference(value.Column))
+	}
+
+	sanitizedArgs := make([]any, len(argsWithoutDefaults))
+	for i, arg := range argsWithoutDefaults {
+		if arg.Type != models.Default {
+			sanitizedArgs[i] = driver.FormatArg(arg.Value, arg.Type)
 		}
 	}
 
@@ -152,7 +161,7 @@ func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, prim
 	}
 
 	for i, sanitizedPki := range sanitizedPrimaryKeyInfo {
-		placeholder := driver.FormatPlaceholder(len(placeholders) + i + 1)
+		placeholder := driver.FormatPlaceholder(len(argsWithoutDefaults) + i + 1)
 		reference := sanitizedPki.Name
 
 		if i == 0 {
@@ -160,12 +169,14 @@ func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, prim
 		} else {
 			queryStr += fmt.Sprintf(" AND %s = %s", reference, placeholder)
 		}
-		args = append(args, sanitizedPki.Value)
+		sanitizedArgs = append(sanitizedArgs, sanitizedPki.Value)
 	}
+
+	logger.Info("buildUpdateQueryString", map[string]any{"queryStr": queryStr, "sanitizedArgs": sanitizedArgs})
 
 	newQuery := models.Query{
 		Query: queryStr,
-		Args:  args,
+		Args:  sanitizedArgs,
 	}
 
 	return newQuery
@@ -178,7 +189,7 @@ func buildDeleteQueryString(sanitizedTableName string, primaryKeyInfo []models.P
 	for i, pki := range primaryKeyInfo {
 		sanitizedPrimaryKeyInfo[i] = models.PrimaryKeyInfo{
 			Name:  driver.FormatReference(pki.Name),
-			Value: driver.FormatArg(pki.Value),
+			Value: driver.FormatArgForQueryString(pki.Value),
 		}
 	}
 
@@ -260,12 +271,13 @@ func buildPlaceholders(values []models.CellValue, driver Driver) []string {
 
 	for _, cell := range values {
 		switch cell.Type {
-		case models.Empty:
-			placeholders = append(placeholders, "")
-		case models.Null:
-			placeholders = append(placeholders, "NULL")
+		// case models.Empty:
+		// placeholders = append(placeholders, "")
+		// case models.Null:
+		// 	placeholders = append(placeholders, "NULL")
 		case models.Default:
 			placeholders = append(placeholders, "DEFAULT")
+			index--
 		default:
 			placeholders = append(placeholders, driver.FormatPlaceholder(index))
 			index++

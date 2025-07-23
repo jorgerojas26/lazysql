@@ -535,7 +535,52 @@ func (db *SQLite) formatTableName(table string) string {
 	return fmt.Sprintf("`%s`", table)
 }
 
-func (db *SQLite) FormatArg(arg any) string {
+func (db *SQLite) FormatArg(arg any, colType models.CellValueType) any {
+	if colType == models.Null {
+		return sql.NullString{
+			String: "",
+			Valid:  false,
+		}
+	}
+
+	if colType == models.Default {
+		return fmt.Sprintf("%v", arg)
+	}
+
+	if colType == models.Empty {
+		return ""
+	}
+
+	if colType == models.String {
+		switch v := arg.(type) {
+		case int, int64:
+			return fmt.Sprintf("%d", v)
+		case float64, float32:
+			return fmt.Sprintf("%f", v)
+		case string:
+			return fmt.Sprintf("%s", v)
+		case []byte:
+			return fmt.Sprintf("%s", v)
+		case bool:
+			if v {
+				return "1"
+			}
+
+			return "0"
+		case nil:
+			return sql.NullString{
+				String: "",
+				Valid:  false,
+			}
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+
+	return fmt.Sprintf("%v", arg)
+}
+
+func (db *SQLite) FormatArgForQueryString(arg any) string {
 	if arg == "NULL" || arg == "DEFAULT" {
 		return fmt.Sprintf("%v", arg)
 	}
