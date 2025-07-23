@@ -544,7 +544,7 @@ func (db *MySQL) FormatArg(arg any, colType models.CellValueType) any {
 		case string:
 			return fmt.Sprintf("%s", v)
 		case []byte:
-			return fmt.Sprintf("%s", v)
+			return "'" + string(v) + "'"
 		default:
 			return fmt.Sprintf("%v", v)
 		}

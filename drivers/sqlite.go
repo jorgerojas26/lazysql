@@ -544,6 +544,9 @@ func (db *SQLite) FormatArg(arg any, colType models.CellValueType) any {
 	}
 
 	if colType == models.Default {
+		if arg == nil {
+			return "NULL"
+		}
 		return fmt.Sprintf("%v", arg)
 	}
 
@@ -560,7 +563,7 @@ func (db *SQLite) FormatArg(arg any, colType models.CellValueType) any {
 		case string:
 			return fmt.Sprintf("%s", v)
 		case []byte:
-			return fmt.Sprintf("%s", v)
+			return "'" + string(v) + "'"
 		case bool:
 			if v {
 				return "1"
