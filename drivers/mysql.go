@@ -540,7 +540,12 @@ func (db *MySQL) FormatArg(arg any, colType models.CellValueType) any {
 		case int, int64:
 			return fmt.Sprintf("%d", v)
 		case float64, float32:
-			return fmt.Sprintf("%f", v)
+			s := fmt.Sprintf("%f", v)
+			s = strings.TrimRight(s, "0")
+			if strings.HasSuffix(s, ".") {
+				s += "0"
+			}
+			return s
 		case string:
 			return fmt.Sprintf("%s", v)
 		case []byte:
