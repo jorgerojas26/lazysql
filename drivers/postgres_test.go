@@ -48,7 +48,7 @@ func TestPostgres_FormatArg_SpecialCharacters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			formattedArg := db.FormatArg(tc.arg, models.String)
+			formattedArg := db.FormatArgForQueryString(tc.arg)
 			if formattedArg != tc.expected {
 				t.Fatalf("expected %q, but got %q", tc.expected, formattedArg)
 			}
@@ -103,7 +103,7 @@ func TestPostgres_FormatArg(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			formattedArg := db.FormatArg(tc.arg, models.String)
+			formattedArg := db.FormatArgForQueryString(tc.arg)
 			if formattedArg != tc.expected {
 				t.Fatalf("expected %q, but got %q", tc.expected, formattedArg)
 			}
