@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	// MSSQL driver
@@ -690,7 +691,8 @@ func (db *MSSQL) FormatArgForQueryString(arg any) string {
 	case float64:
 		return fmt.Sprintf("%v", v)
 	case string:
-		return fmt.Sprintf("%s", v)
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	case []byte:
 		return fmt.Sprintf("0x%x", v)
 	case nil:
