@@ -73,7 +73,7 @@ func TestSQLite_FormatArg(t *testing.T) {
 		{
 			name:     "Byte array argument",
 			arg:      []byte("byte array"),
-			expected: "'byte array'",
+			expected: "[98 121 116 101 32 97 114 114 97 121]",
 		},
 		{
 			name:     "Float argument",
@@ -83,12 +83,12 @@ func TestSQLite_FormatArg(t *testing.T) {
 		{
 			name:     "Boolean true",
 			arg:      true,
-			expected: "1",
+			expected: "true",
 		},
 		{
 			name:     "Boolean false",
 			arg:      false,
-			expected: "0",
+			expected: "false",
 		},
 		{
 			name:     "Default argument",

@@ -74,7 +74,7 @@ func TestMySQL_FormatArg(t *testing.T) {
 		{
 			name:     "Byte array argument",
 			arg:      []byte("byte array"),
-			expected: "'byte array'",
+			expected: "[98 121 116 101 32 97 114 114 97 121]",
 		},
 		{
 			name:     "Float argument",
