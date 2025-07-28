@@ -255,7 +255,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	executableQuery := fmt.Sprintf("%s ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", baseQuery, sort)
 
 	// Query for display with actual values
-	displayQueryString = fmt.Sprintf("%s ORDER BY %s OFFSET %s ROWS FETCH NEXT %s ROWS ONLY", baseQuery, sort, db.FormatArg(offset), db.FormatArg(limit))
+	displayQueryString = fmt.Sprintf("%s ORDER BY %s OFFSET %s ROWS FETCH NEXT %s ROWS ONLY", baseQuery, sort, db.FormatArg(offset, models.String), db.FormatArg(limit, models.String))
 
 	rows, err := db.Connection.Query(executableQuery, offset, limit)
 	if err != nil {
