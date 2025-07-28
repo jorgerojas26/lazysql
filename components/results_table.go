@@ -599,12 +599,12 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 			} else {
 				// table.FetchRecords(nil)
 
+				table.SetIsFiltering(false)
 				table.SetInputCapture(table.tableInputCapture)
 				App.SetFocus(table)
 				table.HighlightTable()
 				table.Filter.HighlightLocal()
 				App.ForceDraw()
-
 			}
 		}
 	}
