@@ -559,15 +559,26 @@ func (db *MySQL) FormatArg(arg any, colType models.CellValueType) any {
 }
 
 func (db *MySQL) FormatArgForQueryString(arg any) string {
+	if arg == "NULL" || arg == "DEFAULT" {
+		return fmt.Sprintf("%v", arg)
+	}
+
 	switch v := arg.(type) {
-	case string:
-		if v == "NULL" || v == "DEFAULT" {
-			return v
+	case int, int64:
+		return fmt.Sprintf("%d", v)
+	case float64, float32:
+		s := fmt.Sprintf("%f", v)
+		trimmed := strings.TrimRight(s, "0")
+		if strings.HasSuffix(trimmed, ".") {
+			trimmed += "0"
 		}
+		return trimmed
+	case string:
 		escaped := strings.ReplaceAll(v, "'", "''")
-		return "'" + escaped + "'"
-	case float32, float64:
-		return strings.TrimRight(fmt.Sprintf("%f", v), "0")
+		return fmt.Sprintf("'%s'", escaped)
+	case []byte:
+		escaped := strings.ReplaceAll(string(v), "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	default:
 		return fmt.Sprintf("%v", v)
 	}

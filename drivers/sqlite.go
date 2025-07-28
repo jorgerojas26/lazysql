@@ -599,6 +599,8 @@ func (db *SQLite) FormatArgForQueryString(arg any) string {
 		}
 		escaped := strings.ReplaceAll(v.String, "'", "''")
 		return "'" + escaped + "'"
+	case nil:
+		return "NULL"
 	default:
 		return fmt.Sprintf("%v", v)
 	}

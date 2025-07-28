@@ -53,7 +53,7 @@ func TestMySQL_FormatArg_SpecialCharacters(t *testing.T) {
 	}
 }
 
-func TestMySQL_FormatArg(t *testing.T) {
+func TestMySQL_FormatArgForQueryString(t *testing.T) {
 	db := &MySQL{}
 
 	testCases := []struct {
@@ -74,7 +74,7 @@ func TestMySQL_FormatArg(t *testing.T) {
 		{
 			name:     "Byte array argument",
 			arg:      []byte("byte array"),
-			expected: "[98 121 116 101 32 97 114 114 97 121]",
+			expected: "'byte array'",
 		},
 		{
 			name:     "Float argument",

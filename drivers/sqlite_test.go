@@ -52,7 +52,7 @@ func TestSQLite_FormatArg_SpecialCharacters(t *testing.T) {
 	}
 }
 
-func TestSQLite_FormatArg(t *testing.T) {
+func TestSQLite_FormatArgForQueryString(t *testing.T) {
 	db := &SQLite{}
 
 	testCases := []struct {

@@ -18,8 +18,7 @@ const (
 	schemaMSSQL    = "dbo" // Explicit schema handling
 )
 
-// --- Critical Fix: SQL Injection Protection in DML Generation ---
-func TestMSSQL_FormatArg_SpecialCharacters(t *testing.T) {
+func TestMSSQL_FormatArgForQueryString_SpecialCharacters(t *testing.T) {
 	db := &MSSQL{}
 
 	testCases := []struct {
