@@ -9,6 +9,8 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -86,6 +88,22 @@ func NewQueryHistoryModal(history []models.QueryHistoryItem, onSelect func(query
 		} else if event.Rune() == '/' {
 			App.SetFocus(qhm.filterInput)
 			return nil
+		} else if command == commands.Copy {
+			if len(qhm.displayedHistory) > 0 {
+				selectedRow, _ := qhm.table.GetSelection()
+
+				selectedQuery := qhm.displayedHistory[selectedRow-1].QueryText
+
+				cb := lib.NewClipboard()
+				err := cb.Write(selectedQuery)
+				if err != nil {
+					logger.Error("Failed to copy query history item to clipboard", map[string]any{"error": err})
+					// Optionally notify user of copy failure (e.g., via a short-lived status message)
+				} else {
+					// Optionally notify user of copy success
+					logger.Info("Query copied to clipboard from history.", map[string]any{"query": selectedQuery})
+				}
+			}
 		}
 
 		// If input field has focus and user presses Down arrow, switch to table
@@ -96,18 +114,7 @@ func NewQueryHistoryModal(history []models.QueryHistoryItem, onSelect func(query
 				return nil             // Absorb event
 			}
 		}
-		// // If table has focus and user types letters/numbers, switch to filterInput
-		// if qhm.table.HasFocus() && (event.Key() == tcell.KeyRune) {
-		// 	// Check if it's a character that should go to the input field
-		// 	// This is a basic check; more sophisticated handling might be needed
-		// 	// if certain runes should still be handled by the table.
-		// 	App.SetFocus(qhm.filterInput)
-		// 	// The filterInput will now receive subsequent key events.
-		// 	// We don't need to explicitly pass this event to it.
-		// 	// We return the original event so it can be processed by the newly focused primitive if tview's loop allows,
-		// 	// or simply consumed if not. Often, the first event that triggers focus change is just for focus change.
-		// 	return event // Or return nil if we want to ensure this event is fully consumed. Let's try returning event.
-		// }
+
 		return event
 	})
 
