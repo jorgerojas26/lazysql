@@ -44,8 +44,11 @@ func NewResultsFilter() *ResultsTableFilter {
 
 			}
 		case tcell.KeyEscape:
-			recordsFilter.currentFilter = ""
-			recordsFilter.Input.SetText("")
+			if recordsFilter.Input.GetText() == "" {
+				recordsFilter.currentFilter = ""
+				recordsFilter.Input.SetText("")
+			}
+
 			recordsFilter.Publish("")
 
 		}

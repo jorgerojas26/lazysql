@@ -45,7 +45,7 @@ func TestMySQL_FormatArg_SpecialCharacters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			formattedArg := db.FormatArg(tc.arg)
+			formattedArg := db.FormatArgForQueryString(tc.arg)
 			if formattedArg != tc.expected {
 				t.Fatalf("expected %q, but got %q", tc.expected, formattedArg)
 			}
@@ -53,7 +53,7 @@ func TestMySQL_FormatArg_SpecialCharacters(t *testing.T) {
 	}
 }
 
-func TestMySQL_FormatArg(t *testing.T) {
+func TestMySQL_FormatArgForQueryString(t *testing.T) {
 	db := &MySQL{}
 
 	testCases := []struct {
@@ -140,7 +140,7 @@ func TestMySQL_FormatArg(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			formattedArg := db.FormatArg(tc.arg)
+			formattedArg := db.FormatArgForQueryString(tc.arg)
 			if formattedArg != tc.expected {
 				t.Fatalf("expected %q, but got %q", tc.expected, formattedArg)
 			}

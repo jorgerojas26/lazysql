@@ -44,7 +44,7 @@ func TestSQLite_FormatArg_SpecialCharacters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			formattedArg := db.FormatArg(tc.arg)
+			formattedArg := db.FormatArgForQueryString(tc.arg)
 			if formattedArg != tc.expected {
 				t.Fatalf("expected %q, but got %q", tc.expected, formattedArg)
 			}
@@ -52,7 +52,7 @@ func TestSQLite_FormatArg_SpecialCharacters(t *testing.T) {
 	}
 }
 
-func TestSQLite_FormatArg(t *testing.T) {
+func TestSQLite_FormatArgForQueryString(t *testing.T) {
 	db := &SQLite{}
 
 	testCases := []struct {
@@ -73,7 +73,7 @@ func TestSQLite_FormatArg(t *testing.T) {
 		{
 			name:     "Byte array argument",
 			arg:      []byte("byte array"),
-			expected: "'byte array'",
+			expected: "[98 121 116 101 32 97 114 114 97 121]",
 		},
 		{
 			name:     "Float argument",
@@ -83,12 +83,12 @@ func TestSQLite_FormatArg(t *testing.T) {
 		{
 			name:     "Boolean true",
 			arg:      true,
-			expected: "1",
+			expected: "true",
 		},
 		{
 			name:     "Boolean false",
 			arg:      false,
-			expected: "0",
+			expected: "false",
 		},
 		{
 			name:     "Default argument",
@@ -99,7 +99,7 @@ func TestSQLite_FormatArg(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			formattedArg := db.FormatArg(tc.arg)
+			formattedArg := db.FormatArgForQueryString(tc.arg)
 			if formattedArg != tc.expected {
 				t.Fatalf("expected %q, but got %q", tc.expected, formattedArg)
 			}

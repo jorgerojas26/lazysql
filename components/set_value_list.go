@@ -33,7 +33,7 @@ func NewSetValueList(dbProvider string) *SetValueList {
 	} else {
 		VALUES = []value{
 			{value: "NULL", key: 'n'},
-			{value: "EMPTY", key: 'e'},
+			// {value: "EMPTY", key: 'e'},
 			{value: "DEFAULT", key: 'd'},
 		}
 	}

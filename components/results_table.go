@@ -582,31 +582,32 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 			if stateChange.Value != "" {
 				rows := table.FetchRecords(nil)
 
-				if len(rows) > 1 {
+				if len(rows) > 0 {
 					table.Menu.SetSelectedOption(1)
 					App.SetFocus(table)
 					table.HighlightTable()
 					table.Filter.HighlightLocal()
 					table.SetInputCapture(table.tableInputCapture)
 					App.ForceDraw()
-				} else if len(rows) == 1 {
+				}
+				/* else if len(rows) == 1 {
 					table.SetInputCapture(nil)
 					App.SetFocus(table.Filter.Input)
 					table.RemoveHighlightTable()
 					table.Filter.HighlightLocal()
 					table.SetIsFiltering(true)
 					App.ForceDraw()
-				}
+				} */
 
 			} else {
-				table.FetchRecords(nil)
+				// table.FetchRecords(nil)
 
+				table.SetIsFiltering(false)
 				table.SetInputCapture(table.tableInputCapture)
 				App.SetFocus(table)
 				table.HighlightTable()
 				table.Filter.HighlightLocal()
 				App.ForceDraw()
-
 			}
 		}
 	}
@@ -1072,6 +1073,8 @@ func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.C
 }
 
 func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex int, colIndex int, value models.CellValue) {
+	// case models.Empty:
+	// placeholders = append(placeholders, "")
 	databaseName := table.GetDatabaseName()
 	tableName := table.GetTableName()
 
@@ -1183,7 +1186,10 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 	info := []models.PrimaryKeyInfo{}
 
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
-		primaryKeyValue := table.GetCell(rowIndex, table.GetColumnIndexByName(primaryKeyColumnName)).Text
+		columnIndex := table.GetColumnIndexByName(primaryKeyColumnName)
+		records := table.GetRecords()
+		primaryKeyValue := records[rowIndex][columnIndex]
+
 		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
 

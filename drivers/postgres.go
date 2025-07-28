@@ -854,29 +854,60 @@ func (db *Postgres) formatTableName(table string) (string, error) {
 	return fmt.Sprintf("\"%s\".\"%s\"", tableSchema, tableName), nil
 }
 
-func (db *Postgres) FormatArg(arg any) string {
-	if arg == "NULL" || arg == "DEFAULT" {
-		return fmt.Sprintf("%v", arg)
+func (db *Postgres) FormatArg(arg any, colType models.CellValueType) any {
+	if colType == models.Null {
+		return sql.NullString{
+			String: "",
+			Valid:  false,
+		}
 	}
 
-	switch v := arg.(type) {
-	case int, int64:
-		return fmt.Sprintf("%d", v)
-	case float64, float32:
-		s := fmt.Sprintf("%f", v)
-		trimmed := strings.TrimRight(s, "0")
-		if strings.HasSuffix(trimmed, ".") {
-			trimmed += "0"
+	if colType == models.Empty {
+		return ""
+	}
+
+	if colType == models.String {
+		switch v := arg.(type) {
+		case int, int64:
+			return fmt.Sprintf("%d", v)
+		case float64, float32:
+			s := fmt.Sprintf("%f", v)
+			trimmed := strings.TrimRight(s, "0")
+			if strings.HasSuffix(trimmed, ".") {
+				trimmed += "0"
+			}
+			return trimmed
+		case string:
+			return v
+		case []byte:
+			return string(v)
+		case nil:
+			return sql.NullString{
+				String: "",
+				Valid:  false,
+			}
+		default:
+			return fmt.Sprintf("%v", v)
 		}
-		return trimmed
+	}
+
+	return fmt.Sprintf("%v", arg)
+}
+
+func (db *Postgres) FormatArgForQueryString(arg any) string {
+	switch v := arg.(type) {
 	case string:
+		if v == "NULL" || v == "DEFAULT" {
+			return v
+		}
 		escaped := strings.ReplaceAll(v, "'", "''")
-		return fmt.Sprintf("'%s'", escaped)
-	case []byte:
-		escaped := strings.ReplaceAll(string(v), "'", "''")
-		return fmt.Sprintf("'%s'", escaped)
-	case nil:
-		return "NULL"
+		return "'" + escaped + "'"
+	case sql.NullString:
+		if !v.Valid {
+			return "NULL"
+		}
+		escaped := strings.ReplaceAll(v.String, "'", "''")
+		return "'" + escaped + "'"
 	default:
 		return fmt.Sprintf("%v", v)
 	}

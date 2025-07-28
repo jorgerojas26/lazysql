@@ -541,33 +541,70 @@ func (db *SQLite) formatTableName(table string) string {
 	return fmt.Sprintf("`%s`", table)
 }
 
-func (db *SQLite) FormatArg(arg any) string {
-	if arg == "NULL" || arg == "DEFAULT" {
+func (db *SQLite) FormatArg(arg any, colType models.CellValueType) any {
+	if colType == models.Null {
+		return sql.NullString{
+			String: "",
+			Valid:  false,
+		}
+	}
+
+	if colType == models.Default {
+		if arg == nil {
+			return "NULL"
+		}
 		return fmt.Sprintf("%v", arg)
 	}
 
-	switch v := arg.(type) {
-	case int, int64:
-		return fmt.Sprintf("%d", v)
-	case float64, float32:
-		s := fmt.Sprintf("%f", v)
-		trimmed := strings.TrimRight(s, "0")
-		if strings.HasSuffix(trimmed, ".") {
-			trimmed += "0"
-		}
-		return trimmed
-	case string:
-		escaped := strings.ReplaceAll(v, "'", "''")
-		return fmt.Sprintf("'%s'", escaped)
-	case []byte:
-		escaped := strings.ReplaceAll(string(v), "'", "''")
-		return fmt.Sprintf("'%s'", escaped)
-	case bool:
-		if v {
-			return "1"
-		}
+	if colType == models.Empty {
+		return ""
+	}
 
-		return "0"
+	if colType == models.String {
+		switch v := arg.(type) {
+		case int, int64:
+			return fmt.Sprintf("%d", v)
+		case float64, float32:
+			return fmt.Sprintf("%f", v)
+		case string:
+			return fmt.Sprintf("%s", v)
+		case []byte:
+			return "'" + string(v) + "'"
+		case bool:
+			if v {
+				return "1"
+			}
+
+			return "0"
+		case nil:
+			return sql.NullString{
+				String: "",
+				Valid:  false,
+			}
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+
+	return fmt.Sprintf("%v", arg)
+}
+
+func (db *SQLite) FormatArgForQueryString(arg any) string {
+	switch v := arg.(type) {
+	case string:
+		if v == "NULL" || v == "DEFAULT" {
+			return v
+		}
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return "'" + escaped + "'"
+	case float32, float64:
+		return strings.TrimRight(fmt.Sprintf("%f", v), "0")
+	case sql.NullString:
+		if !v.Valid {
+			return "NULL"
+		}
+		escaped := strings.ReplaceAll(v.String, "'", "''")
+		return "'" + escaped + "'"
 	case nil:
 		return "NULL"
 	default:

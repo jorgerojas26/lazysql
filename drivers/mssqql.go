@@ -653,7 +653,47 @@ func (db *MSSQL) getTableInformations(query, database, table, schema string) ([]
 	return results, nil
 }
 
-func (db *MSSQL) FormatArg(arg any) string {
+func (db *MSSQL) FormatArg(arg any, colType models.CellValueType) any {
+	if colType == models.Null {
+		return sql.NullString{
+			String: "",
+			Valid:  false,
+		}
+	}
+
+	if colType == models.Default {
+		return fmt.Sprintf("%v", arg)
+	}
+
+	if colType == models.Empty {
+		return ""
+	}
+
+	if colType == models.String {
+		switch v := arg.(type) {
+
+		case int, int64:
+			return fmt.Sprintf("%v", v)
+		case float64:
+			return fmt.Sprintf("%v", v)
+		case string:
+			return fmt.Sprintf("%s", v)
+		case []byte:
+			return fmt.Sprintf("0x%x", v)
+		case nil:
+			return sql.NullString{
+				String: "",
+				Valid:  false,
+			}
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+
+	return fmt.Sprintf("%v", arg)
+}
+
+func (db *MSSQL) FormatArgForQueryString(arg any) string {
 	if arg == "NULL" || arg == "DEFAULT" {
 		return fmt.Sprintf("%v", arg)
 	}
