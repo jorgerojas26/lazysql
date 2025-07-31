@@ -18,6 +18,9 @@ var version = "dev"
 
 func main() {
 	defaultConfigPath, err := app.DefaultConfigFile()
+	if err != nil {
+		log.Fatalf("Error getting default config file: %v", err)
+	}
 	flag.Usage = func() {
 		f := flag.CommandLine.Output()
 		fmt.Fprintln(f, "lazysql")

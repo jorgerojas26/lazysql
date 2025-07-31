@@ -46,6 +46,7 @@ const (
 	ConnectionGroup   = "connection"
 	SidebarGroup      = "sidebar"
 	QueryPreviewGroup = "querypreview"
+	QueryHistoryGroup = "queryhistory"
 )
 
 // Define a global KeymapSystem object with default keybinds
@@ -60,6 +61,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyBackspace2}, Cmd: cmd.SwitchToConnectionsView, Description: "Switch to connections list"},
 			Bind{Key: Key{Char: '?'}, Cmd: cmd.HelpPopup, Description: "Help"},
 			Bind{Key: Key{Code: tcell.KeyCtrlP}, Cmd: cmd.SearchGlobal, Description: "Global search"},
+			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
 		},
 		ConnectionGroup: {
 			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},
@@ -147,6 +149,11 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy query to clipboard"},
 			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete query"},
+		},
+		QueryHistoryGroup: {
+			Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy query to clipboard"},
+			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
 		},
 	},
 }
