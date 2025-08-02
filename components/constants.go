@@ -38,6 +38,8 @@ const (
 
 	// Query History
 	pageNameQueryHistory string = "QueryHistoryModal"
+	pageNameSaveQuery    string = "SaveQueryModal"
+	pageNameSavedQueryDelete string = "SavedQueryDeleteModal"
 )
 
 // Tabs

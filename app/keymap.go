@@ -47,10 +47,18 @@ const (
 	SidebarGroup      = "sidebar"
 	QueryPreviewGroup = "querypreview"
 	QueryHistoryGroup = "queryhistory"
+	TabbedMenuGroup   = "tabbedmenu"
 )
 
 // Define a global KeymapSystem object with default keybinds
 var Keymaps = KeymapSystem{
+	Global: Map{
+		Bind{Key: Key{Char: '['}, Cmd: cmd.TabPrev, Description: "Switch to previous tab"},
+		Bind{Key: Key{Char: ']'}, Cmd: cmd.TabNext, Description: "Switch to next tab"},
+		Bind{Key: Key{Char: '{'}, Cmd: cmd.TabFirst, Description: "Switch to first tab"},
+		Bind{Key: Key{Char: '}'}, Cmd: cmd.TabLast, Description: "Switch to last tab"},
+		Bind{Key: Key{Char: 'X'}, Cmd: cmd.TabClose, Description: "Close tab"},
+	},
 	Groups: map[string]Map{
 		HomeGroup: {
 			Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight, Description: "Focus table"},

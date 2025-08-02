@@ -28,6 +28,18 @@ func defaultConfig() *Config {
 	}
 }
 
+func GetConfigPath() (string, error) {
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = dir
+	}
+	return configDir, nil
+}
+
 func DefaultConfigFile() (string, error) {
 	configDir := os.Getenv("XDG_CONFIG_HOME")
 	if configDir == "" {

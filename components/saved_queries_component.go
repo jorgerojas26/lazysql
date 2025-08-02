@@ -1,0 +1,158 @@
+package components
+
+import (
+	"strings"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/internal/saved_queries"
+	"github.com/jorgerojas26/lazysql/models"
+	"github.com/rivo/tview"
+)
+
+// SavedQueriesComponent is a component that displays saved queries.
+type SavedQueriesComponent struct {
+	tview.Primitive
+	table            *tview.Table
+	filterInput      *tview.InputField
+	originalQueries  []models.SavedQuery
+	displayedQueries []models.SavedQuery
+	onQuerySelected  func(query string)
+}
+
+// NewSavedQueriesComponent creates a new SavedQueriesComponent.
+func NewSavedQueriesComponent(onSelect func(query string)) *SavedQueriesComponent {
+	sqc := &SavedQueriesComponent{
+		onQuerySelected: onSelect,
+	}
+
+	sqc.filterInput = tview.NewInputField().
+		SetLabel("Filter: ").
+		SetFieldWidth(30)
+	sqc.filterInput.SetBorder(true).SetTitle(" Filter Saved Queries ")
+
+	sqc.table = tview.NewTable().
+		SetBorders(true).
+		SetSelectable(true, false).
+		SetFixed(1, 0)
+	sqc.table.SetBorder(true)
+
+	sqc.table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	sqc.table.SetBorderColor(app.Styles.PrimaryTextColor)
+	sqc.table.SetTitle(" Saved Queries ")
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(sqc.filterInput, 3, 0, false).
+		AddItem(sqc.table, 0, 1, true)
+
+	sqc.Primitive = layout
+
+	sqc.filterInput.SetChangedFunc(func(text string) {
+		sqc.filterTable(text)
+	})
+
+	sqc.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'd' {
+			sqc.handleDelete()
+		}
+		return event
+	})
+
+	sqc.table.SetSelectedFunc(func(row int, _ int) {
+		if row > 0 && row-1 < len(sqc.displayedQueries) {
+			selectedQuery := sqc.displayedQueries[row-1].Query
+			if sqc.onQuerySelected != nil {
+				sqc.onQuerySelected(selectedQuery)
+			}
+		}
+	})
+
+	sqc.loadQueries()
+
+	return sqc
+}
+
+func (sqc *SavedQueriesComponent) handleDelete() {
+	row, _ := sqc.table.GetSelection()
+	if row > 0 && row-1 < len(sqc.displayedQueries) {
+		selectedQuery := sqc.displayedQueries[row-1]
+
+		confirmation := NewConfirmationModal("")
+		confirmation.SetText("Are you sure you want to delete this query?")
+		confirmation.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			if buttonLabel == "Yes" {
+				err := saved_queries.DeleteSavedQuery(selectedQuery.Name)
+				if err != nil {
+					// TODO: Show error
+					return
+				}
+				sqc.loadQueries()
+			}
+			mainPages.RemovePage(pageNameSavedQueryDelete)
+		})
+
+		mainPages.AddPage(pageNameSavedQueryDelete, confirmation, true, true)
+	}
+}
+
+func (sqc *SavedQueriesComponent) loadQueries() {
+	queries, err := saved_queries.ReadSavedQueries()
+	if err != nil {
+		// TODO: Show error
+		return
+	}
+	sqc.originalQueries = queries
+	sqc.populateTable(queries)
+}
+
+func (sqc *SavedQueriesComponent) populateTable(queries []models.SavedQuery) {
+	sqc.table.Clear()
+	sqc.displayedQueries = queries
+
+	headers := []string{"Name", "Query"}
+	for c, header := range headers {
+		sqc.table.SetCell(0, c, tview.NewTableCell(header).
+			SetSelectable(false).
+			SetTextColor(app.Styles.TertiaryTextColor).
+			SetAlign(tview.AlignCenter).SetExpansion(c))
+	}
+
+	for r, item := range sqc.displayedQueries {
+		sqc.table.SetCell(r+1, 0, tview.NewTableCell(item.Name).SetMaxWidth(30))
+		firstLineQuery := strings.Split(item.Query, "\n")[0]
+		if len(firstLineQuery) > 100 {
+			firstLineQuery = firstLineQuery[:97] + "..."
+		}
+		sqc.table.SetCell(r+1, 1, tview.NewTableCell(firstLineQuery).SetExpansion(1))
+	}
+
+	if len(sqc.displayedQueries) > 0 {
+		sqc.table.Select(1, 0)
+	}
+}
+
+func (sqc *SavedQueriesComponent) filterTable(filterText string) {
+	filterText = strings.ToLower(strings.TrimSpace(filterText))
+	if filterText == "" {
+		sqc.populateTable(sqc.originalQueries)
+		return
+	}
+
+	var filteredQueries []models.SavedQuery
+	for _, item := range sqc.originalQueries {
+		if strings.Contains(strings.ToLower(item.Name), filterText) || strings.Contains(strings.ToLower(item.Query), filterText) {
+			filteredQueries = append(filteredQueries, item)
+		}
+	}
+	sqc.populateTable(filteredQueries)
+}
+
+// GetPrimitive returns the primitive for this component.
+func (sqc *SavedQueriesComponent) GetPrimitive() tview.Primitive {
+	return sqc.Primitive
+}
+
+// Refresh reloads the saved queries from the file.
+func (sqc *SavedQueriesComponent) Refresh() {
+	sqc.loadQueries()
+}

@@ -19,7 +19,6 @@ import (
 
 type Home struct {
 	*tview.Flex
-
 	Tree                 *Tree
 	TabbedPane           *TabbedPane
 	LeftWrapper          *tview.Flex
@@ -34,7 +33,6 @@ type Home struct {
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	tree := NewTree(connection.DBName, dbdriver)
-	tabbedPane := NewTabbedPane()
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
@@ -53,7 +51,6 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	home := &Home{
 		Flex:                 tview.NewFlex().SetDirection(tview.FlexRow),
 		Tree:                 tree,
-		TabbedPane:           tabbedPane,
 		LeftWrapper:          leftWrapper,
 		RightWrapper:         rightWrapper,
 		HelpStatus:           NewHelpStatus(),
@@ -62,6 +59,10 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
 	}
+
+	tabbedPane := NewTabbedPane(home.focusTab)
+
+	home.TabbedPane = tabbedPane
 
 	go home.subscribeToTreeChanges()
 
@@ -111,7 +112,7 @@ func (home *Home) subscribeToTreeChanges() {
 			var table *ResultsTable
 
 			if tab != nil {
-				table = tab.Content
+				table = tab.Content.(*ResultsTable)
 				home.TabbedPane.SwitchToTabByReference(tab.Reference)
 			} else {
 				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithFilter()
@@ -164,7 +165,7 @@ func (home *Home) focusRightWrapper() {
 
 func (home *Home) focusTab(tab *Tab) {
 	if tab != nil {
-		table := tab.Content
+		table := tab.Content.(*ResultsTable)
 		table.HighlightAll()
 
 		if table.GetIsFiltering() {
@@ -202,7 +203,7 @@ func (home *Home) focusLeftWrapper() {
 	tab := home.TabbedPane.GetCurrentTab()
 
 	if tab != nil {
-		table := tab.Content
+		table := tab.Content.(*ResultsTable)
 
 		table.RemoveHighlightAll()
 
@@ -221,58 +222,58 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
 
 	switch command {
-	case commands.TabPrev:
-
-		tab := home.TabbedPane.GetCurrentTab()
-
-		if tab != nil {
-			table := tab.Content
-			if !table.GetIsEditing() && !table.GetIsFiltering() {
-				home.focusTab(home.TabbedPane.SwitchToPreviousTab())
-				return nil
-			}
-
-		}
-
-		return event
-	case commands.TabNext:
-		tab := home.TabbedPane.GetCurrentTab()
-
-		if tab != nil {
-			table := tab.Content
-			if !table.GetIsEditing() && !table.GetIsFiltering() {
-				home.focusTab(home.TabbedPane.SwitchToNextTab())
-				return nil
-			}
-		}
-
-		return event
-	case commands.TabFirst:
-		home.focusTab(home.TabbedPane.SwitchToFirstTab())
-		return nil
-	case commands.TabLast:
-		home.focusTab(home.TabbedPane.SwitchToLastTab())
-		return nil
-	case commands.TabClose:
-		tab = home.TabbedPane.GetCurrentTab()
-
-		if tab != nil {
-			table := tab.Content
-
-			if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
-				home.TabbedPane.RemoveCurrentTab()
-
-				if home.TabbedPane.GetLength() == 0 {
-					home.focusLeftWrapper()
-					return nil
-				}
-			}
-		}
+	// case commands.TabPrev:
+	//
+	// 	tab := home.TabbedPane.GetCurrentTab()
+	//
+	// 	if tab != nil {
+	// 		table := tab.Content.(*ResultsTable)
+	// 		if !table.GetIsEditing() && !table.GetIsFiltering() {
+	// 			home.focusTab(home.TabbedPane.SwitchToPreviousTab())
+	// 			return nil
+	// 		}
+	//
+	// 	}
+	//
+	// 	return event
+	// case commands.TabNext:
+	// 	tab := home.TabbedPane.GetCurrentTab()
+	//
+	// 	if tab != nil {
+	// 		table := tab.Content.(*ResultsTable)
+	// 		if !table.GetIsEditing() && !table.GetIsFiltering() {
+	// 			home.focusTab(home.TabbedPane.SwitchToNextTab())
+	// 			return nil
+	// 		}
+	// 	}
+	//
+	// 	return event
+	// case commands.TabFirst:
+	// 	home.focusTab(home.TabbedPane.SwitchToFirstTab())
+	// 	return nil
+	// case commands.TabLast:
+	// 	home.focusTab(home.TabbedPane.SwitchToLastTab())
+	// 	return nil
+	// case commands.TabClose:
+	// 	tab = home.TabbedPane.GetCurrentTab()
+	//
+	// 	if tab != nil {
+	// 		table := tab.Content.(*ResultsTable)
+	//
+	// 		if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
+	// 			home.TabbedPane.RemoveCurrentTab()
+	//
+	// 			if home.TabbedPane.GetLength() == 0 {
+	// 				home.focusLeftWrapper()
+	// 				return nil
+	// 			}
+	// 		}
+	// 	}
 	case commands.PagePrev:
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
-			table := tab.Content
+			table := tab.Content.(*ResultsTable)
 
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
 				table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
@@ -285,7 +286,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
-			table := tab.Content
+			table := tab.Content.(*ResultsTable)
 
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
 				table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
@@ -304,7 +305,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	var table *ResultsTable
 
 	if tab != nil {
-		table = tab.Content
+		table = tab.Content.(*ResultsTable)
 	}
 
 	command := app.Keymaps.Group(app.HomeGroup).Resolve(event)
@@ -323,7 +324,8 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 		if tab != nil {
 			home.TabbedPane.SwitchToTabByName(tabNameEditor)
-			tab.Content.SetIsFiltering(true)
+			table := tab.Content.(*ResultsTable)
+			table.SetIsFiltering(true)
 		} else {
 			tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithEditor()
 			home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)

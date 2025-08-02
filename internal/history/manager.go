@@ -23,7 +23,7 @@ const (
 
 // GetAppConfigDir returns the application's configuration directory.
 func GetAppConfigDir() (string, error) {
-	configDir, err := os.UserConfigDir()
+	configDir, err := app.GetConfigPath()
 	if err != nil {
 		return "", fmt.Errorf("failed to get user config directory: %w", err)
 	}

@@ -1,188 +1,125 @@
 package components
 
 import (
-	"sort"
-	"strings"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
-	"github.com/jorgerojas26/lazysql/helpers/logger"
-	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
 // QueryHistoryModal displays the query history for the current connection.
 type QueryHistoryModal struct {
 	tview.Primitive
-	table            *tview.Table
-	filterInput      *tview.InputField
-	originalHistory  []models.QueryHistoryItem
-	displayedHistory []models.QueryHistoryItem
-	onQuerySelected  func(query string)
-	parentFlex       *tview.Flex // The main modal flex container for centering
+	tabbedPane            *TabbedPane
+	savedQueriesComponent *SavedQueriesComponent
+	queryHistoryComponent *QueryHistoryComponent
+	onQuerySelected       func(query string)
+	grid                  *tview.Grid // The main modal grid container for centering
 }
 
 // NewQueryHistoryModal creates a new modal to display query history.
 func NewQueryHistoryModal(history []models.QueryHistoryItem, onSelect func(query string)) *QueryHistoryModal {
 	qhm := &QueryHistoryModal{
-		originalHistory: history,
 		onQuerySelected: onSelect,
 	}
 
-	qhm.filterInput = tview.NewInputField().
-		SetLabel("Filter: ").
-		SetFieldWidth(30)
-	qhm.filterInput.SetBorder(true).SetTitle(" Filter Query History ")
+	qhm.savedQueriesComponent = NewSavedQueriesComponent(onSelect)
+	qhm.queryHistoryComponent = NewQueryHistoryComponent(history, onSelect)
 
-	qhm.table = tview.NewTable().
-		SetBorders(true).
-		SetSelectable(true, false). // Rows selectable, not columns
-		SetFixed(1, 0)              // Fix header row
-	qhm.table.SetBorder(true)
+	qhm.tabbedPane = NewTabbedPane(func(tab *Tab) {})
+	qhm.tabbedPane.AppendTab("Saved Queries", qhm.savedQueriesComponent, "saved_queries")
+	qhm.tabbedPane.AppendTab("History", qhm.queryHistoryComponent, "history")
 
-	qhm.table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
-	qhm.table.SetBorderColor(app.Styles.PrimaryTextColor)
-	qhm.table.SetTitle(" Query History (Newest First) ")
+	qhm.tabbedPane.SetCurrentTab(qhm.tabbedPane.GetTabByReference("saved_queries"))
 
-	// Layout: Input field on top, table below
-	contentFlex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(qhm.filterInput, 3, 0, false). // Input field takes 3 rows height, has focus
-		AddItem(qhm.table, 0, 1, true)         // Table takes remaining space
+	tabbedPaneContainer := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(qhm.tabbedPane.HeaderContainer, 1, 0, false).
+		AddItem(qhm.tabbedPane.Pages, 0, 1, true)
+	tabbedPaneContainer.SetBorder(true)
 
-	// Centering modal logic (similar to HelpModal)
-	qhm.parentFlex = tview.NewFlex().
-		AddItem(nil, 0, 1, false). // Left space
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).        // Top space
-			AddItem(contentFlex, 0, 8, true). // Modal content, 80% of inner height
-			AddItem(nil, 0, 1, false),        // Bottom space
-						0, 8, true). // Modal container, 80% of outer width
-		AddItem(nil, 0, 1, false) // Right space
+	// Create a grid for both small and large screens
+	smallScreenGrid := tview.NewGrid().
+		SetRows(1, 0, 1).    // Top, center, and bottom rows (center is flexible)
+		SetColumns(1, 0, 1). // Left, center, and right columns (center is flexible)
+		SetMinSize(1, 1)     // Minimum cell size
 
-	qhm.Primitive = qhm.parentFlex // The primitive to return is the outer flex
+	// Add pages to the small screen grid (with small margins)
+	smallScreenGrid.AddItem(tabbedPaneContainer, 0, 0, 3, 3, 0, 0, true)
 
-	qhm.populateTable(history)
+	// Create a grid specifically for large screens with a more compact center box
+	largeScreenGrid := tview.NewGrid().
+		SetRows(0, 20, 0).     // Top margin, fixed center height, bottom margin
+		SetColumns(0, 150, 0). // Left margin, fixed center width, right margin
+		SetMinSize(1, 1)       // Minimum cell size
 
-	qhm.filterInput.SetChangedFunc(func(text string) {
-		qhm.filterTable(text)
-	})
+	// Add pages to the center of large screen grid
+	largeScreenGrid.AddItem(tabbedPaneContainer, 1, 1, 1, 1, 0, 0, true)
 
-	qhm.table.SetSelectedFunc(func(row int, _ int) {
-		if row > 0 && row-1 < len(qhm.displayedHistory) { // row 0 is header
-			selectedQuery := qhm.displayedHistory[row-1].QueryText
-			if qhm.onQuerySelected != nil {
-				qhm.onQuerySelected(selectedQuery)
-			}
-		}
-	})
+	// Create a responsive grid that switches between small and large layouts
+	mainGrid := tview.NewGrid().
+		SetRows(0).
+		SetColumns(0)
 
-	contentFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		command := app.Keymaps.Group(app.QueryHistoryGroup).Resolve(event)
+	// Add the small screen layout as default
+	mainGrid.AddItem(smallScreenGrid, 0, 0, 1, 1, 0, 0, true)
 
-		if command == commands.ToggleQueryHistory || (event.Key() == tcell.KeyEsc && !qhm.filterInput.HasFocus()) {
+	// Add the large screen layout for screens with width > 100
+	mainGrid.AddItem(largeScreenGrid, 0, 0, 1, 1, 0, 100, true)
+
+	qhm.grid = mainGrid
+	qhm.Primitive = qhm.grid
+
+	qhm.grid.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEsc {
 			mainPages.RemovePage(pageNameQueryHistory)
 			return nil
-		} else if event.Rune() == '/' {
-			App.SetFocus(qhm.filterInput)
-			return nil
-		} else if command == commands.Copy {
-			if len(qhm.displayedHistory) > 0 {
-				selectedRow, _ := qhm.table.GetSelection()
-
-				selectedQuery := qhm.displayedHistory[selectedRow-1].QueryText
-
-				cb := lib.NewClipboard()
-				err := cb.Write(selectedQuery)
-				if err != nil {
-					logger.Error("Failed to copy query history item to clipboard", map[string]any{"error": err})
-					// Optionally notify user of copy failure (e.g., via a short-lived status message)
-				} else {
-					// Optionally notify user of copy success
-					logger.Info("Query copied to clipboard from history.", map[string]any{"query": selectedQuery})
-				}
-			}
 		}
 
-		// If input field has focus and user presses Down arrow, switch to table
-		if qhm.filterInput.HasFocus() && event.Key() == tcell.KeyDown {
-			if len(qhm.displayedHistory) > 0 {
-				App.SetFocus(qhm.table)
-				qhm.table.Select(1, 0) // Select first data row
-				return nil             // Absorb event
-			}
+		if event.Rune() == 's' {
+			qhm.showSaveQueryModal()
+			return nil
+		}
+
+		command := app.Keymaps.Group(app.QueryHistoryGroup).Resolve(event)
+		if command == commands.ToggleQueryHistory {
+			mainPages.RemovePage(pageNameQueryHistory)
+			return nil
 		}
 
 		return event
 	})
 
-	qhm.filterInput.SetDoneFunc(func(key tcell.Key) {
-		switch key {
-		case tcell.KeyEnter, tcell.KeyDown:
-			if len(qhm.displayedHistory) > 0 {
-				App.SetFocus(qhm.table)
-				qhm.table.Select(1, 0) // Select first data row
-			}
-		case tcell.KeyEsc:
-			App.SetFocus(qhm.table)
-		}
-	})
-
 	return qhm
 }
 
-// populateTable fills the history table with items.
-func (qhm *QueryHistoryModal) populateTable(items []models.QueryHistoryItem) {
-	qhm.table.Clear()
-	qhm.displayedHistory = make([]models.QueryHistoryItem, len(items)) // Create a fresh slice
-	copy(qhm.displayedHistory, items)                                  // Copy items to avoid modifying original slice during sort
+func (qhm *QueryHistoryModal) showSaveQueryModal() {
+	var selectedQuery string
 
-	// Sort by timestamp descending (newest first)
-	sort.SliceStable(qhm.displayedHistory, func(i, j int) bool {
-		return qhm.displayedHistory[i].Timestamp.After(qhm.displayedHistory[j].Timestamp)
-	})
+	tab := qhm.tabbedPane.GetCurrentTab()
 
-	// Set headers
-	headers := []string{"Timestamp", "Query"}
-	for c, header := range headers {
-		qhm.table.SetCell(0, c, tview.NewTableCell(header).
-			SetSelectable(false).
-			SetTextColor(app.Styles.TertiaryTextColor).
-			SetAlign(tview.AlignCenter))
-	}
-
-	for r, item := range qhm.displayedHistory {
-		qhm.table.SetCell(r+1, 0, tview.NewTableCell(item.Timestamp.Format("2006-01-02 15:04:05")).SetMaxWidth(20))
-		// Show only the first line of the query for brevity in the table
-		firstLineQuery := strings.Split(item.QueryText, "\n")[0]
-		if len(firstLineQuery) > 100 { // Truncate very long first lines
-			firstLineQuery = firstLineQuery[:97] + "..."
+	if tab.Reference == "saved_queries" {
+		row, _ := qhm.savedQueriesComponent.table.GetSelection()
+		if row > 0 && row-1 < len(qhm.savedQueriesComponent.displayedQueries) {
+			selectedQuery = qhm.savedQueriesComponent.displayedQueries[row-1].Query
 		}
-		qhm.table.SetCell(r+1, 1, tview.NewTableCell(firstLineQuery).SetExpansion(1))
-	}
-
-	if len(qhm.displayedHistory) > 0 {
-		qhm.table.Select(1, 0) // Select first data row if history exists
-	}
-}
-
-// filterTable filters the displayed history based on the input text.
-func (qhm *QueryHistoryModal) filterTable(filterText string) {
-	filterText = strings.ToLower(strings.TrimSpace(filterText))
-	if filterText == "" {
-		qhm.populateTable(qhm.originalHistory)
-		return
-	}
-
-	var filteredHistory []models.QueryHistoryItem
-	for _, item := range qhm.originalHistory {
-		if strings.Contains(strings.ToLower(item.QueryText), filterText) {
-			filteredHistory = append(filteredHistory, item)
+	} else {
+		row, _ := qhm.queryHistoryComponent.table.GetSelection()
+		if row > 0 && row-1 < len(qhm.queryHistoryComponent.displayedHistory) {
+			selectedQuery = qhm.queryHistoryComponent.displayedHistory[row-1].QueryText
 		}
 	}
-	qhm.populateTable(filteredHistory) // This will re-sort the filtered list
+
+	if selectedQuery != "" {
+		saveModal := NewSaveQueryModal(selectedQuery, func() {
+			qhm.savedQueriesComponent.Refresh()
+			mainPages.RemovePage(pageNameSaveQuery)
+			App.SetFocus(qhm.grid)
+		})
+		mainPages.AddPage(pageNameSaveQuery, saveModal, true, true)
+		App.SetFocus(saveModal.form.GetFormItem(0))
+	}
 }
 
 // GetPrimitive returns the top-level tview.Primitive for this modal.
