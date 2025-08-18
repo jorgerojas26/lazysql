@@ -10,17 +10,19 @@ import (
 // SaveQueryModal is a modal for saving a query with a name.
 type SaveQueryModal struct {
 	tview.Primitive
-	form       *tview.Form
-	query      string
-	onSave     func()
-	parentFlex *tview.Flex
+	form                 *tview.Form
+	grid                 *tview.Grid
+	query                string
+	onSave               func()
+	connectionIdentifier string
 }
 
 // NewSaveQueryModal creates a new SaveQueryModal.
-func NewSaveQueryModal(query string, onSave func()) *SaveQueryModal {
+func NewSaveQueryModal(connectionIdentifier, query string, onSave func()) *SaveQueryModal {
 	sqm := &SaveQueryModal{
-		query:  query,
-		onSave: onSave,
+		query:                query,
+		onSave:               onSave,
+		connectionIdentifier: connectionIdentifier,
 	}
 
 	sqm.form = tview.NewForm().
@@ -54,16 +56,12 @@ func NewSaveQueryModal(query string, onSave func()) *SaveQueryModal {
 
 	sqm.form.SetBorder(true).SetTitle(" Save Query ").SetTitleAlign(tview.AlignLeft)
 
-	sqm.parentFlex = tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(sqm.form, 0, 1, true).
-			AddItem(nil, 0, 1, false),
-			0, 8, true).
-		AddItem(nil, 0, 1, false)
+	sqm.grid = tview.NewGrid().
+		SetRows(0, 7, 0).
+		SetColumns(0, 50, 0).
+		AddItem(sqm.form, 1, 1, 1, 1, 0, 0, true)
 
-	sqm.Primitive = sqm.parentFlex
+	sqm.Primitive = sqm.grid
 
 	return sqm
 }
@@ -75,7 +73,7 @@ func (sqm *SaveQueryModal) save() {
 		return
 	}
 
-	err := saved_queries.SaveQuery(name, sqm.query)
+	err := saved_queries.SaveQuery(sqm.connectionIdentifier, name, sqm.query)
 	if err != nil {
 		// TODO: Show an error message
 		return

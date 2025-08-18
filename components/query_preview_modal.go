@@ -87,7 +87,6 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 					err := dbdriver.ExecutePendingChanges(*queries)
 					if err != nil {
 						r.SetError(err.Error())
-						logger.Info("Error saving queries", map[string]any{"error": err.Error()})
 						return
 					}
 

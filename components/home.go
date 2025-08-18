@@ -13,7 +13,6 @@ import (
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/internal/history"
-	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -25,6 +24,7 @@ type Home struct {
 	RightWrapper         *tview.Flex
 	HelpStatus           HelpStatus
 	HelpModal            *HelpModal
+	QueryHistoryModal    *QueryHistoryModal
 	DBDriver             drivers.Driver
 	FocusedWrapper       string
 	ListOfDBChanges      []models.DBDMLChange
@@ -49,20 +49,33 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	}
 
 	home := &Home{
-		Flex:                 tview.NewFlex().SetDirection(tview.FlexRow),
-		Tree:                 tree,
-		LeftWrapper:          leftWrapper,
-		RightWrapper:         rightWrapper,
-		HelpStatus:           NewHelpStatus(),
-		HelpModal:            NewHelpModal(),
+		Flex:         tview.NewFlex().SetDirection(tview.FlexRow),
+		Tree:         tree,
+		LeftWrapper:  leftWrapper,
+		RightWrapper: rightWrapper,
+		HelpStatus:   NewHelpStatus(),
+		HelpModal:    NewHelpModal(),
+
 		DBDriver:             dbdriver,
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
 	}
 
-	tabbedPane := NewTabbedPane(home.focusTab)
+	tabbedPane := NewTabbedPane()
 
 	home.TabbedPane = tabbedPane
+
+	qhm := NewQueryHistoryModal(connectionIdentifier, func(selectedQuery string) {
+		home.createOrFocusEditorTab()
+
+		currentTab := home.TabbedPane.GetCurrentTab()
+		if currentTab != nil {
+			table := currentTab.Content.(*ResultsTable)
+			table.Editor.SetText(selectedQuery, true)
+		}
+	})
+
+	home.QueryHistoryModal = qhm
 
 	go home.subscribeToTreeChanges()
 
@@ -222,53 +235,53 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
 
 	switch command {
-	// case commands.TabPrev:
-	//
-	// 	tab := home.TabbedPane.GetCurrentTab()
-	//
-	// 	if tab != nil {
-	// 		table := tab.Content.(*ResultsTable)
-	// 		if !table.GetIsEditing() && !table.GetIsFiltering() {
-	// 			home.focusTab(home.TabbedPane.SwitchToPreviousTab())
-	// 			return nil
-	// 		}
-	//
-	// 	}
-	//
-	// 	return event
-	// case commands.TabNext:
-	// 	tab := home.TabbedPane.GetCurrentTab()
-	//
-	// 	if tab != nil {
-	// 		table := tab.Content.(*ResultsTable)
-	// 		if !table.GetIsEditing() && !table.GetIsFiltering() {
-	// 			home.focusTab(home.TabbedPane.SwitchToNextTab())
-	// 			return nil
-	// 		}
-	// 	}
-	//
-	// 	return event
-	// case commands.TabFirst:
-	// 	home.focusTab(home.TabbedPane.SwitchToFirstTab())
-	// 	return nil
-	// case commands.TabLast:
-	// 	home.focusTab(home.TabbedPane.SwitchToLastTab())
-	// 	return nil
-	// case commands.TabClose:
-	// 	tab = home.TabbedPane.GetCurrentTab()
-	//
-	// 	if tab != nil {
-	// 		table := tab.Content.(*ResultsTable)
-	//
-	// 		if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
-	// 			home.TabbedPane.RemoveCurrentTab()
-	//
-	// 			if home.TabbedPane.GetLength() == 0 {
-	// 				home.focusLeftWrapper()
-	// 				return nil
-	// 			}
-	// 		}
-	// 	}
+	case commands.TabPrev:
+
+		tab := home.TabbedPane.GetCurrentTab()
+
+		if tab != nil {
+			table := tab.Content.(*ResultsTable)
+			if !table.GetIsEditing() && !table.GetIsFiltering() {
+				home.focusTab(home.TabbedPane.SwitchToPreviousTab())
+				return nil
+			}
+
+		}
+
+		return event
+	case commands.TabNext:
+		tab := home.TabbedPane.GetCurrentTab()
+
+		if tab != nil {
+			table := tab.Content.(*ResultsTable)
+			if !table.GetIsEditing() && !table.GetIsFiltering() {
+				home.focusTab(home.TabbedPane.SwitchToNextTab())
+				return nil
+			}
+		}
+
+		return event
+	case commands.TabFirst:
+		home.focusTab(home.TabbedPane.SwitchToFirstTab())
+		return nil
+	case commands.TabLast:
+		home.focusTab(home.TabbedPane.SwitchToLastTab())
+		return nil
+	case commands.TabClose:
+		tab = home.TabbedPane.GetCurrentTab()
+
+		if tab != nil {
+			table := tab.Content.(*ResultsTable)
+
+			if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
+				home.TabbedPane.RemoveCurrentTab()
+
+				if home.TabbedPane.GetLength() == 0 {
+					home.focusLeftWrapper()
+					return nil
+				}
+			}
+		}
 	case commands.PagePrev:
 		tab = home.TabbedPane.GetCurrentTab()
 
@@ -320,20 +333,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.focusRightWrapper()
 		}
 	case commands.SwitchToEditorView:
-		tab := home.TabbedPane.GetTabByName(tabNameEditor)
-
-		if tab != nil {
-			home.TabbedPane.SwitchToTabByName(tabNameEditor)
-			table := tab.Content.(*ResultsTable)
-			table.SetIsFiltering(true)
-		} else {
-			tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithEditor()
-			home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
-			tableWithEditor.SetIsFiltering(true)
-		}
-		home.HelpStatus.SetStatusOnEditorView()
-		home.focusRightWrapper()
-		app.App.ForceDraw()
+		home.createOrFocusEditorTab()
 	case commands.SwitchToConnectionsView:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
 			mainPages.SwitchToPage(pageNameConnections)
@@ -365,15 +365,6 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	case commands.HelpPopup:
 		if table == nil || !table.GetIsEditing() {
-			// home.HelpModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			// 	command := app.Keymaps.Resolve(event)
-			// 	if command == commands.Quit {
-			// 		App.Stop()
-			// 	} else if event.Key() == tcell.KeyEsc {
-			// 		MainPages.RemovePage(HelpPageName)
-			// 	}
-			// 	return event
-			// })
 			mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
 	case commands.SearchGlobal:
@@ -387,63 +378,33 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		home.Tree.SetIsFiltering(true)
 	case commands.ToggleQueryHistory:
 		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
-
-			historyFilePath, err := history.GetHistoryFilePath(home.ConnectionIdentifier)
-			if err != nil {
-				logger.Error("Failed to get history file path", map[string]any{"error": err, "connection": home.ConnectionIdentifier})
-				// Optionally: show an error modal to the user
-				return nil // Command handled (by logging error)
+			if mainPages.HasPage(pageNameQueryHistory) {
+				mainPages.SwitchToPage(pageNameQueryHistory)
+			} else {
+				mainPages.AddPage(pageNameQueryHistory, home.QueryHistoryModal, true, true)
 			}
-
-			// The limit from config is primarily for writing, but pass it to ReadHistory for potential future use.
-			// QueryHistoryModal will display all items passed to it after sorting.
-			historyLimit := app.App.Config().MaxQueryHistoryPerConnection
-			if historyLimit <= 0 { // Ensure a positive limit if not set or invalid in config
-				historyLimit = 100 // Default limit
-			}
-
-			historyItems, err := history.ReadHistory(historyFilePath, historyLimit)
-			if err != nil {
-				logger.Error("Failed to read query history", map[string]any{"error": err, "path": historyFilePath})
-				// Show empty history on error, or an error message to the user.
-				// For now, proceed with empty items.
-				historyItems = []models.QueryHistoryItem{}
-			}
-
-			queryHistoryModal := NewQueryHistoryModal(historyItems, func(selectedQuery string) {
-				// Action on query selection:
-				// 1. Copy to clipboard
-				cb := lib.NewClipboard()
-				err := cb.Write(selectedQuery)
-				if err != nil {
-					logger.Error("Failed to copy query history item to clipboard", map[string]any{"error": err})
-					// Optionally notify user of copy failure (e.g., via a short-lived status message)
-				} else {
-					// Optionally notify user of copy success
-					logger.Info("Query copied to clipboard from history.", map[string]any{"query": selectedQuery})
-				}
-
-				// 2. Close the modal
-				mainPages.RemovePage(pageNameQueryHistory)
-				app.App.SetFocus(home) // Or focus the previously focused element if tracked
-
-				// 3. (Future Phase) Paste into SQL Editor and focus editor
-				// if home.TabbedPane != nil {
-				//    editorTab := home.TabbedPane.GetTabByName(tabNameEditor)
-				//    if editorTab != nil && editorTab.Content != nil && editorTab.Content.Editor != nil {
-				//        editorTab.Content.Editor.SetText(selectedQuery, true) // Assuming SetText exists and takes (text, moveCursorToEnd)
-				//        home.focusRightWrapper() // Ensure right pane is focused
-				//        app.App.SetFocus(editorTab.Content.Editor) // Focus the editor
-				//    }
-				// }
-			})
-
-			mainPages.AddPage(pageNameQueryHistory, queryHistoryModal.GetPrimitive(), true, true)
-			// The QueryHistoryModal should set its own focus, typically on the filter input.
-			// If it doesn't, uncomment: app.App.SetFocus(queryHistoryModal.GetPrimitive())
 		}
-		return nil // Command handled
+		return nil
 	}
 
 	return event
+}
+
+func (home *Home) createOrFocusEditorTab() {
+	tab := home.TabbedPane.GetTabByName(tabNameEditor)
+
+	if tab != nil {
+		home.TabbedPane.SwitchToTabByName(tabNameEditor)
+		table := tab.Content.(*ResultsTable)
+		table.SetIsFiltering(true)
+	} else {
+		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithEditor()
+		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
+		tableWithEditor.SetIsFiltering(true)
+		tab = home.TabbedPane.GetCurrentTab()
+	}
+
+	home.HelpStatus.SetStatusOnEditorView()
+	home.focusRightWrapper()
+	App.ForceDraw()
 }

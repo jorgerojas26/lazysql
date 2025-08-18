@@ -10,14 +10,12 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
 var (
-	App            *Application
-	Styles         *Theme
-	QueryHistories map[string][]models.QueryHistoryItem
+	App    *Application
+	Styles *Theme
 )
 
 type Application struct {
@@ -27,7 +25,6 @@ type Application struct {
 	context   context.Context
 	cancelFn  context.CancelFunc
 	waitGroup sync.WaitGroup
-	Keymaps   *map[commands.Command]func()
 }
 
 type Theme struct {
@@ -39,33 +36,16 @@ type Theme struct {
 func init() {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	global_keymaps := &map[commands.Command]func(){}
-
 	App = &Application{
 		Application: tview.NewApplication(),
 		config:      defaultConfig(),
 		context:     ctx,
 		cancelFn:    cancel,
-		Keymaps:     global_keymaps,
 	}
-
-	App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		command := Keymaps.Global.Resolve(event)
-
-		if (*App.Keymaps)[command] != nil {
-			(*App.Keymaps)[command]()
-			return event
-		}
-
-		return event
-	})
 
 	App.register()
 	App.EnableMouse(true)
 	App.EnablePaste(true)
-
-	// Initialize query history map
-	QueryHistories = make(map[string][]models.QueryHistoryItem)
 
 	Styles = &Theme{
 		Theme: tview.Theme{
@@ -149,11 +129,11 @@ func (a *Application) register() {
 	// and make it send an interrupt signal to the channel to
 	// trigger a graceful shutdown instead of closing the app
 	// immediately without waiting for tasks to finish.
-	// a.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-	// 	if event.Key() == tcell.KeyCtrlC {
-	// 		c <- os.Interrupt
-	// 		return nil
-	// 	}
-	// 	return event
-	// })
+	a.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			c <- os.Interrupt
+			return nil
+		}
+		return event
+	})
 }

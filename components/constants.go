@@ -37,14 +37,18 @@ const (
 	pageNameSetValue string = "SetValue"
 
 	// Query History
-	pageNameQueryHistory string = "QueryHistoryModal"
-	pageNameSaveQuery    string = "SaveQueryModal"
-	pageNameSavedQueryDelete string = "SavedQueryDeleteModal"
+	pageNameQueryHistory       string = "QueryHistoryModal"
+	pageNameSaveQuery          string = "SaveQueryModal"
+	pageNameSavedQueryDelete   string = "SavedQueryDeleteModal"
+	pageNameQueryHistoryDelete string = "QueryHistoryDeleteModal"
 )
 
 // Tabs
 const (
 	tabNameEditor string = "Editor"
+
+	savedQueryTabReference   string = "saved_queries"
+	queryHistoryTabReference string = "query_history"
 )
 
 // Events

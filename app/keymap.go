@@ -52,13 +52,6 @@ const (
 
 // Define a global KeymapSystem object with default keybinds
 var Keymaps = KeymapSystem{
-	Global: Map{
-		Bind{Key: Key{Char: '['}, Cmd: cmd.TabPrev, Description: "Switch to previous tab"},
-		Bind{Key: Key{Char: ']'}, Cmd: cmd.TabNext, Description: "Switch to next tab"},
-		Bind{Key: Key{Char: '{'}, Cmd: cmd.TabFirst, Description: "Switch to first tab"},
-		Bind{Key: Key{Char: '}'}, Cmd: cmd.TabLast, Description: "Switch to last tab"},
-		Bind{Key: Key{Char: 'X'}, Cmd: cmd.TabClose, Description: "Close tab"},
-	},
 	Groups: map[string]Map{
 		HomeGroup: {
 			Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight, Description: "Focus table"},
@@ -159,9 +152,14 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete query"},
 		},
 		QueryHistoryGroup: {
+			Bind{Key: Key{Char: 's'}, Cmd: cmd.Save, Description: "Save query"},
+			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete query"},
 			Bind{Key: Key{Char: 'q'}, Cmd: cmd.Quit, Description: "Quit"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy query to clipboard"},
+			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},
 			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
+			Bind{Key: Key{Char: '['}, Cmd: cmd.TabPrev, Description: "Switch to previous tab"},
+			Bind{Key: Key{Char: ']'}, Cmd: cmd.TabNext, Description: "Switch to next tab"},
 		},
 	},
 }

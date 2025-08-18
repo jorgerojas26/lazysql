@@ -4,7 +4,6 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/commands"
 )
 
 type Header struct {
@@ -37,7 +36,7 @@ type TabbedPane struct {
 	state           *TabbedPaneState
 }
 
-func NewTabbedPane(onTabChanged func(tab *Tab)) *TabbedPane {
+func NewTabbedPane() *TabbedPane {
 	container := tview.NewFlex()
 	container.SetBorderPadding(0, 0, 1, 1)
 
@@ -45,27 +44,6 @@ func NewTabbedPane(onTabChanged func(tab *Tab)) *TabbedPane {
 		Pages:           tview.NewPages(),
 		HeaderContainer: container,
 		state:           &TabbedPaneState{},
-	}
-
-	(*App.Keymaps)[commands.TabPrev] = func() {
-		newTab := tabbedPane.SwitchToPreviousTab()
-		onTabChanged(newTab)
-	}
-	(*App.Keymaps)[commands.TabNext] = func() {
-		newTab := tabbedPane.SwitchToNextTab()
-		onTabChanged(newTab)
-	}
-	(*App.Keymaps)[commands.TabFirst] = func() {
-		newTab := tabbedPane.SwitchToFirstTab()
-		onTabChanged(newTab)
-	}
-	(*App.Keymaps)[commands.TabLast] = func() {
-		newTab := tabbedPane.SwitchToLastTab()
-		onTabChanged(newTab)
-	}
-	(*App.Keymaps)[commands.TabClose] = func() {
-		newTab := tabbedPane.RemoveCurrentTab()
-		onTabChanged(newTab)
 	}
 
 	return tabbedPane
