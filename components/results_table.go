@@ -1483,5 +1483,5 @@ func (table *ResultsTable) colorChangedCells() {
 }
 
 func (table *ResultsTable) GetPrimitive() tview.Primitive {
-	return table.Wrapper
+	return table.Page
 }
