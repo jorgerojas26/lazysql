@@ -105,7 +105,7 @@ func NewQueryHistoryComponent(connectionIdentifier string, onSelect func(query s
 	qhc.filterInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter || key == tcell.KeyEscape {
 			qhc.SetIsFiltering(false)
-			app.App.SetFocus(qhc.table)
+			App.SetFocus(qhc.table)
 		}
 	})
 
@@ -116,10 +116,6 @@ func NewQueryHistoryComponent(connectionIdentifier string, onSelect func(query s
 				qhc.onQuerySelected(selectedQuery)
 			}
 		}
-	})
-
-	qhc.table.SetFocusFunc(func() {
-		qhc.LoadHistory(qhc.connectionIdentifier)
 	})
 
 	return qhc

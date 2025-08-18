@@ -10,6 +10,7 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -47,9 +48,12 @@ func NewSQLEditor() *SQLEditor {
 
 		case commands.OpenInExternalEditor:
 			// THIS IS A LINUX-ONLY FEATURE (for now)
-			if runtime.GOOS == "linux" {
-				text := openExternalEditor(sqlEditor)
-				sqlEditor.SetText(text, true)
+			if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+				var newText string
+				app.App.Suspend(func() {
+					newText = openExternalEditor(sqlEditor.GetText())
+				})
+				sqlEditor.SetText(newText, true)
 			}
 		}
 
@@ -92,63 +96,50 @@ func (s *SQLEditor) SetBlur() {
 	s.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.InverseTextColor))
 }
 
-/*
-	THIS FUNCTION OPENS EXTERNAL EDITOR.
+// openExternalEditor opens the user's preferred editor to edit the query.
+// It should be called within app.Suspend() to ensure the TUI is properly restored.
+func openExternalEditor(currentText string) string {
+	tmpFile, err := os.CreateTemp("", "lazysql-*.sql")
+	if err != nil {
+		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
+	defer os.Remove(tmpFile.Name())
 
-	Q: WHY OPEN ANOTHER TERMINAL?
-	A: OPENING EDITORS LIKE VIM/NEOVIM REALLY MESSED UP INITIAL TERMINAL'S OUTPUT.
-*/
+	path := tmpFile.Name()
+	content := []byte(currentText)
 
-func openExternalEditor(s *SQLEditor) string {
-	// Current folder as path of temporary file
-	path := "./lazysql.sql"
+	if _, err := tmpFile.Write(content); err != nil {
+		logger.Error("Failed to write to temporary file", map[string]any{"error": err.Error()})
+		tmpFile.Close()
+		return currentText
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		logger.Error("Failed to close temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
 
 	editor := getEditor()
-	terminal := getTerminal()
 
-	// Create a temporary file with the current SQL query content
-	content := []byte(s.GetText())
-
-	/*
-		0644 Permission
-		* User: read & write
-		* Group: read
-		* Other: read
-	*/
-
-	err := os.WriteFile(path, content, 0o644)
-	if err != nil {
-		return s.GetText()
-	}
-
-	// Remove the temporary file with the end of function
-	defer os.Remove(path)
-
-	// Setup command
-	cmd := exec.Command(terminal, "-e", editor, path)
+	cmd := exec.Command(editor, path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-	// ----
-	// cmd.Stderr = os.Stderr
-	// ----
-
-	err = cmd.Run()
-	if err != nil {
-		return s.GetText()
+	if err := cmd.Run(); err != nil {
+		logger.Error("Error executing command", map[string]any{"error": err.Error(), "command": cmd.String()})
 	}
 
-	// Read the updated content from the temporary file
 	updatedContent, err := os.ReadFile(path)
 	if err != nil {
-		return s.GetText()
+		logger.Error("Failed to read from temporary file", map[string]any{"error": err.Error()})
+		return currentText
 	}
 
-	// Convert to string before returning
 	return string(updatedContent)
 }
 
-// Function to select editor
 func getEditor() string {
 	editor := os.Getenv("SQL_EDITOR")
 	if editor == "" {
@@ -160,31 +151,8 @@ func getEditor() string {
 	}
 
 	if editor == "" {
-		editor = "vi" // use "vi" if $EDITOR not set
+		editor = "vi"
 	}
 
 	return editor
-}
-
-// Function to select terminal
-func getTerminal() string {
-	terminal := os.Getenv("SQL_TERMINAL")
-
-	if terminal == "" {
-		terminal = os.Getenv("TERMINAL")
-	}
-
-	if terminal == "" {
-		terminal = "xterm"
-	}
-
-	// Check if x-terminal-emulator exists
-	terminalEmulator, err := exec.LookPath("x-terminal-emulator")
-
-	// If exists then set terminal as x-terminal-emulator
-	if err == nil {
-		terminal = terminalEmulator // overload `terminal` if terminalEmulator exists
-	}
-
-	return terminal
 }

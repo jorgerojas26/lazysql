@@ -368,7 +368,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
 	case commands.SearchGlobal:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
 			home.focusLeftWrapper()
 		}
 
@@ -377,13 +377,13 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		app.App.SetFocus(home.Tree.Filter)
 		home.Tree.SetIsFiltering(true)
 	case commands.ToggleQueryHistory:
-		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
-			if mainPages.HasPage(pageNameQueryHistory) {
-				mainPages.SwitchToPage(pageNameQueryHistory)
-			} else {
-				mainPages.AddPage(pageNameQueryHistory, home.QueryHistoryModal, true, true)
-			}
+		if mainPages.HasPage(pageNameQueryHistory) {
+			mainPages.SwitchToPage(pageNameQueryHistory)
+		} else {
+			mainPages.AddPage(pageNameQueryHistory, home.QueryHistoryModal, true, true)
 		}
+
+		home.QueryHistoryModal.queryHistoryComponent.LoadHistory(home.ConnectionIdentifier)
 		return nil
 	}
 
@@ -401,7 +401,7 @@ func (home *Home) createOrFocusEditorTab() {
 		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithEditor()
 		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 		tableWithEditor.SetIsFiltering(true)
-		tab = home.TabbedPane.GetCurrentTab()
+		home.TabbedPane.GetCurrentTab()
 	}
 
 	home.HelpStatus.SetStatusOnEditorView()
