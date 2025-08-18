@@ -54,9 +54,10 @@ type ResultsTable struct {
 	SidebarContainer     *tview.Flex
 	DBDriver             drivers.Driver
 	connectionIdentifier string
+	ConnectionURL        string
 }
 
-func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string) *ResultsTable {
+func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -110,6 +111,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		// SidebarContainer is only used when AppConfig.SidebarOverlay is false.
 		SidebarContainer:     tview.NewFlex(),
 		connectionIdentifier: connectionIdentifier,
+		ConnectionURL:        connectionURL,
 	}
 
 	// When AppConfig.SidebarOverlay is true, the sidebar is added as a page to the table.Page.
@@ -165,7 +167,7 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 }
 
 func (table *ResultsTable) WithEditor() *ResultsTable {
-	editor := NewSQLEditor()
+	editor := NewSQLEditor(table.ConnectionURL)
 	editorPages := tview.NewPages()
 
 	editor.SetFocusFunc(func() {
@@ -406,11 +408,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if command == commands.Edit {
-		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
-			if table.GetShowSidebar() {
-				table.UpdateSidebar()
-			}
-		})
+		if table.Editor == nil {
+			table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
+				if table.GetShowSidebar() {
+					table.UpdateSidebar()
+				}
+			})
+		}
 	} else if command == commands.GotoNext {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
@@ -440,7 +444,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
 	} else if command == commands.Delete {
-		if table.Menu.GetSelectedOption() == 1 {
+		if table.Menu != nil && table.Menu.GetSelectedOption() == 1 && table.Editor == nil {
 
 			isAnInsertedRow, indexOfInsertedRow := table.isAnInsertedRow(selectedRowIndex)
 
@@ -460,25 +464,29 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 	} else if command == commands.SetValue {
-		table.SetIsEditing(true)
-		table.SetInputCapture(nil)
+		if table.Editor == nil {
+			table.SetIsEditing(true)
+			table.SetInputCapture(nil)
 
-		cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
-		x, y, _ := cell.GetLastPosition()
+			cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+			x, y, _ := cell.GetLastPosition()
 
-		list := NewSetValueList(table.DBDriver.GetProvider())
+			list := NewSetValueList(table.DBDriver.GetProvider())
 
-		list.OnFinish(func(selection models.CellValueType, value string) {
-			table.FinishSettingValue()
+			list.OnFinish(func(selection models.CellValueType, value string) {
+				table.FinishSettingValue()
 
-			if selection >= 0 {
-				table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
-			}
-		})
+				if selection >= 0 {
+					table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+				}
+			})
 
-		list.Show(x, y, 30)
+			list.Show(x, y, 30)
+		}
 	} else if command == commands.ToggleSidebar {
-		table.ShowSidebar(!table.GetShowSidebar())
+		if table.Editor == nil {
+			table.ShowSidebar(!table.GetShowSidebar())
+		}
 	} else if command == commands.FocusSidebar {
 		if table.GetShowSidebar() {
 			App.SetFocus(table.Sidebar)

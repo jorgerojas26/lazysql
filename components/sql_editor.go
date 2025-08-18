@@ -20,11 +20,12 @@ type SQLEditorState struct {
 
 type SQLEditor struct {
 	*tview.TextArea
-	state       *SQLEditorState
-	subscribers []chan models.StateChange
+	state         *SQLEditorState
+	subscribers   []chan models.StateChange
+	ConnectionURL string
 }
 
-func NewSQLEditor() *SQLEditor {
+func NewSQLEditor(connectionURL string) *SQLEditor {
 	textarea := tview.NewTextArea()
 	textarea.SetBorder(true)
 	textarea.SetTitleAlign(tview.AlignLeft)
@@ -34,6 +35,7 @@ func NewSQLEditor() *SQLEditor {
 		state: &SQLEditorState{
 			isFocused: false,
 		},
+		ConnectionURL: connectionURL,
 	}
 	sqlEditor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		command := app.Keymaps.Group(app.EditorGroup).Resolve(event)
@@ -51,7 +53,7 @@ func NewSQLEditor() *SQLEditor {
 			if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 				var newText string
 				app.App.Suspend(func() {
-					newText = openExternalEditor(sqlEditor.GetText())
+					newText = openExternalEditor(sqlEditor.GetText(), sqlEditor.ConnectionURL)
 				})
 				sqlEditor.SetText(newText, true)
 			}
@@ -98,7 +100,7 @@ func (s *SQLEditor) SetBlur() {
 
 // openExternalEditor opens the user's preferred editor to edit the query.
 // It should be called within app.Suspend() to ensure the TUI is properly restored.
-func openExternalEditor(currentText string) string {
+func openExternalEditor(currentText string, connectionURL string) string {
 	tmpFile, err := os.CreateTemp("", "lazysql-*.sql")
 	if err != nil {
 		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})
@@ -118,6 +120,12 @@ func openExternalEditor(currentText string) string {
 	if err := tmpFile.Close(); err != nil {
 		logger.Error("Failed to close temporary file", map[string]any{"error": err.Error()})
 		return currentText
+	}
+
+	if connectionURL != "" {
+		os.Setenv("LAZYSQL_CONNECTION_URL", connectionURL)
+		// Defer unsetting the environment variable to ensure it's cleaned up
+		defer os.Unsetenv("LAZYSQL_CONNECTION_URL")
 	}
 
 	editor := getEditor()

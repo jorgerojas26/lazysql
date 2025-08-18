@@ -29,6 +29,7 @@ type Home struct {
 	FocusedWrapper       string
 	ListOfDBChanges      []models.DBDMLChange
 	ConnectionIdentifier string
+	ConnectionURL        string
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
@@ -59,6 +60,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		DBDriver:             dbdriver,
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
+		ConnectionURL:        connection.URL,
 	}
 
 	tabbedPane := NewTabbedPane()
@@ -128,7 +130,7 @@ func (home *Home) subscribeToTreeChanges() {
 				table = tab.Content.(*ResultsTable)
 				home.TabbedPane.SwitchToTabByReference(tab.Reference)
 			} else {
-				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithFilter()
+				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL).WithFilter()
 				table.SetDatabaseName(databaseName)
 				table.SetTableName(tableName)
 
@@ -398,7 +400,7 @@ func (home *Home) createOrFocusEditorTab() {
 		table := tab.Content.(*ResultsTable)
 		table.SetIsFiltering(true)
 	} else {
-		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier).WithEditor()
+		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL).WithEditor()
 		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 		tableWithEditor.SetIsFiltering(true)
 		home.TabbedPane.GetCurrentTab()
