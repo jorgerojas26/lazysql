@@ -853,7 +853,7 @@ func (table *ResultsTable) SetLoading(show bool) {
 		}
 	}
 
-	App.Draw()
+	App.ForceDraw()
 }
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
