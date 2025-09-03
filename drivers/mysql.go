@@ -99,7 +99,7 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 		return nil, errors.New("table name is required")
 	}
 
-	query := "DESCRIBE "
+	query := "SHOW FULL COLUMNS FROM "
 	query += db.formatTableName(database, table)
 
 	rows, err := db.Connection.Query(query)

@@ -701,7 +701,7 @@ func TestMySQL_GetTableColumns_Error(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	mock.ExpectQuery(fmt.Sprintf("DESCRIBE %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnError(errors.New("query error"))
+	mock.ExpectQuery(fmt.Sprintf("SHOW FULL COLUMNS FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnError(errors.New("query error"))
 
 	_, err = mysql.GetTableColumns(testDBNameMySQL, testDBTableNameMySQL)
 
@@ -1230,12 +1230,12 @@ func TestMySQL_GetTableColumns(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	// Set up mock expectations
-	rows := sqlmock.NewRows([]string{"Field", "Type", "Null", "Key", "Default", "Extra"}).
-		AddRow("id", "int(11)", "NO", "PRI", nil, "auto_increment").
-		AddRow("name", "varchar(255)", "YES", "", nil, "")
+	// Set up mock expectations for SHOW FULL COLUMNS FROM
+	rows := sqlmock.NewRows([]string{"Field", "Type", "Collation", "Null", "Key", "Default", "Extra", "Privileges", "Comment"}).
+		AddRow("id", "int(11)", nil, "NO", "PRI", nil, "auto_increment", "select,insert,update,references", "").
+		AddRow("name", "varchar(255)", "utf8mb4_unicode_ci", "YES", "", nil, "", "select,insert,update,references", "User name")
 
-	mock.ExpectQuery(fmt.Sprintf("DESCRIBE %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnRows(rows)
+	mock.ExpectQuery(fmt.Sprintf("SHOW FULL COLUMNS FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnRows(rows)
 
 	columns, err := mysql.GetTableColumns(testDBNameMySQL, testDBTableNameMySQL)
 	if err != nil {
@@ -1243,9 +1243,9 @@ func TestMySQL_GetTableColumns(t *testing.T) {
 	}
 
 	expected := [][]string{
-		{"Field", "Type", "Null", "Key", "Default", "Extra"},
-		{"id", "int(11)", "NO", "PRI", "", "auto_increment"},
-		{"name", "varchar(255)", "YES", "", "", ""},
+		{"Field", "Type", "Collation", "Null", "Key", "Default", "Extra", "Privileges", "Comment"},
+		{"id", "int(11)", "", "NO", "PRI", "", "auto_increment", "select,insert,update,references", ""},
+		{"name", "varchar(255)", "utf8mb4_unicode_ci", "YES", "", "", "", "select,insert,update,references", "User name"},
 	}
 
 	if !reflect.DeepEqual(columns, expected) {
