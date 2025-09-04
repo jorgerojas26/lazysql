@@ -58,9 +58,19 @@ func main() {
 		log.Fatalf("Error setting MySQL logger: %v", err)
 	}
 
-	// First load the config.
+	// First load the application config.
 	if err = app.LoadConfig(*configFile); err != nil {
 		log.Fatalf("Error loading config: %v", err)
+	}
+
+	// Load the database config.
+	defaultDatabaseConfigPath, err := app.DefaultDatabaseConfigFile()
+	if err != nil {
+		log.Fatalf("Error getting default database config path: %v", err)
+	}
+
+	if err = app.LoadDatabaseConfig(defaultDatabaseConfigPath); err != nil {
+		log.Fatalf("Error loading database config: %v", err)
 	}
 
 	// Now we can initialize the main pages.

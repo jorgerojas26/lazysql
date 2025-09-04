@@ -13,9 +13,13 @@ import (
 )
 
 type Config struct {
-	ConfigFile  string
-	AppConfig   *models.AppConfig   `toml:"application"`
-	Connections []models.Connection `toml:"database"`
+	ConfigFile string
+	AppConfig  *models.AppConfig `toml:"application"`
+}
+
+type DatabaseConfig struct {
+	DatabaseConfigFile string
+	Connections        []models.Connection `toml:"database"`
 }
 
 func defaultConfig() *Config {
@@ -24,6 +28,12 @@ func defaultConfig() *Config {
 			DefaultPageSize: 300,
 			SidebarOverlay:  false,
 		},
+	}
+}
+
+func defaultDatabaseConfig() *DatabaseConfig {
+	return &DatabaseConfig{
+		Connections: []models.Connection{},
 	}
 }
 
@@ -39,7 +49,21 @@ func DefaultConfigFile() (string, error) {
 	return filepath.Join(configDir, "lazysql", "config.toml"), nil
 }
 
+func DefaultDatabaseConfigFile() (string, error) {
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = dir
+	}
+	return filepath.Join(configDir, "lazysql", "database.toml"), nil
+}
+
 func LoadConfig(configFile string) error {
+	App.config.ConfigFile = configFile
+
 	file, err := os.ReadFile(configFile)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -50,27 +74,43 @@ func LoadConfig(configFile string) error {
 		return err
 	}
 
-	for i, conn := range App.config.Connections {
-		App.config.Connections[i].URL = parseConfigURL(&conn)
+	return nil
+}
+
+func LoadDatabaseConfig(databaseConfigFile string) error {
+	App.databaseConfig.DatabaseConfigFile = databaseConfigFile
+
+	file, err := os.ReadFile(databaseConfigFile)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	err = toml.Unmarshal(file, App.databaseConfig)
+	if err != nil {
+		return err
+	}
+
+	for i, conn := range App.databaseConfig.Connections {
+		App.databaseConfig.Connections[i].URL = parseConfigURL(&conn)
 	}
 
 	return nil
 }
 
-func (c *Config) SaveConnections(connections []models.Connection) error {
-	c.Connections = connections
+func (dc *DatabaseConfig) SaveConnections(connections []models.Connection) error {
+	dc.Connections = connections
 
-	if err := os.MkdirAll(filepath.Dir(c.ConfigFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dc.DatabaseConfigFile), 0o755); err != nil {
 		return err
 	}
 
-	file, err := os.Create(c.ConfigFile)
+	file, err := os.Create(dc.DatabaseConfigFile)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	return toml.NewEncoder(file).Encode(c)
+	return toml.NewEncoder(file).Encode(dc)
 }
 
 // parseConfigURL automatically generates the URL from the connection struct
