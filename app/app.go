@@ -21,10 +21,11 @@ var (
 type Application struct {
 	*tview.Application
 
-	config    *Config
-	context   context.Context
-	cancelFn  context.CancelFunc
-	waitGroup sync.WaitGroup
+	config         *Config
+	databaseConfig *DatabaseConfig
+	context        context.Context
+	cancelFn       context.CancelFunc
+	waitGroup      sync.WaitGroup
 }
 
 type Theme struct {
@@ -37,10 +38,11 @@ func init() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	App = &Application{
-		Application: tview.NewApplication(),
-		config:      defaultConfig(),
-		context:     ctx,
-		cancelFn:    cancel,
+		Application:    tview.NewApplication(),
+		config:         defaultConfig(),
+		databaseConfig: defaultDatabaseConfig(),
+		context:        ctx,
+		cancelFn:       cancel,
 	}
 
 	App.register()
@@ -79,12 +81,12 @@ func (a *Application) Config() *models.AppConfig {
 
 // Connections returns the database connections.
 func (a *Application) Connections() []models.Connection {
-	return a.config.Connections
+	return a.databaseConfig.Connections
 }
 
 // SaveConnections saves the database connections.
 func (a *Application) SaveConnections(connections []models.Connection) error {
-	return a.config.SaveConnections(connections)
+	return a.databaseConfig.SaveConnections(connections)
 }
 
 // Register adds a task to the wait group and returns a

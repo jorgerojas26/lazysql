@@ -133,19 +133,41 @@ makepkg -si
 
 ## Configuration
 
-If the `XDG_CONFIG_HOME` environment variable is set, the configuration file will be located at:
+Lazysql uses two separate configuration files:
 
-- `${XDG_CONFIG_HOME}/lazysql/config.toml`
+If the `XDG_CONFIG_HOME` environment variable is set, the configuration files will be located at:
 
-If not, the configuration file will be located at:
+- `${XDG_CONFIG_HOME}/lazysql/config.toml` (application settings)
+- `${XDG_CONFIG_HOME}/lazysql/database.toml` (database connections)
 
-- Windows: `%APPDATA%\lazysql\config.toml`
-- macOS: `~/Library/Application Support/lazysql/config.toml`
-- Linux: `~/.config/lazysql/config.toml`
+If not, the configuration files will be located at:
 
-The configuration file is a TOML file and can be used to define multiple connections.
+- Windows: 
+  - `%APPDATA%\lazysql\config.toml`
+  - `%APPDATA%\lazysql\database.toml`
+- macOS: 
+  - `~/Library/Application Support/lazysql/config.toml`
+  - `~/Library/Application Support/lazysql/database.toml`
+- Linux: 
+  - `~/.config/lazysql/config.toml`
+  - `~/.config/lazysql/database.toml`
 
-### Example configuration
+Both configuration files use TOML format.
+
+### Application Configuration (config.toml)
+
+The application configuration file contains general app settings:
+
+```toml
+[application]
+DefaultPageSize = 300
+DisableSidebar = false
+SidebarOverlay = false
+```
+
+### Database Configuration (database.toml)
+
+The database configuration file is used to define multiple database connections:
 
 ```toml
 [[database]]
@@ -156,18 +178,20 @@ URL = 'postgres://postgres:urlencodedpassword@localhost:${port}/foo'
 Commands = [
   { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' }
 ]
+
 [[database]]
 Name = 'Development database'
 Provider = 'postgres'
 DBName = 'foo'
 URL = 'postgres://postgres:urlencodedpassword@localhost:5432/foo'
-[application]
-DefaultPageSize = 300
-DisableSidebar = false
-SidebarOverlay = false
+
+[[database]]
+Name = 'Local MySQL'
+Provider = 'mysql'
+URL = 'mysql://root:password@localhost:3306/mydb'
 ```
 
-The `[aplication]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
+The `[application]` section is used to define app settings, while database connections are defined in the separate `database.toml` file. This separation makes it easier to manage and share database configurations independently from application settings.
 
 ## Usage
 
@@ -294,6 +318,8 @@ Commands = [
 ]
 ```
 
+*Note: This configuration should be placed in your `database.toml` file.*
+
 The `Command` field is required and can contain any command that you would normally run in your terminal.
 The `WaitForPort` field is optional and can be used to wait for a specific port to be open before continuing.
 
@@ -315,6 +341,8 @@ Commands = [
   { Command = 'kubectl port-forward service/postgres ${port}:5432 --kubeconfig /path/to/kube.conf', WaitForPort = '${port}' }
 ]
 ```
+
+*Note: This configuration should be placed in your `database.toml` file.*
 
 <!-- KEYBINDINGS -->
 
