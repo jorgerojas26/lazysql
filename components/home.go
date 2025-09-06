@@ -244,7 +244,8 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		if tab != nil {
 			table := tab.Content.(*ResultsTable)
 			if !table.GetIsEditing() && !table.GetIsFiltering() {
-				home.focusTab(home.TabbedPane.SwitchToPreviousTab())
+				home.TabbedPane.SwitchToPreviousTab()
+				// home.focusTab(home.TabbedPane.SwitchToPreviousTab())
 				return nil
 			}
 
@@ -257,17 +258,20 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		if tab != nil {
 			table := tab.Content.(*ResultsTable)
 			if !table.GetIsEditing() && !table.GetIsFiltering() {
-				home.focusTab(home.TabbedPane.SwitchToNextTab())
+				home.TabbedPane.SwitchToNextTab()
+				// home.focusTab(home.TabbedPane.SwitchToNextTab())
 				return nil
 			}
 		}
 
 		return event
 	case commands.TabFirst:
-		home.focusTab(home.TabbedPane.SwitchToFirstTab())
+		home.TabbedPane.SwitchToFirstTab()
+		// home.focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
 	case commands.TabLast:
-		home.focusTab(home.TabbedPane.SwitchToLastTab())
+		home.TabbedPane.SwitchToLastTab()
+		// home.focusTab(home.TabbedPane.SwitchToLastTab())
 		return nil
 	case commands.TabClose:
 		tab = home.TabbedPane.GetCurrentTab()
