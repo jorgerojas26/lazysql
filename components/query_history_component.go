@@ -86,7 +86,7 @@ func NewQueryHistoryComponent(connectionIdentifier string, onSelect func(query s
 			return nil
 		case commands.Copy:
 			row, _ := qhc.table.GetSelection()
-			queryStr := qhc.table.GetCell(row, 1).Text
+			queryStr := qhc.table.GetCell(row, 1).GetReference().(string)
 
 			clipboard := lib.NewClipboard()
 
@@ -161,11 +161,9 @@ func (qhc *QueryHistoryComponent) populateTable(items []models.QueryHistoryItem)
 
 	for r, item := range qhc.displayedHistory {
 		qhc.table.SetCell(r+1, 0, tview.NewTableCell(item.Timestamp.Format("2006-01-02 15:04:05")).SetMaxWidth(20))
-		firstLineQuery := strings.Split(item.QueryText, "\n")[0]
-		if len(firstLineQuery) > 100 {
-			firstLineQuery = firstLineQuery[:97] + "..."
-		}
-		qhc.table.SetCell(r+1, 1, tview.NewTableCell(firstLineQuery).SetExpansion(1))
+		queryCell := tview.NewTableCell(item.QueryText).SetExpansion(1)
+		queryCell.SetReference(item.QueryText)
+		qhc.table.SetCell(r+1, 1, queryCell)
 	}
 
 	if len(qhc.displayedHistory) > 0 {

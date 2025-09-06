@@ -81,7 +81,7 @@ func NewSavedQueriesComponent(connectionIdentifier string, onSelect func(query s
 			app.App.SetFocus(sqc.filterInput)
 		case commands.Copy:
 			row, _ := sqc.table.GetSelection()
-			queryStr := sqc.table.GetCell(row, 1).Text
+			queryStr := sqc.table.GetCell(row, 1).GetReference().(string)
 
 			clipboard := lib.NewClipboard()
 
@@ -163,11 +163,9 @@ func (sqc *SavedQueriesComponent) populateTable(queries []models.SavedQuery) {
 
 	for r, item := range sqc.displayedQueries {
 		sqc.table.SetCell(r+1, 0, tview.NewTableCell(item.Name).SetMaxWidth(30))
-		firstLineQuery := strings.Split(item.Query, "\n")[0]
-		if len(firstLineQuery) > 100 {
-			firstLineQuery = firstLineQuery[:97] + "..."
-		}
-		sqc.table.SetCell(r+1, 1, tview.NewTableCell(firstLineQuery).SetExpansion(1))
+		queryCell := tview.NewTableCell(item.Query).SetExpansion(1)
+		queryCell.SetReference(item.Query)
+		sqc.table.SetCell(r+1, 1, queryCell)
 	}
 
 	if len(sqc.displayedQueries) > 0 {
