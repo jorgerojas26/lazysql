@@ -75,8 +75,11 @@ func NewQueryHistoryComponent(connectionIdentifier string, onSelect func(query s
 
 		switch command {
 		case commands.Save:
-			qhc.showSaveQueryModal()
-			return nil
+			if !qhc.GetIsFiltering() {
+				qhc.showSaveQueryModal()
+				return nil
+			}
+			return event
 		case commands.Search:
 			qhc.SetIsFiltering(true)
 			app.App.SetFocus(qhc.filterInput)
