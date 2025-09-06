@@ -1,4 +1,4 @@
-package saved_queries
+package saved
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
@@ -60,7 +61,7 @@ func GetSavedQueriesFilePath(connectionIdentifier string) (string, error) {
 	savedQueriesDirPath := filepath.Join(appConfigDir, SavedQueriesDirName)
 
 	// Ensure the saved queries directory exists
-	if err := os.MkdirAll(savedQueriesDirPath, 0700); err != nil { // 0700: rwx for user only
+	if err := os.MkdirAll(savedQueriesDirPath, 0o700); err != nil { // 0700: rwx for user only
 		return "", fmt.Errorf("failed to create saved queries directory %s: %w", savedQueriesDirPath, err)
 	}
 

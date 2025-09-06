@@ -2,9 +2,10 @@ package components
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"github.com/jorgerojas26/lazysql/app"
-	"github.com/jorgerojas26/lazysql/internal/saved_queries"
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/internal/saved"
 )
 
 // SaveQueryModal is a modal for saving a query with a name.
@@ -73,7 +74,7 @@ func (sqm *SaveQueryModal) save() {
 		return
 	}
 
-	err := saved_queries.SaveQuery(sqm.connectionIdentifier, name, sqm.query)
+	err := saved.SaveQuery(sqm.connectionIdentifier, name, sqm.query)
 	if err != nil {
 		// TODO: Show an error message
 		return

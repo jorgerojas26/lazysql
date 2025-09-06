@@ -113,7 +113,10 @@ func openExternalEditor(currentText string, connectionURL string) string {
 
 	if _, err := tmpFile.Write(content); err != nil {
 		logger.Error("Failed to write to temporary file", map[string]any{"error": err.Error()})
-		tmpFile.Close()
+		err := tmpFile.Close()
+		if err != nil {
+			logger.Error("Failed to close temporary file", map[string]any{"error": err.Error()})
+		}
 		return currentText
 	}
 
@@ -123,7 +126,11 @@ func openExternalEditor(currentText string, connectionURL string) string {
 	}
 
 	if connectionURL != "" {
-		os.Setenv("LAZYSQL_CONNECTION_URL", connectionURL)
+		err := os.Setenv("LAZYSQL_CONNECTION_URL", connectionURL)
+		if err != nil {
+			logger.Error("Failed to set environment variable", map[string]any{"error": err.Error()})
+			return currentText
+		}
 		// Defer unsetting the environment variable to ensure it's cleaned up
 		defer os.Unsetenv("LAZYSQL_CONNECTION_URL")
 	}

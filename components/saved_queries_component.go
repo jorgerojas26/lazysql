@@ -4,13 +4,14 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
-	"github.com/jorgerojas26/lazysql/internal/saved_queries"
+	"github.com/jorgerojas26/lazysql/internal/saved"
 	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
-	"github.com/rivo/tview"
 )
 
 // SavedQueriesState holds the state for the SavedQueriesComponent.
@@ -123,9 +124,9 @@ func (sqc *SavedQueriesComponent) handleDelete() {
 
 		confirmation := NewConfirmationModal("")
 		confirmation.SetText("Are you sure you want to delete this query?")
-		confirmation.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+		confirmation.SetDoneFunc(func(_ int, buttonLabel string) {
 			if buttonLabel == "Yes" {
-				err := saved_queries.DeleteSavedQuery(sqc.connectionIdentifier, selectedQuery.Name)
+				err := saved.DeleteSavedQuery(sqc.connectionIdentifier, selectedQuery.Name)
 				if err != nil {
 					// TODO: Show error
 					return
@@ -140,7 +141,7 @@ func (sqc *SavedQueriesComponent) handleDelete() {
 }
 
 func (sqc *SavedQueriesComponent) loadQueries() {
-	queries, err := saved_queries.ReadSavedQueries(sqc.connectionIdentifier)
+	queries, err := saved.ReadSavedQueries(sqc.connectionIdentifier)
 	if err != nil {
 		// TODO: Show error
 		return

@@ -210,7 +210,7 @@ func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -324,7 +324,7 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
 
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 
 		for i := range nullStringSlice {
 			rowValues[i] = &nullStringSlice[i]
@@ -388,7 +388,7 @@ func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {
 
 	records := make([][]string, 0)
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -567,7 +567,7 @@ func (db *SQLite) FormatArg(arg any, colType models.CellValueType) any {
 		case float64, float32:
 			return fmt.Sprintf("%f", v)
 		case string:
-			return fmt.Sprintf("%s", v)
+			return v
 		case []byte:
 			return "'" + string(v) + "'"
 		case bool:

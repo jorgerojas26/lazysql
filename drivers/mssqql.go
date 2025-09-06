@@ -272,7 +272,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
@@ -677,7 +677,7 @@ func (db *MSSQL) FormatArg(arg any, colType models.CellValueType) any {
 		case float64:
 			return fmt.Sprintf("%v", v)
 		case string:
-			return fmt.Sprintf("%s", v)
+			return v
 		case []byte:
 			return fmt.Sprintf("0x%x", v)
 		case nil:

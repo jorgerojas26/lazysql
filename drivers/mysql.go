@@ -117,7 +117,7 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
@@ -167,7 +167,7 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -216,7 +216,7 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -266,7 +266,7 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -332,7 +332,7 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
 
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range nullStringSlice {
 			rowValues[i] = &nullStringSlice[i]
 		}
@@ -398,7 +398,7 @@ func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 
 	records := make([][]string, 0)
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -556,7 +556,7 @@ func (db *MySQL) FormatArg(arg any, colType models.CellValueType) any {
 			}
 			return s
 		case string:
-			return fmt.Sprintf("%s", v)
+			return v
 		case []byte:
 			return "'" + string(v) + "'"
 		default:
