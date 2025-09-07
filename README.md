@@ -167,7 +167,7 @@ DisableSidebar = false
 SidebarOverlay = false
 ```
 
-The `[aplication]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
+The `[application]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
 
 ## Usage
 
@@ -201,11 +201,11 @@ If you already have a connection set up:
 
 There is currently no way to create a table from the TUI.
 However you can run the query to create the table as a SQL-Query, 
-inside the <a href="#execute-sql-querys">SQL Editor</a>.
+inside the <a href="#execute-sql-queries">SQL Editor</a>.
 
 You can update the tree by pressing `R`, so you can see your newly created table.
 
-### Execute SQL querys
+### Execute SQL queries
 
 1. Press `<Ctrl+E>` to open the built-in SQL Editor
 2. Write the SQL query
@@ -237,7 +237,7 @@ You can update the tree by pressing `R`, so you can see your newly created table
 3. Write a `WHERE`-clause to filter the table
 4. Press `<Enter>` to submit your filter
 
-> To remove the filter, focuse the filter input (press `/`) and press `<Esc>`.
+> To remove the filter, focus the filter input (press `/`) and press `<Esc>`.
 
 ### Insert a row
 

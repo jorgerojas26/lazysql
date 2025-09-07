@@ -123,7 +123,7 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
         AND t.name <> 'sysname'
         ORDER BY c.column_id;
     `
-	return db.getTableInformations(query, database, table, "")
+	return db.getTableInformation(query, database, table, "")
 }
 
 func (db *MSSQL) GetConstraints(_, table string) ([][]string, error) {
@@ -152,7 +152,7 @@ func (db *MSSQL) GetConstraints(_, table string) ([][]string, error) {
           AND t.name = @p2
           AND kc.type IN ('PK', 'UQ')  -- Primary keys and unique constraints
     `
-	return db.getTableInformations(query, currentSchema, table, "")
+	return db.getTableInformation(query, currentSchema, table, "")
 }
 
 func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
@@ -182,7 +182,7 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
         WHERE t.name = @p2
           AND DB_NAME(DB_ID(@p1)) = @p1
     `
-	return db.getTableInformations(query, database, table, "")
+	return db.getTableInformation(query, database, table, "")
 }
 
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
@@ -221,7 +221,7 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
           AND DB_ID(@p1) = d.database_id
         ORDER BY i.type_desc
     `
-	return db.getTableInformations(query, database, table, currentSchema)
+	return db.getTableInformation(query, database, table, currentSchema)
 }
 
 func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) (results [][]string, totalRecords int, displayQueryString string, err error) {
@@ -581,18 +581,18 @@ func (db *MSSQL) GetProvider() string {
 	return db.Provider
 }
 
-// getTableInformations is used for following func:
+// getTableInformation is used for following func:
 //
 //   - [GetTableColumns]
 //   - [GetConstraints]
 //   - [GetForeignKeys]
 //   - [GetIndexes]
 //
-// getTableInformations requires following parameter:
+// getTableInformation requires following parameter:
 //
 //   - database name, used for filtering table_catalog
 //   - table name, used for filtering table_name
-func (db *MSSQL) getTableInformations(query, database, table, schema string) ([][]string, error) {
+func (db *MSSQL) getTableInformation(query, database, table, schema string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
