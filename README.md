@@ -86,11 +86,10 @@ I use Lazysql daily in my full-time job as a full-stack javascript developer in 
 
 ### Installation
 
-#### Homebrew
+#### Homebrew (macOS/Linux)
 
 ```bash
-brew tap jorgerojas26/lazysql
-brew install lazysql
+$ brew install lazysql
 ```
 
 #### Install with go package manager
@@ -201,7 +200,7 @@ If you already have a connection set up:
 ### Create a table
 
 There is currently no way to create a table from the TUI.
-However you can run the query to create the table as a SQL-Query, 
+However you can run the query to create the table as a SQL-Query,
 inside the <a href="#execute-sql-queries">SQL Editor</a>.
 
 You can update the tree by pressing `R`, so you can see your newly created table.
