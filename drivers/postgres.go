@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	// import postgresql driver
@@ -450,23 +451,23 @@ func (db *Postgres) GetIndexes(database, table string) ([][]string, error) {
 	return indexes, nil
 }
 
-func (db *Postgres) GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, error) {
+func (db *Postgres) GetRecords(database, table, where, sort string, offset, limit int) (records [][]string, totalRecords int, queryString string, err error) {
 	if database == "" {
-		return nil, 0, errors.New("database name is required")
+		return nil, 0, "", errors.New("database name is required")
 	}
 	if table == "" {
-		return nil, 0, errors.New("table name is required")
+		return nil, 0, "", errors.New("table name is required")
 	}
 
 	formattedTableName, err := db.formatTableName(table)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 
 	if database != db.CurrentDatabase {
 		err := db.SwitchDatabase(database)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, "", err
 		}
 
 		defer func() {
@@ -476,35 +477,35 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		}()
 	}
 
-	query := "SELECT * FROM "
-	query += formattedTableName
+	queryString = "SELECT * FROM "
+	queryString += formattedTableName
 
 	if where != "" {
-		query += fmt.Sprintf(" %s", where)
+		queryString += fmt.Sprintf(" %s", where)
 	}
 
 	if sort != "" {
-		query += fmt.Sprintf(" ORDER BY %s", sort)
+		queryString += fmt.Sprintf(" ORDER BY %s", sort)
 	}
 
-	query += " LIMIT $1 OFFSET $2"
+	queryString += " LIMIT $1 OFFSET $2"
 
 	if limit == 0 {
 		limit = DefaultRowLimit
 	}
 
-	paginatedRows, err := db.Connection.Query(query, limit, offset)
+	paginatedRows, err := db.Connection.Query(queryString, limit, offset)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 	defer paginatedRows.Close()
 
 	columns, columnsError := paginatedRows.Columns()
 	if columnsError != nil {
-		return nil, 0, columnsError
+		return nil, 0, queryString, columnsError
 	}
 
-	records := [][]string{columns}
+	records = [][]string{columns}
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
 
@@ -514,7 +515,7 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		}
 
 		if err := paginatedRows.Scan(rowValues...); err != nil {
-			return nil, 0, err
+			return nil, 0, queryString, err
 		}
 
 		var row []string
@@ -534,11 +535,11 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	}
 
 	if err := paginatedRows.Err(); err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 
 	countQuery := "SELECT COUNT(*) FROM "
@@ -548,14 +549,17 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		countQuery += fmt.Sprintf(" %s", where)
 	}
 
-	row := db.Connection.QueryRow(countQuery)
+	countRow := db.Connection.QueryRow(countQuery)
 
-	var totalRecords int
-	if err := row.Scan(&totalRecords); err != nil {
-		return nil, 0, err
+	if err := countRow.Scan(&totalRecords); err != nil {
+		return records, 0, queryString, err
 	}
 
-	return records, totalRecords, nil
+	// Replace the limit and offset with actual values in the query string
+	queryString = strings.Replace(queryString, "$1", strconv.Itoa(limit), 1)
+	queryString = strings.Replace(queryString, "$2", strconv.Itoa(offset), 1)
+
+	return records, totalRecords, queryString, nil
 }
 
 func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {

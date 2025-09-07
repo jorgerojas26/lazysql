@@ -21,10 +21,23 @@ type Config struct {
 func defaultConfig() *Config {
 	return &Config{
 		AppConfig: &models.AppConfig{
-			DefaultPageSize: 300,
-			SidebarOverlay:  false,
+			DefaultPageSize:              300,
+			SidebarOverlay:               false,
+			MaxQueryHistoryPerConnection: 100,
 		},
 	}
+}
+
+func GetConfigPath() (string, error) {
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = dir
+	}
+	return configDir, nil
 }
 
 func DefaultConfigFile() (string, error) {

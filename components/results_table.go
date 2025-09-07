@@ -13,6 +13,7 @@ import (
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/internal/history"
 	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -37,24 +38,26 @@ type ResultsTableState struct {
 
 type ResultsTable struct {
 	*tview.Table
-	state            *ResultsTableState
-	Page             *tview.Pages
-	Wrapper          *tview.Flex
-	Menu             *ResultsTableMenu
-	Filter           *ResultsTableFilter
-	Error            *tview.Modal
-	Loading          *tview.Modal
-	Pagination       *Pagination
-	Editor           *SQLEditor
-	EditorPages      *tview.Pages
-	ResultsInfo      *tview.TextView
-	Tree             *Tree
-	Sidebar          *Sidebar
-	SidebarContainer *tview.Flex
-	DBDriver         drivers.Driver
+	state                *ResultsTableState
+	Page                 *tview.Pages
+	Wrapper              *tview.Flex
+	Menu                 *ResultsTableMenu
+	Filter               *ResultsTableFilter
+	Error                *tview.Modal
+	Loading              *tview.Modal
+	Pagination           *Pagination
+	Editor               *SQLEditor
+	EditorPages          *tview.Pages
+	ResultsInfo          *tview.TextView
+	Tree                 *Tree
+	Sidebar              *Sidebar
+	SidebarContainer     *tview.Flex
+	DBDriver             drivers.Driver
+	connectionIdentifier string
+	ConnectionURL        string
 }
 
-func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver) *ResultsTable {
+func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -106,7 +109,9 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		DBDriver:   dbdriver,
 		Sidebar:    sidebar,
 		// SidebarContainer is only used when AppConfig.SidebarOverlay is false.
-		SidebarContainer: tview.NewFlex(),
+		SidebarContainer:     tview.NewFlex(),
+		connectionIdentifier: connectionIdentifier,
+		ConnectionURL:        connectionURL,
 	}
 
 	// When AppConfig.SidebarOverlay is true, the sidebar is added as a page to the table.Page.
@@ -162,7 +167,7 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 }
 
 func (table *ResultsTable) WithEditor() *ResultsTable {
-	editor := NewSQLEditor()
+	editor := NewSQLEditor(table.ConnectionURL)
 	editorPages := tview.NewPages()
 
 	editor.SetFocusFunc(func() {
@@ -403,11 +408,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if command == commands.Edit {
-		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
-			if table.GetShowSidebar() {
-				table.UpdateSidebar()
-			}
-		})
+		if table.Editor == nil {
+			table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
+				if table.GetShowSidebar() {
+					table.UpdateSidebar()
+				}
+			})
+		}
 	} else if command == commands.GotoNext {
 		if selectedColumnIndex+1 < colCount {
 			table.Select(selectedRowIndex, selectedColumnIndex+1)
@@ -437,7 +444,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
 	} else if command == commands.Delete {
-		if table.Menu.GetSelectedOption() == 1 {
+		if table.Menu != nil && table.Menu.GetSelectedOption() == 1 && table.Editor == nil {
 
 			isAnInsertedRow, indexOfInsertedRow := table.isAnInsertedRow(selectedRowIndex)
 
@@ -457,25 +464,29 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 	} else if command == commands.SetValue {
-		table.SetIsEditing(true)
-		table.SetInputCapture(nil)
+		if table.Editor == nil {
+			table.SetIsEditing(true)
+			table.SetInputCapture(nil)
 
-		cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
-		x, y, _ := cell.GetLastPosition()
+			cell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+			x, y, _ := cell.GetLastPosition()
 
-		list := NewSetValueList(table.DBDriver.GetProvider())
+			list := NewSetValueList(table.DBDriver.GetProvider())
 
-		list.OnFinish(func(selection models.CellValueType, value string) {
-			table.FinishSettingValue()
+			list.OnFinish(func(selection models.CellValueType, value string) {
+				table.FinishSettingValue()
 
-			if selection >= 0 {
-				table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
-			}
-		})
+				if selection >= 0 {
+					table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+				}
+			})
 
-		list.Show(x, y, 30)
+			list.Show(x, y, 30)
+		}
 	} else if command == commands.ToggleSidebar {
-		table.ShowSidebar(!table.GetShowSidebar())
+		if table.Editor == nil {
+			table.ShowSidebar(!table.GetShowSidebar())
+		}
 	} else if command == commands.FocusSidebar {
 		if table.GetShowSidebar() {
 			App.SetFocus(table.Sidebar)
@@ -641,6 +652,10 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						table.SetInputCapture(table.tableInputCapture)
 						table.EditorPages.SwitchToPage(pageNameTableEditorTable)
 						App.SetFocus(table)
+						// Add successful SELECT query to history
+						if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
+							logger.Error("Failed to add SELECT query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+						}
 						App.Draw()
 					}
 				} else {
@@ -659,6 +674,10 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						table.SetLoading(false)
 						table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
 						App.SetFocus(table.Editor)
+						// Add successful DML query to history
+						if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
+							logger.Error("Failed to add DML query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+						}
 						App.Draw()
 					}
 				}
@@ -858,7 +877,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 			where = table.Filter.GetCurrentFilter()
 		}
 		table.SetLoading(true)
-		records, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+		records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 		table.SetLoading(false)
 
 		if err != nil {
@@ -911,12 +930,19 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 	}
 	sort := table.GetCurrentSort()
 
-	records, totalRecords, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+	records, totalRecords, executedQuery, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 
 	if err != nil {
 		table.SetError(err.Error(), onError)
 		table.SetLoading(false)
 	} else {
+		// Add filter query to history if a filter was applied and a query was executed
+		if where != "" && executedQuery != "" {
+			if err := history.AddQueryToHistory(table.connectionIdentifier, executedQuery); err != nil {
+				logger.Error("Failed to add filter query to history", map[string]any{"error": err, "query": executedQuery, "connection": table.connectionIdentifier})
+			}
+		}
+
 		if table.GetIsFiltering() {
 			table.SetIsFiltering(false)
 		}
@@ -1454,4 +1480,8 @@ func (table *ResultsTable) colorChangedCells() {
 			}
 		}
 	}
+}
+
+func (table *ResultsTable) GetPrimitive() tview.Primitive {
+	return table.Page
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/xo/dburl"
@@ -116,7 +117,7 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
@@ -166,7 +167,7 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -215,7 +216,7 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -265,7 +266,7 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 	results = append(results, columns)
 
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -289,41 +290,41 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 	return results, nil
 }
 
-func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, err error) {
+func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, queryString string, err error) {
 	if table == "" {
-		return nil, 0, errors.New("table name is required")
+		return nil, 0, "", errors.New("table name is required")
 	}
 
 	if database == "" {
-		return nil, 0, errors.New("database name is required")
+		return nil, 0, "", errors.New("database name is required")
 	}
 
 	if limit == 0 {
 		limit = DefaultRowLimit
 	}
 
-	query := "SELECT * FROM "
-	query += db.formatTableName(database, table)
+	queryString = "SELECT * FROM "
+	queryString += db.formatTableName(database, table)
 
 	if where != "" {
-		query += fmt.Sprintf(" %s", where)
+		queryString += fmt.Sprintf(" %s", where)
 	}
 
 	if sort != "" {
-		query += fmt.Sprintf(" ORDER BY %s", sort)
+		queryString += fmt.Sprintf(" ORDER BY %s", sort)
 	}
 
-	query += " LIMIT ?, ?"
+	queryString += " LIMIT ?, ?"
 
-	paginatedRows, err := db.Connection.Query(query, offset, limit)
+	paginatedRows, err := db.Connection.Query(queryString, offset, limit)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 	defer paginatedRows.Close()
 
 	columns, err := paginatedRows.Columns()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 
 	paginatedResults = append(paginatedResults, columns)
@@ -331,14 +332,14 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
 
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range nullStringSlice {
 			rowValues[i] = &nullStringSlice[i]
 		}
 
 		err = paginatedRows.Scan(rowValues...)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, queryString, err
 		}
 
 		var row []string
@@ -357,22 +358,30 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 		paginatedResults = append(paginatedResults, row)
 	}
 	if err := paginatedRows.Err(); err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
-		return nil, 0, err
+		return nil, 0, queryString, err
 	}
 
 	countQuery := "SELECT COUNT(*) FROM "
 	countQuery += fmt.Sprintf("`%s`.", database)
 	countQuery += fmt.Sprintf("`%s`", table)
-	row := db.Connection.QueryRow(countQuery)
-	if err := row.Scan(&totalRecords); err != nil {
-		return nil, 0, err
+	if where != "" { // Add WHERE clause to count query as well if it exists
+		countQuery += fmt.Sprintf(" %s", where)
+	}
+	countRow := db.Connection.QueryRow(countQuery)
+	if err := countRow.Scan(&totalRecords); err != nil {
+		// Return the main query string even if count fails, for debugging.
+		return paginatedResults, 0, queryString, err
 	}
 
-	return paginatedResults, totalRecords, nil
+	// Replace the limit and offset with actual values in the query string
+	queryString = strings.Replace(queryString, "?", strconv.Itoa(offset), 1)
+	queryString = strings.Replace(queryString, "?", strconv.Itoa(limit), 1)
+
+	return paginatedResults, totalRecords, queryString, nil
 }
 
 func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
@@ -389,7 +398,7 @@ func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 
 	records := make([][]string, 0)
 	for rows.Next() {
-		rowValues := make([]interface{}, len(columns))
+		rowValues := make([]any, len(columns))
 		for i := range columns {
 			rowValues[i] = new(sql.RawBytes)
 		}
@@ -547,7 +556,7 @@ func (db *MySQL) FormatArg(arg any, colType models.CellValueType) any {
 			}
 			return s
 		case string:
-			return fmt.Sprintf("%s", v)
+			return v
 		case []byte:
 			return "'" + string(v) + "'"
 		default:

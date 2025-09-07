@@ -10,8 +10,12 @@ type Header struct {
 	*tview.TextView
 }
 
+type TabContent interface {
+	GetPrimitive() tview.Primitive
+}
+
 type Tab struct {
-	Content     *ResultsTable
+	Content     TabContent
 	NextTab     *Tab
 	PreviousTab *Tab
 	Header      *Header
@@ -36,14 +40,16 @@ func NewTabbedPane() *TabbedPane {
 	container := tview.NewFlex()
 	container.SetBorderPadding(0, 0, 1, 1)
 
-	return &TabbedPane{
+	tabbedPane := &TabbedPane{
 		Pages:           tview.NewPages(),
 		HeaderContainer: container,
 		state:           &TabbedPaneState{},
 	}
+
+	return tabbedPane
 }
 
-func (t *TabbedPane) AppendTab(name string, content *ResultsTable, reference string) {
+func (t *TabbedPane) AppendTab(name string, content TabContent, reference string) {
 	textView := tview.NewTextView()
 	textView.SetText(name)
 	item := &Header{textView}
@@ -72,10 +78,10 @@ func (t *TabbedPane) AppendTab(name string, content *ResultsTable, reference str
 
 	t.HighlightTabHeader(newTab)
 
-	t.AddAndSwitchToPage(reference, content.Page, true)
+	t.AddAndSwitchToPage(reference, content.GetPrimitive(), true)
 }
 
-func (t *TabbedPane) RemoveCurrentTab() {
+func (t *TabbedPane) RemoveCurrentTab() *Tab {
 	currentTab := t.state.CurrentTab
 
 	if currentTab != nil {
@@ -88,7 +94,7 @@ func (t *TabbedPane) RemoveCurrentTab() {
 			t.state.FirstTab = nil
 			t.state.LastTab = nil
 			t.state.CurrentTab = nil
-			return
+			return nil
 		}
 
 		if currentTab == t.state.FirstTab {
@@ -102,14 +108,18 @@ func (t *TabbedPane) RemoveCurrentTab() {
 		if currentTab.PreviousTab != nil {
 			currentTab.PreviousTab.NextTab = currentTab.NextTab
 			t.SetCurrentTab(currentTab.PreviousTab)
+			return currentTab.PreviousTab
 		}
 
 		if currentTab.NextTab != nil {
 			currentTab.NextTab.PreviousTab = currentTab.PreviousTab
 			t.SetCurrentTab(currentTab.NextTab)
+			return currentTab.NextTab
 		}
 
 	}
+
+	return nil
 }
 
 func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
@@ -118,7 +128,7 @@ func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
 
 	t.SwitchToPage(tab.Reference)
 
-	app.App.SetFocus(tab.Content.Page)
+	app.App.SetFocus(tab.Content.GetPrimitive())
 
 	return tab
 }
