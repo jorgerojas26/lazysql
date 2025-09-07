@@ -2,6 +2,8 @@ package components
 
 import (
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -11,6 +13,7 @@ import (
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -145,38 +148,74 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 	}
 
 	if len(connection.Commands) > 0 {
-		port, err := helpers.GetFreePort()
-		if err != nil {
-			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-			return App.Draw()
-		}
 
-		// Replace ${port} with the actual port.
-		connection.URL = strings.ReplaceAll(connection.URL, "${port}", port)
+		// Contains variables -- both the generated port and user-defined.
+		variables := map[string]string{}
+
+		// Avoid getting the port when it's not requested.
+		waitsForPort := strings.Contains(connection.URL, "${port}")
+		waitsForPort = waitsForPort || slices.ContainsFunc(connection.Commands, func(command *models.Command) bool {
+			return command.WaitForPort != ""
+		})
+
+		if waitsForPort {
+			port, err := helpers.GetFreePort()
+			if err != nil {
+				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				return App.Draw()
+			}
+			// Add port variable for the auto-generated port.
+			variables["port"] = port
+		}
 
 		for i, command := range connection.Commands {
 			message := fmt.Sprintf("Running command %d/%d...", i+1, len(connection.Commands))
 			cs.StatusText.SetText(message).SetTextColor(app.Styles.TertiaryTextColor)
 			App.Draw()
 
-			cmd := strings.ReplaceAll(command.Command, "${port}", port)
-			if err := helpers.RunCommand(App.Context(), cmd, App.Register()); err != nil {
+			cmd := command.Command
+			for variable, value := range variables {
+				cmd = strings.ReplaceAll(cmd, "${"+variable+"}", value)
+			}
+
+			markCommandComplete := App.Register()
+			onCommandDone, waitToCaptureVariable := setupOutputVariableCommand(variables, command, markCommandComplete)
+
+			if err := helpers.RunCommand(App.Context(), cmd, onCommandDone); err != nil {
 				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return App.Draw()
 			}
 
-			if command.WaitForPort != "" {
-				port := strings.ReplaceAll(command.WaitForPort, "${port}", port)
+			waitToCaptureVariable()
 
-				message := fmt.Sprintf("Waiting for port %s...", port)
+			if command.WaitForPort != "" {
+				interpolatedPort := command.WaitForPort
+				for variable, value := range variables {
+					interpolatedPort = strings.ReplaceAll(interpolatedPort, "${"+variable+"}", value)
+				}
+
+				if portInt, err := strconv.Atoi(interpolatedPort); err != nil || portInt < 0 || portInt >= 1<<16 {
+					cs.StatusText.SetText("bad port: " + interpolatedPort).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					return App.Draw()
+				}
+
+				message := fmt.Sprintf("Waiting for port %s...", interpolatedPort)
 				cs.StatusText.SetText(message).SetTextColor(app.Styles.TertiaryTextColor)
 				App.Draw()
 
-				if err := helpers.WaitForPort(App.Context(), port); err != nil {
+				if err := helpers.WaitForPort(App.Context(), interpolatedPort); err != nil {
 					cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 					return App.Draw()
 				}
 			}
+		}
+
+		// Replace variables in URL.
+		for variable, value := range variables {
+			if variable == "" || value == "" {
+				continue
+			}
+			connection.URL = strings.ReplaceAll(connection.URL, "${"+variable+"}", value)
 		}
 	}
 
@@ -215,4 +254,35 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 	App.SetFocus(newHome.Tree)
 
 	return App.Draw()
+}
+
+// Produces two functions: [onCommandDone] should be passed to [helpers.RunCommand],
+// and [captureVariable] should be called after. [captureVariable] will block until
+// the output from the command is saved into [variables].
+// If no [command.SaveOutputTo] is defined, [captureVariable] is a no-op.
+func setupOutputVariableCommand(variables map[string]string, command *models.Command, markCommandComplete func()) (onCommandDone func(string), captureVariable func()) {
+	if command.SaveOutputTo == "" {
+		// No variable? Mark the command completed, but otherwise no-op.
+		onCommandDone = func(_ string) { markCommandComplete() }
+		return onCommandDone, func() {}
+	}
+
+	// When the command runs, the stdout will be passed through this channel.
+	variableSaved := make(chan string)
+
+	// To capture the variable, we receive from the channel; onCommandDone sends
+	// on that channel, so we're just synchronizing with the completion of the command.
+	captureVariable = func() {
+		output := <-variableSaved
+		variables[command.SaveOutputTo] = output
+		logger.Debug("Saved command output to variable", map[string]any{"Variable": command.SaveOutputTo, "Output": output, "Command": command.Command})
+	}
+
+	onCommandDone = func(output string) {
+		variableSaved <- output
+		close(variableSaved)
+		markCommandComplete()
+	}
+
+	return onCommandDone, captureVariable
 }
