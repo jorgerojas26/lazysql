@@ -410,13 +410,6 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		return nil
 	}
 
-	if event.Key() == tcell.KeyEnter {
-		if table.Menu != nil && table.Menu.GetSelectedOption() == 1 {
-			table.handleShowJSONViewer()
-			return nil
-		}
-	}
-
 	if command == commands.Edit {
 		if table.Editor == nil {
 			table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
@@ -501,6 +494,12 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.GetShowSidebar() {
 			App.SetFocus(table.Sidebar)
 		}
+	} else if command == commands.ShowRowJSONViewer {
+		table.handleShowJSONViewer(commands.ShowRowJSONViewer)
+		return nil
+	} else if command == commands.ShowCellJSONViewer {
+		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
+		return nil
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -1067,8 +1066,8 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	App.SetFocus(inputField)
 }
 
-func (table *ResultsTable) handleShowJSONViewer() {
-	selectedRow, _ := table.GetSelection()
+func (table *ResultsTable) handleShowJSONViewer(command commands.Command) {
+	selectedRow, selectedCol := table.GetSelection()
 	if selectedRow == 0 { // It's the header
 		return
 	}
@@ -1080,9 +1079,16 @@ func (table *ResultsTable) handleShowJSONViewer() {
 	}
 
 	rowData := make(map[string]string)
-	for i := 0; i < table.GetColumnCount(); i++ {
-		columnName := table.GetColumnNameByIndex(i)
-		cellValue := table.GetCell(selectedRow, i).Text
+
+	if command == commands.ShowRowJSONViewer {
+		for i := 0; i < table.GetColumnCount(); i++ {
+			columnName := table.GetColumnNameByIndex(i)
+			cellValue := table.GetCell(selectedRow, i).Text
+			rowData[columnName] = cellValue
+		}
+	} else if command == commands.ShowCellJSONViewer {
+		columnName := table.GetColumnNameByIndex(selectedCol)
+		cellValue := table.GetCell(selectedRow, selectedCol).Text
 		rowData[columnName] = cellValue
 	}
 

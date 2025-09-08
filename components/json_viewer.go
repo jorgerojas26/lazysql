@@ -7,6 +7,8 @@ import (
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/rivo/tview"
 )
 
@@ -22,7 +24,7 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 		SetDynamicColors(true).
 		SetScrollable(true).
 		SetWrap(false)
-	textView.SetBorder(true).SetTitle("Press Esc or q to close")
+	textView.SetBorder(true).SetTitle(" JSON Viewer ")
 
 	flex := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
@@ -41,7 +43,8 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 	pages.AddPage(pageNameJSONViewer, jsonViewer, true, false)
 
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' || event.Key() == tcell.KeyEnter {
+		command := app.Keymaps.Group(app.TableGroup).Resolve(event)
+		if event.Key() == tcell.KeyEscape || command == commands.ShowCellJSONViewer || command == commands.ShowRowJSONViewer {
 			jsonViewer.Hide()
 			return nil
 		}
@@ -149,9 +152,9 @@ func colorizeJSON(jsonString string) string {
 			}
 
 			if isKey {
-				sb.WriteString("[#73B5AE]") // Yellow for keys
+				sb.WriteString("[#73B5AE]")
 			} else {
-				sb.WriteString("[#3BC285]") // Dark gray for string values
+				sb.WriteString("[#3BC285]")
 			}
 			sb.WriteByte(char)
 
@@ -177,7 +180,7 @@ func colorizeJSON(jsonString string) string {
 			for i+1 < len(jsonString) && (unicode.IsDigit(rune(jsonString[i+1])) || jsonString[i+1] == '.') {
 				i++
 			}
-			sb.WriteString("[#83a598]") // Blue/cyan for numbers
+			sb.WriteString("[#83a598]")
 			sb.WriteString(jsonString[start : i+1])
 			sb.WriteString("[-]")
 		default:

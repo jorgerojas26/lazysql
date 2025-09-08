@@ -69,6 +69,8 @@ const (
 	FocusSidebar
 	UnfocusSidebar
 	ToggleSidebar
+	ShowRowJSONViewer
+	ShowCellJSONViewer
 
 	// Connection
 	NewConnection
@@ -206,6 +208,10 @@ func (c Command) String() string {
 		return "CommitEdit"
 	case DiscardEdit:
 		return "DiscardEdit"
+	case ShowRowJSONViewer:
+		return "ShowRowJSONViewer"
+	case ShowCellJSONViewer:
+		return "ShowCellJSONViewer"
 	}
 
 	return "Unknown"
