@@ -48,6 +48,7 @@ const (
 	QueryPreviewGroup = "querypreview"
 	QueryHistoryGroup = "queryhistory"
 	TabbedMenuGroup   = "tabbedmenu"
+	JSONViewerGroup   = "jsonviewer"
 )
 
 // Define a global KeymapSystem object with default keybinds
@@ -126,8 +127,8 @@ var Keymaps = KeymapSystem{
 			// Sidebar
 			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Toggle sidebar"},
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
-			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Show row in JSON viewer"},
-			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Show cell in JSON viewer"},
+			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Toggle JSON viewer for row"},
+			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer for cell"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
@@ -162,6 +163,11 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
 			Bind{Key: Key{Char: '['}, Cmd: cmd.TabPrev, Description: "Switch to previous tab"},
 			Bind{Key: Key{Char: ']'}, Cmd: cmd.TabNext, Description: "Switch to next tab"},
+		},
+		JSONViewerGroup: {
+			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Toggle JSON viewer"},
+			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy value to clipboard"},
 		},
 	},
 }

@@ -9,6 +9,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/rivo/tview"
 )
 
@@ -43,9 +45,17 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 	pages.AddPage(pageNameJSONViewer, jsonViewer, true, false)
 
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		command := app.Keymaps.Group(app.TableGroup).Resolve(event)
+		command := app.Keymaps.Group(app.JSONViewerGroup).Resolve(event)
+
 		if event.Key() == tcell.KeyEscape || command == commands.ShowCellJSONViewer || command == commands.ShowRowJSONViewer {
 			jsonViewer.Hide()
+			return nil
+		} else if command == commands.Copy {
+			clipboard := lib.NewClipboard()
+			err := clipboard.Write(jsonViewer.TextView.GetText(true))
+			if err != nil {
+				logger.Error("Error copying JSON to clipboard", map[string]any{"error": err.Error()})
+			}
 			return nil
 		}
 		return event
