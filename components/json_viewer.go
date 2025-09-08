@@ -8,8 +8,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-const pageNameJSONViewer = "json_viewer"
-
 type JSONViewer struct {
 	*tview.Flex
 	TextView         *tview.TextView
@@ -22,7 +20,7 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 		SetDynamicColors(true).
 		SetScrollable(true).
 		SetWrap(false)
-	textView.SetBorder(true).SetTitle("Row Details (JSON) - Press Esc or q to close")
+	textView.SetBorder(true).SetTitle("Press Esc or q to close")
 
 	flex := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
@@ -41,8 +39,9 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 	pages.AddPage(pageNameJSONViewer, jsonViewer, true, false)
 
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' {
+		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' || event.Key() == tcell.KeyEnter {
 			jsonViewer.Hide()
+			return nil
 		}
 		return event
 	})
@@ -52,7 +51,20 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 
 func (v *JSONViewer) Show(rowData map[string]string, focus tview.Primitive) {
 	v.primitiveToFocus = focus
-	jsonData, err := json.MarshalIndent(rowData, "", "  ")
+
+	structuredRowData := make(map[string]interface{})
+
+	for key, value := range rowData {
+		var jsonData interface{}
+		err := json.Unmarshal([]byte(value), &jsonData)
+		if err == nil {
+			structuredRowData[key] = jsonData
+		} else {
+			structuredRowData[key] = value
+		}
+	}
+
+	jsonData, err := json.MarshalIndent(structuredRowData, "", "  ")
 	if err != nil {
 		v.TextView.SetText(fmt.Sprintf("Error: %v", err))
 	} else {

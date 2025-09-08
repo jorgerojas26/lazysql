@@ -25,6 +25,7 @@ const (
 	pageNameTableEditorResultsInfo string = "TableEditorResultsInfo"
 	pageNameTableEditCell          string = "TableEditCell"
 	pageNameQueryPreviewError      string = "QueryPreviewError"
+	pageNameJSONViewer                    = "json_viewer"
 
 	// Sidebar
 	pageNameSidebar string = "Sidebar"
@@ -37,10 +38,9 @@ const (
 	pageNameSetValue string = "SetValue"
 
 	// Query History
-	pageNameQueryHistory       string = "QueryHistoryModal"
-	pageNameSaveQuery          string = "SaveQueryModal"
-	pageNameSavedQueryDelete   string = "SavedQueryDeleteModal"
-	pageNameQueryHistoryDelete string = "QueryHistoryDeleteModal"
+	pageNameQueryHistory     string = "QueryHistoryModal"
+	pageNameSaveQuery        string = "SaveQueryModal"
+	pageNameSavedQueryDelete string = "SavedQueryDeleteModal"
 )
 
 // Tabs
