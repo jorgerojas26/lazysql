@@ -7,11 +7,12 @@ import (
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/lib"
-	"github.com/rivo/tview"
 )
 
 type JSONViewer struct {
@@ -108,17 +109,33 @@ func colorizeJSON(jsonString string) string {
 		if inString {
 			switch char {
 			case '\\':
-				sb.WriteByte(char)
+				err := sb.WriteByte(char)
+				if err != nil {
+					return sb.String()
+				}
+
 				if i+1 < len(jsonString) {
-					sb.WriteByte(jsonString[i+1])
+					err := sb.WriteByte(jsonString[i+1])
+					if err != nil {
+						return sb.String()
+					}
 					i++
 				}
 			case '"':
-				sb.WriteByte(char)
+				err := sb.WriteByte(char)
+				if err != nil {
+					return sb.String()
+				}
 				inString = false
-				sb.WriteString("[-]")
+				_, err = sb.WriteString("[-]")
+				if err != nil {
+					return sb.String()
+				}
 			default:
-				sb.WriteByte(char)
+				err := sb.WriteByte(char)
+				if err != nil {
+					return sb.String()
+				}
 			}
 			continue
 		}
@@ -162,39 +179,75 @@ func colorizeJSON(jsonString string) string {
 			}
 
 			if isKey {
-				sb.WriteString("[#73B5AE]")
+				_, err := sb.WriteString("[#73B5AE]")
+				if err != nil {
+					return sb.String()
+				}
 			} else {
-				sb.WriteString("[#3BC285]")
+				_, err := sb.WriteString("[#3BC285]")
+				if err != nil {
+					return sb.String()
+				}
 			}
-			sb.WriteByte(char)
+			err := sb.WriteByte(char)
+			if err != nil {
+				return sb.String()
+			}
 
 		case 't', 'f': // true, false
 			if strings.HasPrefix(jsonString[i:], "true") {
-				sb.WriteString("[#d3869b]true[-]")
+				_, err := sb.WriteString("[#d3869b]true[-]")
+				if err != nil {
+					return sb.String()
+				}
 				i += 3
 			} else if strings.HasPrefix(jsonString[i:], "false") {
-				sb.WriteString("[#d3869b]false[-]")
+				_, err := sb.WriteString("[#d3869b]false[-]")
+				if err != nil {
+					return sb.String()
+				}
 				i += 4
 			} else {
-				sb.WriteByte(char)
+				err := sb.WriteByte(char)
+				if err != nil {
+					return sb.String()
+				}
 			}
 		case 'n': // null
 			if strings.HasPrefix(jsonString[i:], "null") {
-				sb.WriteString("[#458588]null[-]")
+				_, err := sb.WriteString("[#458588]null[-]")
+				if err != nil {
+					return sb.String()
+				}
 				i += 3
 			} else {
-				sb.WriteByte(char)
+				err := sb.WriteByte(char)
+				if err != nil {
+					return sb.String()
+				}
 			}
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-':
 			start := i
 			for i+1 < len(jsonString) && (unicode.IsDigit(rune(jsonString[i+1])) || jsonString[i+1] == '.') {
 				i++
 			}
-			sb.WriteString("[#83a598]")
-			sb.WriteString(jsonString[start : i+1])
-			sb.WriteString("[-]")
+			_, err := sb.WriteString("[#83a598]")
+			if err != nil {
+				return sb.String()
+			}
+			_, err = sb.WriteString(jsonString[start : i+1])
+			if err != nil {
+				return sb.String()
+			}
+			_, err = sb.WriteString("[-]")
+			if err != nil {
+				return sb.String()
+			}
 		default:
-			sb.WriteByte(char)
+			err := sb.WriteByte(char)
+			if err != nil {
+				return sb.String()
+			}
 		}
 	}
 
