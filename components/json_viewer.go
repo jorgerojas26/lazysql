@@ -3,6 +3,8 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -52,10 +54,10 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 func (v *JSONViewer) Show(rowData map[string]string, focus tview.Primitive) {
 	v.primitiveToFocus = focus
 
-	structuredRowData := make(map[string]interface{})
+	structuredRowData := make(map[string]any)
 
 	for key, value := range rowData {
-		var jsonData interface{}
+		var jsonData any
 		err := json.Unmarshal([]byte(value), &jsonData)
 		if err == nil {
 			structuredRowData[key] = jsonData
@@ -68,7 +70,8 @@ func (v *JSONViewer) Show(rowData map[string]string, focus tview.Primitive) {
 	if err != nil {
 		v.TextView.SetText(fmt.Sprintf("Error: %v", err))
 	} else {
-		v.TextView.SetText(string(jsonData))
+		highlightedJSON := colorizeJSON(string(jsonData))
+		v.TextView.SetText(highlightedJSON)
 	}
 
 	v.Pages.ShowPage(pageNameJSONViewer)
@@ -80,4 +83,107 @@ func (v *JSONViewer) Hide() {
 	if v.primitiveToFocus != nil {
 		App.SetFocus(v.primitiveToFocus)
 	}
+}
+
+func colorizeJSON(jsonString string) string {
+	var sb strings.Builder
+	inString := false
+
+	for i := 0; i < len(jsonString); i++ {
+		char := jsonString[i]
+
+		if inString {
+			switch char {
+			case '\\':
+				sb.WriteByte(char)
+				if i+1 < len(jsonString) {
+					sb.WriteByte(jsonString[i+1])
+					i++
+				}
+			case '"':
+				sb.WriteByte(char)
+				inString = false
+				sb.WriteString("[-]")
+			default:
+				sb.WriteByte(char)
+			}
+			continue
+		}
+
+		switch char {
+		case '"':
+			inString = true
+
+			// Find the closing quote of the current string
+			endQuoteIndex := -1
+			for j := i + 1; j < len(jsonString); j++ {
+				if jsonString[j] == '"' {
+					// Count preceding backslashes to check if quote is escaped
+					slashes := 0
+					for k := j - 1; k > i; k-- {
+						if jsonString[k] == '\\' {
+							slashes++
+						} else {
+							break
+						}
+					}
+					if slashes%2 == 0 {
+						endQuoteIndex = j
+						break
+					}
+				}
+			}
+
+			isKey := false
+			if endQuoteIndex != -1 {
+				// Look for a colon after the string
+				for j := endQuoteIndex + 1; j < len(jsonString); j++ {
+					if unicode.IsSpace(rune(jsonString[j])) {
+						continue
+					}
+					if jsonString[j] == ':' {
+						isKey = true
+					}
+					break
+				}
+			}
+
+			if isKey {
+				sb.WriteString("[#73B5AE]") // Yellow for keys
+			} else {
+				sb.WriteString("[#3BC285]") // Dark gray for string values
+			}
+			sb.WriteByte(char)
+
+		case 't', 'f': // true, false
+			if strings.HasPrefix(jsonString[i:], "true") {
+				sb.WriteString("[#d3869b]true[-]")
+				i += 3
+			} else if strings.HasPrefix(jsonString[i:], "false") {
+				sb.WriteString("[#d3869b]false[-]")
+				i += 4
+			} else {
+				sb.WriteByte(char)
+			}
+		case 'n': // null
+			if strings.HasPrefix(jsonString[i:], "null") {
+				sb.WriteString("[#458588]null[-]")
+				i += 3
+			} else {
+				sb.WriteByte(char)
+			}
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-':
+			start := i
+			for i+1 < len(jsonString) && (unicode.IsDigit(rune(jsonString[i+1])) || jsonString[i+1] == '.') {
+				i++
+			}
+			sb.WriteString("[#83a598]") // Blue/cyan for numbers
+			sb.WriteString(jsonString[start : i+1])
+			sb.WriteString("[-]")
+		default:
+			sb.WriteByte(char)
+		}
+	}
+
+	return sb.String()
 }
