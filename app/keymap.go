@@ -105,6 +105,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '0'}, Cmd: cmd.GotoStart, Description: "Go to first cell"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value to clipboard"},
 			Bind{Key: Key{Char: 'o'}, Cmd: cmd.AppendNewRow, Description: "Append new row"},
+			Bind{Key: Key{Char: 'O'}, Cmd: cmd.DuplicateRow, Description: "Duplicate row"},
 			Bind{Key: Key{Char: 'J'}, Cmd: cmd.SortDesc, Description: "Sort descending"},
 			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh the current table"},
 			Bind{Key: Key{Char: 'K'}, Cmd: cmd.SortAsc, Description: "Sort ascending"},
