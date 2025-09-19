@@ -57,6 +57,7 @@ const (
 	Execute
 	OpenInExternalEditor
 	AppendNewRow
+	DuplicateRow
 	SortAsc
 	SortDesc
 	UnfocusTreeFilter
@@ -154,6 +155,8 @@ func (c Command) String() string {
 		return "OpenInExternalEditor"
 	case AppendNewRow:
 		return "AppendNewRow"
+	case DuplicateRow:
+		return "DuplicateRow"
 	case SortAsc:
 		return "SortAsc"
 	case SortDesc:

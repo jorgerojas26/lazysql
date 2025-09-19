@@ -399,6 +399,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.Menu.GetSelectedOption() == 1 {
 			table.appendNewRow()
 		}
+	case commands.DuplicateRow:
+		if table.Menu.GetSelectedOption() == 1 {
+			table.duplicateRow()
+		}
 	case commands.Search:
 		table.search()
 	}
@@ -1235,6 +1239,41 @@ func (table *ResultsTable) appendNewRow() {
 	}
 
 	*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newInsert)
+
+	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
+
+	table.StartEditingCell(newRowTableIndex, 0, nil)
+}
+
+func (table *ResultsTable) duplicateRow() {
+	row, _ := table.GetSelection()
+	if row <= 0 { // ignorer l'en-tête
+		return
+	}
+
+	dbColumns := table.GetColumns()
+	newRowTableIndex := row + 1 // table.GetRowCount()
+	newRowUUID := uuid.New().String()
+	newRow := make([]models.CellValue, len(dbColumns)-1)
+
+	for i, column := range dbColumns {
+		if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
+			origCell := table.GetCell(row, i-1)
+			newRow[i-1] = models.CellValue{Type: models.String, Column: column[0], Value: origCell.Text, TableRowIndex: newRowTableIndex, TableColumnIndex: i}
+		}
+	}
+
+	newInsert := models.DBDMLChange{
+		Type:           models.DMLInsertType,
+		Database:       table.GetDatabaseName(),
+		Table:          table.GetTableName(),
+		Values:         newRow,
+		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: newRowUUID}},
+	}
+
+	*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newInsert)
+
+	table.InsertRow(newRowTableIndex)
 
 	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
 
