@@ -45,6 +45,7 @@ type ResultsTable struct {
 	Filter               *ResultsTableFilter
 	Error                *tview.Modal
 	Loading              *tview.Modal
+	jsonViewer           *JSONViewer
 	Pagination           *Pagination
 	Editor               *SQLEditor
 	EditorPages          *tview.Pages
@@ -113,6 +114,8 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		connectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connectionURL,
 	}
+
+	table.jsonViewer = NewJSONViewer(pages)
 
 	// When AppConfig.SidebarOverlay is true, the sidebar is added as a page to the table.Page.
 	// When AppConfig.SidebarOverlay is false, the sidebar is added to the table.SidebarContainer.
@@ -495,6 +498,12 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.GetShowSidebar() {
 			App.SetFocus(table.Sidebar)
 		}
+	} else if command == commands.ShowRowJSONViewer {
+		table.handleShowJSONViewer(commands.ShowRowJSONViewer)
+		return nil
+	} else if command == commands.ShowCellJSONViewer {
+		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
+		return nil
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -1059,6 +1068,35 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	inputField.SetRect(x-1, y-1, width+3, 3)
 	table.Page.AddPage(pageNameTableEditCell, inputField, false, true)
 	App.SetFocus(inputField)
+}
+
+func (table *ResultsTable) handleShowJSONViewer(command commands.Command) {
+	selectedRow, selectedCol := table.GetSelection()
+	if selectedRow == 0 { // It's the header
+		return
+	}
+
+	// is an inserted row, do not show json viewer
+	isAnInsertedRow, _ := table.isAnInsertedRow(selectedRow)
+	if isAnInsertedRow {
+		return
+	}
+
+	rowData := make(map[string]string)
+
+	if command == commands.ShowRowJSONViewer {
+		for i := 0; i < table.GetColumnCount(); i++ {
+			columnName := table.GetColumnNameByIndex(i)
+			cellValue := table.GetCell(selectedRow, i).Text
+			rowData[columnName] = cellValue
+		}
+	} else if command == commands.ShowCellJSONViewer {
+		columnName := table.GetColumnNameByIndex(selectedCol)
+		cellValue := table.GetCell(selectedRow, selectedCol).Text
+		rowData[columnName] = cellValue
+	}
+
+	table.jsonViewer.Show(rowData, table)
 }
 
 func (table *ResultsTable) CheckIfRowIsInserted(rowID string) bool {
