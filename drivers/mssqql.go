@@ -21,6 +21,35 @@ type MSSQL struct {
 	Provider   string
 }
 
+// mssqlGUIDToUUID converts a 16-byte little-endian GUID from MSSQL
+// into a standard uuid.UUID.
+func mssqlGUIDToUUID(dbBytes []byte) (uuid.UUID, error) {
+	if len(dbBytes) != 16 {
+		return uuid.Nil, fmt.Errorf("invalid GUID length: expected 16 bytes, got %d", len(dbBytes))
+	}
+
+	// Create a copy to avoid modifying the original slice
+	b := make([]byte, 16)
+	copy(b, dbBytes)
+
+	// The first 3 components of a GUID from MSSQL are little-endian.
+	// We need to swap the bytes to match the big-endian format
+	// expected by the standard UUID library.
+
+	// Swap bytes for the first 4-byte group (Data1)
+	b[0], b[1], b[2], b[3] = b[3], b[2], b[1], b[0]
+
+	// Swap bytes for the next 2-byte group (Data2)
+	b[4], b[5] = b[5], b[4]
+
+	// Swap bytes for the final 2-byte group of the first half (Data3)
+	b[6], b[7] = b[7], b[6]
+
+	// The last 8 bytes (Data4) are already in the correct big-endian order.
+
+	return uuid.FromBytes(b)
+}
+
 func (db *MSSQL) TestConnection(urlstr string) error {
 	return db.Connect(urlstr)
 }
@@ -307,8 +336,10 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 			if colType == "UNIQUEIDENTIFIER" {
 				// Try to parse as a GUID
-				if guid, errParse := uuid.FromBytes(*rawBytes); errParse == nil {
-					row = append(row, guid.String()) // Use standard GUID format if valid
+				// if guid, errParse := uuid.FromBytes(*rawBytes); errParse == nil {
+				// 	row = append(row, guid.String()) // Use standard GUID format if valid
+				if guid, errParse := mssqlGUIDToUUID(*rawBytes); errParse == nil {
+					row = append(row, guid.String()) // Now this will be the correct format
 				} else {
 					// Fallback to hex string if parsing fails
 					hexValue := hex.EncodeToString(*rawBytes)
