@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/mitchellh/go-linereader"
@@ -18,12 +17,7 @@ import (
 func RunCommand(ctx context.Context, command string, doneFn func(output string)) error {
 	var cmd *exec.Cmd
 
-	parts := strings.Fields(command)
-	if len(parts) == 1 {
-		cmd = exec.CommandContext(ctx, parts[0]) // #nosec G204
-	} else {
-		cmd = exec.CommandContext(ctx, parts[0], parts[1:]...) // #nosec G204
-	}
+	cmd = exec.CommandContext(ctx, "sh", "-c", command) // #nosec G204
 
 	// Create a pipe to read the output from.
 	pr, pw := io.Pipe()
