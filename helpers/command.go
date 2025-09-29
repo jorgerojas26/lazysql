@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -18,8 +19,13 @@ import (
 func RunCommand(ctx context.Context, command string, doneFn func(output string)) error {
 	var cmd *exec.Cmd
 
-	// Use a shell to run the command
-	cmd = exec.CommandContext(ctx, "sh", "-c", command) // #nosec G204
+	// Execute the command using a shell to handle pipes and other shell features.
+	// Use /bin/sh on Linux/macOS and cmd.exe on Windows.
+	if isWindows() {
+		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", command) // #nosec G204
+	} else {
+		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command) // #nosec G204
+	}
 
 	// Create a pipe to read the output from.
 	pr, pw := io.Pipe()
@@ -80,4 +86,9 @@ func logOutput(r io.Reader, startedCh, finishedCh chan struct{}) {
 	for line := range lr.Ch {
 		logger.Debug("Command output", map[string]any{"line": line})
 	}
+}
+
+// isWindows checks if the current OS is Windows.
+func isWindows() bool {
+	return strings.HasPrefix(strings.ToLower(os.Getenv("OS")), "windows")
 }
