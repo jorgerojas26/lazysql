@@ -336,8 +336,6 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 			if colType == "UNIQUEIDENTIFIER" {
 				// Try to parse as a GUID
-				// if guid, errParse := uuid.FromBytes(*rawBytes); errParse == nil {
-				// 	row = append(row, guid.String()) // Use standard GUID format if valid
 				if guid, errParse := mssqlGUIDToUUID(*rawBytes); errParse == nil {
 					row = append(row, guid.String()) // Now this will be the correct format
 				} else {
