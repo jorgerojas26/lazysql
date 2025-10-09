@@ -504,6 +504,15 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ShowCellJSONViewer {
 		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 		return nil
+	} else if command == commands.Copy {
+		selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+		if selectedCell != nil {
+			clipboard := lib.NewClipboard()
+			err := clipboard.Write(selectedCell.Text)
+			if err != nil {
+				table.SetError(err.Error(), nil)
+			}
+		}
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -516,18 +525,6 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
-		case commands.Copy:
-			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
-
-			if selectedCell != nil {
-
-				clipboard := lib.NewClipboard()
-
-				err := clipboard.Write(selectedCell.Text)
-				if err != nil {
-					table.SetError(err.Error(), nil)
-				}
-			}
 		}
 	}
 
