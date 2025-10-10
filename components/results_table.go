@@ -893,7 +893,9 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 		if err != nil {
 			table.SetError(err.Error(), nil)
 		} else {
+			previousRow, previousColumn := table.GetSelection()
 			table.SetRecords(records)
+			table.Select(previousRow, previousColumn)
 			App.ForceDraw()
 		}
 
