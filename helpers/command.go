@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -18,11 +19,12 @@ import (
 func RunCommand(ctx context.Context, command string, doneFn func(output string)) error {
 	var cmd *exec.Cmd
 
-	parts := strings.Fields(command)
-	if len(parts) == 1 {
-		cmd = exec.CommandContext(ctx, parts[0]) // #nosec G204
+	// Execute the command using a shell to handle pipes and other shell features.
+	// Use /bin/sh on Linux/macOS and cmd.exe on Windows.
+	if isWindows() {
+		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", command) // #nosec G204
 	} else {
-		cmd = exec.CommandContext(ctx, parts[0], parts[1:]...) // #nosec G204
+		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command) // #nosec G204
 	}
 
 	// Create a pipe to read the output from.
@@ -49,7 +51,12 @@ func RunCommand(ctx context.Context, command string, doneFn func(output string))
 
 		_ = pw.Close()
 		<-finishedCh
-		doneFn(stdoutBytes.String())
+
+		// Trim the carriage return added by the use of a shell.
+		output := stdoutBytes.String()
+		output = strings.TrimRight(output, "\r\n")
+
+		doneFn(output)
 	}()
 
 	// Wait for the command to start
@@ -79,4 +86,9 @@ func logOutput(r io.Reader, startedCh, finishedCh chan struct{}) {
 	for line := range lr.Ch {
 		logger.Debug("Command output", map[string]any{"line": line})
 	}
+}
+
+// isWindows checks if the current OS is Windows.
+func isWindows() bool {
+	return strings.HasPrefix(strings.ToLower(os.Getenv("OS")), "windows")
 }
