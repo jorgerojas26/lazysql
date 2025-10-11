@@ -127,8 +127,8 @@ func (modal *HelpModal) fillTable(filter string) {
 		var groupBinds []keymap.Bind
 		for _, bind := range group.Binds {
 			if filter != "" &&
-				!strings.Contains(strings.ToLower(bind.Description), strings.ToLower(filter)) &&
-				!strings.Contains(strings.ToLower(bind.Key.String()), strings.ToLower(filter)) {
+				!strings.Contains(strings.ReplaceAll(strings.ToLower(bind.Description), " ", ""), strings.ReplaceAll(strings.ToLower(filter), " ", "")) &&
+				!strings.Contains(strings.ReplaceAll(strings.ToLower(bind.Key.String()), " ", ""), strings.ReplaceAll(strings.ToLower(filter), " ", "")) {
 				continue
 			}
 			groupBinds = append(groupBinds, bind)
