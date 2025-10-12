@@ -1022,6 +1022,10 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		newValue := inputField.GetText()
 		columnName := table.GetCell(0, col).Text
 
+		// Remove the sorting icon from the column name
+		columnName = strings.ReplaceAll(columnName, " ▼", "")
+		columnName = strings.ReplaceAll(columnName, " ▲", "")
+
 		if key != tcell.KeyEscape {
 			cell.SetText(newValue)
 
