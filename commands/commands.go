@@ -16,6 +16,7 @@ const (
 	MoveDown
 	MoveLeft
 	MoveRight
+	ToggleLeft
 	// Movement: Jumps
 	GotoNext
 	GotoPrev
@@ -104,6 +105,8 @@ func (c Command) String() string {
 		return "MoveRight"
 	case MoveRight:
 		return "MoveRight"
+	case ToggleLeft:
+		return "ToggleLeft"
 	// Movement: Jumps
 	case GotoNext:
 		return "GotoNext"

@@ -20,6 +20,7 @@ type Home struct {
 	*tview.Flex
 	Tree                 *Tree
 	TabbedPane           *TabbedPane
+	MainContent          *tview.Flex
 	LeftWrapper          *tview.Flex
 	RightWrapper         *tview.Flex
 	HelpStatus           HelpStatus
@@ -30,14 +31,15 @@ type Home struct {
 	ListOfDBChanges      []models.DBDMLChange
 	ConnectionIdentifier string
 	ConnectionURL        string
+	IsLeftWrapperHidden  bool
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	tree := NewTree(connection.DBName, dbdriver)
-	leftWrapper := tview.NewFlex()
-	rightWrapper := tview.NewFlex()
 
 	maincontent := tview.NewFlex()
+	leftWrapper := tview.NewFlex()
+	rightWrapper := tview.NewFlex()
 
 	connectionIdentifier := connection.Name
 	if connectionIdentifier == "" {
@@ -52,6 +54,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	home := &Home{
 		Flex:         tview.NewFlex().SetDirection(tview.FlexRow),
 		Tree:         tree,
+		MainContent:  maincontent,
 		LeftWrapper:  leftWrapper,
 		RightWrapper: rightWrapper,
 		HelpStatus:   NewHelpStatus(),
@@ -61,6 +64,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
+		IsLeftWrapperHidden:  false,
 	}
 
 	tabbedPane := NewTabbedPane()
@@ -209,7 +213,25 @@ func (home *Home) focusTab(tab *Tab) {
 	}
 }
 
+func (home *Home) toggleLeftWrapper() {
+	home.IsLeftWrapperHidden = !home.IsLeftWrapperHidden
+
+	if home.IsLeftWrapperHidden {
+		home.focusRightWrapper()
+	}
+
+	if home.IsLeftWrapperHidden {
+		home.MainContent.ResizeItem(home.LeftWrapper, 0, 0)
+	} else {
+		home.MainContent.ResizeItem(home.LeftWrapper, 30, 1)
+	}
+}
+
 func (home *Home) focusLeftWrapper() {
+	if home.IsLeftWrapperHidden {
+		home.toggleLeftWrapper()
+	}
+
 	home.Tree.Highlight()
 
 	home.RightWrapper.SetBorderColor(app.Styles.InverseTextColor)
@@ -338,6 +360,10 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperLeft {
 			home.focusRightWrapper()
 		}
+	case commands.ToggleLeft:
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() {
+			home.toggleLeftWrapper()
+		}
 	case commands.SwitchToEditorView:
 		home.createOrFocusEditorTab()
 	case commands.SwitchToConnectionsView:
@@ -375,6 +401,10 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	case commands.SearchGlobal:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
+			if home.IsLeftWrapperHidden {
+				home.toggleLeftWrapper()
+			}
+
 			home.focusLeftWrapper()
 		}
 
