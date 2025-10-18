@@ -218,12 +218,11 @@ func (home *Home) toggleLeftWrapper() {
 
 	if home.IsLeftWrapperHidden {
 		home.focusRightWrapper()
-	}
-
-	if home.IsLeftWrapperHidden {
-		home.MainContent.ResizeItem(home.LeftWrapper, 0, 0)
+		home.MainContent.RemoveItem(home.LeftWrapper)
 	} else {
-		home.MainContent.ResizeItem(home.LeftWrapper, 30, 1)
+		home.MainContent.Clear().AddItem(home.LeftWrapper, 30, 1, false)
+		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
+		home.focusLeftWrapper()
 	}
 }
 
