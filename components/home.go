@@ -16,6 +16,10 @@ import (
 	"github.com/jorgerojas26/lazysql/models"
 )
 
+// Modal page name for table list modal
+const pageNameTableList = "tableListModal"
+
+// Home struct
 type Home struct {
 	*tview.Flex
 	Tree                 *Tree
@@ -26,6 +30,7 @@ type Home struct {
 	HelpStatus           HelpStatus
 	HelpModal            *HelpModal
 	QueryHistoryModal    *QueryHistoryModal
+	TableListModal       *TableListModal
 	DBDriver             drivers.Driver
 	FocusedWrapper       string
 	ListOfDBChanges      []models.DBDMLChange
@@ -52,19 +57,20 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	}
 
 	home := &Home{
-		Flex:         tview.NewFlex().SetDirection(tview.FlexRow),
-		Tree:         tree,
-		MainContent:  maincontent,
-		LeftWrapper:  leftWrapper,
-		RightWrapper: rightWrapper,
-		HelpStatus:   NewHelpStatus(),
-		HelpModal:    NewHelpModal(),
+		Flex:           tview.NewFlex().SetDirection(tview.FlexRow),
+		Tree:           tree,
+		MainContent:    maincontent,
+		LeftWrapper:    leftWrapper,
+		RightWrapper:   rightWrapper,
+		HelpStatus:     NewHelpStatus(),
+		HelpModal:      NewHelpModal(),
+		TableListModal: nil, // will be set up after tree is initialized
 
 		DBDriver:             dbdriver,
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
-		IsLeftWrapperHidden:  false,
+		IsLeftWrapperHidden:  true,
 	}
 
 	tabbedPane := NewTabbedPane()
@@ -112,6 +118,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	})
 
 	mainPages.AddPage(connection.URL, home, true, false)
+
 	return home
 }
 
@@ -419,6 +426,54 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 
 		home.QueryHistoryModal.queryHistoryComponent.LoadHistory(home.ConnectionIdentifier)
+		return nil
+
+	case commands.ShowTableListModal:
+		// Get current database and tables from the tree
+		databaseName := home.Tree.GetSelectedDatabase()
+		if databaseName == "" {
+			// fallback: try to get from root node
+			rootChildren := home.Tree.GetRoot().GetChildren()
+			if len(rootChildren) > 0 {
+				databaseName = rootChildren[0].GetText()
+			}
+		}
+		var tables []string
+		// Find the node for the current database
+		for _, dbNode := range home.Tree.GetRoot().GetChildren() {
+			if dbNode.GetText() == databaseName {
+				// If children are schemas (e.g., public, information_schema, etc.)
+				for _, schemaNode := range dbNode.GetChildren() {
+					// If schemaNode has children, treat as schema (Postgres)
+					if len(schemaNode.GetChildren()) > 0 {
+						schemaName := schemaNode.GetText()
+						for _, tableNode := range schemaNode.GetChildren() {
+							tables = append(tables, schemaName+"."+tableNode.GetText())
+						}
+					} else {
+						// Otherwise, treat as table (MySQL/SQLite)
+						tables = append(tables, schemaNode.GetText())
+					}
+				}
+				break
+			}
+		}
+		if len(tables) == 0 {
+			return event
+		}
+		home.TableListModal = NewTableListModal(databaseName, tables, func(db, table string) {
+			// Set selection in tree and trigger table view
+			// For Postgres, use schema.table; for others, just table
+			if strings.Contains(table, ".") && home.DBDriver.GetProvider() == "postgres" {
+				home.Tree.SetSelectedDatabase(db)
+				home.Tree.SetSelectedTable(table) // schema.table for Postgres
+			} else {
+				home.Tree.SetSelectedDatabase(db)
+				home.Tree.SetSelectedTable(table) // just table for MySQL/SQLite
+			}
+		})
+		mainPages.AddPage(pageNameTableList, home.TableListModal, true, true)
+		app.App.SetFocus(home.TableListModal)
 		return nil
 	}
 

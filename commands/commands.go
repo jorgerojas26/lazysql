@@ -43,6 +43,9 @@ const (
 	TabLast
 	TabClose
 
+	// Custom Modals
+	ShowTableListModal
+
 	// Operations
 	Refresh
 	UnfocusEditor
@@ -138,6 +141,8 @@ func (c Command) String() string {
 		return "TabLast"
 	case TabClose:
 		return "TabClose"
+	case ShowTableListModal:
+		return "ShowTableListModal"
 
 	// Operations
 	case Copy:
