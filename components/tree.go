@@ -194,7 +194,9 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			if filterText == "" {
 				tree.ClearSearch()
 			} else {
-				tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", len(tree.state.searchFoundNodes), len(tree.state.searchFoundNodes)))
+				if len(tree.state.searchFoundNodes) > 0 {
+					tree.FoundNodeCountInput.SetText(fmt.Sprintf("[1/%d]", len(tree.state.searchFoundNodes)))
+				}
 				tree.SetBorderPadding(1, 0, 0, 0)
 			}
 
