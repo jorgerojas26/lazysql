@@ -44,7 +44,7 @@ const (
 	TabClose
 
 	// Custom Modals
-	ShowTableListModal
+	ToggleTableListModal
 
 	// Operations
 	Refresh
@@ -141,8 +141,8 @@ func (c Command) String() string {
 		return "TabLast"
 	case TabClose:
 		return "TabClose"
-	case ShowTableListModal:
-		return "ShowTableListModal"
+	case ToggleTableListModal:
+		return "ToggleTableListModal"
 
 	// Operations
 	case Copy:

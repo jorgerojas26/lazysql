@@ -11,11 +11,12 @@ var App = app.App
 // Pages
 const (
 	// General
-	pageNameHelp         string = "Help"
-	pageNameConfirmation string = "Confirmation"
-	pageNameConnections  string = "Connections"
-	pageNameDMLPreview   string = "DMLPreview"
-	pageNameErrorModal   string = "ErrorModal" // Added new page name
+	pageNameHelp           string = "Help"
+	pageNameConfirmation   string = "Confirmation"
+	pageNameConnections    string = "Connections"
+	pageNameDMLPreview     string = "DMLPreview"
+	pageNameErrorModal     string = "ErrorModal" // Added new page name
+	pageNameTableListModal string = "TableListModal"
 
 	// Results table
 	pageNameTable                  string = "Table"

@@ -16,9 +16,6 @@ import (
 	"github.com/jorgerojas26/lazysql/models"
 )
 
-// Modal page name for table list modal
-const pageNameTableList = "tableListModal"
-
 // Home struct
 type Home struct {
 	*tview.Flex
@@ -70,7 +67,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
-		IsLeftWrapperHidden:  true,
+		IsLeftWrapperHidden:  app.App.Config().HideTableTree,
 	}
 
 	tabbedPane := NewTabbedPane()
@@ -162,6 +159,8 @@ func (home *Home) subscribeToTreeChanges() {
 				home.focusRightWrapper()
 			}
 
+			home.toggleTableListModal()
+
 			app.App.ForceDraw()
 		case eventTreeIsFiltering:
 			isFiltering := stateChange.Value.(bool)
@@ -217,6 +216,17 @@ func (home *Home) focusTab(tab *Tab) {
 		} else {
 			home.HelpStatus.SetStatusOnTableView()
 		}
+	}
+}
+
+func (home *Home) toggleTableListModal() {
+	if mainPages.HasPage(pageNameTableListModal) {
+		mainPages.RemovePage(pageNameTableListModal)
+		home.TableListModal.Tree.ClearSearch()
+	} else {
+		home.TableListModal = NewTableListModal(home.Tree)
+		mainPages.AddPage(pageNameTableListModal, home.TableListModal, true, true)
+		app.App.SetFocus(home.TableListModal.Tree.Filter)
 	}
 }
 
@@ -373,7 +383,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case commands.SwitchToEditorView:
 		home.createOrFocusEditorTab()
 	case commands.SwitchToConnectionsView:
-		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
+		if !mainPages.HasPage(pageNameTableListModal) && ((table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil) {
 			mainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
@@ -406,18 +416,22 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
 	case commands.SearchGlobal:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
-			if home.IsLeftWrapperHidden {
-				home.toggleLeftWrapper()
+		if app.App.Config().HideTableTree {
+			home.toggleTableListModal()
+		} else {
+			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
+				if home.IsLeftWrapperHidden {
+					home.toggleLeftWrapper()
+				}
+
+				home.focusLeftWrapper()
 			}
 
-			home.focusLeftWrapper()
+			home.Tree.ForceRemoveHighlight()
+			home.Tree.ClearSearch()
+			app.App.SetFocus(home.Tree.Filter)
+			home.Tree.SetIsFiltering(true)
 		}
-
-		home.Tree.ForceRemoveHighlight()
-		home.Tree.ClearSearch()
-		app.App.SetFocus(home.Tree.Filter)
-		home.Tree.SetIsFiltering(true)
 	case commands.ToggleQueryHistory:
 		if mainPages.HasPage(pageNameQueryHistory) {
 			mainPages.SwitchToPage(pageNameQueryHistory)
@@ -428,53 +442,8 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		home.QueryHistoryModal.queryHistoryComponent.LoadHistory(home.ConnectionIdentifier)
 		return nil
 
-	case commands.ShowTableListModal:
-		// Get current database and tables from the tree
-		databaseName := home.Tree.GetSelectedDatabase()
-		if databaseName == "" {
-			// fallback: try to get from root node
-			rootChildren := home.Tree.GetRoot().GetChildren()
-			if len(rootChildren) > 0 {
-				databaseName = rootChildren[0].GetText()
-			}
-		}
-		var tables []string
-		// Find the node for the current database
-		for _, dbNode := range home.Tree.GetRoot().GetChildren() {
-			if dbNode.GetText() == databaseName {
-				// If children are schemas (e.g., public, information_schema, etc.)
-				for _, schemaNode := range dbNode.GetChildren() {
-					// If schemaNode has children, treat as schema (Postgres)
-					if len(schemaNode.GetChildren()) > 0 {
-						schemaName := schemaNode.GetText()
-						for _, tableNode := range schemaNode.GetChildren() {
-							tables = append(tables, schemaName+"."+tableNode.GetText())
-						}
-					} else {
-						// Otherwise, treat as table (MySQL/SQLite)
-						tables = append(tables, schemaNode.GetText())
-					}
-				}
-				break
-			}
-		}
-		if len(tables) == 0 {
-			return event
-		}
-		home.TableListModal = NewTableListModal(databaseName, tables, func(db, table string) {
-			// Set selection in tree and trigger table view
-			// For Postgres, use schema.table; for others, just table
-			if strings.Contains(table, ".") && home.DBDriver.GetProvider() == "postgres" {
-				home.Tree.SetSelectedDatabase(db)
-				home.Tree.SetSelectedTable(table) // schema.table for Postgres
-			} else {
-				home.Tree.SetSelectedDatabase(db)
-				home.Tree.SetSelectedTable(table) // just table for MySQL/SQLite
-			}
-		})
-		mainPages.AddPage(pageNameTableList, home.TableListModal, true, true)
-		app.App.SetFocus(home.TableListModal)
-		return nil
+	case commands.ToggleTableListModal:
+		home.toggleTableListModal()
 	}
 
 	return event

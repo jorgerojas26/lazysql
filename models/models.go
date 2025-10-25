@@ -9,6 +9,7 @@ import (
 type AppConfig struct {
 	DefaultPageSize              int
 	DisableSidebar               bool
+	HideTableTree                bool
 	SidebarOverlay               bool
 	MaxQueryHistoryPerConnection int
 }
