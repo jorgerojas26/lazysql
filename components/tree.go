@@ -141,6 +141,10 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	tree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		command := app.Keymaps.Group(app.TreeGroup).Resolve(event)
 
+		if event.Key() == tcell.KeyEsc && mainPages.HasPage(pageNameTableListModal) {
+			mainPages.RemovePage(pageNameTableListModal)
+		}
+
 		switch command {
 		case commands.GotoBottom:
 			childrens := tree.GetRoot().GetChildren()

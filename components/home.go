@@ -61,7 +61,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		RightWrapper:   rightWrapper,
 		HelpStatus:     NewHelpStatus(),
 		HelpModal:      NewHelpModal(),
-		TableListModal: nil, // will be set up after tree is initialized
+		TableListModal: nil,
 
 		DBDriver:             dbdriver,
 		ListOfDBChanges:      []models.DBDMLChange{},
@@ -98,7 +98,11 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	maincontent.AddItem(leftWrapper, 30, 1, false)
+	if app.App.Config().HideTableTree {
+		maincontent.AddItem(leftWrapper, 1, 1, false)
+	} else {
+		maincontent.AddItem(leftWrapper, 30, 1, false)
+	}
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
@@ -107,7 +111,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	home.SetInputCapture(home.homeInputCapture)
 
 	home.SetFocusFunc(func() {
-		if home.FocusedWrapper == focusedWrapperLeft || home.FocusedWrapper == "" {
+		if !app.App.Config().HideTableTree && (home.FocusedWrapper == focusedWrapperLeft || home.FocusedWrapper == "") {
 			home.focusLeftWrapper()
 		} else {
 			home.focusRightWrapper()
@@ -131,6 +135,8 @@ func (home *Home) subscribeToTreeChanges() {
 			tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
 
 			tab := home.TabbedPane.GetTabByReference(tabReference)
+
+			home.hideTableListModal()
 
 			var table *ResultsTable
 
@@ -158,8 +164,6 @@ func (home *Home) subscribeToTreeChanges() {
 			if table.state.error == "" {
 				home.focusRightWrapper()
 			}
-
-			home.toggleTableListModal()
 
 			app.App.ForceDraw()
 		case eventTreeIsFiltering:
@@ -221,12 +225,18 @@ func (home *Home) focusTab(tab *Tab) {
 
 func (home *Home) toggleTableListModal() {
 	if mainPages.HasPage(pageNameTableListModal) {
-		mainPages.RemovePage(pageNameTableListModal)
-		home.TableListModal.Tree.ClearSearch()
+		home.hideTableListModal()
 	} else {
 		home.TableListModal = NewTableListModal(home.Tree)
 		mainPages.AddPage(pageNameTableListModal, home.TableListModal, true, true)
 		app.App.SetFocus(home.TableListModal.Tree.Filter)
+	}
+}
+
+func (home *Home) hideTableListModal() {
+	if mainPages.HasPage(pageNameTableListModal) {
+		mainPages.RemovePage(pageNameTableListModal)
+		home.TableListModal.Tree.ClearSearch()
 	}
 }
 
@@ -442,9 +452,6 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		home.QueryHistoryModal.queryHistoryComponent.LoadHistory(home.ConnectionIdentifier)
 		return nil
 
-	case commands.ToggleTableListModal:
-		home.toggleTableListModal()
-	}
 
 	return event
 }
