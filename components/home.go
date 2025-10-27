@@ -98,11 +98,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	if app.App.Config().HideTableTree {
-		maincontent.AddItem(leftWrapper, 1, 1, false)
-	} else {
-		maincontent.AddItem(leftWrapper, 30, 1, false)
-	}
+	maincontent.AddItem(leftWrapper, 30, 1, false)
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
@@ -111,7 +107,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	home.SetInputCapture(home.homeInputCapture)
 
 	home.SetFocusFunc(func() {
-		if !app.App.Config().HideTableTree && (home.FocusedWrapper == focusedWrapperLeft || home.FocusedWrapper == "") {
+		if home.FocusedWrapper == focusedWrapperLeft || home.FocusedWrapper == "" {
 			home.focusLeftWrapper()
 		} else {
 			home.focusRightWrapper()
@@ -137,6 +133,9 @@ func (home *Home) subscribeToTreeChanges() {
 			tab := home.TabbedPane.GetTabByReference(tabReference)
 
 			home.hideTableListModal()
+			if app.App.Config().HideTableTree {
+				home.hideLeftWrapper()
+			}
 
 			var table *ResultsTable
 
@@ -241,16 +240,22 @@ func (home *Home) hideTableListModal() {
 }
 
 func (home *Home) toggleLeftWrapper() {
-	home.IsLeftWrapperHidden = !home.IsLeftWrapperHidden
 
 	if home.IsLeftWrapperHidden {
-		home.focusRightWrapper()
-		home.MainContent.RemoveItem(home.LeftWrapper)
+		home.hideLeftWrapper()
 	} else {
+		home.IsLeftWrapperHidden = false
 		home.MainContent.Clear().AddItem(home.LeftWrapper, 30, 1, false)
 		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
 		home.focusLeftWrapper()
 	}
+}
+
+func (home *Home) hideLeftWrapper() {
+	home.IsLeftWrapperHidden = true
+
+	home.focusRightWrapper()
+	home.MainContent.RemoveItem(home.LeftWrapper)
 }
 
 func (home *Home) focusLeftWrapper() {
