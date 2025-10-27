@@ -61,7 +61,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		RightWrapper:   rightWrapper,
 		HelpStatus:     NewHelpStatus(),
 		HelpModal:      NewHelpModal(),
-		TableListModal: nil,
+		TableListModal: NewTableListModal(tree),
 
 		DBDriver:             dbdriver,
 		ListOfDBChanges:      []models.DBDMLChange{},
@@ -226,7 +226,6 @@ func (home *Home) toggleTableListModal() {
 	if mainPages.HasPage(pageNameTableListModal) {
 		home.hideTableListModal()
 	} else {
-		home.TableListModal = NewTableListModal(home.Tree)
 		mainPages.AddPage(pageNameTableListModal, home.TableListModal, true, true)
 		app.App.SetFocus(home.TableListModal.Tree.Filter)
 	}
