@@ -16,28 +16,32 @@ import (
 	"github.com/jorgerojas26/lazysql/models"
 )
 
+// Home struct
 type Home struct {
 	*tview.Flex
 	Tree                 *Tree
 	TabbedPane           *TabbedPane
+	MainContent          *tview.Flex
 	LeftWrapper          *tview.Flex
 	RightWrapper         *tview.Flex
 	HelpStatus           HelpStatus
 	HelpModal            *HelpModal
 	QueryHistoryModal    *QueryHistoryModal
+	TableListModal       *TableListModal
 	DBDriver             drivers.Driver
 	FocusedWrapper       string
 	ListOfDBChanges      []models.DBDMLChange
 	ConnectionIdentifier string
 	ConnectionURL        string
+	IsLeftWrapperHidden  bool
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	tree := NewTree(connection.DBName, dbdriver)
-	leftWrapper := tview.NewFlex()
-	rightWrapper := tview.NewFlex()
 
 	maincontent := tview.NewFlex()
+	leftWrapper := tview.NewFlex()
+	rightWrapper := tview.NewFlex()
 
 	connectionIdentifier := connection.Name
 	if connectionIdentifier == "" {
@@ -50,17 +54,20 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	}
 
 	home := &Home{
-		Flex:         tview.NewFlex().SetDirection(tview.FlexRow),
-		Tree:         tree,
-		LeftWrapper:  leftWrapper,
-		RightWrapper: rightWrapper,
-		HelpStatus:   NewHelpStatus(),
-		HelpModal:    NewHelpModal(),
+		Flex:           tview.NewFlex().SetDirection(tview.FlexRow),
+		Tree:           tree,
+		MainContent:    maincontent,
+		LeftWrapper:    leftWrapper,
+		RightWrapper:   rightWrapper,
+		HelpStatus:     NewHelpStatus(),
+		HelpModal:      NewHelpModal(),
+		TableListModal: NewTableListModal(tree),
 
 		DBDriver:             dbdriver,
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
+		IsLeftWrapperHidden:  app.App.Config().HideTableTree,
 	}
 
 	tabbedPane := NewTabbedPane()
@@ -108,6 +115,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	})
 
 	mainPages.AddPage(connection.URL, home, true, false)
+
 	return home
 }
 
@@ -123,6 +131,11 @@ func (home *Home) subscribeToTreeChanges() {
 			tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
 
 			tab := home.TabbedPane.GetTabByReference(tabReference)
+
+			home.hideTableListModal()
+			if app.App.Config().HideTableTree {
+				home.hideLeftWrapper()
+			}
 
 			var table *ResultsTable
 
@@ -209,7 +222,46 @@ func (home *Home) focusTab(tab *Tab) {
 	}
 }
 
+func (home *Home) toggleTableListModal() {
+	if mainPages.HasPage(pageNameTableListModal) {
+		home.hideTableListModal()
+	} else {
+		mainPages.AddPage(pageNameTableListModal, home.TableListModal, true, true)
+		app.App.SetFocus(home.TableListModal.Tree.Filter)
+	}
+}
+
+func (home *Home) hideTableListModal() {
+	if mainPages.HasPage(pageNameTableListModal) {
+		mainPages.RemovePage(pageNameTableListModal)
+		home.TableListModal.Tree.ClearSearch()
+	}
+}
+
+func (home *Home) toggleLeftWrapper() {
+
+	if home.IsLeftWrapperHidden {
+		home.hideLeftWrapper()
+	} else {
+		home.IsLeftWrapperHidden = false
+		home.MainContent.Clear().AddItem(home.LeftWrapper, 30, 1, false)
+		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
+		home.focusLeftWrapper()
+	}
+}
+
+func (home *Home) hideLeftWrapper() {
+	home.IsLeftWrapperHidden = true
+
+	home.focusRightWrapper()
+	home.MainContent.RemoveItem(home.LeftWrapper)
+}
+
 func (home *Home) focusLeftWrapper() {
+	if home.IsLeftWrapperHidden {
+		home.toggleLeftWrapper()
+	}
+
 	home.Tree.Highlight()
 
 	home.RightWrapper.SetBorderColor(app.Styles.InverseTextColor)
@@ -338,10 +390,14 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperLeft {
 			home.focusRightWrapper()
 		}
+	case commands.ToggleLeft:
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() {
+			home.toggleLeftWrapper()
+		}
 	case commands.SwitchToEditorView:
 		home.createOrFocusEditorTab()
 	case commands.SwitchToConnectionsView:
-		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
+		if !mainPages.HasPage(pageNameTableListModal) && ((table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil) {
 			mainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
@@ -374,14 +430,22 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 		}
 	case commands.SearchGlobal:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
-			home.focusLeftWrapper()
-		}
+		if app.App.Config().HideTableTree {
+			home.toggleTableListModal()
+		} else {
+			if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
+				if home.IsLeftWrapperHidden {
+					home.toggleLeftWrapper()
+				}
 
-		home.Tree.ForceRemoveHighlight()
-		home.Tree.ClearSearch()
-		app.App.SetFocus(home.Tree.Filter)
-		home.Tree.SetIsFiltering(true)
+				home.focusLeftWrapper()
+			}
+
+			home.Tree.ForceRemoveHighlight()
+			home.Tree.ClearSearch()
+			app.App.SetFocus(home.Tree.Filter)
+			home.Tree.SetIsFiltering(true)
+		}
 	case commands.ToggleQueryHistory:
 		if mainPages.HasPage(pageNameQueryHistory) {
 			mainPages.SwitchToPage(pageNameQueryHistory)
