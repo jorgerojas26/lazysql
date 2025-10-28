@@ -257,7 +257,10 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			}
 
 			logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
-			table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
+			err := table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
+			if err != nil {
+				table.SetError(err.Error(), nil)
+			}
 
 			App.ForceDraw()
 		case eventSidebarError:
@@ -466,7 +469,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 					}
 				}
 			} else {
-				table.AppendNewChange(models.DMLDeleteType, selectedRowIndex, -1, models.CellValue{TableColumnIndex: -1, TableRowIndex: selectedRowIndex, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+				err := table.AppendNewChange(models.DMLDeleteType, selectedRowIndex, -1, models.CellValue{TableColumnIndex: -1, TableRowIndex: selectedRowIndex, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+				if err != nil {
+					table.SetError(err.Error(), nil)
+				}
 			}
 
 		}
@@ -484,7 +490,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.FinishSettingValue()
 
 				if selection >= 0 {
-					table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+					err := table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{Type: selection, Value: value, Column: table.GetColumnNameByIndex(selectedColumnIndex)})
+					if err != nil {
+						table.SetError(err.Error(), nil)
+					}
 				}
 			})
 
@@ -1016,6 +1025,8 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	inputField.SetFieldTextColor(app.Styles.PrimitiveBackgroundColor)
 	inputField.SetBorder(true)
 
+	initialText := cell.Text
+
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
 		currentValue := cell.Text
@@ -1026,11 +1037,13 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		columnName = strings.ReplaceAll(columnName, " ▼", "")
 		columnName = strings.ReplaceAll(columnName, " ▲", "")
 
+		var appendErr error
+
 		if key != tcell.KeyEscape {
 			cell.SetText(newValue)
 
 			if currentValue != newValue {
-				table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
+				appendErr = table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
 			}
 
 			switch key {
@@ -1057,9 +1070,18 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		}
 
 		if key == tcell.KeyEnter || key == tcell.KeyEscape {
+			if appendErr != nil {
+				cell.Text = initialText
+			}
+
 			table.SetInputCapture(table.tableInputCapture)
 			table.Page.RemovePage(pageNameTableEditCell)
-			App.SetFocus(table)
+
+			if appendErr != nil {
+				table.SetError(appendErr.Error(), nil)
+			} else {
+				App.SetFocus(table)
+			}
 		}
 
 		if callback != nil {
@@ -1125,7 +1147,7 @@ func (table *ResultsTable) MutateInsertedRowCell(rowID string, newValue models.C
 	}
 }
 
-func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex int, colIndex int, value models.CellValue) {
+func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex int, colIndex int, value models.CellValue) error {
 	// case models.Empty:
 	// placeholders = append(placeholders, "")
 	databaseName := table.GetDatabaseName()
@@ -1142,14 +1164,13 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 
 	if isAnInsertedRow {
 		table.MutateInsertedRowCell(tableCellReference.(string), value)
-		return
+		return nil
 	}
 
 	rowPrimaryKeyInfo := table.GetPrimaryKeyValue(rowIndex)
 
 	if len(rowPrimaryKeyInfo) == 0 {
-		table.SetError(fmt.Sprintf("Primary key not found for row %d", rowIndex), nil)
-		return
+		return fmt.Errorf("Primary key not found for row %d", rowIndex)
 	}
 
 	if changeType == models.DMLUpdateType {
@@ -1231,6 +1252,8 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 
 		*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newDMLChange)
 	}
+
+	return nil
 }
 
 func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyInfo {

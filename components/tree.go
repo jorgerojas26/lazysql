@@ -198,7 +198,9 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			if filterText == "" {
 				tree.ClearSearch()
 			} else {
-				tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", len(tree.state.searchFoundNodes), len(tree.state.searchFoundNodes)))
+				if len(tree.state.searchFoundNodes) > 0 {
+					tree.FoundNodeCountInput.SetText(fmt.Sprintf("[1/%d]", len(tree.state.searchFoundNodes)))
+				}
 				tree.SetBorderPadding(1, 0, 0, 0)
 			}
 
@@ -295,6 +297,38 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 	}
 }
 
+func prioritizeResult(pattern, target string, fuzzyRank int) int {
+	// play match golf - lowest score wins
+
+	// Exact match
+	if pattern == target {
+		return 0
+	}
+
+	// Prefix is scored on length difference, 1-99
+	if strings.HasPrefix(target, pattern) {
+		lengthDiff := len(target) - len(pattern)
+		if lengthDiff > 98 {
+			lengthDiff = 98
+		}
+		return 1 + lengthDiff
+	}
+
+	// Substr penalized by distance from start and length diff
+	if strings.Contains(target, pattern) {
+		index := strings.Index(target, pattern)
+		lengthPenalty := len(target) - len(pattern)
+		score := 100 + index + lengthPenalty
+		if score > 9999 {
+			score = 9999
+		}
+		return score
+	}
+
+	// If no other matches, fall back to fuzzy match with a low score
+	return 10000 + fuzzyRank
+}
+
 func (tree *Tree) search(searchText string) {
 	rootNode := tree.GetRoot()
 	lowerSearchText := strings.ToLower(searchText)
@@ -321,32 +355,57 @@ func (tree *Tree) search(searchText string) {
 		tableNameFilter = parts[1]
 	}
 
+	// Collect nodes with their match ranks
+	type rankedNode struct {
+		node *tview.TreeNode
+		rank int
+	}
+	var rankedNodes []rankedNode
+
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
 		nodeText := strings.ToLower(node.GetText())
 
 		if databaseNameFilter == "" {
-			if fuzzy.Match(tableNameFilter, nodeText) {
+			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
+			if rank >= 0 {
 				if parent != nil {
 					parent.SetExpanded(true)
 				}
-				tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
-				tree.SetCurrentNode(node)
-				tree.state.currentFocusFoundNode = node
+				adjustedRank := prioritizeResult(tableNameFilter, nodeText, rank)
+				rankedNodes = append(rankedNodes, rankedNode{node: node, rank: adjustedRank})
 			}
 		} else {
-			if fuzzy.Match(tableNameFilter, nodeText) && parent != nil {
+			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
+			if rank >= 0 && parent != nil {
 				parentText := strings.ToLower(parent.GetText())
-				if fuzzy.Match(databaseNameFilter, parentText) {
+				parentRank := fuzzy.RankMatch(databaseNameFilter, parentText)
+				if parentRank >= 0 {
 					parent.SetExpanded(true)
-					tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
-					tree.SetCurrentNode(node)
-					tree.state.currentFocusFoundNode = node
+					adjustedTableRank := prioritizeResult(tableNameFilter, nodeText, rank)
+					adjustedParentRank := prioritizeResult(databaseNameFilter, parentText, parentRank)
+					// Combine ranks: prioritize table match but factor in database match
+					combinedRank := adjustedTableRank + (adjustedParentRank / 2)
+					rankedNodes = append(rankedNodes, rankedNode{node: node, rank: combinedRank})
 				}
 			}
 		}
 
 		return true
 	})
+
+	sort.Slice(rankedNodes, func(i, j int) bool {
+		return rankedNodes[i].rank < rankedNodes[j].rank
+	})
+
+	for _, rn := range rankedNodes {
+		tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, rn.node)
+	}
+
+	// Set current node to best match
+	if len(tree.state.searchFoundNodes) > 0 {
+		tree.SetCurrentNode(tree.state.searchFoundNodes[0])
+		tree.state.currentFocusFoundNode = tree.state.searchFoundNodes[0]
+	}
 }
 
 // Subscribe to changes in the tree state
@@ -486,12 +545,6 @@ func (tree *Tree) Highlight() {
 }
 
 func (tree *Tree) goToNextFoundNode() {
-	foundNodesText := make([]string, len(tree.state.searchFoundNodes))
-
-	for i, node := range tree.state.searchFoundNodes {
-		foundNodesText[i] = node.GetText()
-	}
-
 	for i, node := range tree.state.searchFoundNodes {
 		if node == tree.state.currentFocusFoundNode {
 			var newFocusNodeIndex int
