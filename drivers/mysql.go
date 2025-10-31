@@ -620,3 +620,15 @@ func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 
 	return queryStr, nil
 }
+
+func (db *MySQL) GetFunctions(database string) (map[string][]string, error) {
+	return nil, nil
+}
+
+func (db *MySQL) GetProcedures(database string) (map[string][]string, error) {
+	return nil, nil
+}
+
+func (db *MySQL) GetViews(database string) (map[string][]string, error) {
+	return nil, nil
+}

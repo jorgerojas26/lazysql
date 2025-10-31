@@ -639,3 +639,15 @@ func (db *SQLite) DMLChangeToQueryString(change models.DBDMLChange) (string, err
 
 	return queryStr, nil
 }
+
+func (db *SQLite) GetFunctions(database string) (map[string][]string, error) {
+	return nil, nil
+}
+
+func (db *SQLite) GetProcedures(database string) (map[string][]string, error) {
+	return nil, nil
+}
+
+func (db *SQLite) GetViews(database string) (map[string][]string, error) {
+	return nil, nil
+}

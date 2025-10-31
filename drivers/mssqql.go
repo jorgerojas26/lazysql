@@ -785,3 +785,108 @@ func (db *MSSQL) getCurrentSchema() (string, error) {
 
 	return currentSchema, nil
 }
+
+func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	functions := make(map[string][]string)
+
+	query := fmt.Sprintf(`SELECT o.name
+		FROM %s.sys.sql_modules m
+		JOIN %s.sys.objects o ON m.object_id = o.object_id
+		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION')`, database, database)
+
+	rows, err := db.Connection.Query(query, database)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var function string
+		if err := rows.Scan(&function); err != nil {
+			return nil, err
+		}
+
+		functions[database] = append(functions[database], function)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return functions, nil
+}
+
+func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	procedures := make(map[string][]string)
+
+	query := fmt.Sprintf(`SELECT o.name
+		FROM %s.sys.sql_modules m
+		JOIN %s.sys.objects o ON m.object_id = o.object_id
+		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')`, database, database)
+
+	rows, err := db.Connection.Query(query, database)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var procedure string
+		if err := rows.Scan(&procedure); err != nil {
+			return nil, err
+		}
+
+		procedures[database] = append(procedures[database], procedure)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return procedures, nil
+}
+
+func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	views := make(map[string][]string)
+
+	query := fmt.Sprintf(`SELECT o.name
+		FROM %s.sys.sql_modules m
+		JOIN %s.sys.objects o ON m.object_id = o.object_id
+		WHERE o.type_desc IN ('VIEW')`, database, database)
+
+	rows, err := db.Connection.Query(query, database)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var view string
+		if err := rows.Scan(&view); err != nil {
+			return nil, err
+		}
+
+		views[database] = append(views[database], view)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return views, nil
+}

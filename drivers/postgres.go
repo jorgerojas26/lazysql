@@ -943,3 +943,15 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 
 	return queryStr, nil
 }
+
+func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
+	return nil, nil
+}
+
+func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
+	return nil, nil
+}
+
+func (db *Postgres) GetViews(database string) (map[string][]string, error) {
+	return nil, nil
+}

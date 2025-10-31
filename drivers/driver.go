@@ -22,6 +22,10 @@ type Driver interface {
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
 
+	GetFunctions(database string) (map[string][]string, error)
+	GetProcedures(database string) (map[string][]string, error)
+	GetViews(database string) (map[string][]string, error)
+
 	FormatArg(arg any, colype models.CellValueType) any
 	FormatArgForQueryString(arg any) string
 	FormatReference(reference string) string
