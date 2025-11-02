@@ -898,3 +898,42 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 
 	return views, nil
 }
+
+func (db *MSSQL) GetObjectDefinition(database string, name string) (string, error) {
+	if database == "" {
+		return "", errors.New("database name is required")
+	}
+
+	result := ""
+
+	query := `
+	declare @proc_source nvarchar(max);
+    select @proc_source = object_definition(object_id(@name));
+
+    if charindex('create', @proc_source) > 0 and
+        charindex('create', @proc_source) < charindex(@name, @proc_source)
+    begin
+        set @proc_source = stuff(@proc_source, charindex('create', @proc_source), 6, 'alter')
+    end
+
+    select @proc_source as result;`
+
+	row := db.Connection.QueryRow(query, sql.Named("name", name))
+	if err := row.Scan(&result); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+func (db *MSSQL) GetFunctionDefinition(database string, name string) (string, error) {
+	return db.GetObjectDefinition(database, name)
+}
+
+func (db *MSSQL) GetProcedureDefinition(database string, name string) (string, error) {
+	return db.GetObjectDefinition(database, name)
+}
+
+func (db *MSSQL) GetViewDefinition(database string, name string) (string, error) {
+	return db.GetObjectDefinition(database, name)
+}

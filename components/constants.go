@@ -64,9 +64,12 @@ const (
 
 	eventResultsTableFiltering string = "FilteringResultsTable"
 
-	eventTreeSelectedDatabase string = "SelectedDatabase"
-	eventTreeSelectedTable    string = "SelectedTable"
-	eventTreeIsFiltering      string = "IsFiltering"
+	eventTreeSelectedDatabase  string = "SelectedDatabase"
+	eventTreeSelectedTable     string = "SelectedTable"
+	eventTreeSelectedFunction  string = "SelectedFunction"
+	eventTreeSelectedProcedure string = "SelectedProcedure"
+	eventTreeSelectedView      string = "SelectedView"
+	eventTreeIsFiltering       string = "IsFiltering"
 )
 
 // Results table menu items

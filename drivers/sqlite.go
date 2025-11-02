@@ -659,3 +659,15 @@ func (db *SQLite) SupportsProgramming() bool {
 func (db *SQLite) UseSchemas() bool {
 	return false
 }
+
+func (db *SQLite) GetFunctionDefinition(database string, name string) (string, error) {
+	return "", nil
+}
+
+func (db *SQLite) GetProcedureDefinition(database string, name string) (string, error) {
+	return "", nil
+}
+
+func (db *SQLite) GetViewDefinition(database string, name string) (string, error) {
+	return "", nil
+}

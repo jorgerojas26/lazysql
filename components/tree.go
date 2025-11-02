@@ -185,9 +185,23 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 				tree.SetSelectedTable(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
 			}
 		case NodeTypeProcedure:
+			if nodeData.Schema == "" {
+				tree.SetSelectedProcedure(nodeData.Name)
+			} else {
+				tree.SetSelectedProcedure(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+			}
 		case NodeTypeFunction:
+			if nodeData.Schema == "" {
+				tree.SetSelectedUserDefinedFunction(nodeData.Name)
+			} else {
+				tree.SetSelectedUserDefinedFunction(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+			}
 		case NodeTypeView:
-			break
+			if nodeData.Schema == "" {
+				tree.SetSelectedView(nodeData.Name)
+			} else {
+				tree.SetSelectedView(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+			}
 		default:
 			break
 		}
@@ -569,6 +583,27 @@ func (tree *Tree) SetSelectedTable(table string) {
 	tree.Publish(models.StateChange{
 		Key:   eventTreeSelectedTable,
 		Value: table,
+	})
+}
+
+func (tree *Tree) SetSelectedUserDefinedFunction(name string) {
+	tree.Publish(models.StateChange{
+		Key:   eventTreeSelectedFunction,
+		Value: name,
+	})
+}
+
+func (tree *Tree) SetSelectedProcedure(name string) {
+	tree.Publish(models.StateChange{
+		Key:   eventTreeSelectedProcedure,
+		Value: name,
+	})
+}
+
+func (tree *Tree) SetSelectedView(name string) {
+	tree.Publish(models.StateChange{
+		Key:   eventTreeSelectedView,
+		Value: name,
 	})
 }
 

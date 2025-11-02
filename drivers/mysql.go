@@ -640,3 +640,15 @@ func (db *MySQL) SupportsProgramming() bool {
 func (db *MySQL) UseSchemas() bool {
 	return false
 }
+
+func (db *MySQL) GetFunctionDefinition(database string, name string) (string, error) {
+	return "", nil
+}
+
+func (db *MySQL) GetProcedureDefinition(database string, name string) (string, error) {
+	return "", nil
+}
+
+func (db *MySQL) GetViewDefinition(database string, name string) (string, error) {
+	return "", nil
+}

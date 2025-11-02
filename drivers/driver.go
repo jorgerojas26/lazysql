@@ -27,6 +27,9 @@ type Driver interface {
 	GetFunctions(database string) (map[string][]string, error)
 	GetProcedures(database string) (map[string][]string, error)
 	GetViews(database string) (map[string][]string, error)
+	GetFunctionDefinition(database string, name string) (string, error)
+	GetProcedureDefinition(database string, name string) (string, error)
+	GetViewDefinition(database string, name string) (string, error)
 
 	FormatArg(arg any, colype models.CellValueType) any
 	FormatArgForQueryString(arg any) string

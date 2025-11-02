@@ -963,3 +963,15 @@ func (db *Postgres) SupportsProgramming() bool {
 func (db *Postgres) UseSchemas() bool {
 	return true
 }
+
+func (db *Postgres) GetFunctionDefinition(database string, name string) (string, error) {
+	return "", nil
+}
+
+func (db *Postgres) GetProcedureDefinition(database string, name string) (string, error) {
+	return "", nil
+}
+
+func (db *Postgres) GetViewDefinition(database string, name string) (string, error) {
+	return "", nil
+}
