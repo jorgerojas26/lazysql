@@ -651,3 +651,11 @@ func (db *SQLite) GetProcedures(database string) (map[string][]string, error) {
 func (db *SQLite) GetViews(database string) (map[string][]string, error) {
 	return nil, nil
 }
+
+func (db *SQLite) SupportsProgramming() bool {
+	return false
+}
+
+func (db *SQLite) UseSchemas() bool {
+	return false
+}

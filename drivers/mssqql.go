@@ -856,6 +856,14 @@ func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
 	return procedures, nil
 }
 
+func (db *MSSQL) SupportsProgramming() bool {
+	return true
+}
+
+func (db *MSSQL) UseSchemas() bool {
+	return false
+}
+
 func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")

@@ -134,6 +134,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			tableName := split[2]
 
 			tree.SetSelectedDatabase(databaseName)
+
 			tree.SetSelectedTable(fmt.Sprintf("%s.%s", schemaName, tableName))
 		}
 	})
@@ -292,7 +293,7 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			childNode.SetColor(app.Styles.PrimaryTextColor)
 			if tree.DBDriver.GetProvider() == "sqlite3" {
 				childNode.SetReference(child)
-			} else if tree.DBDriver.GetProvider() == "postgres" {
+			} else if tree.DBDriver.UseSchemas() {
 				childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", nodeReference, key, child))
 			} else {
 				childNode.SetReference(fmt.Sprintf("%s.tables.%s", key, child))

@@ -955,3 +955,11 @@ func (db *Postgres) GetProcedures(database string) (map[string][]string, error) 
 func (db *Postgres) GetViews(database string) (map[string][]string, error) {
 	return nil, nil
 }
+
+func (db *Postgres) SupportsProgramming() bool {
+	return false
+}
+
+func (db *Postgres) UseSchemas() bool {
+	return true
+}

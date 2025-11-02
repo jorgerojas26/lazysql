@@ -632,3 +632,11 @@ func (db *MySQL) GetProcedures(database string) (map[string][]string, error) {
 func (db *MySQL) GetViews(database string) (map[string][]string, error) {
 	return nil, nil
 }
+
+func (db *MySQL) SupportsProgramming() bool {
+	return false
+}
+
+func (db *MySQL) UseSchemas() bool {
+	return false
+}

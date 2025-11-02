@@ -22,6 +22,8 @@ type Driver interface {
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
 
+	SupportsProgramming() bool
+	UseSchemas() bool
 	GetFunctions(database string) (map[string][]string, error)
 	GetProcedures(database string) (map[string][]string, error)
 	GetViews(database string) (map[string][]string, error)
