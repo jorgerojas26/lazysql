@@ -114,7 +114,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := `SELECT name FROM sys.tables`
+	query := fmt.Sprintf(`SELECT name FROM %s.sys.tables`, database)
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
@@ -906,7 +906,8 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
 
 	result := ""
 
-	query := `
+	query := fmt.Sprintf(`
+	use %s;
 	declare @proc_source nvarchar(max);
     select @proc_source = object_definition(object_id(@name));
 
@@ -916,7 +917,7 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
         set @proc_source = stuff(@proc_source, charindex('create', @proc_source), 6, 'alter')
     end
 
-    select @proc_source as result;`
+    select @proc_source as result;`, database)
 
 	row := db.Connection.QueryRow(query, sql.Named("name", name))
 	if err := row.Scan(&result); err != nil {

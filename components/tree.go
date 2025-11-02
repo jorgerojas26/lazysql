@@ -317,19 +317,20 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	return tree
 }
 
-func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
+func (tree *Tree) databasesToNodes(databases map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
 	node.ClearChildren()
 
 	// Sort the keys and use them to loop over the
 	// children so they are always in the same order.
-	sortedKeys := slices.Sorted(maps.Keys(children))
+	sortedKeys := slices.Sorted(maps.Keys(databases))
 
 	for _, key := range sortedKeys {
-		values := children[key]
+		values := databases[key]
 
 		// Sort the values.
 		sort.Strings(values)
 
+		var tablesContainer *tview.TreeNode
 		var rootNode *tview.TreeNode
 
 		nodeReference := node.GetReference().(string)
@@ -340,6 +341,9 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			rootNode.SetReference(key)
 			rootNode.SetColor(app.Styles.PrimaryTextColor)
 			node.AddChild(rootNode)
+			tablesContainer = rootNode
+		} else {
+			tablesContainer = node
 		}
 
 		supportsProgramming := tree.DBDriver.SupportsProgramming()
@@ -355,7 +359,8 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 				tablesNode.SetReference(fmt.Sprintf("%s.tables", nodeReference))
 				node.AddChild(tablesNode)
 			}
-			rootNode = tablesNode
+
+			tablesContainer = tablesNode
 		}
 
 		for _, child := range values {
@@ -378,11 +383,7 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 				}
 			}
 
-			if rootNode != nil {
-				rootNode.AddChild(childNode)
-			} else {
-				node.AddChild(childNode)
-			}
+			tablesContainer.AddChild(childNode)
 		}
 	}
 }
