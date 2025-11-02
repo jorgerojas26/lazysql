@@ -331,7 +331,6 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 		sort.Strings(values)
 
 		var rootNode *tview.TreeNode
-		var tablesNode *tview.TreeNode
 
 		nodeReference := node.GetReference().(string)
 
@@ -343,16 +342,20 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			node.AddChild(rootNode)
 		}
 
-		tablesNode = tview.NewTreeNode("tables")
-		tablesNode.SetExpanded(false)
-		tablesNode.SetColor(app.Styles.PrimaryTextColor)
+		supportsProgramming := tree.DBDriver.SupportsProgramming()
+		if supportsProgramming {
+			tablesNode := tview.NewTreeNode("tables")
+			tablesNode.SetExpanded(false)
+			tablesNode.SetColor(app.Styles.PrimaryTextColor)
 
-		if rootNode != nil {
-			tablesNode.SetReference(fmt.Sprintf("%s.tables", key))
-			rootNode.AddChild(tablesNode)
-		} else {
-			tablesNode.SetReference(fmt.Sprintf("%s.tables", nodeReference))
-			node.AddChild(tablesNode)
+			if rootNode != nil {
+				tablesNode.SetReference(fmt.Sprintf("%s.tables", key))
+				rootNode.AddChild(tablesNode)
+			} else {
+				tablesNode.SetReference(fmt.Sprintf("%s.tables", nodeReference))
+				node.AddChild(tablesNode)
+			}
+			rootNode = tablesNode
 		}
 
 		for _, child := range values {
@@ -362,12 +365,24 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			if tree.DBDriver.GetProvider() == "sqlite3" {
 				childNode.SetReference(child)
 			} else if tree.DBDriver.UseSchemas() {
-				childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", nodeReference, key, child))
+				if supportsProgramming {
+					childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", nodeReference, key, child))
+				} else {
+					childNode.SetReference(fmt.Sprintf("%s.%s.%s", nodeReference, key, child))
+				}
 			} else {
-				childNode.SetReference(fmt.Sprintf("%s.tables.%s", key, child))
+				if supportsProgramming {
+					childNode.SetReference(fmt.Sprintf("%s.tables.%s", key, child))
+				} else {
+					childNode.SetReference(fmt.Sprintf("%s.%s", key, child))
+				}
 			}
 
-			tablesNode.AddChild(childNode)
+			if rootNode != nil {
+				rootNode.AddChild(childNode)
+			} else {
+				node.AddChild(childNode)
+			}
 		}
 	}
 }
