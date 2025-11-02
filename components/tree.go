@@ -36,6 +36,83 @@ type Tree struct {
 	subscribers         []chan models.StateChange
 }
 
+type TreeNodeType int
+
+const (
+	NodeTypeSection TreeNodeType = iota
+	NodeTypeDatabase
+	NodeTypeTable
+	NodeTypeFunction
+	NodeTypeProcedure
+	NodeTypeView
+)
+
+type TreeNodeData struct {
+	Type     TreeNodeType
+	Database string
+	Schema   string
+	Name     string
+}
+
+func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
+	key := node.GetReference().(string)
+	supportsProgramming := tree.DBDriver.SupportsProgramming()
+	useSchemas := tree.DBDriver.UseSchemas()
+	nodeType := NodeTypeSection
+	schema := ""
+
+	split := strings.Split(key, ".")
+	database := split[0]
+	name := split[len(split)-1]
+
+	switch {
+	case len(split) == 1:
+		nodeType = NodeTypeDatabase
+	case len(split) == 2 && !useSchemas && !supportsProgramming:
+		nodeType = NodeTypeTable
+	case len(split) == 3 && useSchemas && !supportsProgramming:
+		nodeType = NodeTypeTable
+		schema = split[len(split)-2]
+	case len(split) == 3 && !useSchemas && supportsProgramming:
+		switch parentType := split[len(split)-2]; parentType {
+		case "tables":
+			nodeType = NodeTypeTable
+		case "procedures":
+			nodeType = NodeTypeProcedure
+		case "functions":
+			nodeType = NodeTypeFunction
+		case "views":
+			nodeType = NodeTypeView
+		default:
+			nodeType = NodeTypeSection
+		}
+	case len(split) == 4 && useSchemas && supportsProgramming:
+		switch parentType := split[len(split)-2]; parentType {
+		case "tables":
+			nodeType = NodeTypeTable
+		case "procedures":
+			nodeType = NodeTypeProcedure
+		case "functions":
+			nodeType = NodeTypeFunction
+		case "views":
+			nodeType = NodeTypeView
+		default:
+			nodeType = NodeTypeSection
+		}
+
+		schema = split[len(split)-2]
+	default:
+		nodeType = NodeTypeSection
+	}
+
+	return &TreeNodeData{
+		Type:     nodeType,
+		Database: database,
+		Schema:   schema,
+		Name:     name,
+	}
+}
+
 func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
@@ -89,53 +166,30 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	})
 
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
-		if node.GetLevel() == 1 {
+		nodeData := tree.GetTreeNodeData(node)
+
+		switch nodeData.Type {
+		case NodeTypeSection:
+			node.SetExpanded(!node.IsExpanded())
+		case NodeTypeDatabase:
 			if node.IsExpanded() {
 				node.SetExpanded(false)
 			} else {
-				tree.SetSelectedDatabase(node.GetReference().(string))
-
-				// if node.GetChildren() == nil {
-				// 	tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
-				// 	if err != nil {
-				// 		// TODO: Handle error
-				// 		return
-				// 	}
-				//
-				// 	tree.databasesToNodes(tables, node, true)
-				// }
+				tree.SetSelectedDatabase(nodeData.Database)
 				node.SetExpanded(true)
-
 			}
-		} else if node.GetLevel() == 2 {
-			if node.GetChildren() == nil {
-				nodeReference := node.GetReference().(string)
-				split := strings.Split(nodeReference, ".")
-				databaseName := ""
-				tableName := ""
-
-				if len(split) == 1 {
-					tableName = split[0]
-				} else if len(split) > 1 {
-					databaseName = split[0]
-					tableName = split[1]
-				}
-
-				tree.SetSelectedDatabase(databaseName)
-				tree.SetSelectedTable(tableName)
+		case NodeTypeTable:
+			if nodeData.Schema == "" {
+				tree.SetSelectedTable(nodeData.Name)
 			} else {
-				node.SetExpanded(!node.IsExpanded())
+				tree.SetSelectedTable(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
 			}
-		} else if node.GetLevel() == 3 {
-			nodeReference := node.GetReference().(string)
-			split := strings.Split(nodeReference, ".")
-			databaseName := split[0]
-			schemaName := split[1]
-			tableName := split[2]
-
-			tree.SetSelectedDatabase(databaseName)
-
-			tree.SetSelectedTable(fmt.Sprintf("%s.%s", schemaName, tableName))
+		case NodeTypeProcedure:
+		case NodeTypeFunction:
+		case NodeTypeView:
+			break
+		default:
+			break
 		}
 	})
 
