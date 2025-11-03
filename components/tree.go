@@ -179,24 +179,28 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 				node.SetExpanded(true)
 			}
 		case NodeTypeTable:
+			tree.SetSelectedDatabase(nodeData.Database)
 			if nodeData.Schema == "" {
 				tree.SetSelectedTable(nodeData.Name)
 			} else {
 				tree.SetSelectedTable(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
 			}
 		case NodeTypeProcedure:
+			tree.SetSelectedDatabase(nodeData.Database)
 			if nodeData.Schema == "" {
 				tree.SetSelectedProcedure(nodeData.Name)
 			} else {
 				tree.SetSelectedProcedure(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
 			}
 		case NodeTypeFunction:
+			tree.SetSelectedDatabase(nodeData.Database)
 			if nodeData.Schema == "" {
 				tree.SetSelectedUserDefinedFunction(nodeData.Name)
 			} else {
 				tree.SetSelectedUserDefinedFunction(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
 			}
 		case NodeTypeView:
+			tree.SetSelectedDatabase(nodeData.Database)
 			if nodeData.Schema == "" {
 				tree.SetSelectedView(nodeData.Name)
 			} else {
@@ -808,25 +812,27 @@ func (tree *Tree) InitializeNodes(dbName string) {
 
 			tree.databasesToNodes(tables, node, true)
 
-			functions, err := tree.DBDriver.GetFunctions(database)
-			if err != nil {
-				logger.Error(err.Error(), nil)
-				return
-			}
+			if tree.DBDriver.SupportsProgramming() {
+				functions, err := tree.DBDriver.GetFunctions(database)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					return
+				}
 
-			procedures, err := tree.DBDriver.GetProcedures(database)
-			if err != nil {
-				logger.Error(err.Error(), nil)
-				return
-			}
+				procedures, err := tree.DBDriver.GetProcedures(database)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					return
+				}
 
-			views, err := tree.DBDriver.GetViews(database)
-			if err != nil {
-				logger.Error(err.Error(), nil)
-				return
-			}
+				views, err := tree.DBDriver.GetViews(database)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					return
+				}
 
-			tree.addProgrammingNodes(functions, procedures, views, node)
+				tree.addProgrammingNodes(functions, procedures, views, node)
+			}
 
 			App.Draw()
 		}(database, childNode)
