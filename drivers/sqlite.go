@@ -641,15 +641,15 @@ func (db *SQLite) DMLChangeToQueryString(change models.DBDMLChange) (string, err
 }
 
 func (db *SQLite) GetFunctions(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *SQLite) GetProcedures(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *SQLite) GetViews(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *SQLite) SupportsProgramming() bool {
@@ -661,13 +661,13 @@ func (db *SQLite) UseSchemas() bool {
 }
 
 func (db *SQLite) GetFunctionDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }
 
 func (db *SQLite) GetProcedureDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }
 
 func (db *SQLite) GetViewDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }

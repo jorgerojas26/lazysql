@@ -622,15 +622,15 @@ func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 }
 
 func (db *MySQL) GetFunctions(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *MySQL) GetProcedures(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *MySQL) GetViews(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *MySQL) SupportsProgramming() bool {
@@ -642,13 +642,13 @@ func (db *MySQL) UseSchemas() bool {
 }
 
 func (db *MySQL) GetFunctionDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }
 
 func (db *MySQL) GetProcedureDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }
 
 func (db *MySQL) GetViewDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }

@@ -945,15 +945,15 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 }
 
 func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *Postgres) GetViews(database string) (map[string][]string, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (db *Postgres) SupportsProgramming() bool {
@@ -965,13 +965,13 @@ func (db *Postgres) UseSchemas() bool {
 }
 
 func (db *Postgres) GetFunctionDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }
 
 func (db *Postgres) GetProcedureDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }
 
 func (db *Postgres) GetViewDefinition(database string, name string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
 }
