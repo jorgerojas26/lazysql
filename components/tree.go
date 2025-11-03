@@ -321,15 +321,15 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	return tree
 }
 
-func (tree *Tree) databasesToNodes(databases map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
+func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
 	node.ClearChildren()
 
 	// Sort the keys and use them to loop over the
 	// children so they are always in the same order.
-	sortedKeys := slices.Sorted(maps.Keys(databases))
+	sortedKeys := slices.Sorted(maps.Keys(children))
 
 	for _, key := range sortedKeys {
-		values := databases[key]
+		values := children[key]
 
 		// Sort the values.
 		sort.Strings(values)
