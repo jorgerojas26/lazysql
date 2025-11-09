@@ -56,9 +56,10 @@ type ResultsTable struct {
 	DBDriver             drivers.Driver
 	connectionIdentifier string
 	ConnectionURL        string
+	ReadOnly             bool
 }
 
-func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string) *ResultsTable {
+func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
 	state := &ResultsTableState{
 		records:         [][]string{},
 		columns:         [][]string{},
@@ -95,7 +96,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 
 	pagination := NewPagination()
 
-	sidebar := NewSidebar(dbdriver.GetProvider())
+	sidebar := NewSidebar(dbdriver.GetProvider(), readOnly)
 
 	table := &ResultsTable{
 		Table:      tview.NewTable(),
@@ -113,6 +114,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		SidebarContainer:     tview.NewFlex(),
 		connectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connectionURL,
+		ReadOnly:             readOnly,
 	}
 
 	table.jsonViewer = NewJSONViewer(pages)
@@ -158,6 +160,11 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 		tableContainer.AddItem(table, 0, 1, true)
 		tableContainer.AddItem(table.Pagination, 3, 0, false)
 		tableContainer.SetBorder(true)
+
+		if table.ReadOnly {
+			tableContainer.SetTitle(" [READ-ONLY] ")
+			tableContainer.SetTitleColor(tcell.ColorYellow)
+		}
 
 		table.SidebarContainer.AddItem(tableContainer, 0, 4, true)
 
@@ -402,10 +409,18 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 	switch command {
 	case commands.AppendNewRow:
+		if table.ReadOnly {
+			table.showReadOnlyError()
+			return event
+		}
 		if table.Menu.GetSelectedOption() == 1 {
 			table.appendNewRow()
 		}
 	case commands.DuplicateRow:
+		if table.ReadOnly {
+			table.showReadOnlyError()
+			return event
+		}
 		if table.Menu.GetSelectedOption() == 1 {
 			table.duplicateRow()
 		}
@@ -418,6 +433,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	}
 
 	if command == commands.Edit {
+		if table.ReadOnly {
+			table.showReadOnlyError()
+			return event
+		}
 		if table.Editor == nil {
 			table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
 				if table.GetShowSidebar() {
@@ -454,6 +473,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			go table.Select(selectedRowIndex-7, selectedColumnIndex)
 		}
 	} else if command == commands.Delete {
+		if table.ReadOnly {
+			table.showReadOnlyError()
+			return event
+		}
 		if table.Menu != nil && table.Menu.GetSelectedOption() == 1 && table.Editor == nil {
 
 			isAnInsertedRow, indexOfInsertedRow := table.isAnInsertedRow(selectedRowIndex)
@@ -477,6 +500,10 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 	} else if command == commands.SetValue {
+		if table.ReadOnly {
+			table.showReadOnlyError()
+			return event
+		}
 		if table.Editor == nil {
 			table.SetIsEditing(true)
 			table.SetInputCapture(nil)
@@ -649,8 +676,18 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 			query := stateChange.Value.(string)
 			if query != "" {
 				queryLower := strings.ToLower(query)
+				queryTrimmed := strings.TrimSpace(queryLower)
 
-				if strings.Contains(queryLower, "select") {
+				// Check if query STARTS with SELECT (not just contains it)
+				// This prevents DELETE...WHERE id IN (SELECT...) from being treated as SELECT
+				isSelect := strings.HasPrefix(queryTrimmed, "select") ||
+					strings.HasPrefix(queryTrimmed, "with") ||
+					strings.HasPrefix(queryTrimmed, "explain") ||
+					strings.HasPrefix(queryTrimmed, "show") ||
+					strings.HasPrefix(queryTrimmed, "describe") ||
+					strings.HasPrefix(queryTrimmed, "desc")
+
+				if isSelect {
 					table.SetLoading(true)
 					App.Draw()
 
@@ -678,6 +715,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						App.Draw()
 					}
 				} else {
+					if table.ReadOnly {
+						if err := drivers.ValidateQueryForReadOnly(query); err != nil {
+							table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
+							return
+						}
+					}
+
 					table.SetRecords([][]string{})
 					table.SetLoading(true)
 					App.Draw()
@@ -832,7 +876,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.state.error = err
 
 	table.Error.SetText(err)
-	table.Error.SetDoneFunc(func(_ int, _ string) {
+	table.Error.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 		table.state.error = ""
 		table.Page.HidePage(pageNameTableError)
 		if table.GetIsFiltering() {
@@ -1587,4 +1631,16 @@ func (table *ResultsTable) colorChangedCells() {
 
 func (table *ResultsTable) GetPrimitive() tview.Primitive {
 	return table.Page
+}
+
+func (table *ResultsTable) showReadOnlyError() {
+	errorModal := tview.NewModal().
+		SetText("Cannot modify data: Connection is in read-only mode").
+		AddButtons([]string{"OK"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			table.Page.RemovePage("readOnlyMutationError")
+			App.SetFocus(table)
+		})
+	table.Page.AddPage("readOnlyMutationError", errorModal, true, true)
+	App.SetFocus(errorModal)
 }
