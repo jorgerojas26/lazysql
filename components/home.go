@@ -88,7 +88,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 
 	if connection.ReadOnly {
 		leftWrapper.SetTitle(" [READ-ONLY] ")
-		leftWrapper.SetTitleColor(tcell.ColorYellow)
+		leftWrapper.SetTitleColor(tcell.ColorLightBlue)
 		leftWrapper.SetBorder(true)
 	}
 

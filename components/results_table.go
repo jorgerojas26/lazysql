@@ -163,7 +163,7 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 
 		if table.ReadOnly {
 			tableContainer.SetTitle(" [READ-ONLY] ")
-			tableContainer.SetTitleColor(tcell.ColorYellow)
+			tableContainer.SetTitleColor(tcell.ColorLightBlue)
 		}
 
 		table.SidebarContainer.AddItem(tableContainer, 0, 4, true)
