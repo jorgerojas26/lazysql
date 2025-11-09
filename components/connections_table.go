@@ -43,7 +43,17 @@ func NewConnectionsTable() *ConnectionsTable {
 
 func (ct *ConnectionsTable) AddConnection(connection models.Connection) {
 	rowCount := ct.GetRowCount()
-	ct.SetCellSimple(rowCount, 0, connection.Name)
+	displayName := connection.Name
+
+	cell := tview.NewTableCell(displayName)
+
+	if connection.ReadOnly {
+		displayName = "[READ] " + connection.Name
+		cell.SetText(displayName)
+		cell.SetTextColor(tcell.ColorYellow)
+	}
+
+	ct.SetCell(rowCount, 0, cell)
 	ct.connections = append(ct.connections, connection)
 }
 
