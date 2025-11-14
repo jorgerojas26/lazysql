@@ -35,6 +35,7 @@ type Command struct {
 	Command      string
 	WaitForPort  string
 	SaveOutputTo string
+	Timeout      int // Timeout in seconds for command to start (default: 5)
 }
 
 type StateChange struct {

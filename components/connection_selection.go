@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -181,7 +182,13 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 			markCommandComplete := App.Register()
 			onCommandDone, waitToCaptureVariable := setupOutputVariableCommand(variables, command, markCommandComplete)
 
-			if err := helpers.RunCommand(App.Context(), cmd, onCommandDone); err != nil {
+			// Use configured timeout or default to 5 seconds
+			timeout := time.Duration(command.Timeout) * time.Second
+			if command.Timeout == 0 {
+				timeout = 5 * time.Second
+			}
+
+			if err := helpers.RunCommand(App.Context(), cmd, timeout, onCommandDone); err != nil {
 				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return App.Draw()
 			}
@@ -233,6 +240,10 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		newDBDriver = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
 		newDBDriver = &drivers.MSSQL{}
+	default:
+		errorMsg := fmt.Sprintf("Unsupported database provider: '%s'. Valid providers are: mysql, postgres, sqlite3, sqlserver", connection.Provider)
+		cs.StatusText.SetText(errorMsg).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return App.Draw()
 	}
 
 	err := newDBDriver.Connect(connection.URL)
