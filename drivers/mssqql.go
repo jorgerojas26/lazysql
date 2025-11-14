@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	// MSSQL driver
 	_ "github.com/microsoft/go-mssqldb"
+	// Azure AD auth support for Azure SQL (e.g. fedauth=ActiveDirectoryDefault)
+	_ "github.com/microsoft/go-mssqldb/azuread"
 	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/helpers/logger"
