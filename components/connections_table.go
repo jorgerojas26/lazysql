@@ -48,10 +48,7 @@ func (ct *ConnectionsTable) AddConnection(connection models.Connection) {
 	if connection.ReadOnly {
 		displayName = "[lightblue]READ[-] " + connection.Name
 	}
-
-	cell := tview.NewTableCell(displayName)
-
-	ct.SetCell(rowCount, 0, cell)
+	ct.SetCellSimple(rowCount, 0, displayName)
 	ct.connections = append(ct.connections, connection)
 }
 
