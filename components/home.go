@@ -362,9 +362,9 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 				SetText("Cannot save changes: Connection is in read-only mode").
 				AddButtons([]string{"OK"}).
 				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-					mainPages.RemovePage("readOnlyError")
+					mainPages.RemovePage(pageNameReadOnlyError)
 				})
-			mainPages.AddPage("readOnlyError", errorModal, true, true)
+			mainPages.AddPage(pageNameReadOnlyError, errorModal, true, true)
 			return event
 		}
 		if (len(home.ListOfDBChanges) > 0) && !table.GetIsEditing() {

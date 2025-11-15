@@ -410,16 +410,16 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	switch command {
 	case commands.AppendNewRow:
 		if table.ReadOnly {
-			table.showReadOnlyError()
-			return event
+			table.SetError("Cannot modify data: Connection is in read-only mode", nil)
+			return nil
 		}
 		if table.Menu.GetSelectedOption() == 1 {
 			table.appendNewRow()
 		}
 	case commands.DuplicateRow:
 		if table.ReadOnly {
-			table.showReadOnlyError()
-			return event
+			table.SetError("Cannot modify data: Connection is in read-only mode", nil)
+			return nil
 		}
 		if table.Menu.GetSelectedOption() == 1 {
 			table.duplicateRow()
@@ -434,8 +434,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 	if command == commands.Edit {
 		if table.ReadOnly {
-			table.showReadOnlyError()
-			return event
+			table.SetError("Cannot modify data: Connection is in read-only mode", nil)
+			return nil
 		}
 		if table.Editor == nil {
 			table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(_ string, _, _ int) {
@@ -474,8 +474,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		}
 	} else if command == commands.Delete {
 		if table.ReadOnly {
-			table.showReadOnlyError()
-			return event
+			table.SetError("Cannot modify data: Connection is in read-only mode", nil)
+			return nil
 		}
 		if table.Menu != nil && table.Menu.GetSelectedOption() == 1 && table.Editor == nil {
 
@@ -501,8 +501,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		}
 	} else if command == commands.SetValue {
 		if table.ReadOnly {
-			table.showReadOnlyError()
-			return event
+			table.SetError("Cannot modify data: Connection is in read-only mode", nil)
+			return nil
 		}
 		if table.Editor == nil {
 			table.SetIsEditing(true)
@@ -876,7 +876,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.state.error = err
 
 	table.Error.SetText(err)
-	table.Error.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
 		table.Page.HidePage(pageNameTableError)
 		if table.GetIsFiltering() {
@@ -1631,16 +1631,4 @@ func (table *ResultsTable) colorChangedCells() {
 
 func (table *ResultsTable) GetPrimitive() tview.Primitive {
 	return table.Page
-}
-
-func (table *ResultsTable) showReadOnlyError() {
-	errorModal := tview.NewModal().
-		SetText("Cannot modify data: Connection is in read-only mode").
-		AddButtons([]string{"OK"}).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			table.Page.RemovePage("readOnlyMutationError")
-			App.SetFocus(table)
-		})
-	table.Page.AddPage("readOnlyMutationError", errorModal, true, true)
-	App.SetFocus(errorModal)
 }
