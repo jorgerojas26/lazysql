@@ -90,8 +90,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 				go cs.Connect(selectedConnection)
 			case commands.EditConnection:
 				connectionPages.SwitchToPage(pageNameConnectionForm)
-				connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText(selectedConnection.Name)
-				connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText(selectedConnection.URL)
+				connectionForm.SetConnectionData(selectedConnection)
 				connectionForm.StatusText.SetText("")
 
 				connectionForm.SetAction(actionEditConnection)

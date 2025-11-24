@@ -30,6 +30,7 @@ type Home struct {
 	ListOfDBChanges      []models.DBDMLChange
 	ConnectionIdentifier string
 	ConnectionURL        string
+	ReadOnly             bool
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
@@ -61,6 +62,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		ListOfDBChanges:      []models.DBDMLChange{},
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
+		ReadOnly:             connection.ReadOnly,
 	}
 
 	tabbedPane := NewTabbedPane()
@@ -83,6 +85,12 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 
 	leftWrapper.SetBorderColor(app.Styles.InverseTextColor)
 	leftWrapper.AddItem(tree.Wrapper, 0, 1, true)
+
+	if connection.ReadOnly {
+		leftWrapper.SetTitle(" [READ-ONLY] ")
+		leftWrapper.SetTitleColor(tcell.ColorLightBlue)
+		leftWrapper.SetBorder(true)
+	}
 
 	rightWrapper.SetBorderColor(app.Styles.InverseTextColor)
 	rightWrapper.SetBorder(true)
@@ -130,7 +138,7 @@ func (home *Home) subscribeToTreeChanges() {
 				table = tab.Content.(*ResultsTable)
 				home.TabbedPane.SwitchToTabByReference(tab.Reference)
 			} else {
-				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL).WithFilter()
+				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
 				table.SetDatabaseName(databaseName)
 				table.SetTableName(tableName)
 
@@ -349,6 +357,16 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			app.App.Stop()
 		}
 	case commands.Save:
+		if home.ReadOnly {
+			errorModal := tview.NewModal().
+				SetText("Cannot save changes: Connection is in read-only mode").
+				AddButtons([]string{"OK"}).
+				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+					mainPages.RemovePage(pageNameReadOnlyError)
+				})
+			mainPages.AddPage(pageNameReadOnlyError, errorModal, true, true)
+			return event
+		}
 		if (len(home.ListOfDBChanges) > 0) && !table.GetIsEditing() {
 			queryPreviewModal := NewQueryPreviewModal(&home.ListOfDBChanges, home.DBDriver, func() {
 				for _, change := range home.ListOfDBChanges {
@@ -404,7 +422,7 @@ func (home *Home) createOrFocusEditorTab() {
 		table := tab.Content.(*ResultsTable)
 		table.SetIsFiltering(true)
 	} else {
-		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL).WithEditor()
+		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithEditor()
 		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 		tableWithEditor.SetIsFiltering(true)
 		home.TabbedPane.GetCurrentTab()

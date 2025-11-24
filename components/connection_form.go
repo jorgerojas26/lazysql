@@ -27,6 +27,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	addForm := tview.NewForm().SetFieldBackgroundColor(app.Styles.InverseTextColor).SetButtonBackgroundColor(tview.Styles.InverseTextColor).SetLabelColor(tview.Styles.PrimaryTextColor).SetFieldTextColor(tview.Styles.ContrastSecondaryTextColor)
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
+	addForm.AddCheckbox("Read-Only", false, nil)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
@@ -104,11 +105,14 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				DBName = ""
 			}
 
+			readOnly := form.GetFormItem(2).(*tview.Checkbox).IsChecked()
+
 			parsedDatabaseData := models.Connection{
 				Name:     connectionName,
 				Provider: parsed.Driver,
 				DBName:   DBName,
 				URL:      connectionString,
+				ReadOnly: readOnly,
 			}
 
 			switch form.Action {
@@ -196,4 +200,10 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 
 func (form *ConnectionForm) SetAction(action string) {
 	form.Action = action
+}
+
+func (form *ConnectionForm) SetConnectionData(conn models.Connection) {
+	form.GetFormItem(0).(*tview.InputField).SetText(conn.Name)
+	form.GetFormItem(1).(*tview.InputField).SetText(conn.URL)
+	form.GetFormItem(2).(*tview.Checkbox).SetChecked(conn.ReadOnly)
 }

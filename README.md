@@ -152,6 +152,7 @@ Name = 'Production database'
 Provider = 'postgres'
 DBName = 'foo'
 URL = 'postgres://${user}:urlencodedpassword@localhost:${port}/foo'
+ReadOnly = true
 Commands = [
   { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' },
   { Command = 'whoami', SaveOutputTo = 'user' },
@@ -166,6 +167,8 @@ DefaultPageSize = 300
 DisableSidebar = false
 SidebarOverlay = false
 ```
+
+The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
 The `[application]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
 
@@ -184,6 +187,12 @@ $ lazysql [connection_url]
 ```
 
 To launch lazysql and connect to database at [connection_url].
+
+```console
+$ lazysql --read-only [connection_url]
+```
+
+To launch lazysql in read-only mode.
 
 ### Connect to a DB
 

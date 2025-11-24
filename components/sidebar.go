@@ -28,9 +28,10 @@ type Sidebar struct {
 	state           *SidebarState
 	FieldParameters []*SidebarFieldParameters
 	subscribers     []chan models.StateChange
+	ReadOnly        bool
 }
 
-func NewSidebar(dbProvider string) *Sidebar {
+func NewSidebar(dbProvider string, readOnly bool) *Sidebar {
 	flex := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	frame := tview.NewFrame(flex)
 	frame.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
@@ -47,6 +48,7 @@ func NewSidebar(dbProvider string) *Sidebar {
 		Flex:        flex,
 		state:       sidebarState,
 		subscribers: []chan models.StateChange{},
+		ReadOnly:    readOnly,
 	}
 
 	newSidebar.SetInputCapture(newSidebar.inputCapture)
@@ -222,6 +224,11 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case commands.GotoEnd:
 		sidebar.FocusLastField()
 	case commands.Edit:
+		if sidebar.ReadOnly {
+			// no editing in read-only mode
+			return event
+		}
+
 		sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: true})
 
 		currentItemIndex := sidebar.GetCurrentFieldIndex()

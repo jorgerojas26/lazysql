@@ -36,6 +36,7 @@ func main() {
 	printVersion := flag.Bool("version", false, "Show version")
 	logLevel := flag.String("loglevel", "info", "Log level")
 	logFile := flag.String("logfile", "", "Log file")
+	readOnly := flag.Bool("read-only", false, "Connect in read-only mode")
 	flag.Parse()
 
 	if *printVersion {
@@ -77,7 +78,7 @@ func main() {
 		// Launch into the connection picker.
 	case 1:
 		// Set a connection from the command line.
-		err := components.InitFromArg(args[0])
+		err := components.InitFromArg(args[0], *readOnly)
 		if err != nil {
 			log.Fatal(err)
 		}

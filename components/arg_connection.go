@@ -9,7 +9,7 @@ import (
 	"github.com/jorgerojas26/lazysql/models"
 )
 
-func InitFromArg(connectionString string) error {
+func InitFromArg(connectionString string, readOnly bool) error {
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
 		return fmt.Errorf("could not parse connection string: %s", err)
@@ -25,6 +25,7 @@ func InitFromArg(connectionString string) error {
 		Provider: parsed.Driver,
 		DBName:   DBName,
 		URL:      connectionString,
+		ReadOnly: readOnly,
 	}
 
 	var newDBDriver drivers.Driver

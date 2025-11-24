@@ -28,6 +28,8 @@ type Connection struct {
 	DBName    string
 	URLParams string
 
+	ReadOnly bool
+
 	Commands []*Command
 }
 
