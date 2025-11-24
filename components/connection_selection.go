@@ -233,6 +233,9 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		newDBDriver = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
 		newDBDriver = &drivers.MSSQL{}
+	default:
+		cs.StatusText.SetText(fmt.Sprintf("unknown provider: %q", connection.Provider)).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return App.Draw()
 	}
 
 	err := newDBDriver.Connect(connection.URL)
