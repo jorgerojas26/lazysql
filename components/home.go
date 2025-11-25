@@ -239,6 +239,17 @@ func (home *Home) focusLeftWrapper() {
 	home.FocusedWrapper = focusedWrapperLeft
 }
 
+func (home *Home) isCurrentTabFiltering() bool {
+	tab := home.TabbedPane.GetCurrentTab()
+
+	if tab != nil {
+		table := tab.Content.(*ResultsTable)
+		return table.GetIsFiltering()
+	}
+
+	return false
+}
+
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	var tab *Tab
 
@@ -274,10 +285,18 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 		return event
 	case commands.TabFirst:
+		if home.isCurrentTabFiltering() {
+			return event
+		}
+
 		home.TabbedPane.SwitchToFirstTab()
 		// home.focusTab(home.TabbedPane.SwitchToFirstTab())
 		return nil
 	case commands.TabLast:
+		if home.isCurrentTabFiltering() {
+			return event
+		}
+
 		home.TabbedPane.SwitchToLastTab()
 		// home.focusTab(home.TabbedPane.SwitchToLastTab())
 		return nil
@@ -297,6 +316,10 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 			}
 		}
 	case commands.PagePrev:
+		if home.isCurrentTabFiltering() {
+			return event
+		}
+
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
@@ -310,6 +333,10 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		}
 
 	case commands.PageNext:
+		if home.isCurrentTabFiltering() {
+			return event
+		}
+
 		tab = home.TabbedPane.GetCurrentTab()
 
 		if tab != nil {
