@@ -112,17 +112,25 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 				nodeReference := node.GetReference().(string)
 				split := strings.Split(nodeReference, ".")
 				databaseName := ""
+				schemaName := ""
 				tableName := ""
 
 				if len(split) == 1 {
 					tableName = split[0]
-				} else if len(split) > 1 {
+					tree.SetSelectedTable(tableName)
+				} else if len(split) == 2 {
 					databaseName = split[0]
 					tableName = split[1]
+					tree.SetSelectedTable(tableName)
+				} else if len(split) == 3 {
+					databaseName = split[0]
+					schemaName = split[1]
+					tableName = split[2]
+					tree.SetSelectedTable(fmt.Sprintf("%s.%s", schemaName, tableName))
 				}
 
 				tree.SetSelectedDatabase(databaseName)
-				tree.SetSelectedTable(tableName)
+
 			} else {
 				node.SetExpanded(!node.IsExpanded())
 			}

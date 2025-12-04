@@ -116,7 +116,12 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := `SELECT name FROM sys.tables`
+	query := `
+		SELECT sys.schemas.name + '.' + sys.tables.name 
+		FROM sys.tables
+		JOIN sys.schemas
+		ON sys.tables.schema_id = sys.schemas.schema_id
+	`
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
@@ -748,6 +753,13 @@ func (db *MSSQL) FormatArgForQueryString(arg any) string {
 }
 
 func (db *MSSQL) FormatReference(reference string) string {
+	if strings.Contains(reference, ".") {
+		parts := strings.SplitN(reference, ".", 2)
+		schema := strings.Trim(parts[0], "[]")
+		table := strings.Trim(parts[1], "[]")
+		return fmt.Sprintf("[%s].[%s]", schema, table)
+	}
+
 	return fmt.Sprintf("[%s]", reference)
 }
 
