@@ -621,15 +621,15 @@ func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 	return queryStr, nil
 }
 
-func (db *MySQL) GetFunctions(database string) (map[string][]string, error) {
+func (db *MySQL) GetFunctions(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *MySQL) GetProcedures(database string) (map[string][]string, error) {
+func (db *MySQL) GetProcedures(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *MySQL) GetViews(database string) (map[string][]string, error) {
+func (db *MySQL) GetViews(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 

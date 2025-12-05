@@ -58,7 +58,7 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 	key := node.GetReference().(string)
 	supportsProgramming := tree.DBDriver.SupportsProgramming()
 	useSchemas := tree.DBDriver.UseSchemas()
-	nodeType := NodeTypeSection
+	var nodeType TreeNodeType
 	schema := ""
 
 	split := strings.Split(key, ".")
