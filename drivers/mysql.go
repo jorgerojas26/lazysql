@@ -620,3 +620,35 @@ func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 
 	return queryStr, nil
 }
+
+func (db *MySQL) GetFunctions(_ string) (map[string][]string, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (db *MySQL) GetProcedures(_ string) (map[string][]string, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (db *MySQL) GetViews(_ string) (map[string][]string, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (db *MySQL) SupportsProgramming() bool {
+	return false
+}
+
+func (db *MySQL) UseSchemas() bool {
+	return false
+}
+
+func (db *MySQL) GetFunctionDefinition(database string, name string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (db *MySQL) GetProcedureDefinition(database string, name string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (db *MySQL) GetViewDefinition(database string, name string) (string, error) {
+	return "", errors.New("not implemented")
+}

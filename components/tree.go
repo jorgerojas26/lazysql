@@ -36,6 +36,83 @@ type Tree struct {
 	subscribers         []chan models.StateChange
 }
 
+type TreeNodeType int
+
+const (
+	NodeTypeSection TreeNodeType = iota
+	NodeTypeDatabase
+	NodeTypeTable
+	NodeTypeFunction
+	NodeTypeProcedure
+	NodeTypeView
+)
+
+type TreeNodeData struct {
+	Type     TreeNodeType
+	Database string
+	Schema   string
+	Name     string
+}
+
+func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
+	key := node.GetReference().(string)
+	supportsProgramming := tree.DBDriver.SupportsProgramming()
+	useSchemas := tree.DBDriver.UseSchemas()
+	var nodeType TreeNodeType
+	schema := ""
+
+	split := strings.Split(key, ".")
+	database := split[0]
+	name := split[len(split)-1]
+
+	switch {
+	case len(split) == 1:
+		nodeType = NodeTypeDatabase
+	case len(split) == 2 && !useSchemas && !supportsProgramming:
+		nodeType = NodeTypeTable
+	case len(split) == 3 && useSchemas && !supportsProgramming:
+		nodeType = NodeTypeTable
+		schema = split[len(split)-2]
+	case len(split) == 3 && !useSchemas && supportsProgramming:
+		switch parentType := split[len(split)-2]; parentType {
+		case "tables":
+			nodeType = NodeTypeTable
+		case "procedures":
+			nodeType = NodeTypeProcedure
+		case "functions":
+			nodeType = NodeTypeFunction
+		case "views":
+			nodeType = NodeTypeView
+		default:
+			nodeType = NodeTypeSection
+		}
+	case len(split) == 4 && useSchemas && supportsProgramming:
+		switch parentType := split[len(split)-2]; parentType {
+		case "tables":
+			nodeType = NodeTypeTable
+		case "procedures":
+			nodeType = NodeTypeProcedure
+		case "functions":
+			nodeType = NodeTypeFunction
+		case "views":
+			nodeType = NodeTypeView
+		default:
+			nodeType = NodeTypeSection
+		}
+
+		schema = split[len(split)-2]
+	default:
+		nodeType = NodeTypeSection
+	}
+
+	return &TreeNodeData{
+		Type:     nodeType,
+		Database: database,
+		Schema:   schema,
+		Name:     name,
+	}
+}
+
 func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
@@ -89,52 +166,48 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 	})
 
 	tree.SetSelectedFunc(func(node *tview.TreeNode) {
-		if node.GetLevel() == 1 {
+		nodeData := tree.GetTreeNodeData(node)
+
+		switch nodeData.Type {
+		case NodeTypeSection:
+			node.SetExpanded(!node.IsExpanded())
+		case NodeTypeDatabase:
 			if node.IsExpanded() {
 				node.SetExpanded(false)
 			} else {
-				tree.SetSelectedDatabase(node.GetReference().(string))
-
-				// if node.GetChildren() == nil {
-				// 	tables, err := tree.DBDriver.GetTables(tree.GetSelectedDatabase())
-				// 	if err != nil {
-				// 		// TODO: Handle error
-				// 		return
-				// 	}
-				//
-				// 	tree.databasesToNodes(tables, node, true)
-				// }
+				tree.SetSelectedDatabase(nodeData.Database)
 				node.SetExpanded(true)
-
 			}
-		} else if node.GetLevel() == 2 {
-			if node.GetChildren() == nil {
-				nodeReference := node.GetReference().(string)
-				split := strings.Split(nodeReference, ".")
-				databaseName := ""
-				tableName := ""
-
-				if len(split) == 1 {
-					tableName = split[0]
-				} else if len(split) > 1 {
-					databaseName = split[0]
-					tableName = split[1]
-				}
-
-				tree.SetSelectedDatabase(databaseName)
-				tree.SetSelectedTable(tableName)
+		case NodeTypeTable:
+			tree.SetSelectedDatabase(nodeData.Database)
+			if nodeData.Schema == "" {
+				tree.SetSelectedTable(nodeData.Name)
 			} else {
-				node.SetExpanded(!node.IsExpanded())
+				tree.SetSelectedTable(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
 			}
-		} else if node.GetLevel() == 3 {
-			nodeReference := node.GetReference().(string)
-			split := strings.Split(nodeReference, ".")
-			databaseName := split[0]
-			schemaName := split[1]
-			tableName := split[2]
-
-			tree.SetSelectedDatabase(databaseName)
-			tree.SetSelectedTable(fmt.Sprintf("%s.%s", schemaName, tableName))
+		case NodeTypeProcedure:
+			tree.SetSelectedDatabase(nodeData.Database)
+			if nodeData.Schema == "" {
+				tree.SetSelectedProcedure(nodeData.Name)
+			} else {
+				tree.SetSelectedProcedure(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+			}
+		case NodeTypeFunction:
+			tree.SetSelectedDatabase(nodeData.Database)
+			if nodeData.Schema == "" {
+				tree.SetSelectedUserDefinedFunction(nodeData.Name)
+			} else {
+				tree.SetSelectedUserDefinedFunction(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+			}
+		case NodeTypeView:
+			tree.SetSelectedDatabase(nodeData.Database)
+			if nodeData.Schema == "" {
+				tree.SetSelectedView(nodeData.Name)
+			} else {
+				tree.SetSelectedView(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+			}
+		default:
+			break
 		}
 	})
 
@@ -261,6 +334,7 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 		// Sort the values.
 		sort.Strings(values)
 
+		var tablesContainer *tview.TreeNode
 		var rootNode *tview.TreeNode
 
 		nodeReference := node.GetReference().(string)
@@ -271,6 +345,26 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			rootNode.SetReference(key)
 			rootNode.SetColor(app.Styles.PrimaryTextColor)
 			node.AddChild(rootNode)
+			tablesContainer = rootNode
+		} else {
+			tablesContainer = node
+		}
+
+		supportsProgramming := tree.DBDriver.SupportsProgramming()
+		if supportsProgramming {
+			tablesNode := tview.NewTreeNode("tables")
+			tablesNode.SetExpanded(false)
+			tablesNode.SetColor(app.Styles.PrimaryTextColor)
+
+			if rootNode != nil {
+				tablesNode.SetReference(fmt.Sprintf("%s.tables", key))
+				rootNode.AddChild(tablesNode)
+			} else {
+				tablesNode.SetReference(fmt.Sprintf("%s.tables", nodeReference))
+				node.AddChild(tablesNode)
+			}
+
+			tablesContainer = tablesNode
 		}
 
 		for _, child := range values {
@@ -279,17 +373,82 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			childNode.SetColor(app.Styles.PrimaryTextColor)
 			if tree.DBDriver.GetProvider() == "sqlite3" {
 				childNode.SetReference(child)
-			} else if tree.DBDriver.GetProvider() == "postgres" {
-				childNode.SetReference(fmt.Sprintf("%s.%s.%s", nodeReference, key, child))
+			} else if tree.DBDriver.UseSchemas() {
+				if supportsProgramming {
+					childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", nodeReference, key, child))
+				} else {
+					childNode.SetReference(fmt.Sprintf("%s.%s.%s", nodeReference, key, child))
+				}
 			} else {
-				childNode.SetReference(fmt.Sprintf("%s.%s", key, child))
+				if supportsProgramming {
+					childNode.SetReference(fmt.Sprintf("%s.tables.%s", key, child))
+				} else {
+					childNode.SetReference(fmt.Sprintf("%s.%s", key, child))
+				}
 			}
-			if rootNode != nil {
-				rootNode.AddChild(childNode)
-			} else {
-				node.AddChild(childNode)
-			}
+
+			tablesContainer.AddChild(childNode)
 		}
+	}
+}
+
+func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures map[string][]string, views map[string][]string, node *tview.TreeNode) {
+	var database = node.GetText()
+	var dbFunctions = functions[database]
+	sort.Strings(dbFunctions)
+
+	var functionsNode *tview.TreeNode
+	var functionsNodeReference = fmt.Sprintf("%s.functions", node.GetReference().(string))
+	functionsNode = tview.NewTreeNode("functions")
+	functionsNode.SetExpanded(false)
+	functionsNode.SetReference(functionsNodeReference)
+	functionsNode.SetColor(app.Styles.PrimaryTextColor)
+	node.AddChild(functionsNode)
+
+	for _, function := range dbFunctions {
+		functionNode := tview.NewTreeNode(function)
+		functionNode.SetExpanded(false)
+		functionNode.SetColor(app.Styles.PrimaryTextColor)
+		functionNode.SetReference(fmt.Sprintf("%s.%s", functionsNodeReference, function))
+		functionsNode.AddChild(functionNode)
+	}
+
+	var dbProcedures = procedures[database]
+	sort.Strings(dbProcedures)
+
+	var proceduresNode *tview.TreeNode
+	var proceduresNodeReference = fmt.Sprintf("%s.procedures", node.GetReference().(string))
+	proceduresNode = tview.NewTreeNode("procedures")
+	proceduresNode.SetExpanded(false)
+	proceduresNode.SetReference(proceduresNodeReference)
+	proceduresNode.SetColor(app.Styles.PrimaryTextColor)
+	node.AddChild(proceduresNode)
+
+	for _, procedure := range dbProcedures {
+		procedureNode := tview.NewTreeNode(procedure)
+		procedureNode.SetExpanded(false)
+		procedureNode.SetColor(app.Styles.PrimaryTextColor)
+		procedureNode.SetReference(fmt.Sprintf("%s.%s", proceduresNodeReference, procedure))
+		proceduresNode.AddChild(procedureNode)
+	}
+
+	var dbViews = views[database]
+	sort.Strings(dbViews)
+
+	var viewsNode *tview.TreeNode
+	var viewsNodeReference = fmt.Sprintf("%s.views", node.GetReference().(string))
+	viewsNode = tview.NewTreeNode("views")
+	viewsNode.SetExpanded(false)
+	viewsNode.SetReference(viewsNodeReference)
+	viewsNode.SetColor(app.Styles.PrimaryTextColor)
+	node.AddChild(viewsNode)
+
+	for _, view := range dbViews {
+		viewNode := tview.NewTreeNode(view)
+		viewNode.SetExpanded(false)
+		viewNode.SetColor(app.Styles.PrimaryTextColor)
+		viewNode.SetReference(fmt.Sprintf("%s.%s", viewsNodeReference, view))
+		viewsNode.AddChild(viewNode)
 	}
 }
 
@@ -444,6 +603,27 @@ func (tree *Tree) SetSelectedTable(table string) {
 	tree.Publish(models.StateChange{
 		Key:   eventTreeSelectedTable,
 		Value: table,
+	})
+}
+
+func (tree *Tree) SetSelectedUserDefinedFunction(name string) {
+	tree.Publish(models.StateChange{
+		Key:   eventTreeSelectedFunction,
+		Value: name,
+	})
+}
+
+func (tree *Tree) SetSelectedProcedure(name string) {
+	tree.Publish(models.StateChange{
+		Key:   eventTreeSelectedProcedure,
+		Value: name,
+	})
+}
+
+func (tree *Tree) SetSelectedView(name string) {
+	tree.Publish(models.StateChange{
+		Key:   eventTreeSelectedView,
+		Value: name,
 	})
 }
 
@@ -631,6 +811,29 @@ func (tree *Tree) InitializeNodes(dbName string) {
 			}
 
 			tree.databasesToNodes(tables, node, true)
+
+			if tree.DBDriver.SupportsProgramming() {
+				functions, err := tree.DBDriver.GetFunctions(database)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					return
+				}
+
+				procedures, err := tree.DBDriver.GetProcedures(database)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					return
+				}
+
+				views, err := tree.DBDriver.GetViews(database)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					return
+				}
+
+				tree.addProgrammingNodes(functions, procedures, views, node)
+			}
+
 			App.Draw()
 		}(database, childNode)
 	}
