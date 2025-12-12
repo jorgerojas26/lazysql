@@ -10,6 +10,7 @@ const (
 	SwitchToConnectionsView
 	HelpPopup
 	ToggleQueryHistory
+	ToggleTree
 
 	// Movement: Basic
 	MoveUp
@@ -94,6 +95,8 @@ func (c Command) String() string {
 		return "HelpPopup"
 	case ToggleQueryHistory:
 		return "ToggleQueryHistory"
+	case ToggleTree:
+		return "ToggleLeftWrapper"
 
 	// Movement: Basic
 	case MoveUp:

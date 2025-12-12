@@ -64,6 +64,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '?'}, Cmd: cmd.HelpPopup, Description: "Help"},
 			Bind{Key: Key{Code: tcell.KeyCtrlP}, Cmd: cmd.SearchGlobal, Description: "Global search"},
 			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
+			Bind{Key: Key{Code: tcell.KeyCtrlH}, Cmd: cmd.ToggleTree, Description: "Toggle file tree"},
 		},
 		ConnectionGroup: {
 			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},
