@@ -429,10 +429,18 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	switch command {
 	case commands.MoveLeft:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
+			if !home.leftWrapperVisible {
+				home.toggleLeftWrapper()
+			}
+
 			home.focusLeftWrapper()
 		}
 	case commands.MoveRight:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperLeft {
+			if home.leftWrapperVisible && !home.treePinned {
+				home.toggleLeftWrapper()
+			}
+
 			home.focusRightWrapper()
 		}
 	case commands.SwitchToEditorView:
