@@ -28,18 +28,14 @@ func InitFromArg(connectionString string, readOnly bool) error {
 		ReadOnly: readOnly,
 	}
 
-	var newDBDriver drivers.Driver
-	switch connection.Provider {
-	case drivers.DriverMySQL:
-		newDBDriver = &drivers.MySQL{}
-	case drivers.DriverPostgres:
-		newDBDriver = &drivers.Postgres{}
-	case drivers.DriverSqlite:
-		newDBDriver = &drivers.SQLite{}
-	case drivers.DriverMSSQL:
-		newDBDriver = &drivers.MSSQL{}
-	default:
-		return fmt.Errorf("could not handle database driver %s", connection.Provider)
+	// NoSQL databases require separate UI components which are not implemented yet
+	if drivers.IsNoSQLProvider(connection.Provider) {
+		return fmt.Errorf("NoSQL database connections via command-line arguments are not yet supported. Please use the connection management UI.")
+	}
+
+	newDBDriver, err := drivers.NewSQLDriver(connection.Provider)
+	if err != nil {
+		return fmt.Errorf("could not create database driver: %w", err)
 	}
 
 	err = newDBDriver.Connect(connection.URL)
