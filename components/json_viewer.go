@@ -48,7 +48,7 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		command := app.Keymaps.Group(app.JSONViewerGroup).Resolve(event)
 
-		if event.Key() == tcell.KeyEscape || command == commands.ShowCellJSONViewer || command == commands.ShowRowJSONViewer {
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter || command == commands.ShowCellJSONViewer || command == commands.ShowRowJSONViewer {
 			jsonViewer.Hide()
 			return nil
 		} else if command == commands.Copy {

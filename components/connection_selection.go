@@ -221,23 +221,45 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 	cs.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 	App.Draw()
 
-	var newDBDriver drivers.Driver
+	// Route to NoSQL or SQL path based on provider
+	if drivers.IsNoSQLProvider(connection.Provider) {
+		// Handle NoSQL databases (MongoDB, etc.) - separate UI path
+		newNoSQLDriver, err := drivers.NewNoSQLDriver(connection.Provider)
+		if err != nil {
+			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+			return App.Draw()
+		}
 
-	switch connection.Provider {
-	case drivers.DriverMySQL:
-		newDBDriver = &drivers.MySQL{}
-	case drivers.DriverPostgres:
-		newDBDriver = &drivers.Postgres{}
-	case drivers.DriverSqlite:
-		newDBDriver = &drivers.SQLite{}
-	case drivers.DriverMSSQL:
-		newDBDriver = &drivers.MSSQL{}
-	default:
-		cs.StatusText.SetText(fmt.Sprintf("unknown provider: %q", connection.Provider)).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		err = newNoSQLDriver.Connect(connection.URL)
+		if err != nil {
+			cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+			return App.Draw()
+		}
+
+		selectedRow, selectedCol := connectionsTable.GetSelection()
+		cell := connectionsTable.GetCell(selectedRow, selectedCol)
+		cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
+		cs.StatusText.SetText("")
+
+		// Create NoSQL home page
+		newNoSQLHome := NewNoSQLHomePage(connection, newNoSQLDriver)
+		newNoSQLHome.Tree.SetCurrentNode(newNoSQLHome.Tree.GetRoot())
+		newNoSQLHome.Tree.Wrapper.SetTitle(connection.Name)
+
+		mainPages.AddAndSwitchToPage(connection.Name, newNoSQLHome, true)
+		App.SetFocus(newNoSQLHome.Tree)
+
 		return App.Draw()
 	}
 
-	err := newDBDriver.Connect(connection.URL)
+	// Handle SQL databases (existing code)
+	newDBDriver, err := drivers.NewSQLDriver(connection.Provider)
+	if err != nil {
+		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return App.Draw()
+	}
+
+	err = newDBDriver.Connect(connection.URL)
 	if err != nil {
 		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 		return App.Draw()
