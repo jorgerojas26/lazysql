@@ -1,8 +1,6 @@
 package components
 
 import (
-	"strings"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
@@ -99,11 +97,8 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			databases := app.App.Connections()
 			newDatabases := make([]models.Connection, len(databases))
 
-			DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
-
-			if DBName == "NULL" {
-				DBName = ""
-			}
+			// extract database name using helper function (to handle both SQL and NoSQL)
+			DBName := helpers.ExtractDatabaseName(parsed)
 
 			readOnly := form.GetFormItem(2).(*tview.Checkbox).IsChecked()
 
@@ -175,20 +170,8 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 
 	form.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 
-	var db drivers.Driver
-
-	switch parsed.Driver {
-	case drivers.DriverMySQL:
-		db = &drivers.MySQL{}
-	case drivers.DriverPostgres:
-		db = &drivers.Postgres{}
-	case drivers.DriverSqlite:
-		db = &drivers.SQLite{}
-	case drivers.DriverMSSQL:
-		db = &drivers.MSSQL{}
-	}
-
-	err = db.TestConnection(connectionString)
+	// Use factory to test connection (handles both SQL and NoSQL)
+	err = drivers.TestConnection(App.Context(), parsed.Driver, connectionString)
 
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
