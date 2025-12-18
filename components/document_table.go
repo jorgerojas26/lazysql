@@ -47,10 +47,10 @@ const maxCellDisplayLength = 100 // Max characters to display in a cell
 
 func NewDocumentTable(tree *NoSQLTree, dbdriver drivers.NoSQLDriver, connectionIdentifier string, connectionURL string) *DocumentTable {
 	state := &DocumentTableState{
-		documents:    []drivers.Document{},
-		isLoading:    false,
-		isFiltering:  false,
-		currentView:  "documents", // Default view
+		documents:   []drivers.Document{},
+		isLoading:   false,
+		isFiltering: false,
+		currentView: "documents", // Default view
 	}
 
 	wrapper := tview.NewFlex()
@@ -95,11 +95,11 @@ func NewDocumentTable(tree *NoSQLTree, dbdriver drivers.NoSQLDriver, connectionI
 	docTable.jsonViewer = NewJSONViewer(pages)
 
 	docTable.SetFixed(1, 0)
-	docTable.SetSelectable(true, true) // Enable both row AND column selection
-	docTable.SetBorders(true)          // Show cell borders for grid appearance
+	docTable.SetSelectable(true, true)                                                                                                          // Enable both row AND column selection
+	docTable.SetBorders(true)                                                                                                                   // Show cell borders for grid appearance
 	docTable.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor)) // Yellow highlight for selected cell
 
-	errorModal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+	errorModal.SetDoneFunc(func(_ int, buttonLabel string) {
 		if buttonLabel == "Ok" {
 			pages.SwitchToPage(pageNameTable)
 		}

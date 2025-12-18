@@ -640,15 +640,15 @@ func (db *SQLite) DMLChangeToQueryString(change models.DBDMLChange) (string, err
 	return queryStr, nil
 }
 
-func (db *SQLite) GetFunctions(database string) (map[string][]string, error) {
+func (db *SQLite) GetFunctions(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *SQLite) GetProcedures(database string) (map[string][]string, error) {
+func (db *SQLite) GetProcedures(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *SQLite) GetViews(database string) (map[string][]string, error) {
+func (db *SQLite) GetViews(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 

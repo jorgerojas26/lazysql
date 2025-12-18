@@ -30,7 +30,7 @@ func InitFromArg(connectionString string, readOnly bool) error {
 
 	// NoSQL databases require separate UI components which are not implemented yet
 	if drivers.IsNoSQLProvider(connection.Provider) {
-		return fmt.Errorf("NoSQL database connections via command-line arguments are not yet supported. Please use the connection management UI.")
+		return fmt.Errorf("noSQL database connections via command-line arguments are not yet supported, please use the connection management UI")
 	}
 
 	newDBDriver, err := drivers.NewSQLDriver(connection.Provider)

@@ -47,7 +47,7 @@ func IsNoSQLProvider(provider string) bool {
 // TestConnection is a unified helper that tests connections for both SQL and NoSQL drivers.
 // It routes to the appropriate driver type. Both SQL and NoSQL drivers currently don't
 // accept context from callers (context parameter kept for future compatibility).
-func TestConnection(ctx context.Context, provider, connectionString string) error {
+func TestConnection(_ context.Context, provider, connectionString string) error {
 	if IsNoSQLProvider(provider) {
 		driver, err := NewNoSQLDriver(provider)
 		if err != nil {

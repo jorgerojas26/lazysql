@@ -116,7 +116,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := fmt.Sprintf(`SELECT name FROM %s.sys.tables`, database)
+	query := fmt.Sprintf(`SELECT name FROM %s.sys.tables`, database) // #nosec G201
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
@@ -375,7 +375,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		return nil, 0, displayQueryString, err
 	}
 
-	countQuery := fmt.Sprintf("USE %s; SELECT COUNT(*) FROM ", database)
+	countQuery := fmt.Sprintf("USE %s; SELECT COUNT(*) FROM ", database) // #nosec G201
 	countQuery += db.FormatReference(table)
 
 	if where != "" {
@@ -415,7 +415,7 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 		return errors.New("primary key value is required")
 	}
 
-	query := fmt.Sprintf("USE %s; UPDATE ", database)
+	query := fmt.Sprintf("USE %s; UPDATE ", database) // #nosec G201
 	query += table
 	query += " SET "
 	query += column

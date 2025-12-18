@@ -433,7 +433,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			errorModal := tview.NewModal().
 				SetText("Cannot save changes: Connection is in read-only mode").
 				AddButtons([]string{"OK"}).
-				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				SetDoneFunc(func(_ int, _ string) {
 					mainPages.RemovePage(pageNameReadOnlyError)
 				})
 			mainPages.AddPage(pageNameReadOnlyError, errorModal, true, true)

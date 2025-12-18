@@ -65,7 +65,9 @@ func (db *MongoDB) TestConnection(urlstr string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
-	defer client.Disconnect(testCtx)
+	defer func() {
+		_ = client.Disconnect(testCtx)
+	}()
 
 	if err := client.Ping(testCtx, nil); err != nil {
 		return fmt.Errorf("failed to ping MongoDB: %w", err)
@@ -118,8 +120,8 @@ func (db *MongoDB) GetCollections(database string) (map[string][]string, error) 
 	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), MongoDBDefaultTimeout)
 	defer cancel()
 
-	mongoDb := db.Client.Database(database)
-	collections, err := mongoDb.ListCollectionNames(ctxWithTimeout, bson.M{})
+	mongoDB := db.Client.Database(database)
+	collections, err := mongoDB.ListCollectionNames(ctxWithTimeout, bson.M{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list collections: %w", err)
 	}
