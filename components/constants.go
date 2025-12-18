@@ -68,6 +68,10 @@ const (
 	eventTreeSelectedDatabase string = "SelectedDatabase"
 	eventTreeSelectedTable    string = "SelectedTable"
 	eventTreeIsFiltering      string = "IsFiltering"
+
+	eventNoSQLTreeSelectedDatabase   string = "NoSQLSelectedDatabase"
+	eventNoSQLTreeSelectedCollection string = "NoSQLSelectedCollection"
+	eventNoSQLTreeIsFiltering        string = "NoSQLIsFiltering"
 )
 
 // Results table menu items
