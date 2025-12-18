@@ -167,6 +167,51 @@ func (home *Home) subscribeToTreeChanges() {
 			} else {
 				home.SetInputCapture(home.homeInputCapture)
 			}
+		case eventTreeSelectedFunction:
+			home.createOrFocusEditorTab()
+			currentTab := home.TabbedPane.GetCurrentTab()
+			if currentTab != nil {
+				table := currentTab.Content.(*ResultsTable)
+				databaseName := home.Tree.GetSelectedDatabase()
+				functionName := stateChange.Value.(string)
+				functionDefinition, err := home.Tree.DBDriver.GetFunctionDefinition(databaseName, functionName)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					continue
+				}
+				table.Editor.SetText(functionDefinition, false)
+				App.ForceDraw()
+			}
+		case eventTreeSelectedProcedure:
+			home.createOrFocusEditorTab()
+			currentTab := home.TabbedPane.GetCurrentTab()
+			if currentTab != nil {
+				table := currentTab.Content.(*ResultsTable)
+				databaseName := home.Tree.GetSelectedDatabase()
+				procedureName := stateChange.Value.(string)
+				procedureDefinition, err := home.Tree.DBDriver.GetProcedureDefinition(databaseName, procedureName)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					continue
+				}
+				table.Editor.SetText(procedureDefinition, false)
+				App.ForceDraw()
+			}
+		case eventTreeSelectedView:
+			home.createOrFocusEditorTab()
+			currentTab := home.TabbedPane.GetCurrentTab()
+			if currentTab != nil {
+				table := currentTab.Content.(*ResultsTable)
+				databaseName := home.Tree.GetSelectedDatabase()
+				viewName := stateChange.Value.(string)
+				viewDefinition, err := home.Tree.DBDriver.GetViewDefinition(databaseName, viewName)
+				if err != nil {
+					logger.Error(err.Error(), nil)
+					continue
+				}
+				table.Editor.SetText(viewDefinition, false)
+				App.ForceDraw()
+			}
 		}
 	}
 }

@@ -943,3 +943,35 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 
 	return queryStr, nil
 }
+
+func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (db *Postgres) GetViews(database string) (map[string][]string, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (db *Postgres) SupportsProgramming() bool {
+	return false
+}
+
+func (db *Postgres) UseSchemas() bool {
+	return true
+}
+
+func (db *Postgres) GetFunctionDefinition(database string, name string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (db *Postgres) GetProcedureDefinition(database string, name string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (db *Postgres) GetViewDefinition(database string, name string) (string, error) {
+	return "", errors.New("not implemented")
+}
