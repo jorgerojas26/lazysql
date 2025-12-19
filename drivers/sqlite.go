@@ -660,14 +660,14 @@ func (db *SQLite) UseSchemas() bool {
 	return false
 }
 
-func (db *SQLite) GetFunctionDefinition(database string, name string) (string, error) {
+func (db *SQLite) GetFunctionDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *SQLite) GetProcedureDefinition(database string, name string) (string, error) {
+func (db *SQLite) GetProcedureDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *SQLite) GetViewDefinition(database string, name string) (string, error) {
+func (db *SQLite) GetViewDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
