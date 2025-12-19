@@ -75,8 +75,8 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 
 	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
 
-	// Match exact query structure with schema
-	mock.ExpectQuery(`SELECT
+	// Match exact query structure with schema and USE prefix
+	mock.ExpectQuery(`USE test_db; SELECT
 			c.name AS column_name
 		FROM
 			sys.tables t
@@ -147,7 +147,7 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
 	)
 
 	mock.ExpectQuery(`
-        SELECT 
+        USE test_db; SELECT 
             fk.name AS constraint_name,
             c.name AS column_name,
             DB_NAME(DB_ID(@p1)) AS current_database,
@@ -294,7 +294,7 @@ func TestMSSQL_GetIndexes(t *testing.T) {
 	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
 
 	mock.ExpectQuery(`
-        SELECT
+        USE test_db; SELECT
             t.name AS table_name,
             i.name AS index_name,
             CAST(i.is_unique AS BIT) AS is_unique,
