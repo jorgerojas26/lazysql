@@ -944,15 +944,15 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 	return queryStr, nil
 }
 
-func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
+func (db *Postgres) GetFunctions(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
+func (db *Postgres) GetProcedures(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *Postgres) GetViews(database string) (map[string][]string, error) {
+func (db *Postgres) GetViews(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -964,14 +964,14 @@ func (db *Postgres) UseSchemas() bool {
 	return true
 }
 
-func (db *Postgres) GetFunctionDefinition(database string, name string) (string, error) {
+func (db *Postgres) GetFunctionDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *Postgres) GetProcedureDefinition(database string, name string) (string, error) {
+func (db *Postgres) GetProcedureDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *Postgres) GetViewDefinition(database string, name string) (string, error) {
+func (db *Postgres) GetViewDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
