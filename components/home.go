@@ -540,12 +540,16 @@ func (home *Home) createOrFocusEditorTab() {
 
 func (home *Home) toggleLeftWrapper() {
 	if home.leftWrapperVisible {
-		home.MainContent.ResizeItem(home.LeftWrapper, 0, 0)
+		home.MainContent.Clear()
+		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
 		home.leftWrapperVisible = false
 		home.focusRightWrapper()
 	} else {
-		home.MainContent.ResizeItem(home.LeftWrapper, 30, 1)
+		home.MainContent.Clear()
+		home.MainContent.AddItem(home.LeftWrapper, 30, 1, false)
+		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
 		home.leftWrapperVisible = true
 		home.focusLeftWrapper()
 	}
+	app.App.ForceDraw()
 }
