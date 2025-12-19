@@ -641,14 +641,14 @@ func (db *MySQL) UseSchemas() bool {
 	return false
 }
 
-func (db *MySQL) GetFunctionDefinition(database string, name string) (string, error) {
+func (db *MySQL) GetFunctionDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *MySQL) GetProcedureDefinition(database string, name string) (string, error) {
+func (db *MySQL) GetProcedureDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *MySQL) GetViewDefinition(database string, name string) (string, error) {
+func (db *MySQL) GetViewDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
