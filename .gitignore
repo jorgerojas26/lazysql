@@ -6,3 +6,5 @@ dist/
 test.db
 
 .aider*
+
+.idea

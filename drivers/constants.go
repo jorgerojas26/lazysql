@@ -10,4 +10,5 @@ const (
 	DriverPostgres string = "postgres"
 	DriverSqlite   string = "sqlite3"
 	DriverMSSQL    string = "sqlserver"
+	DriverMongoDB  string = "mongodb"
 )
