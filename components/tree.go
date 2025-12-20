@@ -792,12 +792,12 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		}
 		sanitizedDbs := make([]string, 0, len(dbs))
 		for _, db := range dbs {
-			sanitizedDbs = append(sanitizedDbs, sanitizeDbName(db))
+			sanitizedDbs = append(sanitizedDbs, sanitizeDBName(db))
 		}
 		databases = sanitizedDbs
 	} else {
-		sanitizedDbName := sanitizeDbName(dbName)
-		databases = []string{sanitizedDbName}
+		sanitizedDBName := sanitizeDBName(dbName)
+		databases = []string{sanitizedDBName}
 	}
 
 	for _, database := range databases {
@@ -857,7 +857,7 @@ func (tree *Tree) ClearSearch() {
 	tree.Filter.SetText("")
 }
 
-func sanitizeDbName(dbName string) string {
+func sanitizeDBName(dbName string) string {
 	// Remove dots from db name
 	return strings.ReplaceAll(dbName, ".", "_")
 }
