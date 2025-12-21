@@ -39,6 +39,7 @@
     </li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#commands">Commands</a></li>
+    <li><a href="#environment-variables">Environment variables</a></li>
     <li><a href="#keybindings">Keybindings</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -326,6 +327,25 @@ Commands = [
   { Command = 'kubectl port-forward service/postgres ${port}:5432 --kubeconfig /path/to/kube.conf', WaitForPort = '${port}' }
 ]
 ```
+
+## Environment variables
+
+You can use environment variables in the configuration file using the `${env:VAR_NAME}` syntax. This is useful for keeping sensitive information like passwords out of the configuration file.
+
+```toml
+[[database]]
+Name = 'Production'
+Provider = 'postgres'
+URL = 'postgres://${env:DB_USER}:${env:DB_PASSWORD}@localhost:5432/mydb'
+```
+
+```bash
+export DB_USER=admin
+export DB_PASSWORD=secret
+lazysql
+```
+
+Note: Undefined environment variables will be replaced with an empty string.
 
 <!-- KEYBINDINGS -->
 
