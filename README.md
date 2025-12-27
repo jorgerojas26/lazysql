@@ -358,6 +358,7 @@ Commands = [
 | }        | Focus next tab                       |
 | X        | Close current tab                    |
 | R        | Refresh the current table            |
+| E        | Export to CSV                        |
 
 ### Tree
 

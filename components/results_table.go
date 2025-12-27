@@ -1,7 +1,9 @@
 package components
 
 import (
+	"cmp"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -549,6 +551,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.SetError(err.Error(), nil)
 			}
 		}
+	} else if command == commands.ExportCSV {
+		table.showCSVExportModal()
+		return nil
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -700,7 +705,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						table.SetError(err.Error(), nil)
 						App.Draw()
 					} else {
-						table.UpdateRows(rows)
+						table.SetRecords(rows)
 						table.SetLoading(false)
 						table.SetIsFiltering(false)
 						table.HighlightTable()
@@ -1631,4 +1636,92 @@ func (table *ResultsTable) colorChangedCells() {
 
 func (table *ResultsTable) GetPrimitive() tview.Primitive {
 	return table.Page
+}
+
+func (table *ResultsTable) showCSVExportModal() {
+	databaseName := table.GetDatabaseName()
+	tableName := table.GetTableName()
+
+	// Pagination exists only when we have both database and table context (table view)
+	// Query results don't have pagination - all records are already in memory
+	hasPagination := databaseName != "" && tableName != ""
+
+	rowCount := max(len(table.GetRecords())-1, 0)
+
+	opts := CSVExportOptions{
+		DatabaseName:  cmp.Or(databaseName, "database"),
+		TableName:     cmp.Or(tableName, "query_result"),
+		HasPagination: hasPagination,
+		RowCount:      rowCount,
+	}
+
+	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope) {
+		table.Loading.SetText("Exporting...")
+		table.SetLoading(true)
+		App.ForceDraw()
+
+		var records [][]string
+		var fetchErr error
+
+		if !hasPagination || scope == ExportCurrentPage {
+			records = table.GetRecords()
+		} else {
+			where := ""
+			if table.Filter != nil {
+				where = table.Filter.GetCurrentFilter()
+			}
+			sort := table.GetCurrentSort()
+			records, fetchErr = table.fetchAllRecordsForExport(databaseName, tableName, where, sort)
+		}
+
+		if fetchErr != nil {
+			table.Loading.SetText("Loading...")
+			table.SetLoading(false)
+			table.SetError("Failed to fetch records: "+fetchErr.Error(), nil)
+			App.ForceDraw()
+			return
+		}
+
+		exportErr := helpers.ExportToCSV(records, filePath)
+
+		table.Loading.SetText("Loading...")
+		table.SetLoading(false)
+
+		if exportErr != nil {
+			table.SetError("Failed to export CSV: "+exportErr.Error(), nil)
+			App.ForceDraw()
+			return
+		}
+
+		rowCount := len(records) - 1
+		table.showExportSuccessModal(filePath, rowCount)
+		App.ForceDraw()
+	})
+
+	mainPages.AddPage(pageNameCSVExport, modal, true, true)
+}
+
+func (table *ResultsTable) fetchAllRecordsForExport(databaseName, tableName, where, sort string) ([][]string, error) {
+	records, _, _, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, 0, math.MaxInt)
+	return records, err
+}
+
+func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int) {
+	modal := tview.NewModal()
+	modal.SetText(fmt.Sprintf("Successfully exported %d rows to:\n%s", rowCount, filePath))
+	modal.AddButtons([]string{"OK"})
+	modal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	modal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	modal.SetTextColor(app.Styles.PrimaryTextColor)
+	modal.SetButtonActivatedStyle(
+		tcell.StyleDefault.
+			Background(app.Styles.InverseTextColor).
+			Foreground(app.Styles.ContrastSecondaryTextColor),
+	)
+	modal.SetDoneFunc(func(_ int, _ string) {
+		mainPages.RemovePage(pageNameCSVExportSuccess)
+	})
+
+	mainPages.AddPage(pageNameCSVExportSuccess, modal, true, true)
+	App.SetFocus(modal)
 }
