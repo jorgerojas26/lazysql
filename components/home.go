@@ -485,9 +485,11 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			mainPages.AddPage(pageNameDMLPreview, queryPreviewModal, true, true)
 		}
 	case commands.HelpPopup:
-		if table == nil || !table.GetIsEditing() {
-			mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
+		if table != nil && (table.GetIsEditing() || table.GetIsFiltering()) {
+			return event
 		}
+
+		mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 	case commands.SearchGlobal:
 		if !home.leftWrapperVisible {
 			home.toggleLeftWrapper()
@@ -511,9 +513,13 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		home.QueryHistoryModal.queryHistoryComponent.LoadHistory(home.ConnectionIdentifier)
 		return nil
 	case commands.ToggleTree:
-		home.toggleLeftWrapper()
-		home.treePinned = home.leftWrapperVisible
-		return nil
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() {
+			home.toggleLeftWrapper()
+			home.treePinned = home.leftWrapperVisible
+			return nil
+		}
+
+		return event
 	}
 
 	return event
