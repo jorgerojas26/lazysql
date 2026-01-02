@@ -264,6 +264,29 @@ You can update the tree by pressing `R`, so you can see your newly created table
 4. Press `c` to edit, Press `<Enter>` to submit
 5. Press `<Ctrl+S>` to save the changes
 
+### Export to CSV
+
+#### From Table View
+
+1. [Open a table](#openview-a-table)
+2. Apply filters or sorting as needed
+3. Press `E` to open the export dialog
+4. Optionally modify the file path and batch size
+5. Select export scope:
+   - Export Current Page: Export only the currently displayed rows
+   - Export All Records: Fetch and export all records from the table
+
+> Batch size (default: 10000): When exporting all records, data is fetched in batches to avoid timeout or memory issues with large tables. Increase for faster exports, decrease if you encounter any errors.
+>
+> The default file path is `~/Downloads/{database}_{table}_{timestamp}.csv`.
+
+#### From SQL Editor
+
+1. [Execute a SQL query](#execute-sql-queries)
+2. Press `E` to open the export dialog
+3. Optionally modify the file path
+4. Select **Export** to save all query results
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Support
