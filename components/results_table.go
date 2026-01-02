@@ -1680,9 +1680,12 @@ func (table *ResultsTable) showCSVExportModal() {
 			if table.Filter != nil {
 				where = table.Filter.GetCurrentFilter()
 			}
-			sort := table.GetCurrentSort()
+			sort := cmp.Or(table.GetCurrentSort(), table.GetPrimaryKeySort())
 			if sort == "" {
-				sort = table.GetPrimaryKeySort()
+				// Fallback: use first column to ensure consistent ordering across batches
+				if records := table.GetRecords(); len(records) > 0 && len(records[0]) > 0 {
+					sort = records[0][0] + " ASC"
+				}
 			}
 			exportedRowCount, exportErr = table.exportAllRecordsInBatches(
 				filePath, databaseName, tableName, where, sort, batchSize,
