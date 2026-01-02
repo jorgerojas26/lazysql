@@ -150,10 +150,14 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
             c.name AS column_name,
             t.name AS data_type,
             c.is_nullable,
-            def.definition AS column_default
+            def.definition AS column_default,
+            ISNULL(ep.value, '') AS comment
         FROM sys.columns c
         INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
         LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
+        LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id 
+            AND ep.minor_id = c.column_id 
+            AND ep.name = 'MS_Description'
         WHERE c.object_id = OBJECT_ID(@p2)
         AND t.name <> 'sysname'
         ORDER BY c.column_id;

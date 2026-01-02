@@ -235,6 +235,67 @@ func TestPostgres_ErrorScenarios(t *testing.T) {
 	}
 }
 
+func TestPostgres_GetTableColumns(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	pg := &Postgres{Connection: db, CurrentDatabase: DBNamePostgres}
+
+	// Mocks expected query with all 5 columns including the new "comment" field
+	rows := sqlmock.NewRows([]string{
+		"column_name",
+		"data_type",
+		"is_nullable",
+		"column_default",
+		"comment",
+	}).AddRow(
+		"id",
+		"integer",
+		"NO",
+		"nextval('test_table_id_seq'::regclass)",
+		"Primary key identifier",
+	).AddRow(
+		"name",
+		"character varying",
+		"YES",
+		"",
+		"User name field",
+	).AddRow(
+		"email",
+		"character varying",
+		"YES",
+		"",
+		"", // Empty comment
+	)
+
+	mock.ExpectQuery("SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(pd.description, '') as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = $1 AND c.table_schema = $2 AND c.table_name = $3 ORDER by c.ordinal_position").
+		WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
+		WillReturnRows(rows)
+
+	columns, err := pg.GetTableColumns(DBNamePostgres, schemaAndTablePostgres)
+	if err != nil {
+		t.Fatalf("GetTableColumns failed: %v", err)
+	}
+
+	expected := [][]string{
+		{"column_name", "data_type", "is_nullable", "column_default", "comment"},
+		{"id", "integer", "NO", "nextval('test_table_id_seq'::regclass)", "Primary key identifier"},
+		{"name", "character varying", "YES", "", "User name field"},
+		{"email", "character varying", "YES", "", ""},
+	}
+
+	if !reflect.DeepEqual(columns, expected) {
+		t.Fatalf("Expected %v, got %v", expected, columns)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
 func TestPostgres_GetTableColumns_Error(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -243,7 +304,7 @@ func TestPostgres_GetTableColumns_Error(t *testing.T) {
 	defer db.Close()
 
 	pg := &Postgres{Connection: db, CurrentDatabase: DBNamePostgres}
-	mock.ExpectQuery("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = \\$1 AND table_schema = \\$2 AND table_name = \\$3 ORDER by ordinal_position").WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
+	mock.ExpectQuery("SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE\\(pd.description, ''\\) as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = \\$1 AND c.table_schema = \\$2 AND c.table_name = \\$3 ORDER by c.ordinal_position").WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
 		WillReturnError(errors.New("query error"))
 
 	_, err = pg.GetTableColumns(DBNamePostgres, schemaAndTablePostgres)
