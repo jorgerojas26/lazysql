@@ -1,6 +1,7 @@
 package components
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 
@@ -549,6 +550,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.SetError(err.Error(), nil)
 			}
 		}
+	} else if command == commands.ExportCSV {
+		table.showCSVExportModal()
+		return nil
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -700,7 +704,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						table.SetError(err.Error(), nil)
 						App.Draw()
 					} else {
-						table.UpdateRows(rows)
+						table.SetRecords(rows)
 						table.SetLoading(false)
 						table.SetIsFiltering(false)
 						table.HighlightTable()
@@ -838,6 +842,17 @@ func (table *ResultsTable) GetShowSidebar() bool {
 
 func (table *ResultsTable) GetPrimaryKeyColumnNames() []string {
 	return table.state.primaryKeyColumnNames
+}
+
+// GetPrimaryKeySort returns an ORDER BY clause using primary key columns.
+// Returns empty string if no primary key columns are available.
+func (table *ResultsTable) GetPrimaryKeySort() string {
+	pkColumnNames := table.GetPrimaryKeyColumnNames()
+	if len(pkColumnNames) == 0 {
+		return ""
+	}
+	// Use first primary key column for sorting
+	return fmt.Sprintf("%s ASC", pkColumnNames[0])
 }
 
 // Setters
@@ -1631,4 +1646,140 @@ func (table *ResultsTable) colorChangedCells() {
 
 func (table *ResultsTable) GetPrimitive() tview.Primitive {
 	return table.Page
+}
+
+func (table *ResultsTable) showCSVExportModal() {
+	databaseName := table.GetDatabaseName()
+	tableName := table.GetTableName()
+
+	// Pagination exists only when we have both database and table context (table view)
+	// Query results don't have pagination - all records are already in memory
+	hasPagination := databaseName != "" && tableName != ""
+
+	rowCount := max(len(table.GetRecords())-1, 0)
+
+	opts := CSVExportOptions{
+		DatabaseName:  cmp.Or(databaseName, "database"),
+		TableName:     cmp.Or(tableName, "query_result"),
+		HasPagination: hasPagination,
+		RowCount:      rowCount,
+	}
+
+	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope, batchSize int) {
+		table.Loading.SetText("Exporting...")
+		table.SetLoading(true)
+		App.ForceDraw()
+
+		var exportedRowCount int
+		var exportErr error
+
+		if !hasPagination || scope == ExportCurrentPage {
+			exportedRowCount, exportErr = table.exportCurrentPage(filePath)
+		} else {
+			where := ""
+			if table.Filter != nil {
+				where = table.Filter.GetCurrentFilter()
+			}
+			sort := cmp.Or(table.GetCurrentSort(), table.GetPrimaryKeySort())
+			if sort == "" {
+				// Fallback: use first column to ensure consistent ordering across batches
+				if records := table.GetRecords(); len(records) > 0 && len(records[0]) > 0 {
+					sort = records[0][0] + " ASC"
+				}
+			}
+			exportedRowCount, exportErr = table.exportAllRecordsInBatches(
+				filePath, databaseName, tableName, where, sort, batchSize,
+			)
+		}
+
+		table.Loading.SetText("Loading...")
+		table.SetLoading(false)
+
+		if exportErr != nil {
+			table.SetError("Failed to export CSV: "+exportErr.Error(), nil)
+			App.ForceDraw()
+			return
+		}
+
+		table.showExportSuccessModal(filePath, exportedRowCount)
+		App.ForceDraw()
+	})
+
+	mainPages.AddPage(pageNameCSVExport, modal, true, true)
+}
+
+// exportCurrentPage exports the current page records (already in memory) to CSV.
+// Returns the number of rows written (excluding header) and any error.
+func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
+	records := table.GetRecords()
+	writer, err := helpers.NewCSVWriter(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer writer.Abort()
+
+	if err := writer.WriteRecords(records, true); err != nil {
+		return 0, err
+	}
+	if err := writer.Commit(); err != nil {
+		return writer.RowCount(), err
+	}
+	return writer.RowCount(), nil
+}
+
+// exportAllRecordsInBatches exports all records using batch fetching to avoid timeouts.
+// Returns the number of rows written (excluding header) and any error.
+func (table *ResultsTable) exportAllRecordsInBatches(
+	filePath, databaseName, tableName, where, sort string,
+	batchSize int,
+) (int, error) {
+	writer, err := helpers.NewCSVWriter(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer writer.Abort()
+
+	for offset := 0; ; offset += batchSize {
+		records, _, _, err := table.DBDriver.GetRecords(
+			databaseName, tableName, where, sort, offset, batchSize,
+		)
+		if err != nil {
+			return writer.RowCount(), err
+		}
+
+		// Header row only = no more data
+		if len(records) <= 1 && offset > 0 {
+			break
+		}
+
+		includeHeader := (offset == 0)
+		if err := writer.WriteRecords(records, includeHeader); err != nil {
+			return writer.RowCount(), err
+		}
+	}
+
+	if err := writer.Commit(); err != nil {
+		return writer.RowCount(), err
+	}
+	return writer.RowCount(), nil
+}
+
+func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int) {
+	modal := tview.NewModal()
+	modal.SetText(fmt.Sprintf("Successfully exported %d rows to:\n%s", rowCount, filePath))
+	modal.AddButtons([]string{"OK"})
+	modal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	modal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	modal.SetTextColor(app.Styles.PrimaryTextColor)
+	modal.SetButtonActivatedStyle(
+		tcell.StyleDefault.
+			Background(app.Styles.InverseTextColor).
+			Foreground(app.Styles.ContrastSecondaryTextColor),
+	)
+	modal.SetDoneFunc(func(_ int, _ string) {
+		mainPages.RemovePage(pageNameCSVExportSuccess)
+	})
+
+	mainPages.AddPage(pageNameCSVExportSuccess, modal, true, true)
+	App.SetFocus(modal)
 }
