@@ -3,7 +3,6 @@ package components
 import (
 	"cmp"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -845,6 +844,17 @@ func (table *ResultsTable) GetPrimaryKeyColumnNames() []string {
 	return table.state.primaryKeyColumnNames
 }
 
+// GetPrimaryKeySort returns an ORDER BY clause using primary key columns.
+// Returns empty string if no primary key columns are available.
+func (table *ResultsTable) GetPrimaryKeySort() string {
+	pkColumnNames := table.GetPrimaryKeyColumnNames()
+	if len(pkColumnNames) == 0 {
+		return ""
+	}
+	// Use first primary key column for sorting
+	return fmt.Sprintf("%s ASC", pkColumnNames[0])
+}
+
 // Setters
 
 func (table *ResultsTable) SetRecords(rows [][]string) {
@@ -1655,34 +1665,29 @@ func (table *ResultsTable) showCSVExportModal() {
 		RowCount:      rowCount,
 	}
 
-	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope) {
+	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope, batchSize int) {
 		table.Loading.SetText("Exporting...")
 		table.SetLoading(true)
 		App.ForceDraw()
 
-		var records [][]string
-		var fetchErr error
+		var exportedRowCount int
+		var exportErr error
 
 		if !hasPagination || scope == ExportCurrentPage {
-			records = table.GetRecords()
+			exportedRowCount, exportErr = table.exportCurrentPage(filePath)
 		} else {
 			where := ""
 			if table.Filter != nil {
 				where = table.Filter.GetCurrentFilter()
 			}
 			sort := table.GetCurrentSort()
-			records, fetchErr = table.fetchAllRecordsForExport(databaseName, tableName, where, sort)
+			if sort == "" {
+				sort = table.GetPrimaryKeySort()
+			}
+			exportedRowCount, exportErr = table.exportAllRecordsInBatches(
+				filePath, databaseName, tableName, where, sort, batchSize,
+			)
 		}
-
-		if fetchErr != nil {
-			table.Loading.SetText("Loading...")
-			table.SetLoading(false)
-			table.SetError("Failed to fetch records: "+fetchErr.Error(), nil)
-			App.ForceDraw()
-			return
-		}
-
-		exportErr := helpers.ExportToCSV(records, filePath)
 
 		table.Loading.SetText("Loading...")
 		table.SetLoading(false)
@@ -1693,17 +1698,67 @@ func (table *ResultsTable) showCSVExportModal() {
 			return
 		}
 
-		rowCount := len(records) - 1
-		table.showExportSuccessModal(filePath, rowCount)
+		table.showExportSuccessModal(filePath, exportedRowCount)
 		App.ForceDraw()
 	})
 
 	mainPages.AddPage(pageNameCSVExport, modal, true, true)
 }
 
-func (table *ResultsTable) fetchAllRecordsForExport(databaseName, tableName, where, sort string) ([][]string, error) {
-	records, _, _, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, 0, math.MaxInt)
-	return records, err
+// exportCurrentPage exports the current page records (already in memory) to CSV.
+// Returns the number of rows written (excluding header) and any error.
+func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
+	records := table.GetRecords()
+	writer, err := helpers.NewCSVWriter(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer writer.Abort()
+
+	if err := writer.WriteRecords(records, true); err != nil {
+		return 0, err
+	}
+	if err := writer.Commit(); err != nil {
+		return writer.RowCount(), err
+	}
+	return writer.RowCount(), nil
+}
+
+// exportAllRecordsInBatches exports all records using batch fetching to avoid timeouts.
+// Returns the number of rows written (excluding header) and any error.
+func (table *ResultsTable) exportAllRecordsInBatches(
+	filePath, databaseName, tableName, where, sort string,
+	batchSize int,
+) (int, error) {
+	writer, err := helpers.NewCSVWriter(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer writer.Abort()
+
+	for offset := 0; ; offset += batchSize {
+		records, _, _, err := table.DBDriver.GetRecords(
+			databaseName, tableName, where, sort, offset, batchSize,
+		)
+		if err != nil {
+			return writer.RowCount(), err
+		}
+
+		// Header row only = no more data
+		if len(records) <= 1 && offset > 0 {
+			break
+		}
+
+		includeHeader := (offset == 0)
+		if err := writer.WriteRecords(records, includeHeader); err != nil {
+			return writer.RowCount(), err
+		}
+	}
+
+	if err := writer.Commit(); err != nil {
+		return writer.RowCount(), err
+	}
+	return writer.RowCount(), nil
 }
 
 func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int) {

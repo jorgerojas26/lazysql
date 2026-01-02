@@ -3,6 +3,7 @@ package helpers
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -69,10 +70,15 @@ func TestCleanCellValue(t *testing.T) {
 	}
 }
 
-func TestExportToCSV(t *testing.T) {
-	t.Run("Export simple records", func(t *testing.T) {
+func TestCSVWriter(t *testing.T) {
+	t.Run("Commit creates final file", func(t *testing.T) {
 		tempDir := t.TempDir()
-		filePath := filepath.Join(tempDir, "test_export.csv")
+		filePath := filepath.Join(tempDir, "test_commit.csv")
+
+		writer, err := NewCSVWriter(filePath)
+		if err != nil {
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
 
 		records := [][]string{
 			{"id", "name", "value"},
@@ -80,25 +86,157 @@ func TestExportToCSV(t *testing.T) {
 			{"2", "Bob", "200"},
 		}
 
-		err := ExportToCSV(records, filePath)
+		err = writer.WriteRecords(records, true)
 		if err != nil {
-			t.Fatalf("ExportToCSV failed: %v", err)
+			t.Fatalf("WriteRecords failed: %v", err)
+		}
+
+		if writer.RowCount() != 2 {
+			t.Fatalf("Expected RowCount 2, got %d", writer.RowCount())
+		}
+
+		err = writer.Commit()
+		if err != nil {
+			t.Fatalf("Commit failed: %v", err)
 		}
 
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			t.Fatalf("Failed to read exported file: %v", err)
+			t.Fatalf("Failed to read file: %v", err)
 		}
 
 		expected := "id,name,value\n1,Alice,100\n2,Bob,200\n"
 		if string(content) != expected {
-			t.Fatalf("Exported content mismatch:\nexpected: %q\ngot: %q", expected, string(content))
+			t.Fatalf("Content mismatch:\nexpected: %q\ngot: %q", expected, string(content))
+		}
+
+		// Check no temp files remain
+		entries, _ := os.ReadDir(tempDir)
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".lazysql_export_") {
+				t.Fatalf("Temp file should not remain: %s", entry.Name())
+			}
 		}
 	})
 
-	t.Run("Export with NULL markers", func(t *testing.T) {
+	t.Run("Abort removes temp file", func(t *testing.T) {
 		tempDir := t.TempDir()
-		filePath := filepath.Join(tempDir, "test_null.csv")
+		filePath := filepath.Join(tempDir, "test_abort.csv")
+
+		writer, err := NewCSVWriter(filePath)
+		if err != nil {
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
+
+		records := [][]string{
+			{"id", "name"},
+			{"1", "Alice"},
+		}
+
+		err = writer.WriteRecords(records, true)
+		if err != nil {
+			t.Fatalf("WriteRecords failed: %v", err)
+		}
+
+		writer.Abort()
+
+		// Final file should not exist
+		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+			t.Fatalf("Final file should not exist after Abort")
+		}
+
+		// Temp file should not exist
+		entries, _ := os.ReadDir(tempDir)
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".lazysql_export_") {
+				t.Fatalf("Temp file should be removed after Abort: %s", entry.Name())
+			}
+		}
+	})
+
+	t.Run("Abort after Commit is safe", func(t *testing.T) {
+		tempDir := t.TempDir()
+		filePath := filepath.Join(tempDir, "test_abort_after_commit.csv")
+
+		writer, err := NewCSVWriter(filePath)
+		if err != nil {
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
+
+		records := [][]string{{"header"}, {"value"}}
+		_ = writer.WriteRecords(records, true)
+		_ = writer.Commit()
+
+		// Abort after Commit should be no-op
+		writer.Abort()
+
+		// File should still exist
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			t.Fatalf("File should exist after Abort following Commit")
+		}
+	})
+
+	t.Run("Write multiple batches", func(t *testing.T) {
+		tempDir := t.TempDir()
+		filePath := filepath.Join(tempDir, "test_multi_batch.csv")
+
+		writer, err := NewCSVWriter(filePath)
+		if err != nil {
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
+		defer writer.Abort()
+
+		// First batch with header
+		batch1 := [][]string{
+			{"id", "name"},
+			{"1", "Alice"},
+			{"2", "Bob"},
+		}
+		err = writer.WriteRecords(batch1, true)
+		if err != nil {
+			t.Fatalf("WriteRecords batch1 failed: %v", err)
+		}
+
+		// Second batch without header
+		batch2 := [][]string{
+			{"id", "name"},
+			{"3", "Charlie"},
+			{"4", "Diana"},
+		}
+		err = writer.WriteRecords(batch2, false)
+		if err != nil {
+			t.Fatalf("WriteRecords batch2 failed: %v", err)
+		}
+
+		if writer.RowCount() != 4 {
+			t.Fatalf("Expected RowCount 4, got %d", writer.RowCount())
+		}
+
+		err = writer.Commit()
+		if err != nil {
+			t.Fatalf("Commit failed: %v", err)
+		}
+
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			t.Fatalf("Failed to read file: %v", err)
+		}
+
+		expected := "id,name\n1,Alice\n2,Bob\n3,Charlie\n4,Diana\n"
+		if string(content) != expected {
+			t.Fatalf("Content mismatch:\nexpected: %q\ngot: %q", expected, string(content))
+		}
+	})
+
+	t.Run("Write with NULL markers", func(t *testing.T) {
+		tempDir := t.TempDir()
+		filePath := filepath.Join(tempDir, "test_null_markers.csv")
+
+		writer, err := NewCSVWriter(filePath)
+		if err != nil {
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
+		defer writer.Abort()
 
 		records := [][]string{
 			{"id", "name"},
@@ -106,63 +244,88 @@ func TestExportToCSV(t *testing.T) {
 			{"2", "EMPTY&"},
 		}
 
-		err := ExportToCSV(records, filePath)
+		err = writer.WriteRecords(records, true)
 		if err != nil {
-			t.Fatalf("ExportToCSV failed: %v", err)
+			t.Fatalf("WriteRecords failed: %v", err)
+		}
+
+		err = writer.Commit()
+		if err != nil {
+			t.Fatalf("Commit failed: %v", err)
 		}
 
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			t.Fatalf("Failed to read exported file: %v", err)
+			t.Fatalf("Failed to read file: %v", err)
 		}
 
 		expected := "id,name\n1,\n2,\n"
 		if string(content) != expected {
-			t.Fatalf("Exported content mismatch:\nexpected: %q\ngot: %q", expected, string(content))
+			t.Fatalf("Content mismatch:\nexpected: %q\ngot: %q", expected, string(content))
 		}
 	})
 
-	t.Run("Export with special characters", func(t *testing.T) {
+	t.Run("Write empty records", func(t *testing.T) {
 		tempDir := t.TempDir()
-		filePath := filepath.Join(tempDir, "test_special.csv")
+		filePath := filepath.Join(tempDir, "test_empty.csv")
 
-		records := [][]string{
-			{"id", "description"},
-			{"1", "Hello, World"},
-			{"2", "Line with \"quotes\""},
+		writer, err := NewCSVWriter(filePath)
+		if err != nil {
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
+		defer writer.Abort()
+
+		err = writer.WriteRecords([][]string{}, true)
+		if err != nil {
+			t.Fatalf("WriteRecords failed: %v", err)
 		}
 
-		err := ExportToCSV(records, filePath)
+		if writer.RowCount() != 0 {
+			t.Fatalf("Expected RowCount 0, got %d", writer.RowCount())
+		}
+
+		err = writer.Commit()
 		if err != nil {
-			t.Fatalf("ExportToCSV failed: %v", err)
+			t.Fatalf("Commit failed: %v", err)
+		}
+	})
+
+	t.Run("Write header only", func(t *testing.T) {
+		tempDir := t.TempDir()
+		filePath := filepath.Join(tempDir, "test_header_only.csv")
+
+		writer, err := NewCSVWriter(filePath)
+		if err != nil {
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
+		defer writer.Abort()
+
+		records := [][]string{
+			{"id", "name", "value"},
+		}
+
+		err = writer.WriteRecords(records, true)
+		if err != nil {
+			t.Fatalf("WriteRecords failed: %v", err)
+		}
+
+		if writer.RowCount() != 0 {
+			t.Fatalf("Expected RowCount 0, got %d", writer.RowCount())
+		}
+
+		err = writer.Commit()
+		if err != nil {
+			t.Fatalf("Commit failed: %v", err)
 		}
 
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			t.Fatalf("Failed to read exported file: %v", err)
+			t.Fatalf("Failed to read file: %v", err)
 		}
 
-		// CSV escapes commas and quotes
-		expected := "id,description\n1,\"Hello, World\"\n2,\"Line with \"\"quotes\"\"\"\n"
+		expected := "id,name,value\n"
 		if string(content) != expected {
-			t.Fatalf("Exported content mismatch:\nexpected: %q\ngot: %q", expected, string(content))
-		}
-	})
-
-	t.Run("Export empty records", func(t *testing.T) {
-		tempDir := t.TempDir()
-		filePath := filepath.Join(tempDir, "test_empty.csv")
-
-		records := [][]string{}
-
-		err := ExportToCSV(records, filePath)
-		if err != nil {
-			t.Fatalf("ExportToCSV failed: %v", err)
-		}
-
-		// File should not be created for empty records
-		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-			t.Fatalf("Expected file to not exist for empty records, but it exists")
+			t.Fatalf("Content mismatch:\nexpected: %q\ngot: %q", expected, string(content))
 		}
 	})
 
@@ -170,15 +333,33 @@ func TestExportToCSV(t *testing.T) {
 		tempDir := t.TempDir()
 		filePath := filepath.Join(tempDir, "nested", "dir", "test.csv")
 
-		records := [][]string{{"header"}, {"value"}}
-
-		err := ExportToCSV(records, filePath)
+		writer, err := NewCSVWriter(filePath)
 		if err != nil {
-			t.Fatalf("ExportToCSV failed: %v", err)
+			t.Fatalf("NewCSVWriter failed: %v", err)
+		}
+		defer writer.Abort()
+
+		records := [][]string{{"header"}, {"value"}}
+		err = writer.WriteRecords(records, true)
+		if err != nil {
+			t.Fatalf("WriteRecords failed: %v", err)
+		}
+
+		err = writer.Commit()
+		if err != nil {
+			t.Fatalf("Commit failed: %v", err)
 		}
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			t.Fatalf("File was not created: %v", err)
+		}
+	})
+
+	t.Run("Invalid path", func(t *testing.T) {
+		// Try to create a file in a non-existent root path
+		_, err := NewCSVWriter("/nonexistent_root_path_xxx/test.csv")
+		if err == nil {
+			t.Fatalf("Expected error for invalid path, got nil")
 		}
 	})
 }

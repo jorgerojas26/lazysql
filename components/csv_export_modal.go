@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/jorgerojas26/lazysql/app"
 )
+
+const defaultBatchSize = 10000
 
 // CSVExportScope defines the scope of data to export
 type CSVExportScope int
@@ -48,14 +51,16 @@ func getDefaultExportDir() string {
 // CSVExportModal is a modal for exporting data to CSV.
 type CSVExportModal struct {
 	tview.Primitive
-	form     *tview.Form
-	onExport func(filePath string, scope CSVExportScope)
+	form          *tview.Form
+	hasPagination bool
+	onExport      func(filePath string, scope CSVExportScope, batchSize int)
 }
 
 // NewCSVExportModal creates a new CSVExportModal.
-func NewCSVExportModal(opts CSVExportOptions, onExport func(filePath string, scope CSVExportScope)) *CSVExportModal {
+func NewCSVExportModal(opts CSVExportOptions, onExport func(filePath string, scope CSVExportScope, batchSize int)) *CSVExportModal {
 	cem := &CSVExportModal{
-		onExport: onExport,
+		hasPagination: opts.HasPagination,
+		onExport:      onExport,
 	}
 
 	// Default file path with timestamp to avoid conflicts
@@ -67,6 +72,9 @@ func NewCSVExportModal(opts CSVExportOptions, onExport func(filePath string, sco
 		AddInputField("File Path", defaultPath, 0, nil, nil)
 
 	if opts.HasPagination {
+		// Add batch size field for table view (used for Export All Records)
+		cem.form.AddInputField("Batch Size", strconv.Itoa(defaultBatchSize), 0, nil, nil)
+
 		// Table view: show both options
 		cem.form.AddButton("Export Current Page", func() {
 			cem.export(ExportCurrentPage)
@@ -116,7 +124,7 @@ func NewCSVExportModal(opts CSVExportOptions, onExport func(filePath string, sco
 	formWithHint.SetBorder(true).SetTitle(" Export to CSV ").SetTitleAlign(tview.AlignLeft)
 
 	grid := tview.NewGrid().
-		SetRows(0, 9, 0).
+		SetRows(0, 11, 0).
 		SetColumns(0, 80, 0).
 		AddItem(formWithHint, 1, 1, 1, 1, 0, 0, true)
 
@@ -132,10 +140,21 @@ func (cem *CSVExportModal) export(scope CSVExportScope) {
 		return
 	}
 
+	batchSize := 0
+	if cem.hasPagination {
+		batchSizeText := cem.form.GetFormItem(1).(*tview.InputField).GetText()
+		var err error
+		batchSize, err = strconv.Atoi(batchSizeText)
+		if err != nil || batchSize <= 0 {
+			cem.showErrorModal("Batch size must be a positive integer")
+			return
+		}
+	}
+
 	mainPages.RemovePage(pageNameCSVExport)
 
 	if cem.onExport != nil {
-		cem.onExport(filePath, scope)
+		cem.onExport(filePath, scope, batchSize)
 	}
 }
 
