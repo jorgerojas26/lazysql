@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -177,10 +178,20 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 				cmd = strings.ReplaceAll(cmd, "${"+variable+"}", value)
 			}
 
+			timeoutSeconds := 5
+			if command.TimeoutSeconds < 0 {
+				errMessage := fmt.Sprintf("Invalid timeout (value must be greater than 0): %d", command.TimeoutSeconds)
+				cs.StatusText.SetText(errMessage).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				return App.Draw()
+			}
+			if command.TimeoutSeconds > 0 {
+				timeoutSeconds = command.TimeoutSeconds
+			}
+
 			markCommandComplete := App.Register()
 			onCommandDone, waitToCaptureVariable := setupOutputVariableCommand(variables, command, markCommandComplete)
 
-			if err := helpers.RunCommand(App.Context(), cmd, onCommandDone); err != nil {
+			if err := helpers.RunCommand(App.Context(), cmd, time.Duration(timeoutSeconds)*time.Second, onCommandDone); err != nil {
 				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 				return App.Draw()
 			}

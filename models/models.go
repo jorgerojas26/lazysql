@@ -34,9 +34,10 @@ type Connection struct {
 }
 
 type Command struct {
-	Command      string
-	WaitForPort  string
-	SaveOutputTo string
+	Command        string
+	WaitForPort    string
+	SaveOutputTo   string
+	TimeoutSeconds int
 }
 
 type StateChange struct {
