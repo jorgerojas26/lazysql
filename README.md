@@ -151,11 +151,12 @@ The configuration file is a TOML file and can be used to define multiple connect
 Name = 'Production database'
 Provider = 'postgres'
 DBName = 'foo'
-URL = 'postgres://${user}:urlencodedpassword@localhost:${port}/foo'
+URL = 'postgres://${user}:${password}@localhost:${port}/foo'
 ReadOnly = true
 Commands = [
   { Command = 'ssh -tt remote-bastion -L ${port}:localhost:5432', WaitForPort = '${port}' },
   { Command = 'whoami', SaveOutputTo = 'user' },
+  { Command = 'op read -nf op://Vault/Database/password', TimeoutSeconds = 5, SaveOutputTo = 'password' },
 ]
 [[database]]
 Name = 'Development database'
