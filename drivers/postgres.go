@@ -812,7 +812,7 @@ func (db *Postgres) SwitchDatabase(database string) error {
 
 	user := parsedConn.User.Username()
 	password, _ := parsedConn.User.Password()
-	host := parsedConn.Host
+	host := parsedConn.Hostname()
 	port := parsedConn.Port()
 	dbname := parsedConn.Path
 
