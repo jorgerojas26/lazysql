@@ -37,7 +37,7 @@ type Home struct {
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
-	tree := NewTree(connection.DBName, dbdriver)
+	tree := NewTree(connection.DBName, dbdriver, connection.Schemas)
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 

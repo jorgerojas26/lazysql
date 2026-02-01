@@ -30,6 +30,10 @@ type Connection struct {
 
 	ReadOnly bool
 
+	// Schemas filters the schemas shown in the tree (PostgreSQL/MSSQL only).
+	// If empty, all schemas are shown.
+	Schemas []string
+
 	Commands []*Command
 }
 
