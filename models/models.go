@@ -11,6 +11,7 @@ type AppConfig struct {
 	DisableSidebar               bool
 	SidebarOverlay               bool
 	MaxQueryHistoryPerConnection int
+	TreeWidth                    int
 }
 
 type Connection struct {
