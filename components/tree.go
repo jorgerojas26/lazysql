@@ -34,6 +34,7 @@ type Tree struct {
 	Wrapper             *tview.Flex
 	FoundNodeCountInput *tview.InputField
 	subscribers         []chan models.StateChange
+	Schemas             []string
 }
 
 type TreeNodeType int
@@ -113,7 +114,7 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 	}
 }
 
-func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
+func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
@@ -127,6 +128,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		DBDriver:            dbdriver,
 		Filter:              tview.NewInputField(),
 		FoundNodeCountInput: tview.NewInputField(),
+		Schemas:             schemas,
 	}
 
 	tree.SetTopLevel(1)
@@ -329,6 +331,20 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 	sortedKeys := slices.Sorted(maps.Keys(children))
 
 	for _, key := range sortedKeys {
+		// Filter schemas if Schemas is configured (PostgreSQL/MSSQL)
+		if len(tree.Schemas) > 0 && tree.DBDriver.UseSchemas() {
+			found := false
+			for _, schema := range tree.Schemas {
+				if schema == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
 		values := children[key]
 
 		// Sort the values.
