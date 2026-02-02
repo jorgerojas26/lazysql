@@ -105,7 +105,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	maincontent.AddItem(leftWrapper, 30, 1, false)
+	maincontent.AddItem(leftWrapper, app.App.Config().TreeWidth, 1, false)
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
@@ -552,7 +552,7 @@ func (home *Home) toggleLeftWrapper() {
 		home.focusRightWrapper()
 	} else {
 		home.MainContent.Clear()
-		home.MainContent.AddItem(home.LeftWrapper, 30, 1, false)
+		home.MainContent.AddItem(home.LeftWrapper, app.App.Config().TreeWidth, 1, false)
 		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
 		home.leftWrapperVisible = true
 		home.focusLeftWrapper()

@@ -24,6 +24,7 @@ func defaultConfig() *Config {
 			DefaultPageSize:              300,
 			SidebarOverlay:               false,
 			MaxQueryHistoryPerConnection: 100,
+			TreeWidth:                    30,
 		},
 	}
 }
