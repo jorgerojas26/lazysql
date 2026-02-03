@@ -35,6 +35,7 @@ type ResultsTableState struct {
 	isFiltering           bool
 	isLoading             bool
 	showSidebar           bool
+	showCheckConstraints  bool
 }
 
 type ResultsTable struct {
@@ -60,17 +61,20 @@ type ResultsTable struct {
 	ReadOnly             bool
 }
 
+const checkConstraintsSectionLabel = "Check constraints"
+
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
 	state := &ResultsTableState{
-		records:         [][]string{},
-		columns:         [][]string{},
-		constraints:     [][]string{},
-		foreignKeys:     [][]string{},
-		indexes:         [][]string{},
-		isEditing:       false,
-		isLoading:       false,
-		listOfDBChanges: listOfDBChanges,
-		showSidebar:     false,
+		records:              [][]string{},
+		columns:              [][]string{},
+		constraints:          [][]string{},
+		foreignKeys:          [][]string{},
+		indexes:              [][]string{},
+		isEditing:            false,
+		isLoading:            false,
+		listOfDBChanges:      listOfDBChanges,
+		showSidebar:          false,
+		showCheckConstraints: false,
 	}
 
 	wrapper := tview.NewFlex()
@@ -390,7 +394,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.UpdateRows(table.GetColumns())
 		case commands.ConstraintsMenu:
 			table.Menu.SetSelectedOption(3)
-			table.UpdateRows(table.GetConstraints())
+			table.UpdateConstraintsRows()
 		case commands.ForeignKeysMenu:
 			table.Menu.SetSelectedOption(4)
 			table.UpdateRows(table.GetForeignKeys())
@@ -405,6 +409,13 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			if err := table.FetchRecords(nil); err != nil {
 				return event
 			}
+		}
+	}
+
+	if command == commands.ToggleCheckConstraints {
+		if table.Menu != nil && table.Menu.GetSelectedOption() == 3 {
+			table.ToggleCheckConstraints()
+			table.UpdateConstraintsRows()
 		}
 	}
 
@@ -576,6 +587,78 @@ func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.AddRows(rows)
 	App.ForceDraw()
 	table.Select(1, 0)
+}
+
+func (table *ResultsTable) buildConstraintsRows() ([][]string, []int) {
+	constraints := table.GetConstraints()
+	if len(constraints) == 0 {
+		return constraints, nil
+	}
+
+	header := constraints[0]
+	constraintTypeIndex := -1
+	for i, column := range header {
+		if strings.EqualFold(column, "constraint_type") || strings.EqualFold(column, "constraint type") {
+			constraintTypeIndex = i
+			break
+		}
+	}
+
+	if constraintTypeIndex == -1 {
+		return constraints, nil
+	}
+
+	rows := make([][]string, 0, len(constraints))
+	rows = append(rows, header)
+	checkRows := make([][]string, 0)
+
+	for _, row := range constraints[1:] {
+		if constraintTypeIndex >= len(row) {
+			rows = append(rows, row)
+			continue
+		}
+		if strings.EqualFold(row[constraintTypeIndex], "CHECK") {
+			checkRows = append(checkRows, row)
+		} else {
+			rows = append(rows, row)
+		}
+	}
+
+	if !table.GetShowCheckConstraints() || len(checkRows) == 0 {
+		return rows, nil
+	}
+
+	sectionRow := make([]string, len(header))
+	sectionRow[0] = checkConstraintsSectionLabel
+	sectionRowIndex := len(rows)
+	rows = append(rows, sectionRow)
+	rows = append(rows, checkRows...)
+
+	return rows, []int{sectionRowIndex}
+}
+
+func (table *ResultsTable) UpdateConstraintsRows() {
+	rows, sectionRows := table.buildConstraintsRows()
+	table.Clear()
+	table.AddRows(rows)
+	for _, rowIndex := range sectionRows {
+		for colIndex := 0; colIndex < table.GetColumnCount(); colIndex++ {
+			cell := table.GetCell(rowIndex, colIndex)
+			if cell == nil {
+				continue
+			}
+			cell.SetSelectable(false)
+			cell.SetTextColor(app.Styles.SecondaryTextColor)
+		}
+	}
+	App.ForceDraw()
+	selectedRow := 1
+	if len(sectionRows) > 0 && sectionRows[0] == 1 {
+		selectedRow = 2
+	}
+	if selectedRow < table.GetRowCount() {
+		table.Select(selectedRow, 0)
+	}
 }
 
 func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tcell.Color) {
@@ -782,6 +865,10 @@ func (table *ResultsTable) GetForeignKeys() [][]string {
 	return table.state.foreignKeys
 }
 
+func (table *ResultsTable) GetShowCheckConstraints() bool {
+	return table.state.showCheckConstraints
+}
+
 func (table *ResultsTable) GetTableName() string {
 	return table.state.tableName
 }
@@ -877,6 +964,10 @@ func (table *ResultsTable) SetForeignKeys(foreignKeys [][]string) {
 
 func (table *ResultsTable) SetIndexes(indexes [][]string) {
 	table.state.indexes = indexes
+}
+
+func (table *ResultsTable) ToggleCheckConstraints() {
+	table.state.showCheckConstraints = !table.state.showCheckConstraints
 }
 
 func (table *ResultsTable) SetDatabaseName(databaseName string) {
