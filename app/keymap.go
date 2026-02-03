@@ -126,6 +126,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '3'}, Cmd: cmd.ConstraintsMenu, Description: "Switch to constraints menu"},
 			Bind{Key: Key{Char: '4'}, Cmd: cmd.ForeignKeysMenu, Description: "Switch to foreign keys menu"},
 			Bind{Key: Key{Char: '5'}, Cmd: cmd.IndexesMenu, Description: "Switch to indexes menu"},
+			Bind{Key: Key{Char: 'x'}, Cmd: cmd.ToggleCheckConstraints, Description: "Toggle check constraints"},
 			// Sidebar
 			Bind{Key: Key{Char: 'S'}, Cmd: cmd.ToggleSidebar, Description: "Toggle sidebar"},
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},

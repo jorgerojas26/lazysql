@@ -401,6 +401,7 @@ Note: Undefined environment variables will be replaced with an empty string.
 | }        | Focus next tab                       |
 | X        | Close current tab                    |
 | R        | Refresh the current table            |
+| x        | Toggle check constraints             |
 | E        | Export to CSV                        |
 
 ### Tree
