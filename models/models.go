@@ -11,6 +11,7 @@ type AppConfig struct {
 	DisableSidebar               bool
 	SidebarOverlay               bool
 	MaxQueryHistoryPerConnection int
+	TreeWidth                    int
 }
 
 type Connection struct {
@@ -29,6 +30,10 @@ type Connection struct {
 	URLParams string
 
 	ReadOnly bool
+
+	// Schemas filters the schemas shown in the tree (PostgreSQL/MSSQL only).
+	// If empty, all schemas are shown.
+	Schemas []string
 
 	Commands []*Command
 }

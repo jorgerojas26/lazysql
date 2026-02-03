@@ -640,15 +640,15 @@ func (db *SQLite) DMLChangeToQueryString(change models.DBDMLChange) (string, err
 	return queryStr, nil
 }
 
-func (db *SQLite) GetFunctions(database string) (map[string][]string, error) {
+func (db *SQLite) GetFunctions(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *SQLite) GetProcedures(database string) (map[string][]string, error) {
+func (db *SQLite) GetProcedures(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *SQLite) GetViews(database string) (map[string][]string, error) {
+func (db *SQLite) GetViews(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -660,14 +660,14 @@ func (db *SQLite) UseSchemas() bool {
 	return false
 }
 
-func (db *SQLite) GetFunctionDefinition(database string, name string) (string, error) {
+func (db *SQLite) GetFunctionDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *SQLite) GetProcedureDefinition(database string, name string) (string, error) {
+func (db *SQLite) GetProcedureDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *SQLite) GetViewDefinition(database string, name string) (string, error) {
+func (db *SQLite) GetViewDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }

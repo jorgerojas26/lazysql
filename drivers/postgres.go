@@ -160,7 +160,7 @@ func (db *Postgres) GetTableColumns(database, table string) ([][]string, error) 
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
-	query := "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_catalog = $1 AND table_schema = $2 AND table_name = $3 ORDER by ordinal_position"
+	query := "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(pd.description, '') as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = $1 AND c.table_schema = $2 AND c.table_name = $3 ORDER by c.ordinal_position"
 
 	rows, err := db.Connection.Query(query, database, tableSchema, tableName)
 	if err != nil {
@@ -822,7 +822,7 @@ func (db *Postgres) SwitchDatabase(database string) error {
 
 	user := parsedConn.User.Username()
 	password, _ := parsedConn.User.Password()
-	host := parsedConn.Host
+	host := parsedConn.Hostname()
 	port := parsedConn.Port()
 	dbname := parsedConn.Path
 
@@ -954,15 +954,15 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 	return queryStr, nil
 }
 
-func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
+func (db *Postgres) GetFunctions(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
+func (db *Postgres) GetProcedures(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *Postgres) GetViews(database string) (map[string][]string, error) {
+func (db *Postgres) GetViews(_ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -974,14 +974,14 @@ func (db *Postgres) UseSchemas() bool {
 	return true
 }
 
-func (db *Postgres) GetFunctionDefinition(database string, name string) (string, error) {
+func (db *Postgres) GetFunctionDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *Postgres) GetProcedureDefinition(database string, name string) (string, error) {
+func (db *Postgres) GetProcedureDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *Postgres) GetViewDefinition(database string, name string) (string, error) {
+func (db *Postgres) GetViewDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }

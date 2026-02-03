@@ -34,6 +34,7 @@ type Tree struct {
 	Wrapper             *tview.Flex
 	FoundNodeCountInput *tview.InputField
 	subscribers         []chan models.StateChange
+	Schemas             []string
 }
 
 type TreeNodeType int
@@ -113,7 +114,7 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 	}
 }
 
-func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
+func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
@@ -127,6 +128,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		DBDriver:            dbdriver,
 		Filter:              tview.NewInputField(),
 		FoundNodeCountInput: tview.NewInputField(),
+		Schemas:             schemas,
 	}
 
 	tree.SetTopLevel(1)
@@ -329,6 +331,20 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 	sortedKeys := slices.Sorted(maps.Keys(children))
 
 	for _, key := range sortedKeys {
+		// Filter schemas if Schemas is configured (PostgreSQL/MSSQL)
+		if len(tree.Schemas) > 0 && tree.DBDriver.UseSchemas() {
+			found := false
+			for _, schema := range tree.Schemas {
+				if schema == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
 		values := children[key]
 
 		// Sort the values.
@@ -371,9 +387,8 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			childNode := tview.NewTreeNode(child)
 			childNode.SetExpanded(defaultExpanded)
 			childNode.SetColor(app.Styles.PrimaryTextColor)
-			if tree.DBDriver.GetProvider() == "sqlite3" {
-				childNode.SetReference(child)
-			} else if tree.DBDriver.UseSchemas() {
+
+			if tree.DBDriver.UseSchemas() {
 				if supportsProgramming {
 					childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", nodeReference, key, child))
 				} else {
@@ -393,12 +408,12 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 }
 
 func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures map[string][]string, views map[string][]string, node *tview.TreeNode) {
-	var database = node.GetText()
-	var dbFunctions = functions[database]
+	database := node.GetText()
+	dbFunctions := functions[database]
 	sort.Strings(dbFunctions)
 
 	var functionsNode *tview.TreeNode
-	var functionsNodeReference = fmt.Sprintf("%s.functions", node.GetReference().(string))
+	functionsNodeReference := fmt.Sprintf("%s.functions", node.GetReference().(string))
 	functionsNode = tview.NewTreeNode("functions")
 	functionsNode.SetExpanded(false)
 	functionsNode.SetReference(functionsNodeReference)
@@ -413,11 +428,11 @@ func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures 
 		functionsNode.AddChild(functionNode)
 	}
 
-	var dbProcedures = procedures[database]
+	dbProcedures := procedures[database]
 	sort.Strings(dbProcedures)
 
 	var proceduresNode *tview.TreeNode
-	var proceduresNodeReference = fmt.Sprintf("%s.procedures", node.GetReference().(string))
+	proceduresNodeReference := fmt.Sprintf("%s.procedures", node.GetReference().(string))
 	proceduresNode = tview.NewTreeNode("procedures")
 	proceduresNode.SetExpanded(false)
 	proceduresNode.SetReference(proceduresNodeReference)
@@ -432,11 +447,11 @@ func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures 
 		proceduresNode.AddChild(procedureNode)
 	}
 
-	var dbViews = views[database]
+	dbViews := views[database]
 	sort.Strings(dbViews)
 
 	var viewsNode *tview.TreeNode
-	var viewsNodeReference = fmt.Sprintf("%s.views", node.GetReference().(string))
+	viewsNodeReference := fmt.Sprintf("%s.views", node.GetReference().(string))
 	viewsNode = tview.NewTreeNode("views")
 	viewsNode.SetExpanded(false)
 	viewsNode.SetReference(viewsNodeReference)
@@ -791,9 +806,14 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		if err != nil {
 			panic(err.Error())
 		}
-		databases = dbs
+		sanitizedDbs := make([]string, 0, len(dbs))
+		for _, db := range dbs {
+			sanitizedDbs = append(sanitizedDbs, sanitizeDBName(db))
+		}
+		databases = sanitizedDbs
 	} else {
-		databases = []string{dbName}
+		sanitizedDBName := sanitizeDBName(dbName)
+		databases = []string{sanitizedDBName}
 	}
 
 	for _, database := range databases {
@@ -851,4 +871,9 @@ func (tree *Tree) ClearSearch() {
 	tree.FoundNodeCountInput.SetText("")
 	tree.SetBorderPadding(0, 0, 0, 0)
 	tree.Filter.SetText("")
+}
+
+func sanitizeDBName(dbName string) string {
+	// Remove dots from db name
+	return strings.ReplaceAll(dbName, ".", "_")
 }

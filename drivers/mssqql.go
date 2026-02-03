@@ -116,7 +116,10 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := fmt.Sprintf(`SELECT name FROM %s.sys.tables`, database)
+	query := "SELECT name FROM "
+	query += database
+	query += ".sys.tables"
+
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
@@ -147,10 +150,14 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
             c.name AS column_name,
             t.name AS data_type,
             c.is_nullable,
-            def.definition AS column_default
+            def.definition AS column_default,
+            ISNULL(ep.value, '') AS comment
         FROM sys.columns c
         INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
         LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
+        LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id 
+            AND ep.minor_id = c.column_id 
+            AND ep.name = 'MS_Description'
         WHERE c.object_id = OBJECT_ID(@p2)
         AND t.name <> 'sysname'
         ORDER BY c.column_id;
@@ -375,7 +382,10 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		return nil, 0, displayQueryString, err
 	}
 
-	countQuery := fmt.Sprintf("USE %s; SELECT COUNT(*) FROM ", database)
+	countQuery := "USE "
+	countQuery += database
+	countQuery += "; "
+	countQuery += "SELECT COUNT(*) FROM "
 	countQuery += db.FormatReference(table)
 
 	if where != "" {
@@ -415,7 +425,10 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 		return errors.New("primary key value is required")
 	}
 
-	query := fmt.Sprintf("USE %s; UPDATE ", database)
+	query := "USE "
+	query += database
+	query += "; UPDATE "
+	query += database
 	query += table
 	query += " SET "
 	query += column
@@ -444,7 +457,9 @@ func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 		return errors.New("primary key value is required")
 	}
 
-	query := fmt.Sprintf("USE %s; DELETE FROM ", database)
+	query := "USE "
+	query += database
+	query += "; DELETE FROM "
 	query += table
 	query += " WHERE "
 	query += primaryKeyColumnName
@@ -557,8 +572,10 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 	}
 
 	pkColumnName := make([]string, 0)
-	query := fmt.Sprintf(`
-		USE %s;
+	query := "USE "
+	query += database
+	query += "; "
+	query += `
 		SELECT
 			c.name AS column_name
 		FROM
@@ -581,7 +598,8 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		WHERE 
 			s.name = @p2
 			AND t.name = @p3
-		ORDER BY ic.key_ordinal`, database)
+		ORDER BY ic.key_ordinal
+	`
 	rows, err := db.Connection.Query(query, "PK", currentSchema, table)
 	if err != nil {
 		return nil, err
@@ -801,12 +819,15 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 
 	functions := make(map[string][]string)
 
-	query := fmt.Sprintf(`
-		use %s;
+	query := "USE"
+	query += database
+	query += ";"
+	query += `
 		SELECT o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
-		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION')`, database)
+		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION')
+		`
 
 	rows, err := db.Connection.Query(query, database)
 	if err != nil {
@@ -838,12 +859,15 @@ func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
 
 	procedures := make(map[string][]string)
 
-	query := fmt.Sprintf(`
-		use %s;
+	query := "USE "
+	query += database
+	query += "; "
+	query += `
 		SELECT o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
-		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')`, database)
+		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')
+		`
 
 	rows, err := db.Connection.Query(query)
 	if err != nil {
@@ -883,12 +907,15 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 
 	views := make(map[string][]string)
 
-	query := fmt.Sprintf(`
-		use %s;
+	query := "USE "
+	query += database
+	query += "; "
+	query += `
 		SELECT o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
-		WHERE o.type_desc IN ('VIEW')`, database)
+		WHERE o.type_desc IN ('VIEW')
+	`
 
 	rows, err := db.Connection.Query(query)
 	if err != nil {
@@ -920,8 +947,10 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
 
 	result := ""
 
-	query := fmt.Sprintf(`
-	use %s;
+	query := "USE "
+	query += database
+	query += "; "
+	query += `
 	declare @proc_source nvarchar(max);
     select @proc_source = object_definition(object_id(@name));
 
@@ -931,7 +960,8 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
         set @proc_source = stuff(@proc_source, charindex('create', @proc_source), 6, 'alter')
     end
 
-    select @proc_source as result;`, database)
+    select @proc_source as result;
+	`
 
 	row := db.Connection.QueryRow(query, sql.Named("name", name))
 	if err := row.Scan(&result); err != nil {

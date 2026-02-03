@@ -64,6 +64,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '?'}, Cmd: cmd.HelpPopup, Description: "Help"},
 			Bind{Key: Key{Code: tcell.KeyCtrlP}, Cmd: cmd.SearchGlobal, Description: "Global search"},
 			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
+			Bind{Key: Key{Char: 'T'}, Cmd: cmd.ToggleTree, Description: "Toggle file tree"},
 		},
 		ConnectionGroup: {
 			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},
@@ -130,6 +131,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
 			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Toggle JSON viewer for row"},
 			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer for cell"},
+			// Export
+			Bind{Key: Key{Char: 'E'}, Cmd: cmd.ExportCSV, Description: "Export to CSV"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},

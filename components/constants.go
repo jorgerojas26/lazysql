@@ -42,6 +42,11 @@ const (
 	pageNameQueryHistory     string = "QueryHistoryModal"
 	pageNameSaveQuery        string = "SaveQueryModal"
 	pageNameSavedQueryDelete string = "SavedQueryDeleteModal"
+
+	// CSV Export
+	pageNameCSVExport        string = "CSVExportModal"
+	pageNameCSVExportSuccess string = "CSVExportSuccessModal"
+	pageNameCSVExportError   string = "CSVExportErrorModal"
 )
 
 // Tabs
