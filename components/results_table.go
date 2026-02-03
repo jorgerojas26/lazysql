@@ -62,6 +62,7 @@ type ResultsTable struct {
 }
 
 const checkConstraintsSectionLabel = "Check constraints"
+const checkConstraintsHiddenHint = "Check constraints (hidden - press x to show)"
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
 	state := &ResultsTableState{
@@ -595,7 +596,7 @@ func (table *ResultsTable) buildConstraintsRows() ([][]string, []int) {
 		return constraints, nil
 	}
 
-	header := constraints[0]
+	header := append([]string(nil), constraints[0]...)
 	constraintTypeIndex := -1
 	for i, column := range header {
 		if strings.EqualFold(column, "constraint_type") || strings.EqualFold(column, "constraint type") {
@@ -624,8 +625,19 @@ func (table *ResultsTable) buildConstraintsRows() ([][]string, []int) {
 		}
 	}
 
-	if !table.GetShowCheckConstraints() || len(checkRows) == 0 {
-		return rows, nil
+	nonSelectableRows := make([]int, 0)
+
+	if len(checkRows) == 0 {
+		return rows, nonSelectableRows
+	}
+
+	if !table.GetShowCheckConstraints() {
+		hintRow := make([]string, len(header))
+		hintRow[0] = checkConstraintsHiddenHint
+		hintRowIndex := len(rows)
+		rows = append(rows, hintRow)
+		nonSelectableRows = append(nonSelectableRows, hintRowIndex)
+		return rows, nonSelectableRows
 	}
 
 	sectionRow := make([]string, len(header))
@@ -633,15 +645,14 @@ func (table *ResultsTable) buildConstraintsRows() ([][]string, []int) {
 	sectionRowIndex := len(rows)
 	rows = append(rows, sectionRow)
 	rows = append(rows, checkRows...)
-
-	return rows, []int{sectionRowIndex}
+	return rows, append(nonSelectableRows, sectionRowIndex)
 }
 
 func (table *ResultsTable) UpdateConstraintsRows() {
-	rows, sectionRows := table.buildConstraintsRows()
+	rows, nonSelectableRows := table.buildConstraintsRows()
 	table.Clear()
 	table.AddRows(rows)
-	for _, rowIndex := range sectionRows {
+	for _, rowIndex := range nonSelectableRows {
 		for colIndex := 0; colIndex < table.GetColumnCount(); colIndex++ {
 			cell := table.GetCell(rowIndex, colIndex)
 			if cell == nil {
@@ -653,8 +664,15 @@ func (table *ResultsTable) UpdateConstraintsRows() {
 	}
 	App.ForceDraw()
 	selectedRow := 1
-	if len(sectionRows) > 0 && sectionRows[0] == 1 {
-		selectedRow = 2
+	nonSelectableSet := make(map[int]struct{}, len(nonSelectableRows))
+	for _, rowIndex := range nonSelectableRows {
+		nonSelectableSet[rowIndex] = struct{}{}
+	}
+	for selectedRow < table.GetRowCount() {
+		if _, blocked := nonSelectableSet[selectedRow]; !blocked {
+			break
+		}
+		selectedRow++
 	}
 	if selectedRow < table.GetRowCount() {
 		table.Select(selectedRow, 0)
