@@ -412,6 +412,8 @@ Note: Undefined environment variables will be replaced with an empty string.
 | g      | Focus first database tree node |
 | CTRL+u | Scroll 5 items up              |
 | CTRL+d | Scroll 5 items down            |
+| CTRL+l | Increase tree width            |
+| CTRL+h | Decrease tree width            |
 
 ### SQL Editor
 
