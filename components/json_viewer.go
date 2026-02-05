@@ -20,13 +20,15 @@ type JSONViewer struct {
 	TextView         *tview.TextView
 	Pages            *tview.Pages
 	primitiveToFocus tview.Primitive
+	wrapEnabled      bool
 }
 
 func NewJSONViewer(pages *tview.Pages) *JSONViewer {
+	wrapEnabled := app.App.Config().JSONViewerWordWrap
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetWrap(false)
+		SetWrap(wrapEnabled)
 	textView.SetBorder(true).SetTitle(" JSON Viewer ")
 
 	flex := tview.NewFlex().
@@ -38,9 +40,10 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 		AddItem(nil, 0, 1, false)
 
 	jsonViewer := &JSONViewer{
-		Flex:     flex,
-		TextView: textView,
-		Pages:    pages,
+		Flex:        flex,
+		TextView:    textView,
+		Pages:       pages,
+		wrapEnabled: wrapEnabled,
 	}
 
 	pages.AddPage(pageNameJSONViewer, jsonViewer, true, false)
@@ -57,6 +60,10 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 			if err != nil {
 				logger.Error("Error copying JSON to clipboard", map[string]any{"error": err.Error()})
 			}
+			return nil
+		} else if command == commands.ToggleJSONViewerWrap {
+			jsonViewer.wrapEnabled = !jsonViewer.wrapEnabled
+			jsonViewer.TextView.SetWrap(jsonViewer.wrapEnabled)
 			return nil
 		}
 		return event

@@ -73,6 +73,7 @@ const (
 	ToggleSidebar
 	ShowRowJSONViewer
 	ShowCellJSONViewer
+	ToggleJSONViewerWrap
 
 	// Connection
 	NewConnection
@@ -221,6 +222,8 @@ func (c Command) String() string {
 		return "ShowRowJSONViewer"
 	case ShowCellJSONViewer:
 		return "ShowCellJSONViewer"
+	case ToggleJSONViewerWrap:
+		return "ToggleJSONViewerWrap"
 	case ExportCSV:
 		return "ExportCSV"
 	}

@@ -12,6 +12,7 @@ type AppConfig struct {
 	SidebarOverlay               bool
 	MaxQueryHistoryPerConnection int
 	TreeWidth                    int
+	JSONViewerWordWrap           bool
 }
 
 type Connection struct {
