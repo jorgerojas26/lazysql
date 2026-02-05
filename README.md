@@ -167,7 +167,19 @@ URL = 'postgres://postgres:urlencodedpassword@localhost:5432/foo'
 DefaultPageSize = 300
 DisableSidebar = false
 SidebarOverlay = false
+JSONViewerWordWrap = false
+EnterOpensJSONViewer = false
 ```
+
+### Application settings
+
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| DefaultPageSize | 300 | Number of records to fetch per page |
+| DisableSidebar | false | Disable the sidebar |
+| SidebarOverlay | false | Show sidebar as overlay instead of side panel |
+| JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
+| EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
@@ -392,15 +404,20 @@ Note: Undefined environment variables will be replaced with an empty string.
 | o        | Add row                              |
 | /        | Focus the filter input or SQL editor |
 | CTRL + s | Commit changes                       |
+| CTRL + o | Edit cell in external editor         |
 | >        | Next page                            |
 | <        | Previous page                        |
 | K        | Sort ASC                             |
 | J        | Sort DESC                            |
 | H        | Focus tree panel                     |
-| {        | Focus previous tab                   |
-| }        | Focus next tab                       |
+| [        | Focus previous tab                   |
+| ]        | Focus next tab                       |
+| {        | Focus first tab                      |
+| }        | Focus last tab                       |
 | X        | Close current tab                    |
 | R        | Refresh the current table            |
+| z        | Open JSON viewer for cell            |
+| Z        | Open JSON viewer for row             |
 | E        | Export to CSV                        |
 
 ### Tree
@@ -415,14 +432,31 @@ Note: Undefined environment variables will be replaced with an empty string.
 
 ### SQL Editor
 
-| Key          | Action                            |
-| ------------ | --------------------------------- |
-| CTRL + R     | Run the SQL statement             |
-| CTRL + Space | Open external editor (Linux only) |
+| Key          | Action                                       |
+| ------------ | -------------------------------------------- |
+| CTRL + R     | Run the SQL statement                        |
+| CTRL + Space | Open external editor (Linux/macOS only)      |
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.
 
-Specific terminal for opening editor can be set by `$SQL_TERMINAL`
+### JSON Viewer
+
+| Key | Action           |
+| --- | ---------------- |
+| w   | Toggle word wrap |
+| y   | Copy to clipboard|
+| z/Z | Close viewer     |
+
+The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cell. If `EnterOpensJSONViewer` is enabled, pressing Enter on a cell will also open the JSON viewer.
+
+### External Editor
+
+The external editor feature (CTRL + Space in SQL Editor, CTRL + o in Table) uses the following environment variables to determine which editor to use:
+
+- SQL Editor: `$SQL_EDITOR` > `$EDITOR` > `$VISUAL` > `vi`
+- Table cells: `$EDITOR` > `$VISUAL` > `vi`
+
+This feature is only available on Linux and macOS.
 
 ## Example connection URLs
 

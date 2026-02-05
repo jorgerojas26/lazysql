@@ -133,6 +133,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer for cell"},
 			// Export
 			Bind{Key: Key{Char: 'E'}, Cmd: cmd.ExportCSV, Description: "Export to CSV"},
+			// External editor
+			Bind{Key: Key{Code: tcell.KeyCtrlO}, Cmd: cmd.OpenCellInExternalEditor, Description: "Edit cell in external editor"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
