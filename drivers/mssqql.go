@@ -595,7 +595,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 			sys.columns c
 				ON ic.column_id = c.column_id
 				AND t.object_id = c.object_id
-		WHERE 
+		WHERE
 			s.name = @p2
 			AND t.name = @p3
 		ORDER BY ic.key_ordinal
