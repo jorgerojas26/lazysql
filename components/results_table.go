@@ -3,6 +3,9 @@ package components
 import (
 	"cmp"
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -541,6 +544,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ShowCellJSONViewer {
 		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 		return nil
+	} else if event.Key() == tcell.KeyEnter && app.App.Config().EnterOpensJSONViewer {
+		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
+		return nil
 	} else if command == commands.Copy {
 		selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 		if selectedCell != nil {
@@ -550,6 +556,44 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.SetError(err.Error(), nil)
 			}
 		}
+	} else if command == commands.OpenCellInExternalEditor {
+		if table.ReadOnly {
+			table.SetError("Cannot modify data: Connection is in read-only mode", nil)
+			return nil
+		}
+		if table.Editor == nil && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+			if selectedCell != nil {
+				originalText := selectedCell.Text
+				var newText string
+				app.App.Suspend(func() {
+					newText = openCellInExternalEditor(originalText)
+				})
+				// Strip trailing newline that editors typically add
+				newText = strings.TrimSuffix(newText, "\n")
+				if newText != originalText {
+					selectedCell.SetText(newText)
+					columnName := table.GetColumnNameByIndex(selectedColumnIndex)
+					// Remove sorting icon from the column name
+					columnName = strings.ReplaceAll(columnName, " ▼", "")
+					columnName = strings.ReplaceAll(columnName, " ▲", "")
+					err := table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{
+						Type:             models.String,
+						Value:            newText,
+						Column:           columnName,
+						TableColumnIndex: selectedColumnIndex,
+						TableRowIndex:    selectedRowIndex,
+					})
+					if err != nil {
+						table.SetError(err.Error(), nil)
+					}
+					if table.GetShowSidebar() {
+						table.UpdateSidebar()
+					}
+				}
+			}
+		}
+		return nil
 	} else if command == commands.ExportCSV {
 		table.showCSVExportModal()
 		return nil
@@ -1782,4 +1826,58 @@ func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int)
 
 	mainPages.AddPage(pageNameCSVExportSuccess, modal, true, true)
 	App.SetFocus(modal)
+}
+
+// openCellInExternalEditor opens the user's preferred editor to edit a cell value.
+// It should be called within app.Suspend() to ensure the TUI is properly restored.
+func openCellInExternalEditor(currentText string) string {
+	tmpFile, err := os.CreateTemp("", "lazysql-cell-*.txt")
+	if err != nil {
+		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(currentText); err != nil {
+		logger.Error("Failed to write to temporary file", map[string]any{"error": err.Error()})
+		tmpFile.Close()
+		return currentText
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		logger.Error("Failed to close temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
+
+	editor := getCellEditor()
+
+	cmd := exec.Command(editor, tmpFile.Name())
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		logger.Error("Error executing editor", map[string]any{"error": err.Error(), "command": cmd.String()})
+		return currentText
+	}
+
+	updatedContent, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		logger.Error("Failed to read from temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
+
+	return string(updatedContent)
+}
+
+// getCellEditor returns the editor to use for cell editing.
+func getCellEditor() string {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = os.Getenv("VISUAL")
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+	return editor
 }

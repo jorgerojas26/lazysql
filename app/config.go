@@ -27,6 +27,7 @@ func defaultConfig() *Config {
 			MaxQueryHistoryPerConnection: 100,
 			TreeWidth:                    30,
 			JSONViewerWordWrap:           false,
+			EnterOpensJSONViewer:         false,
 		},
 	}
 }

@@ -57,6 +57,7 @@ const (
 	Quit
 	Execute
 	OpenInExternalEditor
+	OpenCellInExternalEditor
 	AppendNewRow
 	DuplicateRow
 	SortAsc
@@ -162,6 +163,8 @@ func (c Command) String() string {
 		return "Execute"
 	case OpenInExternalEditor:
 		return "OpenInExternalEditor"
+	case OpenCellInExternalEditor:
+		return "OpenCellInExternalEditor"
 	case AppendNewRow:
 		return "AppendNewRow"
 	case DuplicateRow:
