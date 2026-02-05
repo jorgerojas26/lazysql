@@ -1849,7 +1849,7 @@ func openCellInExternalEditor(currentText string) string {
 	editorParts := getCellEditorParts()
 	editorArgs := append(editorParts[1:], tmpFile.Name())
 
-	cmd := exec.Command(editorParts[0], editorArgs...)
+	cmd := exec.Command(editorParts[0], editorArgs...) //nolint:gosec // editor comes from trusted $EDITOR env var
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
