@@ -574,9 +574,6 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				if newText != originalText {
 					selectedCell.SetText(newText)
 					columnName := table.GetColumnNameByIndex(selectedColumnIndex)
-					// Remove sorting icon from the column name
-					columnName = strings.ReplaceAll(columnName, " ▼", "")
-					columnName = strings.ReplaceAll(columnName, " ▲", "")
 					err := table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{
 						Type:             models.String,
 						Value:            newText,
@@ -1849,9 +1846,10 @@ func openCellInExternalEditor(currentText string) string {
 		return currentText
 	}
 
-	editor := getCellEditor()
+	editorParts := getCellEditorParts()
+	editorArgs := append(editorParts[1:], tmpFile.Name())
 
-	cmd := exec.Command(editor, tmpFile.Name())
+	cmd := exec.Command(editorParts[0], editorArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -1870,8 +1868,9 @@ func openCellInExternalEditor(currentText string) string {
 	return string(updatedContent)
 }
 
-// getCellEditor returns the editor to use for cell editing.
-func getCellEditor() string {
+// getCellEditorParts returns the editor command and its arguments for cell editing.
+// Supports editor strings with flags like "code --wait" or "vim -u NONE".
+func getCellEditorParts() []string {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
 		editor = os.Getenv("VISUAL")
@@ -1879,5 +1878,5 @@ func getCellEditor() string {
 	if editor == "" {
 		editor = "vi"
 	}
-	return editor
+	return strings.Fields(editor)
 }
