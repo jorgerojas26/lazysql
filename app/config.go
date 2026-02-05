@@ -26,6 +26,7 @@ func defaultConfig() *Config {
 			SidebarOverlay:               false,
 			MaxQueryHistoryPerConnection: 100,
 			TreeWidth:                    30,
+			JSONViewerWordWrap:           false,
 		},
 	}
 }
