@@ -232,18 +232,28 @@ func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
 	rows, err := db.Connection.Query(fmt.Sprintf(`
         SELECT
             tc.constraint_name,
+            tc.constraint_type,
             kcu.column_name,
-            tc.constraint_type
+            tc.is_deferrable,
+            tc.initially_deferred,
+            CASE 
+                WHEN tc.constraint_type = 'CHECK' THEN 
+                    (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = tc.constraint_name AND connamespace = (SELECT oid FROM pg_namespace WHERE nspname = tc.table_schema))
+                ELSE NULL 
+            END as check_clause
         FROM
             information_schema.table_constraints AS tc
-            JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
+            LEFT JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
             AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
-            AND ccu.table_schema = tc.table_schema
+            AND tc.table_name = kcu.table_name
         WHERE
-            NOT tc.constraint_type = 'FOREIGN KEY'
-			AND tc.table_schema = '%s'
+            tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE', 'CHECK')
+            AND tc.table_schema = '%s'
             AND tc.table_name = '%s'
+        ORDER BY 
+            tc.constraint_type, 
+            tc.constraint_name,
+            kcu.ordinal_position
             `, tableSchema, tableName))
 	if err != nil {
 		return nil, err
