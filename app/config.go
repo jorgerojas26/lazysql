@@ -17,6 +17,7 @@ type Config struct {
 	ConfigFile  string
 	AppConfig   *models.AppConfig   `toml:"application"`
 	Connections []models.Connection `toml:"database"`
+	Keymaps     models.KeymapConfig `toml:"keymap"`
 }
 
 func defaultConfig() *Config {
@@ -71,6 +72,10 @@ func LoadConfig(configFile string) error {
 
 	for i, conn := range App.config.Connections {
 		App.config.Connections[i].URL = parseConfigURL(&conn)
+	}
+
+	if err := ApplyKeymapConfig(App.config.Keymaps); err != nil {
+		return err
 	}
 
 	return nil
