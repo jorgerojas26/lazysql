@@ -39,6 +39,8 @@ type Connection struct {
 	Commands []*Command
 }
 
+type KeymapConfig map[string]map[string]string
+
 type Command struct {
 	Command      string
 	WaitForPort  string
