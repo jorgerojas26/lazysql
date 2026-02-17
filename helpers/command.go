@@ -15,7 +15,7 @@ import (
 )
 
 // [doneFn] is invoked when the [command] is completed with its stdout.
-func RunCommand(ctx context.Context, command string, doneFn func(output string)) error {
+func RunCommand(ctx context.Context, command string, timeout time.Duration, doneFn func(output string)) error {
 	var cmd *exec.Cmd
 
 	parts := strings.Fields(command)
@@ -58,7 +58,7 @@ func RunCommand(ctx context.Context, command string, doneFn func(output string))
 		logger.Error("Command canceled", map[string]any{"error": ctx.Err()})
 	case <-startedCh:
 		logger.Info("Command started", map[string]any{"command": command})
-	case <-time.After(5 * time.Second):
+	case <-time.After(timeout):
 		_ = cmd.Process.Kill()
 		return errors.New("command timeout")
 	}

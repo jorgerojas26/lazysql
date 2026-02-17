@@ -42,9 +42,10 @@ type Connection struct {
 type KeymapConfig map[string]map[string]string
 
 type Command struct {
-	Command      string
-	WaitForPort  string
-	SaveOutputTo string
+	Command        string
+	WaitForPort    string
+	SaveOutputTo   string
+	TimeoutSeconds int
 }
 
 type StateChange struct {
