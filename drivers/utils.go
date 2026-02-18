@@ -118,6 +118,10 @@ func buildUpdateQueryString(sanitizedTableName string, colNames []string, args [
 }
 
 func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) models.Query {
+	if len(primaryKeyInfo) == 0 {
+		return models.Query{Query: "", Args: nil}
+	}
+
 	argsWithoutDefaults := []models.CellValue{}
 
 	for _, arg := range values {
@@ -205,6 +209,10 @@ func buildDeleteQueryString(sanitizedTableName string, primaryKeyInfo []models.P
 }
 
 func buildDeleteQuery(formattedTableName string, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) models.Query {
+	if len(primaryKeyInfo) == 0 {
+		return models.Query{Query: "", Args: nil}
+	}
+
 	queryStr := "DELETE FROM " + formattedTableName
 	args := make([]any, len(primaryKeyInfo))
 

@@ -1067,6 +1067,11 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 
 		table.SetLoading(false)
 
+		if len(primaryKeyColumnNames) == 0 {
+			currentText := table.Pagination.textView.GetText(false)
+			table.Pagination.textView.SetText(currentText + " ⚠ No Primary Key")
+		}
+
 		return records
 	}
 
@@ -1319,6 +1324,16 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 	primaryKeyColumnNames := table.GetPrimaryKeyColumnNames()
 
 	info := []models.PrimaryKeyInfo{}
+
+	if len(primaryKeyColumnNames) == 0 {
+		allRecords := table.GetRecords()
+		columns := allRecords[0]
+		row := allRecords[rowIndex]
+		for i, colName := range columns {
+			info = append(info, models.PrimaryKeyInfo{Name: colName, Value: row[i]})
+		}
+		return info
+	}
 
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
 		columnIndex := table.GetColumnIndexByName(primaryKeyColumnName)
