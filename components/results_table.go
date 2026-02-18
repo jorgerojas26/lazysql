@@ -1647,7 +1647,14 @@ func (table *ResultsTable) isAnInsertedRow(rowIndex int) (isAnInsertedRow bool, 
 }
 
 func (table *ResultsTable) colorChangedCells() {
+	tableName := table.GetTableName()
+	databaseName := table.GetDatabaseName()
+
 	for _, dmlChange := range *table.state.listOfDBChanges {
+		if dmlChange.Table != tableName || dmlChange.Database != databaseName {
+			continue
+		}
+
 		switch dmlChange.Type {
 		case models.DMLDeleteType:
 			table.SetRowColor(dmlChange.Values[0].TableRowIndex, colorTableDelete)
