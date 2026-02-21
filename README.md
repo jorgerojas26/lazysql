@@ -638,3 +638,13 @@ Jorge Rojas - [LinkedIn](https://www.linkedin.com/in/jorgerojas26/) - jorgeluisr
 [product-screenshot2]: images/lazysql.png
 [golang-shield]: https://img.shields.io/badge/Golang-gray?style=for-the-badge&logo=go
 [tview-shield]: https://img.shields.io/badge/tview-gray?style=for-the-badge&logo=go
+
+## Star History
+
+<a href="https://www.star-history.com/#jorgerojas26/lazysql&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
+ </picture>
+</a>
