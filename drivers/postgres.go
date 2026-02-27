@@ -64,7 +64,7 @@ func (db *Postgres) Connect(urlstr string) error {
 }
 
 func (db *Postgres) GetDatabases() ([]string, error) {
-	rows, err := db.Connection.Query("SELECT datname FROM pg_database;")
+	rows, err := db.Connection.Query("SELECT datname FROM pg_database WHERE datallowconn AND has_database_privilege(current_user, datname, 'CONNECT');")
 	if err != nil {
 		return nil, err
 	}
@@ -814,17 +814,11 @@ func (db *Postgres) SwitchDatabase(database string) error {
 	password, _ := parsedConn.User.Password()
 	host := parsedConn.Hostname()
 	port := parsedConn.Port()
-	dbname := parsedConn.Path
-
 	if port == "" {
 		port = defaultPort
 	}
 
-	if dbname == "" {
-		dbname = database
-	}
-
-	connection, err := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname='%s' sslmode=disable", host, port, user, password, dbname))
+	connection, err := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname='%s' sslmode=disable", host, port, user, password, database))
 	if err != nil {
 		return err
 	}
