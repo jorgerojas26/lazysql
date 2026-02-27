@@ -271,7 +271,7 @@ func TestPostgres_GetTableColumns(t *testing.T) {
 		"", // Empty comment
 	)
 
-	mock.ExpectQuery("SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(pd.description, '') as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = $1 AND c.table_schema = $2 AND c.table_name = $3 ORDER by c.ordinal_position").
+	mock.ExpectQuery("SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(pd.description, '') as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name AND pc.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema) LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = $1 AND c.table_schema = $2 AND c.table_name = $3 ORDER by c.ordinal_position").
 		WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
 		WillReturnRows(rows)
 
@@ -304,7 +304,7 @@ func TestPostgres_GetTableColumns_Error(t *testing.T) {
 	defer db.Close()
 
 	pg := &Postgres{Connection: db, CurrentDatabase: DBNamePostgres}
-	mock.ExpectQuery("SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE\\(pd.description, ''\\) as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = \\$1 AND c.table_schema = \\$2 AND c.table_name = \\$3 ORDER by c.ordinal_position").WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
+	mock.ExpectQuery("SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE\\(pd.description, ''\\) as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name AND pc.relnamespace = \\(SELECT oid FROM pg_namespace WHERE nspname = c.table_schema\\) LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = \\$1 AND c.table_schema = \\$2 AND c.table_name = \\$3 ORDER by c.ordinal_position").WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
 		WillReturnError(errors.New("query error"))
 
 	_, err = pg.GetTableColumns(DBNamePostgres, schemaAndTablePostgres)

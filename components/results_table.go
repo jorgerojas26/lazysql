@@ -1067,6 +1067,11 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 
 		table.SetLoading(false)
 
+		if len(primaryKeyColumnNames) == 0 {
+			currentText := table.Pagination.textView.GetText(false)
+			table.Pagination.textView.SetText(currentText + " ⚠ No Primary Key")
+		}
+
 		return records
 	}
 
@@ -1319,6 +1324,16 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 	primaryKeyColumnNames := table.GetPrimaryKeyColumnNames()
 
 	info := []models.PrimaryKeyInfo{}
+
+	if len(primaryKeyColumnNames) == 0 {
+		allRecords := table.GetRecords()
+		columns := allRecords[0]
+		row := allRecords[rowIndex]
+		for i, colName := range columns {
+			info = append(info, models.PrimaryKeyInfo{Name: colName, Value: row[i]})
+		}
+		return info
+	}
 
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
 		columnIndex := table.GetColumnIndexByName(primaryKeyColumnName)
@@ -1632,7 +1647,14 @@ func (table *ResultsTable) isAnInsertedRow(rowIndex int) (isAnInsertedRow bool, 
 }
 
 func (table *ResultsTable) colorChangedCells() {
+	tableName := table.GetTableName()
+	databaseName := table.GetDatabaseName()
+
 	for _, dmlChange := range *table.state.listOfDBChanges {
+		if dmlChange.Table != tableName || dmlChange.Database != databaseName {
+			continue
+		}
+
 		switch dmlChange.Type {
 		case models.DMLDeleteType:
 			table.SetRowColor(dmlChange.Values[0].TableRowIndex, colorTableDelete)
