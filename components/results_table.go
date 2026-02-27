@@ -917,21 +917,21 @@ func (table *ResultsTable) SetResultsInfo(text string) {
 }
 
 func (table *ResultsTable) SetLoading(show bool) {
-	table.state.isLoading = show
+	App.QueueUpdateDraw(func() {
+		table.state.isLoading = show
 
-	if show {
-		table.Page.ShowPage(pageNameTableLoading)
-		App.SetFocus(table.Loading)
-	} else {
-		table.Page.HidePage(pageNameTableLoading)
-		if table.state.error != "" {
-			App.SetFocus(table.Error)
+		if show {
+			table.Page.ShowPage(pageNameTableLoading)
+			App.SetFocus(table.Loading)
 		} else {
-			App.SetFocus(table)
+			table.Page.HidePage(pageNameTableLoading)
+			if table.state.error != "" {
+				App.SetFocus(table.Error)
+			} else {
+				App.SetFocus(table)
+			}
 		}
-	}
-
-	App.ForceDraw()
+	})
 }
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
