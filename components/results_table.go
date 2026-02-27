@@ -239,38 +239,40 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			editing := stateChange.Value.(bool)
 			table.SetIsEditing(editing)
 		case eventSidebarUnfocusing:
-			App.SetFocus(table)
-			App.ForceDraw()
+			App.QueueUpdateDraw(func() {
+				App.SetFocus(table)
+			})
 		case eventSidebarToggling:
-			table.ShowSidebar(false)
-			App.ForceDraw()
+			App.QueueUpdateDraw(func() {
+				table.ShowSidebar(false)
+			})
 		case eventSidebarCommitEditing:
-			params := stateChange.Value.(models.SidebarEditingCommitParams)
+			App.QueueUpdateDraw(func() {
+				params := stateChange.Value.(models.SidebarEditingCommitParams)
 
-			table.SetInputCapture(table.tableInputCapture)
-			table.SetIsEditing(false)
+				table.SetInputCapture(table.tableInputCapture)
+				table.SetIsEditing(false)
 
-			row, _ := table.GetSelection()
-			changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
-			tableCell := table.GetCell(row, changedColumnIndex)
+				row, _ := table.GetSelection()
+				changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
+				tableCell := table.GetCell(row, changedColumnIndex)
 
-			tableCell.SetText(params.NewValue)
+				tableCell.SetText(params.NewValue)
 
-			cellValue := models.CellValue{
-				Type:             params.Type,
-				Column:           params.ColumnName,
-				Value:            params.NewValue,
-				TableColumnIndex: changedColumnIndex,
-				TableRowIndex:    row,
-			}
+				cellValue := models.CellValue{
+					Type:             params.Type,
+					Column:           params.ColumnName,
+					Value:            params.NewValue,
+					TableColumnIndex: changedColumnIndex,
+					TableRowIndex:    row,
+				}
 
-			logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
-			err := table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
-			if err != nil {
-				table.SetError(err.Error(), nil)
-			}
-
-			App.ForceDraw()
+				logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
+				err := table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
+				if err != nil {
+					table.SetError(err.Error(), nil)
+				}
+			})
 		case eventSidebarError:
 			errorMessage := stateChange.Value.(string)
 			table.SetError(errorMessage, nil)
@@ -637,36 +639,36 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 	for stateChange := range ch {
 		switch stateChange.Key {
 		case eventResultsTableFiltering:
-			if stateChange.Value != "" {
-				rows := table.FetchRecords(nil)
+			App.QueueUpdateDraw(func() {
+				if stateChange.Value != "" {
+					rows := table.FetchRecords(nil)
 
-				if len(rows) > 0 {
-					table.Menu.SetSelectedOption(1)
+					if len(rows) > 0 {
+						table.Menu.SetSelectedOption(1)
+						App.SetFocus(table)
+						table.HighlightTable()
+						table.Filter.HighlightLocal()
+						table.SetInputCapture(table.tableInputCapture)
+					}
+					/* else if len(rows) == 1 {
+						table.SetInputCapture(nil)
+						App.SetFocus(table.Filter.Input)
+						table.RemoveHighlightTable()
+						table.Filter.HighlightLocal()
+						table.SetIsFiltering(true)
+						App.ForceDraw()
+					} */
+
+				} else {
+					// table.FetchRecords(nil)
+
+					table.SetIsFiltering(false)
+					table.SetInputCapture(table.tableInputCapture)
 					App.SetFocus(table)
 					table.HighlightTable()
 					table.Filter.HighlightLocal()
-					table.SetInputCapture(table.tableInputCapture)
-					App.ForceDraw()
 				}
-				/* else if len(rows) == 1 {
-					table.SetInputCapture(nil)
-					App.SetFocus(table.Filter.Input)
-					table.RemoveHighlightTable()
-					table.Filter.HighlightLocal()
-					table.SetIsFiltering(true)
-					App.ForceDraw()
-				} */
-
-			} else {
-				// table.FetchRecords(nil)
-
-				table.SetIsFiltering(false)
-				table.SetInputCapture(table.tableInputCapture)
-				App.SetFocus(table)
-				table.HighlightTable()
-				table.Filter.HighlightLocal()
-				App.ForceDraw()
-			}
+			})
 		}
 	}
 }
@@ -888,28 +890,29 @@ func (table *ResultsTable) SetTableName(tableName string) {
 }
 
 func (table *ResultsTable) SetError(err string, done func()) {
-	table.state.error = err
+	App.QueueUpdateDraw(func() {
+		table.state.error = err
 
-	table.Error.SetText(err)
-	table.Error.SetDoneFunc(func(_ int, _ string) {
-		table.state.error = ""
-		table.Page.HidePage(pageNameTableError)
-		if table.GetIsFiltering() {
-			if table.Editor != nil {
-				App.SetFocus(table.Editor)
+		table.Error.SetText(err)
+		table.Error.SetDoneFunc(func(_ int, _ string) {
+			table.state.error = ""
+			table.Page.HidePage(pageNameTableError)
+			if table.GetIsFiltering() {
+				if table.Editor != nil {
+					App.SetFocus(table.Editor)
+				} else {
+					App.SetFocus(table.Filter.Input)
+				}
 			} else {
-				App.SetFocus(table.Filter.Input)
+				App.SetFocus(table)
 			}
-		} else {
-			App.SetFocus(table)
-		}
-		if done != nil {
-			done()
-		}
+			if done != nil {
+				done()
+			}
+		})
+		table.Page.ShowPage(pageNameTableError)
+		App.SetFocus(table.Error)
 	})
-	table.Page.ShowPage(pageNameTableError)
-	App.SetFocus(table.Error)
-	App.ForceDraw()
 }
 
 func (table *ResultsTable) SetResultsInfo(text string) {
