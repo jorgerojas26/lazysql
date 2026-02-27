@@ -167,35 +167,36 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 }
 
 func (form *ConnectionForm) testConnection(connectionString string) {
-	parsed, err := helpers.ParseConnectionString(connectionString)
-	if err != nil {
-		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-		return
-	}
+	App.QueueUpdateDraw(func() {
+		parsed, err := helpers.ParseConnectionString(connectionString)
+		if err != nil {
+			form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+			return
+		}
 
-	form.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
+		form.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 
-	var db drivers.Driver
+		var db drivers.Driver
 
-	switch parsed.Driver {
-	case drivers.DriverMySQL:
-		db = &drivers.MySQL{}
-	case drivers.DriverPostgres:
-		db = &drivers.Postgres{}
-	case drivers.DriverSqlite:
-		db = &drivers.SQLite{}
-	case drivers.DriverMSSQL:
-		db = &drivers.MSSQL{}
-	}
+		switch parsed.Driver {
+		case drivers.DriverMySQL:
+			db = &drivers.MySQL{}
+		case drivers.DriverPostgres:
+			db = &drivers.Postgres{}
+		case drivers.DriverSqlite:
+			db = &drivers.SQLite{}
+		case drivers.DriverMSSQL:
+			db = &drivers.MSSQL{}
+		}
 
-	err = db.TestConnection(connectionString)
+		err = db.TestConnection(connectionString)
 
-	if err != nil {
-		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
-	} else {
-		form.StatusText.SetText("Connection success").SetTextColor(app.Styles.TertiaryTextColor)
-	}
-	App.ForceDraw()
+		if err != nil {
+			form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		} else {
+			form.StatusText.SetText("Connection success").SetTextColor(app.Styles.TertiaryTextColor)
+		}
+	})
 }
 
 func (form *ConnectionForm) SetAction(action string) {
