@@ -80,7 +80,7 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 		if command == commands.Quit || event.Key() == tcell.KeyEsc {
 			mainPages.RemovePage(pageNameDMLPreview)
 		} else if command == commands.Save {
-			confirmationModal := NewConfirmationModal("Are you sure you want to save the queries?")
+			confirmationModal := NewConfirmationModal("Are you sure you want to execute the queries?")
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
 				if buttonLabel == "Yes" {
