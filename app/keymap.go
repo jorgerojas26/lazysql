@@ -69,6 +69,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyCtrlP}, Cmd: cmd.SearchGlobal, Description: "Global search"},
 			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
 			Bind{Key: Key{Char: 'T'}, Cmd: cmd.ToggleTree, Description: "Toggle file tree"},
+			Bind{Key: Key{Code: tcell.KeyCtrlL}, Cmd: cmd.TreeWidthIncrease, Description: "Increase tree width"},
+			Bind{Key: Key{Code: tcell.KeyCtrlH}, Cmd: cmd.TreeWidthDecrease, Description: "Decrease tree width"},
 		},
 		ConnectionGroup: {
 			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},

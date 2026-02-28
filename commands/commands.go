@@ -75,6 +75,10 @@ const (
 	ShowCellJSONViewer
 	ToggleJSONViewerWrap
 
+	// Tree width
+	TreeWidthIncrease
+	TreeWidthDecrease
+
 	// Connection
 	NewConnection
 	Connect
@@ -226,6 +230,10 @@ func (c Command) String() string {
 		return "ToggleJSONViewerWrap"
 	case ExportCSV:
 		return "ExportCSV"
+	case TreeWidthIncrease:
+		return "TreeWidthIncrease"
+	case TreeWidthDecrease:
+		return "TreeWidthDecrease"
 	}
 
 	return "Unknown"
