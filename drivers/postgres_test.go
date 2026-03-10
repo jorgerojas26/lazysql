@@ -111,19 +111,19 @@ func TestPostgres_FormatArg(t *testing.T) {
 	}
 }
 
-func TestPostgres_DMLChangeToQueryString(t *testing.T) {
+func TestPostgres_DBChangeToQueryString(t *testing.T) {
 	db := &Postgres{}
 
 	testCases := []struct {
 		name     string
-		change   models.DBDMLChange
+		change   models.DBChange
 		expected string
 	}{
 		{
 			name: "Insert with int value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Table: schemaAndTablePostgres,
-				Type:  models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{Column: "name", Value: "test_name", Type: models.String},
 					{Column: "value", Value: 123, Type: models.String},
@@ -134,9 +134,9 @@ func TestPostgres_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with string value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Table: schemaAndTablePostgres,
-				Type:  models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType},
 				Values: []models.CellValue{
 					{Column: "name", Value: "test_name", Type: models.String},
 					{Column: "value", Value: "123", Type: models.String},
@@ -149,9 +149,9 @@ func TestPostgres_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with UUID value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Table: schemaAndTablePostgres,
-				Type:  models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{Name: "id", Value: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
 				},
@@ -162,9 +162,9 @@ func TestPostgres_DMLChangeToQueryString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			queryString, err := db.DMLChangeToQueryString(tc.change)
+			queryString, err := db.DBChangeToQueryString(tc.change)
 			if err != nil {
-				t.Fatalf("DMLChangeToQueryString failed: %v", err)
+				t.Fatalf("DBChangeToQueryString failed: %v", err)
 			}
 			if queryString != tc.expected {
 				t.Fatalf("Expected:\n%q\nGot:\n%q", tc.expected, queryString)
@@ -517,10 +517,10 @@ func TestPostgres_ExecutePendingChanges(t *testing.T) {
 
 	pg := &Postgres{Connection: db, CurrentDatabase: DBNamePostgres}
 
-	changes := []models.DBDMLChange{
+	changes := []models.DBChange{
 		{
 			Table: schemaAndTablePostgres,
-			Type:  models.DMLUpdateType,
+			Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType},
 			Values: []models.CellValue{
 				{Column: "name", Value: "New Name", Type: models.String},
 			},

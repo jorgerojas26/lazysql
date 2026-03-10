@@ -458,21 +458,34 @@ func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *MySQL) ExecutePendingChanges(changes []models.DBChange) error {
 	var queries []models.Query
 
 	for _, change := range changes {
 
 		formattedTableName := db.formatTableName(change.Database, change.Table)
 
-		switch change.Type {
+		operation := change.Operation
+		statementType := operation.GetStatementType()
 
-		case models.DMLInsertType:
+		switch statementType {
+		case models.StatementDMLInsertType:
 			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
-		case models.DMLUpdateType:
+		case models.StatementDMLUpdateType:
 			queries = append(queries, buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db))
-		case models.DMLDeleteType:
+		case models.StatementDMLDeleteType:
 			queries = append(queries, buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db))
+		case models.StatementDDLAlterType:
+			switch operation.GetOption() {
+				case models.DDLDropColumnOption:
+					queries = append(queries, buildDropColumnQuery(formattedTableName, change.Values[0].Column, db))
+				case models.DDLDropConstraintOption:
+					queries = append(queries, buildDropConstraintQuery(formattedTableName, change.Values[0].Column, db))
+				case models.DDLDropForeignKeyOption:
+					queries = append(queries, buildDropForeignKeyQuery(formattedTableName, change.Values[0].Column, db))
+				case models.DDLDropIndexOption:
+					queries = append(queries, buildDropIndexQuery(formattedTableName, change.Values[0].Column, db))
+			}
 		}
 	}
 
@@ -601,21 +614,33 @@ func (db *MySQL) FormatPlaceholder(_ int) string {
 	return "?"
 }
 
-func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
+func (db *MySQL) DBChangeToQueryString(change models.DBChange) (string, error) {
 	var queryStr string
 
 	formattedTableName := db.formatTableName(change.Database, change.Table)
 
 	columnNames, values := getColNamesAndArgsAsString(change.Values)
 
-	switch change.Type {
-	case models.DMLInsertType:
+	switch change.Operation.GetStatementType() {
+	case models.StatementDMLInsertType:
 		queryStr = buildInsertQueryString(formattedTableName, columnNames, values, db)
-	case models.DMLUpdateType:
+	case models.StatementDMLUpdateType:
 		queryStr = buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db)
-	case models.DMLDeleteType:
+	case models.StatementDMLDeleteType:
 		queryStr = buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db)
+	case models.StatementDDLAlterType:
+		columnName := change.Values[0].Column
 
+		switch change.Operation.GetOption() {
+		case models.DDLDropColumnOption:
+			queryStr = buildDropColumnQueryString(formattedTableName, columnName, db)
+		case models.DDLDropConstraintOption:
+			queryStr = buildDropConstraintQueryString(formattedTableName, columnName, db)
+		case models.DDLDropForeignKeyOption:
+			queryStr = buildDropForeignKeyQueryString(formattedTableName, columnName, db)
+		case models.DDLDropIndexOption:
+			queryStr = buildDropIndexQueryString(formattedTableName, columnName, db)
+		}
 	}
 
 	return queryStr, nil

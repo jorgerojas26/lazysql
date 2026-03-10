@@ -182,6 +182,103 @@ func buildUpdateQuery(sanitizedTableName string, values []models.CellValue, prim
 	return newQuery
 }
 
+func buildDropColumnQueryString(sanitizedTableName string, colName string, driver Driver) string {	
+
+	queryStr := "ALTER TABLE " + sanitizedTableName + " DROP COLUMN "
+
+	sanitizedColumnName := driver.FormatReference(colName)
+
+	queryStr += sanitizedColumnName
+
+	return queryStr
+}
+
+func buildDropColumnQuery(formattedTableName string, colName string, driver Driver) models.Query {
+
+	queryStr := "ALTER TABLE " + formattedTableName + " DROP COLUMN "
+
+	reference := driver.FormatReference(colName)
+
+	queryStr += fmt.Sprintf("%s", reference)
+
+	return models.Query{
+		Query: queryStr,
+	}
+}
+
+func buildDropConstraintQueryString(sanitizedTableName string, constraintName string, driver Driver) string {	
+	queryStr := "ALTER TABLE " + sanitizedTableName + " DROP CONSTRAINT " 
+
+	reference := driver.FormatReference(constraintName)
+
+	queryStr += fmt.Sprintf("%s", reference)
+
+	return queryStr
+}
+
+func buildDropConstraintQuery(formattedTableName string, colName string, driver Driver) models.Query {
+
+	queryStr := "ALTER TABLE " + formattedTableName + " DROP CONSTRAINT "
+
+	reference := driver.FormatReference(colName)
+
+	queryStr += fmt.Sprintf("%s", reference)
+
+	return models.Query{
+		Query: queryStr,
+	}
+}
+
+
+func buildDropForeignKeyQueryString(sanitizedTableName string, fkName string, driver Driver) string {	
+
+	queryStr := "ALTER TABLE " + sanitizedTableName + " DROP FOREIGN KEY "
+
+	reference := driver.FormatReference(fkName)
+
+	queryStr += fmt.Sprintf("%s", reference)
+
+	return queryStr
+}
+
+func buildDropForeignKeyQuery(formattedTableName string, colName string, driver Driver) models.Query {
+
+	queryStr := "ALTER TABLE " + formattedTableName + " DROP FOREIGN KEY "
+
+	reference := driver.FormatReference(colName)
+
+	queryStr += fmt.Sprintf("%s", reference)
+
+	return models.Query{
+		Query: queryStr,
+	}
+}
+
+func buildDropIndexQueryString(sanitizedTableName string, indexName string, driver Driver) string {	
+
+	queryStr := "ALTER TABLE " + sanitizedTableName + " DROP INDEX "
+
+	reference := driver.FormatReference(indexName)
+
+	queryStr += fmt.Sprintf("%s", reference)
+
+	return queryStr
+}
+
+func buildDropIndexQuery(formattedTableName string, colName string, driver Driver) models.Query {
+
+	queryStr := "ALTER TABLE " + formattedTableName + " DROP INDEX "
+
+	reference := driver.FormatReference(colName)
+
+	queryStr += fmt.Sprintf("%s", reference)
+
+	return models.Query{
+		Query: queryStr,
+	}
+}
+
+
 func buildDeleteQueryString(sanitizedTableName string, primaryKeyInfo []models.PrimaryKeyInfo, driver Driver) string {
 	queryStr := "DELETE FROM " + sanitizedTableName
 
@@ -262,6 +359,17 @@ func getColNamesAndArgsAsString(values []models.CellValue) ([]string, []any) {
 	}
 
 	return cols, v
+}
+
+func getColumnValueByName(values []models.CellValue, name string) any {
+	for i := range values {
+		fmt.Sprintf("%v -", values[i])
+		if values[i].Column == name {
+			return values[i].Value
+		}
+	}
+
+	return nil
 }
 
 func buildPlaceholders(values []models.CellValue, driver Driver) []string {

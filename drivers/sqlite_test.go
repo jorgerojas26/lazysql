@@ -107,19 +107,19 @@ func TestSQLite_FormatArgForQueryString(t *testing.T) {
 	}
 }
 
-func TestSQLite_DMLChangeToQueryString(t *testing.T) {
+func TestSQLite_DBChangeToQueryString(t *testing.T) {
 	db := &SQLite{}
 
 	testCases := []struct {
 		name     string
-		change   models.DBDMLChange
+		change   models.DBChange
 		expected string
 	}{
 		{
 			name: "Insert with int value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameSQLite, Table: testDBTableNameSQLite,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{Column: "name", Value: "test_name", Type: models.String},
 					{Column: "value", Value: 123, Type: models.String},
@@ -129,9 +129,9 @@ func TestSQLite_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with string value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameSQLite, Table: testDBTableNameSQLite,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType},
 				Values: []models.CellValue{
 					{Column: "name", Value: "test_name", Type: models.String},
 					{Column: "value", Value: "123", Type: models.String},
@@ -144,9 +144,9 @@ func TestSQLite_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with int value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameSQLite, Table: testDBTableNameSQLite,
-				Type: models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{Name: "id", Value: 1},
 				},
@@ -157,9 +157,9 @@ func TestSQLite_DMLChangeToQueryString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			queryString, err := db.DMLChangeToQueryString(tc.change)
+			queryString, err := db.DBChangeToQueryString(tc.change)
 			if err != nil {
-				t.Fatalf("DMLChangeToQueryString failed: %v", err)
+				t.Fatalf("DBChangeToQueryString failed: %v", err)
 			}
 			if queryString != tc.expected {
 				t.Fatalf("Expected: %q\nGot: %q", tc.expected, queryString)
@@ -413,11 +413,11 @@ func TestSQLite_ExecutePendingChanges(t *testing.T) {
 
 	sqlite := &SQLite{Connection: db}
 
-	changes := []models.DBDMLChange{
+	changes := []models.DBChange{
 		{
 			Database: testDBNameSQLite,
 			Table:    testDBTableNameSQLite,
-			Type:     models.DMLUpdateType,
+			Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType},
 			Values: []models.CellValue{
 				{Column: "name", Value: "New Name", Type: models.String},
 			},

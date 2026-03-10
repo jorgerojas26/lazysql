@@ -18,7 +18,7 @@ type Driver interface {
 	DeleteRecord(database, table string, primaryKeyColumnName, primaryKeyValue string) error
 	ExecuteDMLStatement(query string) (string, error)
 	ExecuteQuery(query string) ([][]string, int, error)
-	ExecutePendingChanges(changes []models.DBDMLChange) error
+	ExecutePendingChanges(changes []models.DBChange) error
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
 
@@ -37,7 +37,7 @@ type Driver interface {
 	FormatPlaceholder(index int) string
 
 	// This converts a DML change to a query string with arg values
-	DMLChangeToQueryString(change models.DBDMLChange) (string, error)
+	DBChangeToQueryString(change models.DBChange) (string, error)
 
 	// NOTE: This is used to get the primary key from the database table until I
 	// find a better way to do it. See *ResultsTable.GetPrimaryKeyValue()
