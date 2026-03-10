@@ -245,7 +245,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		return App.Draw()
 	}
 
-	err := newDBDriver.Connect(connection.URL)
+	err := newDBDriver.Connect(connection)
 	if err != nil {
 		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 		return App.Draw()

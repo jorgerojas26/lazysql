@@ -14,14 +14,14 @@ type SQLite struct {
 	Provider   string
 }
 
-func (db *SQLite) TestConnection(urlstr string) (err error) {
-	return db.Connect(urlstr)
+func (db *SQLite) TestConnection(connection models.Connection) (err error) {
+	return db.Connect(connection)
 }
 
-func (db *SQLite) Connect(urlstr string) (err error) {
+func (db *SQLite) Connect(connection models.Connection) (err error) {
 	db.SetProvider(DriverSqlite)
 
-	db.Connection, err = sql.Open("sqlite", urlstr)
+	db.Connection, err = sql.Open("sqlite", connection.URL)
 	if err != nil {
 		return err
 	}

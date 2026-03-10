@@ -27,14 +27,14 @@ const (
 	defaultPort = "5432"
 )
 
-func (db *Postgres) TestConnection(urlstr string) error {
-	return db.Connect(urlstr)
+func (db *Postgres) TestConnection(connection models.Connection) error {
+	return db.Connect(connection)
 }
 
-func (db *Postgres) Connect(urlstr string) error {
+func (db *Postgres) Connect(conn models.Connection) error {
 	db.SetProvider(DriverPostgres)
 
-	connection, err := dburl.Open(urlstr)
+	connection, err := dburl.Open(conn.URL)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (db *Postgres) Connect(urlstr string) error {
 		return err
 	}
 
-	db.Urlstr = urlstr
+	db.Urlstr = conn.URL
 
 	// Get the current database.
 	rows := db.Connection.QueryRow("SELECT current_database();")

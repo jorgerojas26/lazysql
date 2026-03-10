@@ -37,6 +37,13 @@ type Connection struct {
 	Schemas []string
 
 	Commands []*Command
+
+	// TLS certificate paths for mTLS connections (MySQL only).
+	// When set, a custom TLS config is registered and used in the DSN.
+	TLSCert       string `toml:"TLSCert,omitempty"`
+	TLSKey        string `toml:"TLSKey,omitempty"`
+	TLSCA         string `toml:"TLSCA,omitempty"`
+	TLSSkipVerify bool   `toml:"TLSSkipVerify,omitempty"`
 }
 
 type KeymapConfig map[string]map[string]string

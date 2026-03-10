@@ -52,12 +52,12 @@ func mssqlGUIDToUUID(dbBytes []byte) (uuid.UUID, error) {
 	return uuid.FromBytes(b)
 }
 
-func (db *MSSQL) TestConnection(urlstr string) error {
-	return db.Connect(urlstr)
+func (db *MSSQL) TestConnection(connection models.Connection) error {
+	return db.Connect(connection)
 }
 
-func (db *MSSQL) Connect(urlstr string) error {
-	if urlstr == "" {
+func (db *MSSQL) Connect(connection models.Connection) error {
+	if connection.URL == "" {
 		return errors.New("url string can not be empty")
 	}
 
@@ -65,7 +65,7 @@ func (db *MSSQL) Connect(urlstr string) error {
 
 	var err error
 
-	db.Connection, err = dburl.Open(urlstr)
+	db.Connection, err = dburl.Open(connection.URL)
 	if err != nil {
 		return err
 	}

@@ -5,8 +5,8 @@ import (
 )
 
 type Driver interface {
-	Connect(urlstr string) error
-	TestConnection(urlstr string) error
+	Connect(connection models.Connection) error
+	TestConnection(connection models.Connection) error
 	GetDatabases() ([]string, error)
 	GetTables(database string) (map[string][]string, error)
 	GetTableColumns(database, table string) ([][]string, error)

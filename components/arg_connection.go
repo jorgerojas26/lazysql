@@ -42,7 +42,7 @@ func InitFromArg(connectionString string, readOnly bool) error {
 		return fmt.Errorf("could not handle database driver %s", connection.Provider)
 	}
 
-	err = newDBDriver.Connect(connection.URL)
+	err = newDBDriver.Connect(connection)
 	if err != nil {
 		return fmt.Errorf("could not connect to database %s: %s", connectionString, err)
 	}

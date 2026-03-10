@@ -188,7 +188,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		db = &drivers.MSSQL{}
 	}
 
-	err = db.TestConnection(connectionString)
+	err = db.TestConnection(models.Connection{URL: connectionString, Provider: parsed.Driver})
 
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))

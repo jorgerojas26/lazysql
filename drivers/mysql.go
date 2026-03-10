@@ -1,12 +1,16 @@
 package drivers
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/models"
@@ -17,14 +21,61 @@ type MySQL struct {
 	Provider   string
 }
 
-func (db *MySQL) TestConnection(urlstr string) (err error) {
-	return db.Connect(urlstr)
+func (db *MySQL) TestConnection(connection models.Connection) (err error) {
+	return db.Connect(connection)
 }
 
-func (db *MySQL) Connect(urlstr string) (err error) {
+func (db *MySQL) Connect(connection models.Connection) (err error) {
 	db.SetProvider(DriverMySQL)
 
-	db.Connection, err = dburl.Open(urlstr)
+	var tlsConfigName string
+
+	if connection.TLSCert != "" || connection.TLSKey != "" || connection.TLSCA != "" {
+		tlsConfigName = "custom-" + connection.Name
+
+		tlsCfg := &tls.Config{
+			InsecureSkipVerify: connection.TLSSkipVerify,
+		}
+
+		if connection.TLSCA != "" {
+			caCert, err := os.ReadFile(connection.TLSCA)
+			if err != nil {
+				return fmt.Errorf("failed to read TLS CA file: %w", err)
+			}
+			caCertPool := x509.NewCertPool()
+			caCertPool.AppendCertsFromPEM(caCert)
+			tlsCfg.RootCAs = caCertPool
+		}
+
+		if connection.TLSCert != "" && connection.TLSKey != "" {
+			cert, err := tls.LoadX509KeyPair(connection.TLSCert, connection.TLSKey)
+			if err != nil {
+				return fmt.Errorf("failed to load TLS key pair: %w", err)
+			}
+			tlsCfg.Certificates = []tls.Certificate{cert}
+		}
+
+		mysql.DeregisterTLSConfig(tlsConfigName)
+		if err := mysql.RegisterTLSConfig(tlsConfigName, tlsCfg); err != nil {
+			return fmt.Errorf("failed to register TLS config: %w", err)
+		}
+	}
+
+	parsedURL, err := dburl.Parse(connection.URL)
+	if err != nil {
+		return fmt.Errorf("failed to parse connection URL: %w", err)
+	}
+
+	dsn := parsedURL.DSN
+	if tlsConfigName != "" {
+		if strings.Contains(dsn, "?") {
+			dsn += "&tls=" + tlsConfigName
+		} else {
+			dsn += "?tls=" + tlsConfigName
+		}
+	}
+
+	db.Connection, err = sql.Open("mysql", dsn)
 	if err != nil {
 		return err
 	}
