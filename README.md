@@ -90,7 +90,7 @@ I use Lazysql daily in my full-time job as a full-stack javascript developer in 
 #### Homebrew (macOS/Linux)
 
 ```bash
-$ brew install lazysql
+brew install lazysql
 ```
 
 #### Install with go package manager
