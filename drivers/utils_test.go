@@ -15,38 +15,39 @@ import (
 // mockDriver implements Driver with postgres-like formatting for unit tests.
 type mockDriver struct{}
 
-func (m *mockDriver) Connect(string) error                              { panic("not used") }
-func (m *mockDriver) TestConnection(string) error                       { panic("not used") }
-func (m *mockDriver) GetDatabases() ([]string, error)                   { panic("not used") }
-func (m *mockDriver) GetTables(string) (map[string][]string, error)     { panic("not used") }
+func (m *mockDriver) Connect(string) error                               { panic("not used") }
+func (m *mockDriver) TestConnection(string) error                        { panic("not used") }
+func (m *mockDriver) GetDatabases() ([]string, error)                    { panic("not used") }
+func (m *mockDriver) GetTables(string) (map[string][]string, error)      { panic("not used") }
 func (m *mockDriver) GetTableColumns(string, string) ([][]string, error) { panic("not used") }
-func (m *mockDriver) GetConstraints(string, string) ([][]string, error) { panic("not used") }
-func (m *mockDriver) GetForeignKeys(string, string) ([][]string, error) { panic("not used") }
-func (m *mockDriver) GetIndexes(string, string) ([][]string, error)     { panic("not used") }
+func (m *mockDriver) GetConstraints(string, string) ([][]string, error)  { panic("not used") }
+func (m *mockDriver) GetForeignKeys(string, string) ([][]string, error)  { panic("not used") }
+func (m *mockDriver) GetIndexes(string, string) ([][]string, error)      { panic("not used") }
 func (m *mockDriver) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
 	panic("not used")
 }
+
 func (m *mockDriver) UpdateRecord(string, string, string, string, string, string) error {
 	panic("not used")
 }
-func (m *mockDriver) DeleteRecord(string, string, string, string) error   { panic("not used") }
-func (m *mockDriver) ExecuteDMLStatement(string) (string, error)          { panic("not used") }
-func (m *mockDriver) ExecuteQuery(string) ([][]string, int, error)        { panic("not used") }
-func (m *mockDriver) ExecutePendingChanges([]models.DBDMLChange) error    { panic("not used") }
-func (m *mockDriver) GetProvider() string                                 { return "mock" }
+func (m *mockDriver) DeleteRecord(string, string, string, string) error { panic("not used") }
+func (m *mockDriver) ExecuteDMLStatement(string) (string, error)        { panic("not used") }
+func (m *mockDriver) ExecuteQuery(string) ([][]string, int, error)      { panic("not used") }
+func (m *mockDriver) ExecutePendingChanges([]models.DBDMLChange) error  { panic("not used") }
+func (m *mockDriver) GetProvider() string                               { return "mock" }
 func (m *mockDriver) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
 	panic("not used")
 }
-func (m *mockDriver) SupportsProgramming() bool                                  { return false }
-func (m *mockDriver) UseSchemas() bool                                           { return false }
-func (m *mockDriver) GetFunctions(string) (map[string][]string, error)           { panic("not used") }
-func (m *mockDriver) GetProcedures(string) (map[string][]string, error)          { panic("not used") }
-func (m *mockDriver) GetViews(string) (map[string][]string, error)               { panic("not used") }
-func (m *mockDriver) GetFunctionDefinition(string, string) (string, error)       { panic("not used") }
-func (m *mockDriver) GetProcedureDefinition(string, string) (string, error)      { panic("not used") }
-func (m *mockDriver) GetViewDefinition(string, string) (string, error)           { panic("not used") }
-func (m *mockDriver) DMLChangeToQueryString(models.DBDMLChange) (string, error)  { panic("not used") }
-func (m *mockDriver) SetProvider(string)                                         {}
+func (m *mockDriver) SupportsProgramming() bool                                 { return false }
+func (m *mockDriver) UseSchemas() bool                                          { return false }
+func (m *mockDriver) GetFunctions(string) (map[string][]string, error)          { panic("not used") }
+func (m *mockDriver) GetProcedures(string) (map[string][]string, error)         { panic("not used") }
+func (m *mockDriver) GetViews(string) (map[string][]string, error)              { panic("not used") }
+func (m *mockDriver) GetFunctionDefinition(string, string) (string, error)      { panic("not used") }
+func (m *mockDriver) GetProcedureDefinition(string, string) (string, error)     { panic("not used") }
+func (m *mockDriver) GetViewDefinition(string, string) (string, error)          { panic("not used") }
+func (m *mockDriver) DMLChangeToQueryString(models.DBDMLChange) (string, error) { panic("not used") }
+func (m *mockDriver) SetProvider(string)                                        {}
 
 func (m *mockDriver) FormatArg(arg any, _ models.CellValueType) any {
 	return arg
