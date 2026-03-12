@@ -154,8 +154,10 @@ func (home *Home) subscribeToTreeChanges() {
 					logger.Error(err.Error(), nil)
 					continue
 				}
-				table.Editor.SetText(functionDefinition, false)
-				App.ForceDraw()
+
+				App.QueueUpdateDraw(func() {
+					table.Editor.SetText(functionDefinition, false)
+				})
 			}
 		case eventTreeSelectedProcedure:
 			home.createOrFocusEditorTab()
@@ -169,8 +171,10 @@ func (home *Home) subscribeToTreeChanges() {
 					logger.Error(err.Error(), nil)
 					continue
 				}
-				table.Editor.SetText(procedureDefinition, false)
-				App.ForceDraw()
+
+				App.QueueUpdateDraw(func() {
+					table.Editor.SetText(procedureDefinition, false)
+				})
 			}
 		case eventTreeSelectedView:
 			home.createOrFocusEditorTab()
@@ -184,8 +188,10 @@ func (home *Home) subscribeToTreeChanges() {
 					logger.Error(err.Error(), nil)
 					continue
 				}
-				table.Editor.SetText(viewDefinition, false)
-				App.ForceDraw()
+
+				App.QueueUpdateDraw(func() {
+					table.Editor.SetText(viewDefinition, false)
+				})
 			}
 		}
 	}
