@@ -107,16 +107,17 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 
 		if currentTab.PreviousTab != nil {
 			currentTab.PreviousTab.NextTab = currentTab.NextTab
+		}
+		if currentTab.NextTab != nil {
+			currentTab.NextTab.PreviousTab = currentTab.PreviousTab
+		}
+
+		if currentTab.PreviousTab != nil {
 			t.SetCurrentTab(currentTab.PreviousTab)
 			return currentTab.PreviousTab
 		}
-
-		if currentTab.NextTab != nil {
-			currentTab.NextTab.PreviousTab = currentTab.PreviousTab
-			t.SetCurrentTab(currentTab.NextTab)
-			return currentTab.NextTab
-		}
-
+		t.SetCurrentTab(currentTab.NextTab)
+		return currentTab.NextTab
 	}
 
 	return nil

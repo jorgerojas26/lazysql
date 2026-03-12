@@ -40,10 +40,13 @@ type Connection struct {
 	Commands []*Command
 }
 
+type KeymapConfig map[string]map[string]string
+
 type Command struct {
 	Command      string
 	WaitForPort  string
 	SaveOutputTo string
+	Timeout      int // Timeout in seconds for command to start (default: 5)
 }
 
 type StateChange struct {

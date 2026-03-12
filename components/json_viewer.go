@@ -87,7 +87,18 @@ func (v *JSONViewer) Show(rowData map[string]string, focus tview.Primitive) {
 		}
 	}
 
-	jsonData, err := json.MarshalIndent(structuredRowData, "", "  ")
+	// For single cell view, show the JSON content directly without wrapping
+	// it under the column name, which would add incorrect extra nesting.
+	var dataToFormat any = structuredRowData
+	if len(structuredRowData) == 1 {
+		for _, value := range structuredRowData {
+			if _, isString := value.(string); !isString {
+				dataToFormat = value
+			}
+		}
+	}
+
+	jsonData, err := json.MarshalIndent(dataToFormat, "", "  ")
 	if err != nil {
 		v.TextView.SetText(fmt.Sprintf("Error: %v", err))
 	} else {
