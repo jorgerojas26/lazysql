@@ -30,7 +30,7 @@ type Home struct {
 	QueryHistoryModal    *QueryHistoryModal
 	DBDriver             drivers.Driver
 	FocusedWrapper       string
-	ListOfDBChanges      []models.DBDMLChange
+	ListOfDBChanges      []models.DBChange
 	ConnectionIdentifier string
 	ConnectionURL        string
 	ReadOnly             bool
@@ -65,7 +65,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		HelpModal:          NewHelpModal(),
 
 		DBDriver:             dbdriver,
-		ListOfDBChanges:      []models.DBDMLChange{},
+		ListOfDBChanges:      []models.DBChange{},
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
 		ReadOnly:             connection.ReadOnly,
@@ -467,9 +467,9 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		if (len(home.ListOfDBChanges) > 0) && !table.GetIsEditing() {
 			queryPreviewModal := NewQueryPreviewModal(&home.ListOfDBChanges, home.DBDriver, func() {
 				for _, change := range home.ListOfDBChanges {
-					queryString, err := home.DBDriver.DMLChangeToQueryString(change)
+					queryString, err := home.DBDriver.DBChangeToQueryString(change)
 					if err != nil {
-						logger.Error("Failed to convert DML change to query string", map[string]any{"error": err})
+						logger.Error(fmt.Sprintf("Failed to convert %s change to query string", change.Operation.GetType()), map[string]any{"error": err})
 						continue
 					}
 					err = history.AddQueryToHistory(home.ConnectionIdentifier, queryString)
@@ -477,7 +477,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 						logger.Error("Failed to add query to history", map[string]any{"error": err})
 					}
 				}
-				home.ListOfDBChanges = []models.DBDMLChange{}
+				home.ListOfDBChanges = []models.DBChange{}
 				table.FetchRecords(nil)
 				home.Tree.ForceRemoveHighlight()
 			})

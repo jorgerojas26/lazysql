@@ -59,8 +59,10 @@ type ConnectionPages struct {
 }
 
 type (
-	CellValueType int8
-	DMLType       int8
+	CellValueType 		int8
+	StatementType		int8
+	OperationType		string
+	Option		int8
 )
 
 // This is not a direct map of the database types, but rather a way to represent them in the UI.
@@ -76,16 +78,76 @@ const (
 type CellValue struct {
 	Value            any
 	Column           string
+	TableIndex 	 int
 	TableColumnIndex int
 	TableRowIndex    int
 	Type             CellValueType
 }
 
 const (
-	DMLUpdateType DMLType = iota
-	DMLDeleteType
-	DMLInsertType
+	StatementDMLUpdateType StatementType = iota
+	StatementDMLDeleteType
+	StatementDMLInsertType
+	StatementDDLCreateType
+	StatementDDLAlterType
+	StatementDDLDropType
 )
+
+const (
+	DDLAddColumnOption Option = iota
+	DDLDropColumnOption
+	DDLAddConstraintOption
+	DDLDropConstraintOption
+	DDLAddForeignKeyOption
+	DDLDropForeignKeyOption
+	DDLAddIndexOption
+	DDLDropIndexOption
+)
+
+const (
+	OperationDMLType OperationType = "DML"
+	OperationDDLType OperationType = "DDL"
+)
+
+
+type Operation interface {
+	GetType() OperationType
+	GetStatementType() StatementType
+	GetOption()	Option
+}
+
+type OperationDML struct {
+	StatementType StatementType
+}
+
+func (o OperationDML) GetType() OperationType {
+	return OperationDMLType
+}
+
+func (o OperationDML) GetStatementType() StatementType {
+	return o.StatementType
+}
+
+func (o OperationDML) GetOption() Option {
+	return -1
+}
+
+type OperationDDL struct {
+	StatementType StatementType
+	Option Option
+}
+
+func (o OperationDDL) GetType() OperationType {
+	return OperationDDLType
+}
+
+func (o OperationDDL) GetStatementType() StatementType {
+	return o.StatementType
+}
+
+func (o OperationDDL) GetOption() Option {
+	return o.Option
+}
 
 type PrimaryKeyInfo struct {
 	Name  string
@@ -96,12 +158,12 @@ func (pki PrimaryKeyInfo) Equal(other PrimaryKeyInfo) bool {
 	return pki.Name == other.Name && pki.Value == other.Value
 }
 
-type DBDMLChange struct {
+type DBChange struct {
 	Database       string
 	Table          string
 	PrimaryKeyInfo []PrimaryKeyInfo
 	Values         []CellValue
-	Type           DMLType
+	Operation      Operation
 }
 
 type DatabaseTableColumn struct {

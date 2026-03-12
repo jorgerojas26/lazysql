@@ -193,19 +193,19 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
 }
 
 // --- Critical Fix: DML Generation with Security ---
-func TestMSSQL_DMLChangeToQueryString(t *testing.T) {
+func TestMSSQL_DBChangeToQueryString(t *testing.T) {
 	db := &MSSQL{}
 
 	testCases := []struct {
 		name     string
-		change   models.DBDMLChange
+		change   models.DBChange
 		expected string
 	}{
 		{
 			name: "Insert with special characters",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Table: "User Sessions", // Test space in table name
-				Type:  models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{Column: "user", Value: "John'; DROP TABLE Users;--", Type: models.String},
 					{Column: "session", Value: "abc123", Type: models.String},
@@ -215,9 +215,9 @@ func TestMSSQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with reserved keyword column",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Table: tableNameMSSQL,
-				Type:  models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{Column: "User", Value: "admin", Type: models.String}, // Reserved keyword column
 					{Column: "value", Value: 123, Type: models.String},
@@ -230,9 +230,9 @@ func TestMSSQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with UUID",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Table: tableNameMSSQL,
-				Type:  models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{Name: "id", Value: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
 				},
@@ -243,9 +243,9 @@ func TestMSSQL_DMLChangeToQueryString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			queryString, err := db.DMLChangeToQueryString(tc.change)
+			queryString, err := db.DBChangeToQueryString(tc.change)
 			if err != nil {
-				t.Fatalf("DMLChangeToQueryString failed: %v", err)
+				t.Fatalf("DBChangeToQueryString failed: %v", err)
 			}
 			if queryString != tc.expected {
 				t.Fatalf("Expected:\n%q\nGot:\n%q", tc.expected, queryString)
@@ -361,10 +361,10 @@ func TestMSSQL_ExecutePendingChanges(t *testing.T) {
 
 	pg := &MSSQL{Connection: db}
 
-	changes := []models.DBDMLChange{
+	changes := []models.DBChange{
 		{
 			Table: tableNameMSSQL,
-			Type:  models.DMLUpdateType,
+			Operation:  models.OperationDML{StatementType: models.StatementDMLUpdateType},
 			Values: []models.CellValue{
 				{Column: "name", Value: "New'; DROP TABLE Users;--", Type: models.String},
 			},

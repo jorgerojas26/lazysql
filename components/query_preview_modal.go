@@ -17,13 +17,13 @@ import (
 
 type QueryPreviewModal struct {
 	tview.Primitive
-	Queries  *[]models.DBDMLChange
+	Queries  *[]models.DBChange
 	Table    *tview.Table
 	DBDriver drivers.Driver
 	Error    *tview.Modal
 }
 
-func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver, onFinish func()) *QueryPreviewModal {
+func NewQueryPreviewModal(queries *[]models.DBChange, dbdriver drivers.Driver, onFinish func()) *QueryPreviewModal {
 	modal := func(p tview.Primitive) tview.Primitive {
 		return tview.NewFlex().
 			AddItem(nil, 0, 1, false).
@@ -153,7 +153,7 @@ func (modal *QueryPreviewModal) populateTable() {
 
 	for i, query := range *modal.Queries {
 
-		queryStr, err := modal.DBDriver.DMLChangeToQueryString(query)
+		queryStr, err := modal.DBDriver.DBChangeToQueryString(query)
 		if err != nil {
 			return
 		}

@@ -148,19 +148,19 @@ func TestMySQL_FormatArgForQueryString(t *testing.T) {
 	}
 }
 
-func TestMySQL_DMLChangeToQueryString(t *testing.T) {
+func TestMySQL_DBChangeToQueryString(t *testing.T) {
 	db := &MySQL{}
 
 	testCases := []struct {
 		name     string
-		change   models.DBDMLChange
+		change   models.DBChange
 		expected string
 	}{
 		{
 			name: "Insert with int value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -178,9 +178,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Insert with  string value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -198,9 +198,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Insert with  byte array value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -218,9 +218,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Insert with  float value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -238,9 +238,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Insert with  bool value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -258,9 +258,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Insert with  default value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -278,9 +278,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Insert with empty value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -298,9 +298,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Insert with NULL value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLInsertType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLInsertType},
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -318,9 +318,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with int value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -344,9 +344,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with string value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -370,9 +370,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with byte array value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -396,9 +396,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with float value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -422,9 +422,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with bool value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -448,9 +448,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with default value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -474,9 +474,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with empty value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -500,9 +500,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Update with NULL value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLUpdateType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLUpdateType },
 				Values: []models.CellValue{
 					{
 						Column: "name",
@@ -526,9 +526,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with int value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{
 						Name:  "id",
@@ -540,9 +540,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with string value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{
 						Name:  "id",
@@ -554,9 +554,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with byte array value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{
 						Name:  "id",
@@ -568,9 +568,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with float value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{
 						Name:  "id",
@@ -582,9 +582,9 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 		},
 		{
 			name: "Delete with bool value",
-			change: models.DBDMLChange{
+			change: models.DBChange{
 				Database: testDBNameMySQL, Table: testDBTableNameMySQL,
-				Type: models.DMLDeleteType,
+				Operation: models.OperationDML{StatementType: models.StatementDMLDeleteType},
 				PrimaryKeyInfo: []models.PrimaryKeyInfo{
 					{
 						Name:  "id",
@@ -598,12 +598,12 @@ func TestMySQL_DMLChangeToQueryString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			queryString, err := db.DMLChangeToQueryString(tc.change)
+			queryString, err := db.DBChangeToQueryString(tc.change)
 			if err != nil {
-				t.Fatalf("DMLChangeToQueryString failed: %v", err)
+				t.Fatalf("DBChangeToQueryString failed: %v", err)
 			}
 			if queryString != tc.expected {
-				t.Fatalf("DMLChangeToQueryString returned unexpected query string: got %q, expected %q", queryString, tc.expected)
+				t.Fatalf("DBChangeToQueryString returned unexpected query string: got %q, expected %q", queryString, tc.expected)
 			}
 		})
 	}
@@ -932,11 +932,11 @@ func TestMySQL_ExecutePendingChanges_PartialFailure(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	changes := []models.DBDMLChange{
+	changes := []models.DBChange{
 		{
 			Database: "test_db",
 			Table:    "test_table",
-			Type:     models.DMLUpdateType,
+			Operation:  models.OperationDML{StatementType: models.StatementDMLUpdateType},
 			Values: []models.CellValue{
 				{
 					Column: "value",
@@ -954,7 +954,7 @@ func TestMySQL_ExecutePendingChanges_PartialFailure(t *testing.T) {
 		{
 			Database: "test_db",
 			Table:    "test_table",
-			Type:     models.DMLUpdateType,
+			Operation:  models.OperationDML{StatementType: models.StatementDMLUpdateType},
 			Values: []models.CellValue{
 				{
 					Column: "value",
@@ -996,11 +996,11 @@ func TestMySQL_ExecutePendingChanges_Error(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	changes := []models.DBDMLChange{
+	changes := []models.DBChange{
 		{
 			Database: "test_db",
 			Table:    "test_table",
-			Type:     models.DMLUpdateType,
+			Operation:  models.OperationDML{StatementType: models.StatementDMLUpdateType},
 			Values: []models.CellValue{
 				{
 					Column: "value",
@@ -1542,11 +1542,11 @@ func TestMySQL_ExecutePendingChanges(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	changes := []models.DBDMLChange{
+	changes := []models.DBChange{
 		{
 			Database: testDBNameMySQL,
 			Table:    testDBTableNameMySQL,
-			Type:     models.DMLUpdateType,
+			Operation:  models.OperationDML{StatementType: models.StatementDMLUpdateType},
 			Values: []models.CellValue{
 				{Column: "name", Value: "New Name", Type: models.String},
 			},
@@ -1557,7 +1557,7 @@ func TestMySQL_ExecutePendingChanges(t *testing.T) {
 		{
 			Database: testDBNameMySQL,
 			Table:    testDBTableNameMySQL,
-			Type:     models.DMLDeleteType,
+			Operation:  models.OperationDML{StatementType: models.StatementDMLDeleteType},
 			PrimaryKeyInfo: []models.PrimaryKeyInfo{
 				{Name: "id", Value: 2},
 			},
