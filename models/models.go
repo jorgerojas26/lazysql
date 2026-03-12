@@ -13,6 +13,7 @@ type AppConfig struct {
 	MaxQueryHistoryPerConnection int
 	TreeWidth                    int
 	JSONViewerWordWrap           bool
+	EnterOpensJSONViewer         bool
 }
 
 type Connection struct {

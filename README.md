@@ -167,11 +167,24 @@ URL = 'postgres://postgres:urlencodedpassword@localhost:5432/foo'
 DefaultPageSize = 300
 DisableSidebar = false
 SidebarOverlay = false
+JSONViewerWordWrap = false
+EnterOpensJSONViewer = false
 ```
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
 The `[application]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
+
+### Application settings
+
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| DefaultPageSize | 300 | Number of records to fetch per page |
+| DisableSidebar | false | Disable the sidebar |
+| SidebarOverlay | false | Show sidebar as overlay instead of side panel |
+| JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
+| EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+
 
 ## Usage
 
@@ -386,6 +399,7 @@ Quit = "Esc"
 [keymap.Tree]
 GotoTop = "t"
 Search = "Ctrl-F"
+
 ```
 
 For single character keys, use the character directly (e.g., `"q"`, `"G"`, `"1"`, `"/"`). For special keys, use the [tcell key name](https://github.com/gdamore/tcell/blob/v2.7.4/key.go#L83) (e.g., `"Enter"`, `"Esc"`, `"Ctrl-S"`). Only key names defined in tcell are supported.
@@ -497,7 +511,16 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.
 
-Specific terminal for opening editor can be set by `$SQL_TERMINAL`
+### JSON Viewer
+
+| Key | Action           |
+| --- | ---------------- |
+| w   | Toggle word wrap |
+| y   | Copy to clipboard|
+| z/Z | Close viewer     |
+
+The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cell. If `EnterOpensJSONViewer` is enabled, pressing Enter on a cell will also open the JSON viewer.
+
 
 #### Sidebar
 
@@ -545,6 +568,16 @@ Specific terminal for opening editor can be set by `$SQL_TERMINAL`
 | z | ShowCellJSONViewer | Toggle JSON viewer |
 | y | Copy | Copy value to clipboard |
 | w | ToggleJSONViewerWrap | Toggle word wrap |
+
+### External Editor
+
+The external editor feature (CTRL + Space in SQL Editor, CTRL + o in Table) uses the following environment variables to determine which editor to use:
+
+- SQL Editor: `$SQL_EDITOR` > `$EDITOR` > `$VISUAL` > `vi`
+- Table cells: `$EDITOR` > `$VISUAL` > `vi`
+
+This feature is only available on Linux and macOS.
+
 
 ## Example connection URLs
 
