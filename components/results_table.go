@@ -1859,7 +1859,9 @@ func openCellInExternalEditor(currentText string) string {
 
 	if _, err := tmpFile.WriteString(currentText); err != nil {
 		logger.Error("Failed to write to temporary file", map[string]any{"error": err.Error()})
-		tmpFile.Close()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			logger.Error("Failed to close temporary file", map[string]any{"error": closeErr.Error()})
+		}
 		return currentText
 	}
 

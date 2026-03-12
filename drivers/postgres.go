@@ -811,7 +811,9 @@ func (db *Postgres) SwitchDatabase(database string) error {
 
 	err = db.Connection.Close()
 	if err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			logger.Error("Failed to close postgres connection", map[string]any{"error": closeErr})
+		}
 		return err
 	}
 
