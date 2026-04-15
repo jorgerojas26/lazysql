@@ -451,7 +451,16 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	case commands.Quit:
 		if tab == nil || (!table.GetIsEditing() && !table.GetIsFiltering()) {
-			app.App.Stop()
+			confirmationModal := NewConfirmationModal("Exit LazySQL?")
+			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
+				mainPages.RemovePage(pageNameConfirmation)
+				confirmationModal = nil
+				if buttonLabel == "Yes" {
+					app.App.Stop()
+				}
+			})
+			mainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
+			return nil
 		}
 	case commands.Save:
 		if home.ReadOnly {
