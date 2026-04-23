@@ -1368,9 +1368,19 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 
 	if len(primaryKeyColumnNames) == 0 {
 		allRecords := table.GetRecords()
+		// Unsaved-new-row deletions shrink the record slice while the
+		// caller still passes the original rowIndex; without these
+		// guards lazysql panicked with 'index out of range' instead of
+		// no-op'ing the second delete.
+		if len(allRecords) == 0 || rowIndex < 0 || rowIndex >= len(allRecords) {
+			return info
+		}
 		columns := allRecords[0]
 		row := allRecords[rowIndex]
 		for i, colName := range columns {
+			if i >= len(row) {
+				break
+			}
 			info = append(info, models.PrimaryKeyInfo{Name: colName, Value: row[i]})
 		}
 		return info
@@ -1379,7 +1389,14 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
 		columnIndex := table.GetColumnIndexByName(primaryKeyColumnName)
 		records := table.GetRecords()
-		primaryKeyValue := records[rowIndex][columnIndex]
+		if rowIndex < 0 || rowIndex >= len(records) {
+			continue
+		}
+		row := records[rowIndex]
+		if columnIndex < 0 || columnIndex >= len(row) {
+			continue
+		}
+		primaryKeyValue := row[columnIndex]
 
 		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
