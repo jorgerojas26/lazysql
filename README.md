@@ -185,6 +185,38 @@ The `[application]` section is used to define some app settings. Not all setting
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
 
+### Local Configuration
+
+You can place a `.lazysql.toml` file in your project directory (next to your `.git` folder) to override the global configuration for that project. This is useful for defining project-specific database connections or settings.
+
+lazysql searches for `.lazysql.toml` by walking up from the current working directory. It stops at the git repository root (where `.git` is found). If no local config is found, the global configuration is used as-is.
+
+**Merge behavior:**
+
+| Section | Behavior |
+| ------- | -------- |
+| `[application]` | Deep merge — local values override global, unset fields keep global/defaults |
+| `[[database]]` | Replace — local connections completely replace global connections |
+| `[keymap.*]` | Deep merge — local keybindings override global ones for the same command |
+
+**Example `.lazysql.toml`:**
+
+```toml
+[application]
+DefaultPageSize = 500
+
+[[database]]
+Name = 'Local development'
+Provider = 'postgres'
+URL = 'postgres://localhost/myproject_dev'
+```
+
+With this local config, `DefaultPageSize` overrides the global value, and only the `Local development` connection is available (global connections are replaced).
+
+Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config.
+
+Note: The local config file is read-only — saving connections from the UI always writes to the global config file.
+
 
 ## Usage
 
