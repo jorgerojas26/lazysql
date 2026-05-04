@@ -7,7 +7,7 @@ import (
 )
 
 type AppConfig struct {
-	DefaultPageSize              int `toml:"default_page_size"`
+	DefaultPageSize              int  `toml:"default_page_size"`
 	DisableSidebar               bool `toml:"disable_sidebar"`
 	SidebarOverlay               bool `toml:"sidebar_overlay"`
 	MaxQueryHistoryPerConnection int  `toml:"max_query_history_per_connection"`

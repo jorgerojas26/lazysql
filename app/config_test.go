@@ -138,15 +138,15 @@ func TestFindLocalConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		os.Chdir(origDir)
+		_ = os.Chdir(origDir)
 	})
 
 	tests := []struct {
-		name          string
-		setup         func(tmpDir string) error
-		teardown     func(tmpDir string)
-		expectFound  bool
-		expectPath   string
+		name        string
+		setup       func(tmpDir string) error
+		teardown    func(tmpDir string)
+		expectFound bool
+		expectPath  string
 	}{
 		{
 			name: "finds config in current directory",
@@ -270,7 +270,7 @@ func TestLoadConfigWithLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		os.Chdir(origDir)
+		_ = os.Chdir(origDir)
 	})
 
 	// Create temp directory
@@ -355,7 +355,7 @@ func TestLoadConfigLocalReplacesConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		os.Chdir(origDir)
+		_ = os.Chdir(origDir)
 	})
 
 	tmpDir, err := os.MkdirTemp("", "lazysql-test-*")
@@ -426,7 +426,7 @@ func TestLoadConfigPreservesDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		os.Chdir(origDir)
+		_ = os.Chdir(origDir)
 	})
 
 	tmpDir, err := os.MkdirTemp("", "lazysql-test-*")
