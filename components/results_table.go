@@ -403,6 +403,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		case commands.Refresh:
 			if table.Loading != nil {
 				app.App.SetFocus(table.Loading)
+				App.ForceDraw()
 			}
 			table.Menu.SetSelectedOption(1)
 			if err := table.FetchRecords(nil); err != nil {
@@ -994,6 +995,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 			where = table.Filter.GetCurrentFilter()
 		}
 		table.SetLoading(true)
+		App.ForceDraw()
 		records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 		table.SetLoading(false)
 
