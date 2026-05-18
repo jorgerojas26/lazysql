@@ -223,6 +223,61 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	return table
 }
 
+// loadEditorSchema queries the driver for tables and columns to populate
+// autocomplete suggestions in the editor.
+func (table *ResultsTable) loadEditorSchema() {
+	dbName := table.GetDatabaseName()
+	if dbName == "" || table.DBDriver == nil {
+		return
+	}
+
+	tablesMap, err := table.DBDriver.GetTables(dbName)
+	if err != nil {
+		logger.Error("Failed to load tables for editor autocomplete", map[string]any{"error": err.Error()})
+		return
+	}
+
+	// Flatten table map into a sorted list
+	var allTables []string
+	for _, tbls := range tablesMap {
+		allTables = append(allTables, tbls...)
+	}
+	if len(allTables) == 0 {
+		return
+	}
+
+	app.App.QueueUpdateDraw(func() {
+		if table.Editor != nil {
+			table.Editor.SetTables(allTables)
+		}
+	})
+
+	// Load columns for each table
+	for _, tbl := range allTables {
+		cols, err := table.DBDriver.GetTableColumns(dbName, tbl)
+		if err != nil {
+			continue
+		}
+		if len(cols) < 2 {
+			continue
+		}
+		// cols[0] = headers, cols[1:] = data rows, column name at index 0
+		colNames := make([]string, len(cols)-1)
+		for i := 1; i < len(cols); i++ {
+			if len(cols[i]) > 0 {
+				colNames[i-1] = cols[i][0]
+			}
+		}
+
+		tblCopy := tbl
+		app.App.QueueUpdateDraw(func() {
+			if table.Editor != nil {
+				table.Editor.SetColumns(tblCopy, colNames)
+			}
+		})
+	}
+}
+
 func (table *ResultsTable) subscribeToTreeChanges() {
 	ch := table.Tree.Subscribe()
 
