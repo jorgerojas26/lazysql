@@ -1,8 +1,11 @@
 package components
 
 import (
+	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/lithammer/fuzzysearch/fuzzy"
 )
 
 // CompletionItem represents a single autocomplete suggestion.
@@ -44,40 +47,82 @@ func (a *Autocompleter) SetColumns(table string, columns []string) {
 	a.columns[strings.ToLower(table)] = items
 }
 
-// GetCompletions returns completion items matching the given prefix.
+// GetCompletions returns completion items matching the given prefix using
+// fuzzy search (same ranking as the tree: exact > prefix > substring > fuzzy).
 // If tableHint is non-empty, it prioritises columns from that table.
+// When prefix is empty but tableHint is set (e.g. user typed "table."), all
+// columns for that table are returned.
 func (a *Autocompleter) GetCompletions(prefix string, tableHint string) []CompletionItem {
+	// When prefix is empty but a table is specified, show all columns for that table.
+	if prefix == "" && tableHint != "" {
+		if cols, ok := a.columns[strings.ToLower(tableHint)]; ok {
+			return cols
+		}
+		return nil
+	}
 	if prefix == "" {
 		return nil
 	}
 
-	lower := strings.ToLower(prefix)
-	var results []CompletionItem
-	seen := make(map[string]bool)
+	type scoredCandidate struct {
+		item  CompletionItem
+		score int    // lower = better match (0=exact, 1-99=prefix, 100+=substr/fuzzy)
+		order int    // priority group (0=column, 1=table, 2=keyword)
+	}
 
-	// Helper to deduplicate
-	addIfMatch := func(items []CompletionItem) {
+	var candidates []scoredCandidate
+	seen := make(map[string]bool)
+	lowerPrefix := strings.ToLower(prefix)
+
+	// Collect candidates with a score and dedup
+	tryAdd := func(items []CompletionItem, order int) {
 		for _, item := range items {
-			itemLower := strings.ToLower(item.Text)
-			if strings.HasPrefix(itemLower, lower) && !seen[itemLower] {
-				results = append(results, item)
-				seen[itemLower] = true
+			key := strings.ToLower(item.Text)
+			if seen[key] {
+				continue
 			}
+			// Use the same prioritization as the tree search
+			rank := fuzzy.RankMatch(lowerPrefix, key)
+			if rank < 0 {
+				continue
+			}
+			score := prioritizeResult(lowerPrefix, key, rank)
+			candidates = append(candidates, scoredCandidate{item, score, order})
+			seen[key] = true
 		}
 	}
 
 	// 1. Columns from the hinted table (highest priority)
 	if tableHint != "" {
 		if cols, ok := a.columns[strings.ToLower(tableHint)]; ok {
-			addIfMatch(cols)
+			tryAdd(cols, 0)
 		}
 	}
 
 	// 2. Table names
-	addIfMatch(a.tables)
+	tryAdd(a.tables, 1)
 
 	// 3. Keywords (lower priority)
-	addIfMatch(a.keywords)
+	tryAdd(a.keywords, 2)
+
+	// Sort by score ascending (lower = better), then by priority group
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].score != candidates[j].score {
+			return candidates[i].score < candidates[j].score
+		}
+		return candidates[i].order < candidates[j].order
+	})
+
+	// Limit to top 20 results
+	maxResults := 20
+	if len(candidates) < maxResults {
+		maxResults = len(candidates)
+	}
+
+	results := make([]CompletionItem, maxResults)
+	for i := 0; i < maxResults; i++ {
+		results[i] = candidates[i].item
+	}
 
 	return results
 }
@@ -91,15 +136,24 @@ func (a *Autocompleter) GetAllCompletions(prefix string) []CompletionItem {
 // extractPrefix extracts the word being typed at the cursor position.
 // text is the full text, cursorPos is the byte offset of the cursor.
 func extractPrefix(text string, cursorPos int) string {
+	prefix, _ := extractCompletionContext(text, cursorPos)
+	return prefix
+}
+
+// extractCompletionContext splits the current word segment at the cursor into
+// a column prefix and an optional table name. For "table.col|" it returns
+// ("col", "table"). For "prefix|" alone it returns ("prefix", "").
+func extractCompletionContext(text string, cursorPos int) (prefix, tableName string) {
 	if cursorPos <= 0 || cursorPos > len(text) {
-		return ""
+		return "", ""
 	}
 
-	// Find the start of the current word
+	// Walk backward from cursor to find the start of the current token.
+	// Unlike extractPrefix, we do NOT stop at '.' — we want table.col intact.
 	start := cursorPos - 1
 	for start >= 0 {
 		ch := rune(text[start])
-		if unicode.IsSpace(ch) || isPunctuation(ch) {
+		if unicode.IsSpace(ch) || ch == ';' || ch == ',' || ch == '(' || ch == ')' {
 			break
 		}
 		start--
@@ -107,10 +161,82 @@ func extractPrefix(text string, cursorPos int) string {
 	start++
 
 	if start >= cursorPos {
-		return ""
+		return "", ""
 	}
 
-	return text[start:cursorPos]
+	segment := text[start:cursorPos]
+
+	// Check for table.col pattern (last dot in the segment)
+	if dotIdx := strings.LastIndex(segment, "."); dotIdx >= 0 {
+		tableName = segment[:dotIdx]
+		prefix = segment[dotIdx+1:]
+		return prefix, tableName
+	}
+
+	// Regular prefix without a dot
+	return segment, ""
+}
+
+// resolveAliases scans the query text for table alias definitions in
+// FROM/JOIN clauses and returns a map of alias → table name.
+// Handles "FROM table alias", "FROM table AS alias", "JOIN table alias".
+func resolveAliases(sql string) map[string]string {
+	aliases := make(map[string]string)
+	upper := strings.ToUpper(sql)
+
+	keywords := []string{"FROM ", "JOIN ", "INTO ", "UPDATE "}
+	for _, kw := range keywords {
+		searchFrom := 0
+		for {
+			pos := strings.Index(upper[searchFrom:], kw)
+			if pos < 0 {
+				break
+			}
+			pos += searchFrom + len(kw)
+
+			// Skip whitespace
+			for pos < len(sql) && (sql[pos] == ' ' || sql[pos] == '\t') {
+				pos++
+			}
+
+			// Read table name
+			tableStart := pos
+			for pos < len(sql) && !unicode.IsSpace(rune(sql[pos])) && sql[pos] != ',' && sql[pos] != ';' && sql[pos] != '(' && sql[pos] != ')' {
+				pos++
+			}
+			tableName := sql[tableStart:pos]
+			if tableName == "" {
+				searchFrom = pos
+				continue
+			}
+
+			// Skip whitespace after table name
+			for pos < len(sql) && (sql[pos] == ' ' || sql[pos] == '\t') {
+				pos++
+			}
+
+			// Skip optional AS keyword
+			if pos+2 <= len(sql) && strings.ToUpper(sql[pos:pos+2]) == "AS" {
+				pos += 2
+				for pos < len(sql) && (sql[pos] == ' ' || sql[pos] == '\t') {
+					pos++
+				}
+			}
+
+			// Read alias name (single identifier, not a keyword)
+			aliasStart := pos
+			for pos < len(sql) && !unicode.IsSpace(rune(sql[pos])) && sql[pos] != ',' && sql[pos] != ';' && sql[pos] != '(' && sql[pos] != ')' && sql[pos] != '=' && sql[pos] != '\n' && sql[pos] != '\r' {
+				pos++
+			}
+			alias := sql[aliasStart:pos]
+			if alias != "" && alias != tableName {
+				aliases[strings.ToLower(alias)] = tableName
+			}
+
+			searchFrom = pos
+		}
+	}
+	return aliases
 }
 
 // extractTableHint tries to guess which table the user is referencing
