@@ -315,6 +315,10 @@ func (e *SQLEditor) handleInsertMode(event *tcell.EventKey) {
 
 	case tcell.KeyEnter:
 		e.pushUndo()
+		// Uppercase the keyword before Enter (if any)
+		if e.cx > 0 {
+			e.autoUppercaseKeyword()
+		}
 		e.splitLine()
 		return
 
@@ -361,6 +365,10 @@ func (e *SQLEditor) handleInsertMode(event *tcell.EventKey) {
 	case tcell.KeyCtrlK:
 		e.pushUndo()
 		e.deleteFromCursorToEnd()
+
+	case tcell.KeyCtrlW:
+		e.pushUndo()
+		e.deleteLastWord()
 	}
 
 	// Printable character
@@ -368,6 +376,10 @@ func (e *SQLEditor) handleInsertMode(event *tcell.EventKey) {
 		ch := event.Rune()
 		e.insertRune(ch)
 		e.triggerAutocomplete()
+		// Auto-uppercase SQL keywords when followed by a word boundary
+		if isWordBoundaryRune(ch) && e.cx > 1 {
+			e.autoUppercaseKeyword()
+		}
 	}
 }
 
@@ -646,6 +658,92 @@ func (e *SQLEditor) deleteFromCursorToEnd() {
 	if e.cx < len(e.lines[e.cy]) {
 		e.lines[e.cy] = e.lines[e.cy][:e.cx]
 	}
+}
+
+func (e *SQLEditor) deleteLastWord() {
+	if e.cx == 0 {
+		if e.cy > 0 {
+			// Join with previous line (same as backspace at line start)
+			prevLen := len(e.lines[e.cy-1])
+			e.lines[e.cy-1] += e.lines[e.cy]
+			e.lines = append(e.lines[:e.cy], e.lines[e.cy+1:]...)
+			e.cy--
+			e.cx = prevLen
+		}
+		return
+	}
+
+	line := e.lines[e.cy]
+	// 1. Skip whitespace right before cursor
+	end := e.cx - 1
+	for end >= 0 && (line[end] == ' ' || line[end] == '\t') {
+		end--
+	}
+	// 2. Skip the word (non-whitespace)
+	for end >= 0 && line[end] != ' ' && line[end] != '\t' {
+		end--
+	}
+	// 3. Delete from end+1 to e.cx (the word + any whitespace before cursor)
+	start := end + 1
+	e.lines[e.cy] = line[:start] + line[e.cx:]
+	e.cx = start
+}
+
+// autoUppercaseKeyword converts the word before the cursor to uppercase if
+// it is a known SQL keyword. Called after inserting a word-boundary character.
+func (e *SQLEditor) autoUppercaseKeyword() {
+	line := e.lines[e.cy]
+	if len(line) < 2 {
+		return
+	}
+	// Find the start of the word before cursor.
+	// e.cx points past the boundary character, so the word is at [start, e.cx-1).
+	end := e.cx - 1
+	if end <= 0 {
+		return
+	}
+	start := end - 1
+	for start >= 0 {
+		b := line[start]
+		if b == ' ' || b == '\t' || b == '\n' || b == '\r' || isPunctByte(b) {
+			start++
+			break
+		}
+		start--
+	}
+	if start < 0 {
+		start = 0
+	}
+	if start >= end {
+		return
+	}
+
+	word := line[start:end]
+	upper := strings.ToUpper(word)
+	if upper == word {
+		return // already uppercase
+	}
+	if !isKeyword(upper) {
+		return // not a SQL keyword
+	}
+
+	e.lines[e.cy] = line[:start] + upper + line[end:]
+	e.cx = start + len(upper) + 1 // +1 for the boundary character
+}
+
+// isWordBoundaryRune returns true for characters that typically end a SQL word.
+func isWordBoundaryRune(ch rune) bool {
+	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' ||
+		ch == ';' || ch == ',' || ch == '(' || ch == ')' ||
+		ch == '\'' || ch == '"'
+}
+
+func isPunctByte(b byte) bool {
+	switch b {
+	case ';', ',', '(', ')', '\'', '"', '=', '<', '>', '!', '+', '-', '*', '/':
+		return true
+	}
+	return false
 }
 
 func (e *SQLEditor) pasteAfter() {
@@ -968,25 +1066,40 @@ func (e *SQLEditor) redo() {
 
 func (e *SQLEditor) triggerAutocomplete() {
 	text := e.GetText()
-	// Find cursor position in the full text
 	cursorPos := e.cursorByteOffset()
 
-	e.acPrefix = extractPrefix(text, cursorPos)
-	e.acTableHint = extractTableHint(text, cursorPos)
+	// 1. Extract context: handles "table.col", "alias.col", and plain words
+	prefix, tableName := extractCompletionContext(text, cursorPos)
 
-	if len(e.acPrefix) < 1 {
-		e.acVisible = false
-		return
-	}
-
-	items := e.completer.GetCompletions(e.acPrefix, e.acTableHint)
-	if len(items) > 0 {
-		e.acItems = items
-		e.acSelected = 0
-		e.acVisible = true
+	// 2. Resolve table name: check aliases, then fall back to FROM/JOIN hints
+	if tableName != "" {
+		aliases := resolveAliases(text)
+		if resolved, ok := aliases[strings.ToLower(tableName)]; ok {
+			tableName = resolved
+		}
+		// Keep the original tableName if alias resolution didn't find it
+		// (it might be a real table name, not an alias)
 	} else {
-		e.acVisible = false
+		tableName = extractTableHint(text, cursorPos)
 	}
+
+	e.acPrefix = prefix
+	e.acTableHint = tableName
+
+	// Show completions when:
+	// - A table is specified (even with empty prefix — the "table." case)
+	// - The user has typed at least 1 character of a word
+	if tableName != "" || len(prefix) >= 1 {
+		items := e.completer.GetCompletions(prefix, tableName)
+		if len(items) > 0 {
+			e.acItems = items
+			e.acSelected = 0
+			e.acVisible = true
+			return
+		}
+	}
+
+	e.acVisible = false
 }
 
 // cursorByteOffset returns the byte offset of the cursor in the full text.
