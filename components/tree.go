@@ -467,6 +467,31 @@ func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures 
 	}
 }
 
+// stripColorTags removes tview color formatting like [black:primary] from node text
+func stripColorTags(text string) string {
+	for {
+		start := strings.Index(text, "[")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(text[start:], "]")
+		if end == -1 {
+			break
+		}
+		end += start // make absolute
+
+		inner := text[start+1 : end]
+		// tview color tags never contain spaces: [black:primary], [red], [green:black:b]
+		if !strings.Contains(inner, " ") {
+			text = text[:start] + text[end+1:]
+		} else {
+			// Not a color tag: replace '[' with sentinel so we don't loop forever
+			text = text[:start] + "\x00" + text[start+1:]
+		}
+	}
+	return strings.ReplaceAll(text, "\x00", "[")
+}
+
 func prioritizeResult(pattern, target string, fuzzyRank int) int {
 	// play match golf - lowest score wins
 
@@ -497,6 +522,52 @@ func prioritizeResult(pattern, target string, fuzzyRank int) int {
 
 	// If no other matches, fall back to fuzzy match with a low score
 	return 10000 + fuzzyRank
+}
+
+// expandAncestors expands all ancestor nodes of the given node up to (but not including) root.
+// tview TreeNode doesn't expose a parent pointer, so we walk from root to find the path.
+func expandAncestors(target *tview.TreeNode, root *tview.TreeNode) {
+	// Collect ancestors by walking the tree with a parent stack
+	type stackEntry struct {
+		node   *tview.TreeNode
+		parent *tview.TreeNode
+	}
+	stack := []stackEntry{{node: root, parent: nil}}
+	var ancestors []*tview.TreeNode
+
+	for len(stack) > 0 {
+		entry := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if entry.node == target {
+			// Build ancestor chain walking back up
+			for e := entry.parent; e != nil && e != root; {
+				ancestors = append(ancestors, e)
+				// Find e's parent by walking the tree (brute force but tree is small)
+				found := false
+				root.Walk(func(n, p *tview.TreeNode) bool {
+					if n == e {
+						e = p
+						found = true
+						return false
+					}
+					return true
+				})
+				if !found {
+					break
+				}
+			}
+			// Expand from top to bottom
+			for i := len(ancestors) - 1; i >= 0; i-- {
+				ancestors[i].SetExpanded(true)
+			}
+			return
+		}
+
+		for _, child := range entry.node.GetChildren() {
+			stack = append(stack, stackEntry{node: child, parent: entry.node})
+		}
+	}
 }
 
 func (tree *Tree) search(searchText string) {
@@ -533,24 +604,20 @@ func (tree *Tree) search(searchText string) {
 	var rankedNodes []rankedNode
 
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
-		nodeText := strings.ToLower(node.GetText())
+		nodeText := strings.ToLower(stripColorTags(node.GetText()))
 
 		if databaseNameFilter == "" {
 			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
 			if rank >= 0 {
-				if parent != nil {
-					parent.SetExpanded(true)
-				}
 				adjustedRank := prioritizeResult(tableNameFilter, nodeText, rank)
 				rankedNodes = append(rankedNodes, rankedNode{node: node, rank: adjustedRank})
 			}
 		} else {
 			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
 			if rank >= 0 && parent != nil {
-				parentText := strings.ToLower(parent.GetText())
+				parentText := strings.ToLower(stripColorTags(parent.GetText()))
 				parentRank := fuzzy.RankMatch(databaseNameFilter, parentText)
 				if parentRank >= 0 {
-					parent.SetExpanded(true)
 					adjustedTableRank := prioritizeResult(tableNameFilter, nodeText, rank)
 					adjustedParentRank := prioritizeResult(databaseNameFilter, parentText, parentRank)
 					// Combine ranks: prioritize table match but factor in database match
@@ -573,8 +640,10 @@ func (tree *Tree) search(searchText string) {
 
 	// Set current node to best match
 	if len(tree.state.searchFoundNodes) > 0 {
-		tree.SetCurrentNode(tree.state.searchFoundNodes[0])
-		tree.state.currentFocusFoundNode = tree.state.searchFoundNodes[0]
+		bestNode := tree.state.searchFoundNodes[0]
+		expandAncestors(bestNode, rootNode)
+		tree.SetCurrentNode(bestNode)
+		tree.state.currentFocusFoundNode = bestNode
 	}
 }
 

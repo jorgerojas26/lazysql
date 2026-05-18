@@ -1268,6 +1268,13 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	isAnInsertedRow, _ := table.isAnInsertedRow(rowIndex)
 
 	if isAnInsertedRow {
+		if changeType == models.DMLUpdateType {
+			switch value.Type {
+			case models.Null, models.Empty, models.Default:
+				tableCell.SetText(value.Value.(string))
+				tableCell.SetStyle(tcell.StyleDefault.Italic(true))
+			}
+		}
 		table.MutateInsertedRowCell(tableCellReference.(string), value)
 		return nil
 	}
