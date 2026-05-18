@@ -345,6 +345,6 @@ func TestExtractTableHint_CommaList(t *testing.T) {
 	sql := "SELECT * FROM users, "
 	hint := extractTableHint(sql, len(sql))
 	if hint != "" {
-		// After comma, there's no table name yet
+		t.Errorf("expected empty hint after comma, got '%s'", hint)
 	}
 }

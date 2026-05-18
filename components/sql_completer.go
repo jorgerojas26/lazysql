@@ -49,7 +49,7 @@ func (a *Autocompleter) SetColumns(table string, columns []string) {
 
 // GetCompletions returns completion items matching the given prefix using
 // fuzzy search (same ranking as the tree: exact > prefix > substring > fuzzy).
-// If tableHint is non-empty, it prioritises columns from that table.
+// If tableHint is non-empty, it prioritizes columns from that table.
 // When prefix is empty but tableHint is set (e.g. user typed "table."), all
 // columns for that table are returned.
 func (a *Autocompleter) GetCompletions(prefix string, tableHint string) []CompletionItem {
@@ -66,8 +66,8 @@ func (a *Autocompleter) GetCompletions(prefix string, tableHint string) []Comple
 
 	type scoredCandidate struct {
 		item  CompletionItem
-		score int    // lower = better match (0=exact, 1-99=prefix, 100+=substr/fuzzy)
-		order int    // priority group (0=column, 1=table, 2=keyword)
+		score int // lower = better match (0=exact, 1-99=prefix, 100+=substr/fuzzy)
+		order int // priority group (0=column, 1=table, 2=keyword)
 	}
 
 	var candidates []scoredCandidate
@@ -203,23 +203,6 @@ func resolveAliases(sql string, cursorPos int) map[string]string {
 	return result
 }
 
-// resolveAllAliases returns EVERY alias regardless of depth.
-// Only used in tests.
-func resolveAllAliases(sql string) map[string]string {
-	ctx := scanSQLContext(sql)
-	// Merge table-ref aliases (all depths) + CTE names.
-	result := make(map[string]string)
-	for _, ref := range ctx.tableRefs {
-		if ref.alias != "" {
-			result[strings.ToLower(ref.alias)] = ref.name
-		}
-	}
-	for cteName := range ctx.CTEs {
-		result[cteName] = cteName
-	}
-	return result
-}
-
 // extractTableHint uses the lexer-based context scanner to find the most
 // recently mentioned table at the cursor's subquery depth.  This correctly
 // handles subquery scoping — a cursor inside a subquery won't see tables
@@ -244,6 +227,12 @@ func extractTableHint(text string, cursorPos int) string {
 	}
 
 	if best.name != "" {
+		// If the cursor follows a comma (e.g. "FROM users, |"), there is
+		// no active table hint — the user is starting a new table name.
+		trimmed := strings.TrimRight(text[:cursorPos], " \t\n\r")
+		if len(trimmed) > 0 && trimmed[len(trimmed)-1] == ',' {
+			return ""
+		}
 		return best.name
 	}
 	return ""

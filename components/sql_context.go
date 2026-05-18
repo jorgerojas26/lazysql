@@ -368,9 +368,7 @@ loop:
 
 			// If an alias was resolved, also register a self-alias so that
 			// e.g. "FROM users u" maps alias "u" → "users".
-			if alias != "" {
-				// The actual alias→table registration happens in scanSQLContext.
-			}
+			// (Actual alias→table registration happens in scanSQLContext.)
 
 			// Comma-separated continuation?
 			skipWhitespace(tokens, i)

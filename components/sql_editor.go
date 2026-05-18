@@ -50,8 +50,8 @@ func (m VimMode) String() string {
 // ---------------------------------------------------------------------------
 
 type undoEntry struct {
-	lines    []string
-	cx, cy   int
+	lines  []string
+	cx, cy int
 }
 
 // ---------------------------------------------------------------------------
@@ -69,17 +69,17 @@ type SQLEditor struct {
 	*tview.Box
 
 	// --- text buffer ---
-	lines       []string
-	cx, cy      int     // cursor: byte column, line index
-	ox, oy      int     // scroll: byte offset, line offset
-	tabWidth    int
+	lines    []string
+	cx, cy   int // cursor: byte column, line index
+	ox, oy   int // scroll: byte offset, line offset
+	tabWidth int
 
 	// --- selection (visual mode) ---
-	selecting   bool
+	selecting    bool
 	selCX, selCY int
 
 	// --- vim mode ---
-	vimMode     VimMode
+	vimMode VimMode
 
 	// --- double-key leader tracking ---
 	leaderKey   rune
@@ -87,21 +87,21 @@ type SQLEditor struct {
 	leaderDelay time.Duration
 
 	// --- yank / paste ---
-	yankText    string
+	yankText string
 
 	// --- undo ---
-	undoStack   []undoEntry
-	redoStack   []undoEntry
-	maxUndo     int
+	undoStack []undoEntry
+	redoStack []undoEntry
+	maxUndo   int
 
 	// --- autocomplete ---
-	completer    *Autocompleter
-	acItems      []CompletionItem
-	acSelected   int
-	acOffset     int // scroll offset — index of first visible item
-	acPrefix     string
-	acTableHint  string
-	acVisible    bool
+	completer   *Autocompleter
+	acItems     []CompletionItem
+	acSelected  int
+	acOffset    int // scroll offset — index of first visible item
+	acPrefix    string
+	acTableHint string
+	acVisible   bool
 
 	// --- existing API fields ---
 	state         *SQLEditorState
@@ -147,7 +147,7 @@ func (e *SQLEditor) SetText(text string, setCursor bool) {
 	// Strip \r from Windows-style line endings
 	text = strings.ReplaceAll(text, "\r", "")
 	e.lines = splitLines(text)
-	if e.lines == nil || len(e.lines) == 0 {
+	if len(e.lines) == 0 {
 		e.lines = []string{""}
 	}
 	if setCursor {
@@ -233,7 +233,7 @@ func (e *SQLEditor) SetColumns(table string, columns []string) {
 
 // InputHandler returns the event handler for this widget.
 func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
-	return func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
+	return func(event *tcell.EventKey, _ func(p tview.Primitive)) {
 		// --- 1. Always handle open-in-external-editor (Ctrl+Space) ---
 		cmd := app.Keymaps.Group(app.EditorGroup).Resolve(event)
 		if cmd == commands.OpenInExternalEditor {
@@ -790,7 +790,7 @@ func (e *SQLEditor) pasteBefore() {
 		newLines = append(newLines, parts...)
 		newLines = append(newLines, e.lines[e.cy:]...)
 		e.lines = newLines
-		e.cy -= 1
+		e.cy--
 		if e.cy < 0 {
 			e.cy = 0
 		}
@@ -1374,7 +1374,7 @@ func (e *SQLEditor) drawSelection(screen tcell.Screen, x, y, width int, lineText
 	}
 }
 
-func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, defaultFg, defaultBg tcell.Color) {
+func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, _, defaultBg tcell.Color) {
 	modeText := e.vimMode.String()
 	posText := "Ln " + itoa(e.cy+1) + ", Col " + itoa(cursorDisplayCol(e.lines, e.cy, e.cx, e.tabWidth)+1)
 
@@ -1411,7 +1411,7 @@ func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, defaultF
 	}
 }
 
-func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height int, defaultFg, defaultBg tcell.Color) {
+func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height int, _, defaultBg tcell.Color) {
 	if len(e.acItems) == 0 {
 		return
 	}
@@ -1429,7 +1429,7 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 	// Determine how many popup items fit within the editor's vertical space
 	cursorLine := y + e.cy - e.oy
 	spaceBelow := y + height - cursorLine - 1 // rows from cursor+1 to editor bottom
-	spaceAbove := cursorLine - y               // rows from editor top to cursor-1
+	spaceAbove := cursorLine - y              // rows from editor top to cursor-1
 
 	wanted := 10
 	if wanted > len(e.acItems) {
@@ -1500,7 +1500,7 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 	if maxWidth < 10 {
 		maxWidth = 10
 	}
-	popupWidth := maxWidth + 2 // border
+	popupWidth := maxWidth + 2  // border
 	popupHeight := maxItems + 2 // border
 
 	// Ensure popup fits horizontally
@@ -1670,20 +1670,6 @@ func cursorDisplayCol(lines []string, cy, cx, tabWidth int) int {
 		}
 	}
 	return col
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func itoa(n int) string {
