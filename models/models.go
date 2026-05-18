@@ -7,13 +7,13 @@ import (
 )
 
 type AppConfig struct {
-	DefaultPageSize              int  `toml:"default_page_size"`
-	DisableSidebar               bool `toml:"disable_sidebar"`
-	SidebarOverlay               bool `toml:"sidebar_overlay"`
-	MaxQueryHistoryPerConnection int  `toml:"max_query_history_per_connection"`
-	TreeWidth                    int  `toml:"tree_width"`
-	JSONViewerWordWrap           bool `toml:"json_viewer_word_wrap"`
-	EnterOpensJSONViewer         bool `toml:"enter_opens_json_viewer"`
+	DefaultPageSize              int
+	DisableSidebar               bool
+	SidebarOverlay               bool
+	MaxQueryHistoryPerConnection int
+	TreeWidth                    int
+	JSONViewerWordWrap           bool
+	EnterOpensJSONViewer         bool
 }
 
 type Connection struct {
