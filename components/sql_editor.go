@@ -98,6 +98,7 @@ type SQLEditor struct {
 	completer    *Autocompleter
 	acItems      []CompletionItem
 	acSelected   int
+	acOffset     int // scroll offset — index of first visible item
 	acPrefix     string
 	acTableHint  string
 	acVisible    bool
@@ -254,9 +255,11 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 			switch {
 			case event.Key() == tcell.KeyDown || event.Key() == tcell.KeyTab || event.Key() == tcell.KeyCtrlN:
 				e.acSelected = min(e.acSelected+1, len(e.acItems)-1)
+				e.scrollAutocomplete()
 				return
 			case event.Key() == tcell.KeyUp || event.Key() == tcell.KeyCtrlP:
 				e.acSelected = max(e.acSelected-1, 0)
+				e.scrollAutocomplete()
 				return
 			case event.Key() == tcell.KeyEnter || event.Key() == tcell.KeyTab:
 				if e.acSelected >= 0 && e.acSelected < len(e.acItems) {
@@ -1073,7 +1076,7 @@ func (e *SQLEditor) triggerAutocomplete() {
 
 	// 2. Resolve table name: check aliases, then fall back to FROM/JOIN hints
 	if tableName != "" {
-		aliases := resolveAliases(text)
+		aliases := resolveAliases(text, cursorPos)
 		if resolved, ok := aliases[strings.ToLower(tableName)]; ok {
 			tableName = resolved
 		}
@@ -1094,12 +1097,31 @@ func (e *SQLEditor) triggerAutocomplete() {
 		if len(items) > 0 {
 			e.acItems = items
 			e.acSelected = 0
+			e.acOffset = 0
 			e.acVisible = true
 			return
 		}
 	}
 
 	e.acVisible = false
+}
+
+// scrollAutocomplete adjusts acOffset so the selected item stays visible.
+func (e *SQLEditor) scrollAutocomplete() {
+	// Use a generous estimate (10) for the scroll window. The exact
+	// visible count is computed in drawAutocomplete, but we need a
+	// reasonable window here so the user can see scrolling happening.
+	// Any minor mismatch at boundaries is corrected in drawAutocomplete.
+	w := 10
+	if w > len(e.acItems) {
+		w = len(e.acItems)
+	}
+	if e.acSelected < e.acOffset {
+		e.acOffset = e.acSelected
+	}
+	if e.acSelected >= e.acOffset+w {
+		e.acOffset = e.acSelected - w + 1
+	}
 }
 
 // cursorByteOffset returns the byte offset of the cursor in the full text.
@@ -1403,18 +1425,69 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 			popupX = x
 		}
 	}
-	popupY := y + e.cy - e.oy + 1
-	if popupY >= y+height-1 {
-		popupY = y
+
+	// Determine how many popup items fit within the editor's vertical space
+	cursorLine := y + e.cy - e.oy
+	spaceBelow := y + height - cursorLine - 1 // rows from cursor+1 to editor bottom
+	spaceAbove := cursorLine - y               // rows from editor top to cursor-1
+
+	wanted := 10
+	if wanted > len(e.acItems) {
+		wanted = len(e.acItems)
+	}
+	need := wanted + 2 // items + top/bottom borders
+
+	var maxItems int
+	var popupY int
+
+	if need <= spaceBelow {
+		// All requested items fit below the cursor
+		maxItems = wanted
+		popupY = cursorLine + 1
+	} else if need <= spaceAbove {
+		// All requested items fit above the cursor
+		maxItems = wanted
+		popupY = cursorLine - need
+	} else {
+		// Neither side fits all items — use the side with more room
+		if spaceBelow >= spaceAbove {
+			maxItems = spaceBelow - 2
+			if maxItems < 1 {
+				maxItems = 1
+			}
+			popupY = cursorLine + 1
+		} else {
+			maxItems = spaceAbove - 2
+			if maxItems < 1 {
+				maxItems = 1
+			}
+			popupY = cursorLine - (maxItems + 2)
+			if popupY < y {
+				popupY = y
+			}
+		}
+		if maxItems > len(e.acItems) {
+			maxItems = len(e.acItems)
+		}
 	}
 
-	// Determine popup dimensions
-	maxItems := 10
-	if maxItems > len(e.acItems) {
-		maxItems = len(e.acItems)
+	// Keep the scroll window in sync with the actual visible item count
+	if e.acOffset+maxItems > len(e.acItems) {
+		e.acOffset = len(e.acItems) - maxItems
 	}
+	if e.acOffset < 0 {
+		e.acOffset = 0
+	}
+	if e.acSelected < e.acOffset {
+		e.acOffset = e.acSelected
+	}
+	if e.acSelected >= e.acOffset+maxItems {
+		e.acOffset = e.acSelected - maxItems + 1
+	}
+
 	maxWidth := 0
-	for _, item := range e.acItems[:maxItems] {
+	for i := e.acOffset; i < e.acOffset+maxItems; i++ {
+		item := e.acItems[i]
 		w := visibleLen(item.Text, e.tabWidth)
 		if item.Description != "" {
 			w += 3 + visibleLen(item.Description, e.tabWidth) // " - desc"
@@ -1473,9 +1546,10 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 				continue
 			}
 
-			item := e.acItems[itemIdx]
+			actualIdx := e.acOffset + itemIdx
+			item := e.acItems[actualIdx]
 			itemStyle := contentStyle
-			if itemIdx == e.acSelected {
+			if actualIdx == e.acSelected {
 				itemStyle = contentStyle.Background(selectedBg)
 			}
 

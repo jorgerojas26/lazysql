@@ -177,129 +177,75 @@ func extractCompletionContext(text string, cursorPos int) (prefix, tableName str
 	return segment, ""
 }
 
-// resolveAliases scans the query text for table alias definitions in
-// FROM/JOIN clauses and returns a map of alias → table name.
-// Handles "FROM table alias", "FROM table AS alias", "JOIN table alias".
-func resolveAliases(sql string) map[string]string {
-	aliases := make(map[string]string)
-	upper := strings.ToUpper(sql)
+// resolveAliases scans the query text for table alias definitions.
+// Uses the lexer-based SQL context scanner instead of the old string-search
+// heuristics, so it correctly handles subqueries, CTEs, and comma lists.
+// Returns aliases visible at cursorPos (aliases from outer scopes are visible,
+// but aliases from deeper subqueries are not).
+func resolveAliases(sql string, cursorPos int) map[string]string {
+	ctx := scanSQLContext(sql)
+	depth := cursorDepth(sql, cursorPos)
+	result := make(map[string]string)
 
-	keywords := []string{"FROM ", "JOIN ", "INTO ", "UPDATE "}
-	for _, kw := range keywords {
-		searchFrom := 0
-		for {
-			pos := strings.Index(upper[searchFrom:], kw)
-			if pos < 0 {
-				break
-			}
-			pos += searchFrom + len(kw)
-
-			// Skip whitespace
-			for pos < len(sql) && (sql[pos] == ' ' || sql[pos] == '\t') {
-				pos++
-			}
-
-			// Read table name
-			tableStart := pos
-			for pos < len(sql) && !unicode.IsSpace(rune(sql[pos])) && sql[pos] != ',' && sql[pos] != ';' && sql[pos] != '(' && sql[pos] != ')' {
-				pos++
-			}
-			tableName := sql[tableStart:pos]
-			if tableName == "" {
-				searchFrom = pos
-				continue
-			}
-
-			// Skip whitespace after table name
-			for pos < len(sql) && (sql[pos] == ' ' || sql[pos] == '\t') {
-				pos++
-			}
-
-			// Skip optional AS keyword
-			if pos+2 <= len(sql) && strings.ToUpper(sql[pos:pos+2]) == "AS" {
-				pos += 2
-				for pos < len(sql) && (sql[pos] == ' ' || sql[pos] == '\t') {
-					pos++
-				}
-			}
-
-			// Read alias name (single identifier, not a keyword)
-			aliasStart := pos
-			for pos < len(sql) && !unicode.IsSpace(rune(sql[pos])) && sql[pos] != ',' && sql[pos] != ';' && sql[pos] != '(' && sql[pos] != ')' && sql[pos] != '=' && sql[pos] != '\n' && sql[pos] != '\r' {
-				pos++
-			}
-			alias := sql[aliasStart:pos]
-			if alias != "" && alias != tableName {
-				aliases[strings.ToLower(alias)] = tableName
-			}
-
-			searchFrom = pos
+	// Table ref aliases, filtered by subquery depth.
+	for _, ref := range ctx.tableRefs {
+		if ref.alias != "" && ref.depth <= depth {
+			result[strings.ToLower(ref.alias)] = ref.name
 		}
 	}
-	return aliases
+	// CTE names are always visible at depth 0.
+	for cteName := range ctx.CTEs {
+		if 0 <= depth {
+			result[cteName] = cteName
+		}
+	}
+
+	return result
 }
 
-// extractTableHint tries to guess which table the user is referencing
-// based on the text before the cursor. Very simple heuristic: looks for
-// "FROM <word>" or "JOIN <word>" or "<word>." preceding the cursor.
+// resolveAllAliases returns EVERY alias regardless of depth.
+// Only used in tests.
+func resolveAllAliases(sql string) map[string]string {
+	ctx := scanSQLContext(sql)
+	// Merge table-ref aliases (all depths) + CTE names.
+	result := make(map[string]string)
+	for _, ref := range ctx.tableRefs {
+		if ref.alias != "" {
+			result[strings.ToLower(ref.alias)] = ref.name
+		}
+	}
+	for cteName := range ctx.CTEs {
+		result[cteName] = cteName
+	}
+	return result
+}
+
+// extractTableHint uses the lexer-based context scanner to find the most
+// recently mentioned table at the cursor's subquery depth.  This correctly
+// handles subquery scoping — a cursor inside a subquery won't see tables
+// from the outer query as the "hint".
 func extractTableHint(text string, cursorPos int) string {
 	if cursorPos > len(text) {
 		cursorPos = len(text)
 	}
 
-	// Check for "tablename." before cursor
-	before := text[:cursorPos]
-	if idx := strings.LastIndex(before, "."); idx > 0 {
-		// Find the identifier before the dot
-		start := idx - 1
-		for start >= 0 {
-			ch := rune(before[start])
-			if unicode.IsSpace(ch) || isPunctuation(ch) {
-				break
-			}
-			start--
-		}
-		start++
-		if start < idx {
-			return before[start:idx]
+	ctx := scanSQLContext(text)
+	depth := cursorDepth(text, cursorPos)
+
+	// Find the table reference closest to (but before) the cursor at the
+	// same nesting depth.
+	var best tableRef
+	bestPos := -1
+	for _, ref := range ctx.tableRefs {
+		if ref.depth == depth && ref.pos < cursorPos && ref.pos > bestPos {
+			best = ref
+			bestPos = ref.pos
 		}
 	}
 
-	// Look for FROM or JOIN keywords
-	upper := strings.ToUpper(before)
-	lastFrom := strings.LastIndex(upper, "FROM ")
-	lastJoin := strings.LastIndex(upper, "JOIN ")
-	lastInto := strings.LastIndex(upper, "INTO ")
-
-	best := -1
-	keywordLen := 0
-
-	for _, kw := range []struct {
-		idx int
-		str string
-	}{
-		{lastFrom, "FROM "},
-		{lastJoin, "JOIN "},
-		{lastInto, "INTO "},
-	} {
-		if kw.idx > best {
-			best = kw.idx
-			keywordLen = len(kw.str)
-		}
+	if best.name != "" {
+		return best.name
 	}
-
-	if best >= 0 {
-		after := before[best+keywordLen:]
-		// Extract the next word
-		after = strings.TrimLeft(after, " \t")
-		end := strings.IndexAny(after, " \t\n\r,;")
-		if end > 0 {
-			return after[:end]
-		} else if end == -1 && after != "" {
-			return after
-		}
-	}
-
 	return ""
 }
 
