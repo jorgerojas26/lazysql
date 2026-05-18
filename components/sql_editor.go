@@ -1374,7 +1374,7 @@ func (e *SQLEditor) drawSelection(screen tcell.Screen, x, y, width int, lineText
 	}
 }
 
-func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, _, defaultBg tcell.Color) {
+func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, _, _ tcell.Color) {
 	modeText := e.vimMode.String()
 	posText := "Ln " + itoa(e.cy+1) + ", Col " + itoa(cursorDisplayCol(e.lines, e.cy, e.cx, e.tabWidth)+1)
 
@@ -1411,7 +1411,7 @@ func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, _, defau
 	}
 }
 
-func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height int, _, defaultBg tcell.Color) {
+func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height int, _, _ tcell.Color) {
 	if len(e.acItems) == 0 {
 		return
 	}
