@@ -288,8 +288,8 @@ func TestLoadConfigWithLocal(t *testing.T) {
 	// Create global config
 	globalConfig := `
 [application]
-default_page_size = 100
-sidebar_overlay = false
+DefaultPageSize = 100
+SidebarOverlay = false
 
 [[database]]
 name = "global-conn"
@@ -303,7 +303,7 @@ hostname = "global-host"
 	// Create local config
 	localConfig := `
 [application]
-default_page_size = 500
+DefaultPageSize = 500
 
 [[database]]
 name = "local-conn"
@@ -442,7 +442,7 @@ func TestLoadConfigPreservesDefaults(t *testing.T) {
 	// Global config only sets one field
 	globalConfig := `
 [application]
-default_page_size = 500
+DefaultPageSize = 500
 `
 	globalPath := filepath.Join(tmpDir, "config.toml")
 	if err := os.WriteFile(globalPath, []byte(globalConfig), 0o600); err != nil {
