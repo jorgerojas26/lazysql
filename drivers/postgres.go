@@ -927,34 +927,239 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 	return queryStr, nil
 }
 
-func (db *Postgres) GetFunctions(_ string) (map[string][]string, error) {
-	return nil, errors.New("not implemented")
+func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(`
+		SELECT n.nspname || '.' || p.proname
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+		AND p.prokind = 'f'
+		ORDER BY n.nspname, p.proname
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	functions := make(map[string][]string)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		functions[database] = append(functions[database], name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return functions, nil
 }
 
-func (db *Postgres) GetProcedures(_ string) (map[string][]string, error) {
-	return nil, errors.New("not implemented")
+func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(`
+		SELECT n.nspname || '.' || p.proname
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+		AND p.prokind = 'p'
+		ORDER BY n.nspname, p.proname
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	procedures := make(map[string][]string)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		procedures[database] = append(procedures[database], name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return procedures, nil
 }
 
-func (db *Postgres) GetViews(_ string) (map[string][]string, error) {
-	return nil, errors.New("not implemented")
+func (db *Postgres) GetViews(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(`
+		SELECT table_schema || '.' || table_name
+		FROM information_schema.views
+		WHERE table_catalog = $1
+		AND table_schema NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY table_schema, table_name
+	`, database)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	views := make(map[string][]string)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		views[database] = append(views[database], name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return views, nil
 }
 
 func (db *Postgres) SupportsProgramming() bool {
-	return false
+	return true
 }
 
 func (db *Postgres) UseSchemas() bool {
 	return true
 }
 
-func (db *Postgres) GetFunctionDefinition(_ string, _ string) (string, error) {
-	return "", errors.New("not implemented")
+func (db *Postgres) GetFunctionDefinition(database, name string) (string, error) {
+	if database == "" {
+		return "", errors.New("database name is required")
+	}
+	if name == "" {
+		return "", errors.New("function name is required")
+	}
+
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) != 2 {
+		return "", errors.New("function name must be in format schema.name")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var result string
+	row := conn.QueryRow(`
+		SELECT pg_get_functiondef(p.oid)
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = $1 AND p.proname = $2
+		LIMIT 1
+	`, parts[0], parts[1])
+	if err := row.Scan(&result); err != nil {
+		return "", err
+	}
+
+	return result, nil
 }
 
-func (db *Postgres) GetProcedureDefinition(_ string, _ string) (string, error) {
-	return "", errors.New("not implemented")
+func (db *Postgres) GetProcedureDefinition(database, name string) (string, error) {
+	if database == "" {
+		return "", errors.New("database name is required")
+	}
+	if name == "" {
+		return "", errors.New("procedure name is required")
+	}
+
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) != 2 {
+		return "", errors.New("procedure name must be in format schema.name")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var result string
+	row := conn.QueryRow(`
+		SELECT pg_get_functiondef(p.oid)
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = $1 AND p.proname = $2
+		AND p.prokind = 'p'
+		LIMIT 1
+	`, parts[0], parts[1])
+	if err := row.Scan(&result); err != nil {
+		return "", err
+	}
+
+	return result, nil
 }
 
-func (db *Postgres) GetViewDefinition(_ string, _ string) (string, error) {
-	return "", errors.New("not implemented")
+func (db *Postgres) GetViewDefinition(database, name string) (string, error) {
+	if database == "" {
+		return "", errors.New("database name is required")
+	}
+	if name == "" {
+		return "", errors.New("view name is required")
+	}
+
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) != 2 {
+		return "", errors.New("view name must be in format schema.name")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var result string
+	row := conn.QueryRow(`
+		SELECT definition
+		FROM pg_catalog.pg_views
+		WHERE schemaname = $1 AND viewname = $2
+	`, parts[0], parts[1])
+	if err := row.Scan(&result); err != nil {
+		return "", err
+	}
+
+	return result, nil
 }

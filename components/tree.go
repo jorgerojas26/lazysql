@@ -74,7 +74,12 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 	case len(split) == 3 && useSchemas && !supportsProgramming:
 		nodeType = NodeTypeTable
 		schema = split[len(split)-2]
+	case len(split) == 3 && useSchemas && supportsProgramming:
+		// Section header: [database, schema, section]
+		schema = split[1]
+		nodeType = NodeTypeSection
 	case len(split) == 3 && !useSchemas && supportsProgramming:
+		// Flat (non-schema) items: [database, section, name]
 		switch parentType := split[len(split)-2]; parentType {
 		case "tables":
 			nodeType = NodeTypeTable
@@ -88,7 +93,9 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 			nodeType = NodeTypeSection
 		}
 	case len(split) == 4 && useSchemas && supportsProgramming:
-		switch parentType := split[len(split)-2]; parentType {
+		// Items under a schema: [database, schema, section, name]
+		schema = split[1]
+		switch split[2] {
 		case "tables":
 			nodeType = NodeTypeTable
 		case "procedures":
@@ -100,8 +107,6 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 		default:
 			nodeType = NodeTypeSection
 		}
-
-		schema = split[len(split)-2]
 	default:
 		nodeType = NodeTypeSection
 	}
@@ -404,6 +409,98 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 
 			tablesContainer.AddChild(childNode)
 		}
+	}
+}
+
+// buildSchemaTree builds the complete per-schema subtree for a database node.
+// Each schema gets a node with "tables", and optionally "functions", "procedures", "views" sections.
+// The functions/procedures/views maps are keyed by database name and contain schema-qualified names.
+func (tree *Tree) buildSchemaTree(database string, node *tview.TreeNode, tables, functions, procedures, views map[string][]string) {
+	supportsProgramming := tree.DBDriver.SupportsProgramming()
+	sortedKeys := slices.Sorted(maps.Keys(tables))
+
+	for _, schema := range sortedKeys {
+		// Filter schemas if Schemas is configured
+		if len(tree.Schemas) > 0 {
+			found := false
+			for _, s := range tree.Schemas {
+				if s == schema {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
+		schemaNode := tview.NewTreeNode(schema)
+		schemaNode.SetExpanded(false)
+		schemaNode.SetReference(schema)
+		schemaNode.SetColor(app.Styles.PrimaryTextColor)
+		node.AddChild(schemaNode)
+
+		if supportsProgramming {
+			tablesNode := tview.NewTreeNode("tables")
+			tablesNode.SetExpanded(false)
+			tablesNode.SetReference(fmt.Sprintf("%s.tables", schema))
+			tablesNode.SetColor(app.Styles.PrimaryTextColor)
+			schemaNode.AddChild(tablesNode)
+
+			for _, child := range tables[schema] {
+				childNode := tview.NewTreeNode(child)
+				childNode.SetExpanded(true)
+				childNode.SetColor(app.Styles.PrimaryTextColor)
+				childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", database, schema, child))
+				tablesNode.AddChild(childNode)
+			}
+		} else {
+			for _, child := range tables[schema] {
+				childNode := tview.NewTreeNode(child)
+				childNode.SetExpanded(true)
+				childNode.SetColor(app.Styles.PrimaryTextColor)
+				childNode.SetReference(fmt.Sprintf("%s.%s.%s", database, schema, child))
+				schemaNode.AddChild(childNode)
+			}
+		}
+
+		if supportsProgramming {
+			tree.addSchemaProgrammingSection(schemaNode, database, schema, "functions", functions)
+			tree.addSchemaProgrammingSection(schemaNode, database, schema, "procedures", procedures)
+			tree.addSchemaProgrammingSection(schemaNode, database, schema, "views", views)
+		}
+	}
+}
+
+// addSchemaProgrammingSection adds a single programming section (e.g. "functions") under a schema node.
+// It filters items from the programmingMap that belong to the given schema (schema-qualified names).
+func (tree *Tree) addSchemaProgrammingSection(schemaNode *tview.TreeNode, database, schema, section string, programmingMap map[string][]string) {
+	prefix := schema + "."
+	var items []string
+	for _, qualified := range programmingMap[database] {
+		if strings.HasPrefix(qualified, prefix) {
+			items = append(items, strings.TrimPrefix(qualified, prefix))
+		}
+	}
+
+	if len(items) == 0 {
+		return
+	}
+
+	sort.Strings(items)
+
+	sectionNode := tview.NewTreeNode(section)
+	sectionNode.SetExpanded(false)
+	sectionNode.SetReference(fmt.Sprintf("%s.%s.%s", database, schema, section))
+	sectionNode.SetColor(app.Styles.PrimaryTextColor)
+	schemaNode.AddChild(sectionNode)
+
+	for _, item := range items {
+		itemNode := tview.NewTreeNode(item)
+		itemNode.SetExpanded(false)
+		itemNode.SetColor(app.Styles.PrimaryTextColor)
+		itemNode.SetReference(fmt.Sprintf("%s.%s.%s.%s", database, schema, section, item))
+		sectionNode.AddChild(itemNode)
 	}
 }
 
@@ -899,28 +996,37 @@ func (tree *Tree) InitializeNodes(dbName string) {
 				return
 			}
 
-			tree.databasesToNodes(tables, node, true)
+			supportsProgramming := tree.DBDriver.SupportsProgramming()
+			useSchemas := tree.DBDriver.UseSchemas()
 
-			if tree.DBDriver.SupportsProgramming() {
-				functions, err := tree.DBDriver.GetFunctions(database)
+			var functions, procedures, views map[string][]string
+			if supportsProgramming {
+				functions, err = tree.DBDriver.GetFunctions(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
 
-				procedures, err := tree.DBDriver.GetProcedures(database)
+				procedures, err = tree.DBDriver.GetProcedures(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
 
-				views, err := tree.DBDriver.GetViews(database)
+				views, err = tree.DBDriver.GetViews(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
+			}
 
-				tree.addProgrammingNodes(functions, procedures, views, node)
+			if useSchemas {
+				tree.buildSchemaTree(database, node, tables, functions, procedures, views)
+			} else {
+				tree.databasesToNodes(tables, node, true)
+				if supportsProgramming {
+					tree.addProgrammingNodes(functions, procedures, views, node)
+				}
 			}
 
 			App.Draw()
