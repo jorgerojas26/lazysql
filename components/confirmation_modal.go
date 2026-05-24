@@ -9,6 +9,8 @@ import (
 
 type ConfirmationModal struct {
 	*tview.Modal
+
+	done func(buttonIndex int, buttonLabel string)
 }
 
 func NewConfirmationModal(confirmationText string) *ConfirmationModal {
@@ -27,7 +29,34 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	)
 	modal.SetTextColor(app.Styles.PrimaryTextColor)
 
-	return &ConfirmationModal{
-		Modal: modal,
-	}
+	cm := &ConfirmationModal{Modal: modal}
+	// Add y/n shortcuts for confirmation dialogs.
+	cm.Modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() != tcell.KeyRune {
+			return event
+		}
+		switch event.Rune() {
+		case 'y', 'Y':
+			if cm.done != nil {
+				cm.done(0, "Yes")
+			}
+			return nil
+		case 'n', 'N':
+			if cm.done != nil {
+				cm.done(1, "No")
+			}
+			return nil
+		default:
+			return event
+		}
+	})
+
+	return cm
+}
+
+// SetDoneFunc overrides tview.Modal.SetDoneFunc so we can also trigger it
+// from keyboard shortcuts (y/n).
+func (m *ConfirmationModal) SetDoneFunc(handler func(buttonIndex int, buttonLabel string)) *tview.Modal {
+	m.done = handler
+	return m.Modal.SetDoneFunc(handler)
 }

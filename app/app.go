@@ -25,6 +25,8 @@ type Application struct {
 	context   context.Context
 	cancelFn  context.CancelFunc
 	waitGroup sync.WaitGroup
+
+	onQuitRequest func()
 }
 
 type Theme struct {
@@ -112,6 +114,12 @@ func (a *Application) Stop() {
 	a.Application.Stop()
 }
 
+// SetOnQuitRequest sets a callback to be invoked when the user requests to quit
+// via OS signal (Ctrl+C) or interrupt.
+func (a *Application) SetOnQuitRequest(fn func()) {
+	a.onQuitRequest = fn
+}
+
 // register listens for interrupt and termination signals to
 // gracefully handle shutdowns by calling the Stop method.
 func (a *Application) register() {
@@ -120,7 +128,13 @@ func (a *Application) register() {
 
 	go func() {
 		<-c
-		a.Stop()
+		if a.onQuitRequest != nil {
+			a.QueueUpdateDraw(func() {
+				a.onQuitRequest()
+			})
+		} else {
+			a.Stop()
+		}
 		<-c
 		os.Exit(1)
 	}()
@@ -131,6 +145,11 @@ func (a *Application) register() {
 	// immediately without waiting for tasks to finish.
 	a.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
+			if a.onQuitRequest != nil {
+				// We're already on the UI event loop here; queuing an update can deadlock.
+				a.onQuitRequest()
+				return nil
+			}
 			c <- os.Interrupt
 			return nil
 		}
