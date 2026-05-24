@@ -390,6 +390,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
 				table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
+				App.ForceDraw()
 				table.FetchRecords(nil)
 			}
 		}
@@ -407,6 +408,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
 				table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
+				App.ForceDraw()
 				table.FetchRecords(nil)
 			}
 		}

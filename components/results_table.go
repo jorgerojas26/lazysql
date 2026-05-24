@@ -403,6 +403,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		case commands.Refresh:
 			if table.Loading != nil {
 				app.App.SetFocus(table.Loading)
+				App.ForceDraw()
 			}
 			table.Menu.SetSelectedOption(1)
 			if err := table.FetchRecords(nil); err != nil {
@@ -958,21 +959,19 @@ func (table *ResultsTable) SetResultsInfo(text string) {
 }
 
 func (table *ResultsTable) SetLoading(show bool) {
-	App.QueueUpdateDraw(func() {
-		table.state.isLoading = show
+	table.state.isLoading = show
 
-		if show {
-			table.Page.ShowPage(pageNameTableLoading)
-			App.SetFocus(table.Loading)
+	if show {
+		table.Page.ShowPage(pageNameTableLoading)
+		App.SetFocus(table.Loading)
+	} else {
+		table.Page.HidePage(pageNameTableLoading)
+		if table.state.error != "" {
+			App.SetFocus(table.Error)
 		} else {
-			table.Page.HidePage(pageNameTableLoading)
-			if table.state.error != "" {
-				App.SetFocus(table.Error)
-			} else {
-				App.SetFocus(table)
-			}
+			App.SetFocus(table)
 		}
-	})
+	}
 }
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
@@ -996,6 +995,7 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 			where = table.Filter.GetCurrentFilter()
 		}
 		table.SetLoading(true)
+		App.ForceDraw()
 		records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
 		table.SetLoading(false)
 
@@ -1268,6 +1268,13 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	isAnInsertedRow, _ := table.isAnInsertedRow(rowIndex)
 
 	if isAnInsertedRow {
+		if changeType == models.DMLUpdateType {
+			switch value.Type {
+			case models.Null, models.Empty, models.Default:
+				tableCell.SetText(value.Value.(string))
+				tableCell.SetStyle(tcell.StyleDefault.Italic(true))
+			}
+		}
 		table.MutateInsertedRowCell(tableCellReference.(string), value)
 		return nil
 	}
@@ -1368,9 +1375,19 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 
 	if len(primaryKeyColumnNames) == 0 {
 		allRecords := table.GetRecords()
+		// Unsaved-new-row deletions shrink the record slice while the
+		// caller still passes the original rowIndex; without these
+		// guards lazysql panicked with 'index out of range' instead of
+		// no-op'ing the second delete.
+		if len(allRecords) == 0 || rowIndex < 0 || rowIndex >= len(allRecords) {
+			return info
+		}
 		columns := allRecords[0]
 		row := allRecords[rowIndex]
 		for i, colName := range columns {
+			if i >= len(row) {
+				break
+			}
 			info = append(info, models.PrimaryKeyInfo{Name: colName, Value: row[i]})
 		}
 		return info
@@ -1379,7 +1396,14 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
 		columnIndex := table.GetColumnIndexByName(primaryKeyColumnName)
 		records := table.GetRecords()
-		primaryKeyValue := records[rowIndex][columnIndex]
+		if rowIndex < 0 || rowIndex >= len(records) {
+			continue
+		}
+		row := records[rowIndex]
+		if columnIndex < 0 || columnIndex >= len(row) {
+			continue
+		}
+		primaryKeyValue := row[columnIndex]
 
 		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
