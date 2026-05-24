@@ -26,6 +26,7 @@ type Application struct {
 	cancelFn  context.CancelFunc
 	waitGroup sync.WaitGroup
 
+	onQuitRequestMu sync.RWMutex
 	onQuitRequest func()
 }
 
@@ -117,7 +118,15 @@ func (a *Application) Stop() {
 // SetOnQuitRequest sets a callback to be invoked when the user requests to quit
 // via OS signal (Ctrl+C) or interrupt.
 func (a *Application) SetOnQuitRequest(fn func()) {
+	a.onQuitRequestMu.Lock()
+	defer a.onQuitRequestMu.Unlock()
 	a.onQuitRequest = fn
+}
+
+func (a *Application) getOnQuitRequest() func() {
+	a.onQuitRequestMu.RLock()
+	defer a.onQuitRequestMu.RUnlock()
+	return a.onQuitRequest
 }
 
 // register listens for interrupt and termination signals to
@@ -126,15 +135,18 @@ func (a *Application) register() {
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
+	requestQuit := func() {
+		if fn := a.getOnQuitRequest(); fn != nil {
+			fn()
+			return
+		}
+		a.Stop()
+	}
+
 	go func() {
 		<-c
-		if a.onQuitRequest != nil {
-			a.QueueUpdateDraw(func() {
-				a.onQuitRequest()
-			})
-		} else {
-			a.Stop()
-		}
+		// This runs outside the UI event loop.
+		a.QueueUpdateDraw(requestQuit)
 		<-c
 		os.Exit(1)
 	}()
@@ -145,12 +157,8 @@ func (a *Application) register() {
 	// immediately without waiting for tasks to finish.
 	a.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
-			if a.onQuitRequest != nil {
-				// We're already on the UI event loop here; queuing an update can deadlock.
-				a.onQuitRequest()
-				return nil
-			}
-			c <- os.Interrupt
+			// We're already on the UI event loop here; queuing an update can deadlock.
+			requestQuit()
 			return nil
 		}
 		return event

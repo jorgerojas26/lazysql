@@ -13,6 +13,11 @@ type ConfirmationModal struct {
 	done func(buttonIndex int, buttonLabel string)
 }
 
+const (
+	confirmationYes = "Yes"
+	confirmationNo  = "No"
+)
+
 func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	modal := tview.NewModal()
 	if confirmationText != "" {
@@ -20,7 +25,7 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	} else {
 		modal.SetText("Are you sure?")
 	}
-	modal.AddButtons([]string{"Yes", "No"})
+	modal.AddButtons([]string{confirmationYes, confirmationNo})
 	modal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	modal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
 	modal.SetButtonActivatedStyle(tcell.StyleDefault.
@@ -29,34 +34,32 @@ func NewConfirmationModal(confirmationText string) *ConfirmationModal {
 	)
 	modal.SetTextColor(app.Styles.PrimaryTextColor)
 
-	cm := &ConfirmationModal{Modal: modal}
+	return &ConfirmationModal{Modal: modal}
+}
+
+// SetDoneFunc sets the done handler and wires y/n shortcuts to it.
+func (m *ConfirmationModal) SetDoneFunc(handler func(buttonIndex int, buttonLabel string)) {
+	m.done = handler
+	m.Modal.SetDoneFunc(handler)
+
 	// Add y/n shortcuts for confirmation dialogs.
-	cm.Modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	m.Modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() != tcell.KeyRune {
 			return event
 		}
 		switch event.Rune() {
 		case 'y', 'Y':
-			if cm.done != nil {
-				cm.done(0, "Yes")
+			if m.done != nil {
+				m.done(0, confirmationYes)
 			}
 			return nil
 		case 'n', 'N':
-			if cm.done != nil {
-				cm.done(1, "No")
+			if m.done != nil {
+				m.done(1, confirmationNo)
 			}
 			return nil
 		default:
 			return event
 		}
 	})
-
-	return cm
-}
-
-// SetDoneFunc overrides tview.Modal.SetDoneFunc so we can also trigger it
-// from keyboard shortcuts (y/n).
-func (m *ConfirmationModal) SetDoneFunc(handler func(buttonIndex int, buttonLabel string)) *tview.Modal {
-	m.done = handler
-	return m.Modal.SetDoneFunc(handler)
 }
