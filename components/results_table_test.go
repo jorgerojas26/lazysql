@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/rivo/tview"
 
+	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
