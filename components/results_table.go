@@ -223,6 +223,82 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	return table
 }
 
+// loadEditorSchema queries the driver for tables and columns to populate
+// autocomplete suggestions in the editor.
+func (table *ResultsTable) loadEditorSchema() {
+	dbName := table.GetDatabaseName()
+	if dbName == "" || table.DBDriver == nil {
+		return
+	}
+
+	tablesMap, err := table.DBDriver.GetTables(dbName)
+	if err != nil {
+		logger.Error("Failed to load tables for editor autocomplete", map[string]any{"error": err.Error()})
+		return
+	}
+	if len(tablesMap) == 0 {
+		return
+	}
+
+	// Collect all bare table names (for SetTables) and also build
+	// schema-qualified names for the GetTableColumns driver call.
+	// Postgres returns {schema: [tables]}, others return {dbName: [tables]}.
+	type namedTable struct {
+		bareName      string // stored in autocompleter for "table." lookup
+		qualifiedName string // passed to GetTableColumns (schema.table for Postgres)
+	}
+	var allTables []string
+	var tableList []namedTable
+
+	for schema, tbls := range tablesMap {
+		for _, tbl := range tbls {
+			allTables = append(allTables, tbl)
+			qn := tbl
+			// Postgres-style drivers use schemas distinct from the database name.
+			if schema != "" && schema != dbName {
+				qn = schema + "." + tbl
+			}
+			tableList = append(tableList, namedTable{bareName: tbl, qualifiedName: qn})
+		}
+	}
+
+	app.App.QueueUpdateDraw(func() {
+		if table.Editor != nil {
+			table.Editor.SetTables(allTables)
+		}
+	})
+
+	// Load columns for each table, using the qualified name for the driver call
+	// but storing under the bare table name for autocomplete lookup ("table.col").
+	for _, nt := range tableList {
+		cols, err := table.DBDriver.GetTableColumns(dbName, nt.qualifiedName)
+		if err != nil {
+			_ = err
+			continue
+		}
+		if len(cols) < 2 {
+			continue
+		}
+		// cols[0] = headers, cols[1:] = data rows, column name at index 0
+		colNames := make([]string, 0, len(cols)-1)
+		for i := 1; i < len(cols); i++ {
+			if len(cols[i]) > 0 && cols[i][0] != "" {
+				colNames = append(colNames, cols[i][0])
+			}
+		}
+		if len(colNames) == 0 {
+			continue
+		}
+
+		tblCopy := nt.bareName
+		app.App.QueueUpdateDraw(func() {
+			if table.Editor != nil {
+				table.Editor.SetColumns(tblCopy, colNames)
+			}
+		})
+	}
+}
+
 func (table *ResultsTable) subscribeToTreeChanges() {
 	ch := table.Tree.Subscribe()
 

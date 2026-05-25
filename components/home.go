@@ -493,6 +493,11 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 		mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 	case commands.SearchGlobal:
+		// Don't intercept Ctrl+P when the SQL editor is in insert mode
+		if table != nil && table.Editor != nil && app.App.GetFocus() == table.Editor && table.Editor.vimMode == VimModeInsert {
+			return event
+		}
+
 		if !home.leftWrapperVisible {
 			home.toggleLeftWrapper()
 		}
@@ -529,13 +534,35 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 func (home *Home) createOrFocusEditorTab() {
 	tab := home.TabbedPane.GetTabByName(tabNameEditor)
+	dbName := home.Tree.GetSelectedDatabase()
+
+	// Fallback: extract database name from connection URL
+	if dbName == "" && home.ConnectionURL != "" {
+		dbName = extractDatabaseName(home.ConnectionURL)
+	}
 
 	if tab != nil {
 		home.TabbedPane.SwitchToTabByName(tabNameEditor)
 		table := tab.Content.(*ResultsTable)
 		table.SetIsFiltering(true)
+		// Refresh schema from current database context
+		if dbName != "" {
+			table.SetDatabaseName(dbName)
+			go table.loadEditorSchema()
+		}
 	} else {
-		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithEditor()
+		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly)
+		// Set database name before WithEditor so the table is ready for schema loading
+		if dbName != "" {
+			tableWithEditor.SetDatabaseName(dbName)
+		}
+		tableWithEditor = tableWithEditor.WithEditor()
+
+		// Kick off schema loading for autocomplete (async, non-blocking)
+		if dbName != "" && tableWithEditor.DBDriver != nil {
+			go tableWithEditor.loadEditorSchema()
+		}
+
 		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 		tableWithEditor.SetIsFiltering(true)
 		home.TabbedPane.GetCurrentTab()
@@ -544,6 +571,24 @@ func (home *Home) createOrFocusEditorTab() {
 	home.HelpStatus.SetStatusOnEditorView()
 	home.focusRightWrapper()
 	App.ForceDraw()
+}
+
+// extractDatabaseName pulls the database name from a connection URL like
+// "mysql://user:pass@host:3306/mydb" → "mydb". Returns "" if none is found.
+func extractDatabaseName(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimPrefix(u.Path, "/")
+	// Remove any trailing path segments after the db name
+	if idx := strings.IndexAny(name, "/?"); idx >= 0 {
+		name = name[:idx]
+	}
+	return name
 }
 
 func (home *Home) toggleLeftWrapper() {
