@@ -209,3 +209,36 @@ func TestShouldShowForeignKeyMarker(t *testing.T) {
 		t.Fatal("expected no FK marker for NULL FK value")
 	}
 }
+
+func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *testing.T) {
+	changes := []models.DBDMLChange{}
+
+	db := &drivers.Postgres{}
+	db.SetProvider(drivers.DriverPostgres)
+
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			listOfDBChanges:       &changes,
+			foreignKeyColumns:     map[string]bool{},
+			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
+			fkRawCellValues:       map[string]string{},
+			tableName:             "public.orders",
+		},
+		DBDriver: db,
+	}
+
+	table.SetForeignKeys([][]string{
+		{"constraint_name", "column_name", "foreign_table_schema", "foreign_table_name", "foreign_column_name"},
+		{"fk_orders_user", "user_id", "auth", "users", "id"},
+	})
+
+	target, ok := table.getForeignKeyJumpTarget("user_id")
+	if !ok {
+		t.Fatal("expected fk jump target for user_id")
+	}
+
+	if target.ReferencedTable != "auth.users" {
+		t.Fatalf("expected referenced table auth.users, got %q", target.ReferencedTable)
+	}
+}

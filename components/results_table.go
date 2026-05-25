@@ -1796,6 +1796,7 @@ func (table *ResultsTable) rebuildForeignKeyJumpMetadata() {
 	provider := table.DBDriver.GetProvider()
 	headers := table.GetForeignKeys()[0]
 	columnNameIndex, okColumn := foreignKeyHeaderIndex(headers, provider, "column_name", "from")
+	foreignTableSchemaIndex, _ := foreignKeyHeaderIndex(headers, provider, "foreign_table_schema")
 	referencedTableIndex, okTable := foreignKeyHeaderIndex(headers, provider, "foreign_table_name", "table", "referenced_table")
 	referencedColumnIndex, okReferencedColumn := foreignKeyHeaderIndex(headers, provider, "foreign_column_name", "to", "referenced_column")
 	constraintIndex, okConstraint := foreignKeyHeaderIndex(headers, provider, "constraint_name", "id")
@@ -1826,6 +1827,10 @@ func (table *ResultsTable) rebuildForeignKeyJumpMetadata() {
 		}
 
 		columnName := strings.TrimSpace(row[columnNameIndex])
+		foreignTableSchema := ""
+		if foreignTableSchemaIndex >= 0 && foreignTableSchemaIndex < len(row) {
+			foreignTableSchema = strings.TrimSpace(row[foreignTableSchemaIndex])
+		}
 		referencedTable := strings.TrimSpace(row[referencedTableIndex])
 		referencedColumn := strings.TrimSpace(row[referencedColumnIndex])
 
@@ -1835,17 +1840,21 @@ func (table *ResultsTable) rebuildForeignKeyJumpMetadata() {
 
 		table.state.foreignKeyColumns[columnName] = true
 		table.state.foreignKeyJumpTargets[columnName] = foreignKeyJumpTarget{
-			ReferencedTable:  table.normalizeForeignKeyReferencedTable(referencedTable),
+			ReferencedTable:  table.normalizeForeignKeyReferencedTable(referencedTable, foreignTableSchema),
 			ReferencedColumn: referencedColumn,
 		}
 	}
 }
 
-func (table *ResultsTable) normalizeForeignKeyReferencedTable(referencedTable string) string {
+func (table *ResultsTable) normalizeForeignKeyReferencedTable(referencedTable string, foreignTableSchema string) string {
 	provider := table.DBDriver.GetProvider()
 	if provider == drivers.DriverPostgres {
 		if strings.Contains(referencedTable, ".") {
 			return referencedTable
+		}
+
+		if foreignTableSchema != "" {
+			return foreignTableSchema + "." + referencedTable
 		}
 
 		currentTable := table.GetTableName()
