@@ -291,20 +291,23 @@ func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
 
 	rows, err := conn.Query(fmt.Sprintf(`
         SELECT
-            tc.constraint_name,
-            kcu.column_name,
-            ccu.table_name AS foreign_table_name,
-            ccu.column_name AS foreign_column_name
-        FROM
-            information_schema.table_constraints AS tc
-            JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
-            AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
-            AND ccu.table_schema = tc.table_schema
-        WHERE
-            tc.constraint_type = 'FOREIGN KEY'
-          	AND tc.table_schema = '%s'
-            AND tc.table_name = '%s'
+            con.conname AS constraint_name,
+            src_att.attname AS column_name,
+            ref_ns.nspname AS foreign_table_schema,
+            ref_cls.relname AS foreign_table_name,
+            ref_att.attname AS foreign_column_name
+        FROM pg_constraint con
+        JOIN pg_class src_cls ON src_cls.oid = con.conrelid
+        JOIN pg_namespace src_ns ON src_ns.oid = src_cls.relnamespace
+        JOIN pg_class ref_cls ON ref_cls.oid = con.confrelid
+        JOIN pg_namespace ref_ns ON ref_ns.oid = ref_cls.relnamespace
+        JOIN LATERAL unnest(con.conkey, con.confkey) AS fk(src_attnum, ref_attnum) ON true
+        JOIN pg_attribute src_att ON src_att.attrelid = con.conrelid AND src_att.attnum = fk.src_attnum
+        JOIN pg_attribute ref_att ON ref_att.attrelid = con.confrelid AND ref_att.attnum = fk.ref_attnum
+        WHERE con.contype = 'f'
+          AND src_ns.nspname = '%s'
+          AND src_cls.relname = '%s'
+        ORDER BY con.conname, src_att.attnum
   `, tableSchema, tableName))
 	if err != nil {
 		return nil, err
