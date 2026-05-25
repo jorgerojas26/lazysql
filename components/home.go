@@ -205,7 +205,7 @@ func (home *Home) showTable(databaseName, tableName string) {
 		table = tab.Content.(*ResultsTable)
 		home.TabbedPane.SwitchToTabByReference(tab.Reference)
 	} else {
-		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
+		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
 		table.SetDatabaseName(databaseName)
 		table.SetTableName(tableName)
 
@@ -231,6 +231,53 @@ func (home *Home) showTable(databaseName, tableName string) {
 	}
 
 	app.App.ForceDraw()
+}
+
+func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) error {
+	if tableName == "" {
+		return fmt.Errorf("table name is required")
+	}
+
+	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
+	tab := home.TabbedPane.GetTabByReference(tabReference)
+
+	var table *ResultsTable
+	if tab != nil {
+		table = tab.Content.(*ResultsTable)
+		home.TabbedPane.SwitchToTabByReference(tab.Reference)
+	} else {
+		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
+		table.SetDatabaseName(databaseName)
+		table.SetTableName(tableName)
+		home.TabbedPane.AppendTab(tableName, table, tabReference)
+	}
+
+	if table.Filter != nil {
+		table.Filter.SetCurrentFilterUnsafe(where)
+	}
+
+	results := table.FetchRecords(func() {
+		home.focusLeftWrapper()
+	})
+
+	if !app.App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
+		table.ShowSidebar(true)
+	}
+
+	if table.state.error == "" {
+		if !home.treePinned && home.leftWrapperVisible {
+			home.toggleLeftWrapper()
+		}
+		home.focusRightWrapper()
+	}
+
+	app.App.ForceDraw()
+
+	if table.state.error != "" {
+		return fmt.Errorf(table.state.error)
+	}
+
+	return nil
 }
 
 func (home *Home) focusRightWrapper() {
@@ -535,7 +582,7 @@ func (home *Home) createOrFocusEditorTab() {
 		table := tab.Content.(*ResultsTable)
 		table.SetIsFiltering(true)
 	} else {
-		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithEditor()
+		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithEditor()
 		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 		tableWithEditor.SetIsFiltering(true)
 		home.TabbedPane.GetCurrentTab()

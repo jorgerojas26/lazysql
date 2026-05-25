@@ -34,10 +34,18 @@ type ResultsTableState struct {
 	foreignKeys           [][]string
 	indexes               [][]string
 	records               [][]string
+	foreignKeyColumns     map[string]bool
+	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
+	fkRawCellValues       map[string]string
 	isEditing             bool
 	isFiltering           bool
 	isLoading             bool
 	showSidebar           bool
+}
+
+type foreignKeyJumpTarget struct {
+	ReferencedTable  string
+	ReferencedColumn string
 }
 
 type ResultsTable struct {
@@ -58,22 +66,26 @@ type ResultsTable struct {
 	Sidebar              *Sidebar
 	SidebarContainer     *tview.Flex
 	DBDriver             drivers.Driver
+	Home                 *Home
 	connectionIdentifier string
 	ConnectionURL        string
 	ReadOnly             bool
 }
 
-func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
+func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
 	state := &ResultsTableState{
-		records:         [][]string{},
-		columns:         [][]string{},
-		constraints:     [][]string{},
-		foreignKeys:     [][]string{},
-		indexes:         [][]string{},
-		isEditing:       false,
-		isLoading:       false,
-		listOfDBChanges: listOfDBChanges,
-		showSidebar:     false,
+		records:               [][]string{},
+		columns:               [][]string{},
+		constraints:           [][]string{},
+		foreignKeys:           [][]string{},
+		indexes:               [][]string{},
+		foreignKeyColumns:     map[string]bool{},
+		foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
+		fkRawCellValues:       map[string]string{},
+		isEditing:             false,
+		isLoading:             false,
+		listOfDBChanges:       listOfDBChanges,
+		showSidebar:           false,
 	}
 
 	wrapper := tview.NewFlex()
@@ -113,6 +125,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		Editor:     nil,
 		Tree:       tree,
 		DBDriver:   dbdriver,
+		Home:       home,
 		Sidebar:    sidebar,
 		// SidebarContainer is only used when AppConfig.SidebarOverlay is false.
 		SidebarContainer:     tview.NewFlex(),
@@ -296,6 +309,14 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 			tableCell.SetSelectable(i > 0)
 			tableCell.SetExpansion(1)
 
+			if i == 0 && table.shouldShowForeignKeyHeaderMarker(j) {
+				tableCell.SetStyle(tcell.StyleDefault.Underline(true))
+			}
+
+			if i > 0 && table.shouldShowForeignKeyMarker(i, j, cell) {
+				tableCell.SetStyle(tcell.StyleDefault.Underline(true))
+			}
+
 			table.SetCell(i, j, tableCell)
 		}
 	}
@@ -388,6 +409,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.UpdateRows(table.GetRecords())
 			table.colorChangedCells()
 			table.AddInsertedRows()
+			table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 		case commands.ColumnsMenu:
 			table.Menu.SetSelectedOption(2)
 			table.UpdateRows(table.GetColumns())
@@ -545,9 +567,14 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ShowCellJSONViewer {
 		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 		return nil
-	} else if event.Key() == tcell.KeyEnter && app.App.Config().EnterOpensJSONViewer {
-		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
-		return nil
+	} else if event.Key() == tcell.KeyEnter {
+		if table.handleForeignKeyEnter(selectedRowIndex, selectedColumnIndex) {
+			return nil
+		}
+		if app.App.Config().EnterOpensJSONViewer {
+			table.handleShowJSONViewer(commands.ShowCellJSONViewer)
+			return nil
+		}
 	} else if command == commands.Copy {
 		selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 		if selectedCell != nil {
@@ -614,6 +641,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 }
 
 func (table *ResultsTable) UpdateRows(rows [][]string) {
+	table.state.fkRawCellValues = map[string]string{}
 	table.Clear()
 	table.AddRows(rows)
 	App.ForceDraw()
@@ -625,18 +653,46 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 		for j := 0; j < table.GetColumnCount(); j++ {
 			cell := table.GetCell(i, j)
 			if i == 0 && headerColor != 0 {
-				cell.SetTextColor(headerColor)
+				if table.shouldShowForeignKeyHeaderMarker(j) {
+					cell.SetStyle(tcell.StyleDefault.Underline(true))
+					cell.SetTextColor(headerColor)
+				} else {
+					cell.SetStyle(tcell.StyleDefault)
+					cell.SetTextColor(headerColor)
+				}
 			} else {
 				cellReference := cell.GetReference()
 
 				if cellReference != nil && (cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&") && (cell.BackgroundColor != colorTableDelete && cell.BackgroundColor != colorTableChange && cell.BackgroundColor != colorTableInsert) {
 					cell.SetStyle(table.GetItalicStyle())
+				} else if table.shouldShowForeignKeyMarker(i, j, cell.Text) {
+					cell.SetStyle(tcell.StyleDefault.Underline(true))
+					cell.SetTextColor(rowColor)
 				} else {
+					cell.SetStyle(tcell.StyleDefault)
 					cell.SetTextColor(rowColor)
 				}
 			}
 		}
 	}
+}
+
+func (table *ResultsTable) shouldShowForeignKeyHeaderMarker(columnIndex int) bool {
+	if table.Menu != nil && table.Menu.GetSelectedOption() != 1 {
+		return false
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return false
+	}
+
+	columnName := table.GetColumnNameByIndex(columnIndex)
+	if columnName == "" || !table.isForeignKeyColumn(columnName) {
+		return false
+	}
+
+	_, ok := table.getForeignKeyJumpTarget(columnName)
+	return ok
 }
 
 func (table *ResultsTable) RemoveHighlightTable() {
@@ -915,6 +971,7 @@ func (table *ResultsTable) SetConstraints(constraints [][]string) {
 
 func (table *ResultsTable) SetForeignKeys(foreignKeys [][]string) {
 	table.state.foreignKeys = foreignKeys
+	table.rebuildForeignKeyJumpMetadata()
 }
 
 func (table *ResultsTable) SetIndexes(indexes [][]string) {
@@ -1093,15 +1150,15 @@ func (table *ResultsTable) FetchRecords(onError func()) [][]string {
 			table.SetError(err.Error(), nil)
 		}
 
-		if len(records) > 0 {
-			table.SetRecords(records)
-		}
-
 		table.SetColumns(columns)
 		table.SetConstraints(constraints)
 		table.SetForeignKeys(foreignKeys)
 		table.SetIndexes(indexes)
 		table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
+
+		if len(records) > 0 {
+			table.SetRecords(records)
+		}
 		table.Select(1, 0)
 
 		table.Pagination.SetTotalRecords(totalRecords)
@@ -1614,6 +1671,240 @@ func (table *ResultsTable) ShowSidebar(show bool) {
 		}
 		App.SetFocus(table)
 	}
+}
+
+func (table *ResultsTable) handleForeignKeyEnter(selectedRowIndex, selectedColumnIndex int) bool {
+	if selectedRowIndex <= 0 {
+		return false
+	}
+
+	if table.Menu != nil && table.Menu.GetSelectedOption() != 1 {
+		return false
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return false
+	}
+
+	columnName := table.GetColumnNameByIndex(selectedColumnIndex)
+	if columnName == "" {
+		return false
+	}
+
+	if !table.isForeignKeyColumn(columnName) {
+		return false
+	}
+
+	target, ok := table.getForeignKeyJumpTarget(columnName)
+	if !ok {
+		return true
+	}
+
+	rawValue := table.getRawCellValue(selectedRowIndex, selectedColumnIndex)
+	if !isNavigableForeignKeyValue(rawValue) {
+		return true
+	}
+
+	if table.Home == nil || table.Filter == nil {
+		return true
+	}
+
+	where := fmt.Sprintf("WHERE %s = '%s'", table.DBDriver.FormatReference(target.ReferencedColumn), escapeSingleQuotes(rawValue))
+	if err := table.Home.ShowTableWithFilter(table.GetDatabaseName(), target.ReferencedTable, where); err != nil {
+		table.SetError(err.Error(), nil)
+	}
+
+	return true
+}
+
+func (table *ResultsTable) foreignKeyCellMapKey(rowIndex, columnIndex int) string {
+	return fmt.Sprintf("%d:%d", rowIndex, columnIndex)
+}
+
+func (table *ResultsTable) shouldShowForeignKeyMarker(rowIndex, columnIndex int, rawValue string) bool {
+	if table.Menu != nil && table.Menu.GetSelectedOption() != 1 {
+		return false
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return false
+	}
+
+	columnName := table.GetColumnNameByIndex(columnIndex)
+	if columnName == "" || !table.isForeignKeyColumn(columnName) {
+		return false
+	}
+
+	if _, ok := table.getForeignKeyJumpTarget(columnName); !ok {
+		return false
+	}
+
+	if !isNavigableForeignKeyValue(rawValue) {
+		return false
+	}
+
+	if isInsertedRow, _ := table.isAnInsertedRow(rowIndex); isInsertedRow {
+		return false
+	}
+
+	cell := table.GetCell(rowIndex, columnIndex)
+	if cell != nil {
+		switch cell.BackgroundColor {
+		case colorTableDelete, colorTableChange, colorTableInsert:
+			return false
+		}
+	}
+
+	return true
+}
+
+func (table *ResultsTable) getRawCellValue(rowIndex, columnIndex int) string {
+	key := table.foreignKeyCellMapKey(rowIndex, columnIndex)
+	if value, ok := table.state.fkRawCellValues[key]; ok {
+		return value
+	}
+
+	cell := table.GetCell(rowIndex, columnIndex)
+	if cell == nil {
+		return ""
+	}
+
+	return cell.Text
+}
+
+func (table *ResultsTable) isForeignKeyColumn(columnName string) bool {
+	return table.state.foreignKeyColumns[columnName]
+}
+
+func (table *ResultsTable) getForeignKeyJumpTarget(columnName string) (foreignKeyJumpTarget, bool) {
+	target, ok := table.state.foreignKeyJumpTargets[columnName]
+	return target, ok
+}
+
+func (table *ResultsTable) rebuildForeignKeyJumpMetadata() {
+	table.state.foreignKeyColumns = map[string]bool{}
+	table.state.foreignKeyJumpTargets = map[string]foreignKeyJumpTarget{}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return
+	}
+
+	if len(table.GetForeignKeys()) <= 1 {
+		return
+	}
+
+	provider := table.DBDriver.GetProvider()
+	headers := table.GetForeignKeys()[0]
+	columnNameIndex, okColumn := foreignKeyHeaderIndex(headers, provider, "column_name", "from")
+	referencedTableIndex, okTable := foreignKeyHeaderIndex(headers, provider, "foreign_table_name", "table", "referenced_table")
+	referencedColumnIndex, okReferencedColumn := foreignKeyHeaderIndex(headers, provider, "foreign_column_name", "to", "referenced_column")
+	constraintIndex, okConstraint := foreignKeyHeaderIndex(headers, provider, "constraint_name", "id")
+	if !(okColumn && okTable && okReferencedColumn && okConstraint) {
+		return
+	}
+
+	constraintCounts := map[string]int{}
+	for _, row := range table.GetForeignKeys()[1:] {
+		if constraintIndex >= len(row) {
+			continue
+		}
+		constraintName := strings.TrimSpace(row[constraintIndex])
+		if constraintName == "" {
+			continue
+		}
+		constraintCounts[constraintName]++
+	}
+
+	for _, row := range table.GetForeignKeys()[1:] {
+		if columnNameIndex >= len(row) || referencedTableIndex >= len(row) || referencedColumnIndex >= len(row) || constraintIndex >= len(row) {
+			continue
+		}
+
+		constraintName := strings.TrimSpace(row[constraintIndex])
+		if constraintName == "" || constraintCounts[constraintName] != 1 {
+			continue
+		}
+
+		columnName := strings.TrimSpace(row[columnNameIndex])
+		referencedTable := strings.TrimSpace(row[referencedTableIndex])
+		referencedColumn := strings.TrimSpace(row[referencedColumnIndex])
+
+		if columnName == "" || referencedTable == "" || referencedColumn == "" {
+			continue
+		}
+
+		table.state.foreignKeyColumns[columnName] = true
+		table.state.foreignKeyJumpTargets[columnName] = foreignKeyJumpTarget{
+			ReferencedTable:  table.normalizeForeignKeyReferencedTable(referencedTable),
+			ReferencedColumn: referencedColumn,
+		}
+	}
+}
+
+func (table *ResultsTable) normalizeForeignKeyReferencedTable(referencedTable string) string {
+	provider := table.DBDriver.GetProvider()
+	if provider == drivers.DriverPostgres {
+		if strings.Contains(referencedTable, ".") {
+			return referencedTable
+		}
+
+		currentTable := table.GetTableName()
+		if strings.Contains(currentTable, ".") {
+			schema := strings.SplitN(currentTable, ".", 2)[0]
+			if schema != "" {
+				return schema + "." + referencedTable
+			}
+		}
+	}
+
+	return referencedTable
+}
+
+func (table *ResultsTable) IsForeignKeyJumpSupportedProvider() bool {
+	provider := table.DBDriver.GetProvider()
+	return provider == drivers.DriverPostgres || provider == drivers.DriverSqlite || provider == drivers.DriverMSSQL
+}
+
+func foreignKeyHeaderIndex(headers []string, provider string, keys ...string) (int, bool) {
+	for i, header := range headers {
+		normalized := strings.ToLower(strings.TrimSpace(header))
+		for _, key := range keys {
+			if normalized == key {
+				return i, true
+			}
+		}
+	}
+
+	if provider == drivers.DriverPostgres {
+		for i, header := range headers {
+			normalized := strings.ToLower(strings.TrimSpace(header))
+			for _, key := range keys {
+				if strings.Contains(normalized, key) {
+					return i, true
+				}
+			}
+		}
+	}
+
+	return -1, false
+}
+
+func isNavigableForeignKeyValue(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+
+	switch strings.ToUpper(trimmed) {
+	case "NULL", "EMPTY", "DEFAULT", "NULL&", "EMPTY&", "DEFAULT&":
+		return false
+	default:
+		return true
+	}
+}
+
+func escapeSingleQuotes(value string) string {
+	return strings.ReplaceAll(value, "'", "''")
 }
 
 func (table *ResultsTable) UpdateSidebar() {

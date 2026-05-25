@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
@@ -78,6 +80,24 @@ func (filter *ResultsTableFilter) Publish(message string) {
 
 func (filter *ResultsTableFilter) GetCurrentFilter() string {
 	return filter.currentFilter
+}
+
+func (filter *ResultsTableFilter) SetCurrentFilterUnsafe(whereClause string) {
+	trimmed := strings.TrimSpace(whereClause)
+	if trimmed == "" {
+		filter.currentFilter = ""
+		filter.Input.SetText("")
+		return
+	}
+
+	if strings.HasPrefix(strings.ToUpper(trimmed), "WHERE ") {
+		filter.currentFilter = trimmed
+		filter.Input.SetText(strings.TrimSpace(trimmed[6:]))
+		return
+	}
+
+	filter.currentFilter = "WHERE " + trimmed
+	filter.Input.SetText(trimmed)
 }
 
 // Function to blur
