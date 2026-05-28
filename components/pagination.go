@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/rivo/tview"
 
@@ -108,4 +109,19 @@ func (pagination *Pagination) SetOffset(offset int) {
 	}
 
 	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset, limit, total))
+}
+
+func (pagination *Pagination) SetLoading(loading bool) {
+	current := pagination.textView.GetText(false)
+	if loading {
+		if !strings.HasSuffix(current, " Loading...") {
+			pagination.textView.SetText(current + " Loading...")
+		}
+	} else {
+		pagination.textView.SetText(strings.TrimSuffix(current, " Loading..."))
+	}
+}
+
+func (pagination *Pagination) SetLoadingText(text string) {
+	pagination.textView.SetText(text)
 }

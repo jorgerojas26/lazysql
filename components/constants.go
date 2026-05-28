@@ -21,7 +21,6 @@ const (
 	// Results table
 	pageNameTable                  string = "Table"
 	pageNameTableError             string = "TableError"
-	pageNameTableLoading           string = "TableLoading"
 	pageNameTableEditorTable       string = "TableEditorTable"
 	pageNameTableEditorResultsInfo string = "TableEditorResultsInfo"
 	pageNameTableEditCell          string = "TableEditCell"

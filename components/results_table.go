@@ -2,6 +2,7 @@ package components
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -41,6 +42,7 @@ type ResultsTableState struct {
 	isFiltering           bool
 	isLoading             bool
 	showSidebar           bool
+	loadingCancel         context.CancelFunc
 }
 
 type foreignKeyJumpTarget struct {
@@ -56,7 +58,6 @@ type ResultsTable struct {
 	Menu                 *ResultsTableMenu
 	Filter               *ResultsTableFilter
 	Error                *tview.Modal
-	Loading              *tview.Modal
 	jsonViewer           *JSONViewer
 	Pagination           *Pagination
 	Editor               *SQLEditor
@@ -99,16 +100,9 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
 	errorModal.SetFocus(0)
 
-	loadingModal := tview.NewModal()
-	loadingModal.SetText("Loading...")
-	loadingModal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
-	loadingModal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
-	loadingModal.SetTextColor(app.Styles.SecondaryTextColor)
-
 	pages := tview.NewPages()
 	pages.AddPage(pageNameTable, wrapper, true, true)
 	pages.AddPage(pageNameTableError, errorModal, true, false)
-	pages.AddPage(pageNameTableLoading, loadingModal, false, false)
 
 	pagination := NewPagination()
 
@@ -120,7 +114,6 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		Page:       pages,
 		Wrapper:    wrapper,
 		Error:      errorModal,
-		Loading:    loadingModal,
 		Pagination: pagination,
 		Editor:     nil,
 		Tree:       tree,
@@ -1093,18 +1086,22 @@ func (table *ResultsTable) SetResultsInfo(text string) {
 
 func (table *ResultsTable) SetLoading(show bool) {
 	table.state.isLoading = show
+	table.Pagination.SetLoading(show)
+}
 
-	if show {
-		table.Page.ShowPage(pageNameTableLoading)
-		App.SetFocus(table.Loading)
-	} else {
-		table.Page.HidePage(pageNameTableLoading)
-		if table.state.error != "" {
-			App.SetFocus(table.Error)
-		} else {
-			App.SetFocus(table)
-		}
+func (table *ResultsTable) CancelLoading() {
+	if table.state.loadingCancel != nil {
+		table.state.loadingCancel()
+		table.state.loadingCancel = nil
 	}
+}
+
+func (table *ResultsTable) StartLoad() context.Context {
+	table.CancelLoading()
+	ctx, cancel := context.WithCancel(app.App.Context())
+	table.state.loadingCancel = cancel
+	table.SetLoading(true)
+	return ctx
 }
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
