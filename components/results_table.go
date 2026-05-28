@@ -799,32 +799,31 @@ func (table *ResultsTable) HighlightAll() {
 func (table *ResultsTable) subscribeToFilterChanges() {
 	ch := table.Filter.Subscribe()
 
-		for stateChange := range ch {
-			switch stateChange.Key {
-			case eventResultsTableFiltering:
-				if stateChange.Value != "" {
-					table.FetchRecords(nil, func() {
-						records := table.GetRecords()
-						if len(records) > 0 {
-							table.Menu.SetSelectedOption(1)
-							App.SetFocus(table)
-							table.HighlightTable()
-							table.Filter.HighlightLocal()
-							table.SetInputCapture(table.tableInputCapture)
-						}
-					})
-
-				} else {
-					App.QueueUpdateDraw(func() {
-						table.SetIsFiltering(false)
-						table.SetInputCapture(table.tableInputCapture)
+	for stateChange := range ch {
+		switch stateChange.Key {
+		case eventResultsTableFiltering:
+			if stateChange.Value != "" {
+				table.FetchRecords(nil, func() {
+					records := table.GetRecords()
+					if len(records) > 0 {
+						table.Menu.SetSelectedOption(1)
 						App.SetFocus(table)
 						table.HighlightTable()
 						table.Filter.HighlightLocal()
-					})
-				}
+						table.SetInputCapture(table.tableInputCapture)
+					}
+				})
+			} else {
+				App.QueueUpdateDraw(func() {
+					table.SetIsFiltering(false)
+					table.SetInputCapture(table.tableInputCapture)
+					App.SetFocus(table)
+					table.HighlightTable()
+					table.Filter.HighlightLocal()
+				})
 			}
 		}
+	}
 }
 
 func (table *ResultsTable) subscribeToEditorChanges() {
@@ -2171,8 +2170,6 @@ func (table *ResultsTable) showCSVExportModal() {
 	}
 
 	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope, batchSize int) {
-		table.Pagination.SetLoadingText("Exporting...")
-		table.SetLoading(true)
 		App.ForceDraw()
 
 		ctx := table.StartLoad()
@@ -2211,8 +2208,6 @@ func (table *ResultsTable) showCSVExportModal() {
 				if ctx.Err() != nil {
 					return
 				}
-
-				table.SetLoading(false)
 
 				if exportErr != nil {
 					table.SetError("Failed to export CSV: "+exportErr.Error(), nil)
