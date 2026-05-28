@@ -324,41 +324,45 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			editing := stateChange.Value.(bool)
 			table.SetIsEditing(editing)
 		case eventSidebarUnfocusing:
-			App.SetFocus(table)
-			App.ForceDraw()
+			App.QueueUpdateDraw(func() {
+				App.SetFocus(table)
+			})
 		case eventSidebarToggling:
-			table.ShowSidebar(false)
-			App.ForceDraw()
+			App.QueueUpdateDraw(func() {
+				table.ShowSidebar(false)
+			})
 		case eventSidebarCommitEditing:
 			params := stateChange.Value.(models.SidebarEditingCommitParams)
 
-			table.SetInputCapture(table.tableInputCapture)
-			table.SetIsEditing(false)
+			App.QueueUpdateDraw(func() {
+				table.SetInputCapture(table.tableInputCapture)
+				table.SetIsEditing(false)
 
-			row, _ := table.GetSelection()
-			changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
-			tableCell := table.GetCell(row, changedColumnIndex)
+				row, _ := table.GetSelection()
+				changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
+				tableCell := table.GetCell(row, changedColumnIndex)
 
-			tableCell.SetText(params.NewValue)
+				tableCell.SetText(params.NewValue)
 
-			cellValue := models.CellValue{
-				Type:             params.Type,
-				Column:           params.ColumnName,
-				Value:            params.NewValue,
-				TableColumnIndex: changedColumnIndex,
-				TableRowIndex:    row,
-			}
+				cellValue := models.CellValue{
+					Type:             params.Type,
+					Column:           params.ColumnName,
+					Value:            params.NewValue,
+					TableColumnIndex: changedColumnIndex,
+					TableRowIndex:    row,
+				}
 
-			logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
-			err := table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
-			if err != nil {
-				table.SetError(err.Error(), nil)
-			}
-
-			App.ForceDraw()
+				logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
+				err := table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
+				if err != nil {
+					table.SetError(err.Error(), nil)
+				}
+			})
 		case eventSidebarError:
 			errorMessage := stateChange.Value.(string)
-			table.SetError(errorMessage, nil)
+			App.QueueUpdateDraw(func() {
+				table.SetError(errorMessage, nil)
+			})
 		}
 	}
 }
@@ -807,17 +811,17 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 							table.HighlightTable()
 							table.Filter.HighlightLocal()
 							table.SetInputCapture(table.tableInputCapture)
-							App.ForceDraw()
 						}
 					})
 
 				} else {
-					table.SetIsFiltering(false)
-					table.SetInputCapture(table.tableInputCapture)
-					App.SetFocus(table)
-					table.HighlightTable()
-					table.Filter.HighlightLocal()
-					App.ForceDraw()
+					App.QueueUpdateDraw(func() {
+						table.SetIsFiltering(false)
+						table.SetInputCapture(table.tableInputCapture)
+						App.SetFocus(table)
+						table.HighlightTable()
+						table.Filter.HighlightLocal()
+					})
 				}
 			}
 		}
@@ -841,12 +845,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					strings.HasPrefix(queryTrimmed, "describe") ||
 					strings.HasPrefix(queryTrimmed, "desc")
 
-				// Clear existing records immediately for SQL editor queries
+				// Clear existing records immediately for SQL editor queries and
+				// start a cancellable loading cycle on the UI goroutine.
+				var ctx context.Context
 				App.QueueUpdateDraw(func() {
 					table.SetRecords([][]string{})
+					ctx = table.StartLoad()
 				})
-
-				ctx := table.StartLoad()
 
 				if isSelect {
 					go func() {
@@ -868,7 +873,6 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							if err != nil {
 								table.SetLoading(false)
 								table.SetError(err.Error(), nil)
-								App.Draw()
 								return
 							}
 
@@ -886,19 +890,18 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
 								logger.Error("Failed to add SELECT query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
 							}
-							App.Draw()
 						})
 					}()
 				} else {
 					if table.ReadOnly {
 						if err := drivers.ValidateQueryForReadOnly(query); err != nil {
-							table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
-							return
+							App.QueueUpdateDraw(func() {
+								table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
+								table.SetLoading(false)
+							})
+							continue
 						}
 					}
-
-					table.SetRecords([][]string{})
-					App.Draw()
 
 					go func() {
 						if ctx.Err() != nil {
@@ -918,7 +921,6 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 							if err != nil {
 								table.SetLoading(false)
-								App.Draw()
 								table.SetError(err.Error(), nil)
 								return
 							}
@@ -931,18 +933,18 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
 								logger.Error("Failed to add DML query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
 							}
-							App.Draw()
 						})
 					}()
 				}
 			}
 		case eventSQLEditorEscape:
-			table.SetIsFiltering(false)
-			App.SetFocus(table)
-			table.HighlightTable()
-			table.Editor.SetBlur()
-			table.SetInputCapture(table.tableInputCapture)
-			App.Draw()
+			App.QueueUpdateDraw(func() {
+				table.SetIsFiltering(false)
+				App.SetFocus(table)
+				table.HighlightTable()
+				table.Editor.SetBlur()
+				table.SetInputCapture(table.tableInputCapture)
+			})
 		}
 	}
 }
