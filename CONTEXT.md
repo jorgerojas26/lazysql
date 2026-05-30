@@ -21,3 +21,21 @@ _Avoid_: FK drilldown, relation follow, link jump
 ## Flagged ambiguities
 
 - "drilldown" was used to mean both JSON inspection and FK navigation - resolved: use **Foreign Key Jump** only for relation navigation.
+
+## Loading state
+
+**Non-blocking Loading**:
+A state where a DB operation is in-flight but the UI remains interactive. A status line indicator replaces the previous blocking modal.
+_Avoid_: blocking modal, loading overlay
+
+**Loading Indicator**:
+A thin text indicator on the table's pagination bar showing "Loading..." while a query runs. Does not steal focus or block input.
+_Avoid_: loading spinner modal
+
+**Load Cancellation**:
+When a new load is triggered on a table with an in-flight load, the previous operation is cancelled via context cancellation before starting the new one.
+_Avoid_: queue, race
+
+**Stale Data**:
+Old table results remain visible during a reload. Only cleared on success when new data arrives. Exception: SQL editor queries clear immediately on execute.
+_Avoid_: blank screen during load

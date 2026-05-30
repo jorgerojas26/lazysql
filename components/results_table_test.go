@@ -12,25 +12,12 @@ import (
 
 // TestSetLoadingIsSynchronous verifies that SetLoading does not use
 // QueueUpdateDraw or any other blocking mechanism.
-//
-// Regression test for commit d5b0c4b which wrapped SetLoading in
-// App.QueueUpdateDraw(), causing a deadlock when called from the
-// main tview event loop goroutine (e.g., via tableInputCapture ->
-// SetSortedBy when pressing J/K to sort).
-//
-// QueueUpdateDraw is blocking — it sends to the app's updates channel
-// and waits for the event loop to execute the function. When called
-// from the main goroutine, the event loop can't process both the
-// current event handler and the queued update, causing a deadlock.
 func TestSetLoadingIsSynchronous(t *testing.T) {
 	changes := []models.DBDMLChange{}
-
-	loadingModal := tview.NewModal()
 	errorModal := tview.NewModal()
 
 	pages := tview.NewPages()
 	pages.AddPage(pageNameTable, tview.NewFlex(), true, true)
-	pages.AddPage(pageNameTableLoading, loadingModal, false, false)
 	pages.AddPage(pageNameTableError, errorModal, false, false)
 
 	table := &ResultsTable{
@@ -40,9 +27,9 @@ func TestSetLoadingIsSynchronous(t *testing.T) {
 			isLoading:       false,
 			listOfDBChanges: &changes,
 		},
-		Page:    pages,
-		Loading: loadingModal,
-		Error:   errorModal,
+		Page:       pages,
+		Error:      errorModal,
+		Pagination: NewPagination(),
 	}
 
 	// Verify initial state

@@ -212,30 +212,31 @@ func (home *Home) showTable(databaseName, tableName string) {
 		home.TabbedPane.AppendTab(tableName, table, tabReference)
 	}
 
-	results := table.FetchRecords(func() {
+	table.FetchRecords(func() {
 		home.focusLeftWrapper()
-	})
-
-	// Show sidebar if there is more then 1 row (row 0 are
-	// the column names) and the sidebar is not disabled.
-	if !app.App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
-		table.ShowSidebar(true)
-	}
-
-	if table.state.error == "" {
-		if !home.treePinned && home.leftWrapperVisible {
-			home.toggleLeftWrapper()
+	}, func() {
+		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
+			records := table.GetRecords()
+			if len(records) > 1 {
+				table.ShowSidebar(true)
+			}
 		}
 
-		home.focusRightWrapper()
-	}
+		if table.state.error == "" {
+			if !home.treePinned && home.leftWrapperVisible {
+				home.toggleLeftWrapper()
+			}
+		}
 
-	app.App.ForceDraw()
+		App.ForceDraw()
+	})
+
+	home.focusRightWrapper()
 }
 
-func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) error {
+func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 	if tableName == "" {
-		return fmt.Errorf("table name is required")
+		return
 	}
 
 	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
@@ -256,28 +257,28 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) err
 		table.Filter.SetCurrentFilterUnsafe(where)
 	}
 
-	results := table.FetchRecords(func() {
+	table.FetchRecords(func() {
 		home.focusLeftWrapper()
-	})
+	}, func() {
+		if table.state.error != "" {
+			App.ForceDraw()
+			return
+		}
 
-	if !app.App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
-		table.ShowSidebar(true)
-	}
+		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
+			records := table.GetRecords()
+			if len(records) > 1 {
+				table.ShowSidebar(true)
+			}
+		}
 
-	if table.state.error == "" {
 		if !home.treePinned && home.leftWrapperVisible {
 			home.toggleLeftWrapper()
 		}
-		home.focusRightWrapper()
-	}
+		App.ForceDraw()
+	})
 
-	app.App.ForceDraw()
-
-	if table.state.error != "" {
-		return fmt.Errorf(table.state.error)
-	}
-
-	return nil
+	home.focusRightWrapper()
 }
 
 func (home *Home) focusRightWrapper() {
@@ -415,7 +416,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		if tab != nil {
 			table := tab.Content.(*ResultsTable)
 
-			if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
+			if !table.GetIsFiltering() && !table.GetIsEditing() {
 				home.TabbedPane.RemoveCurrentTab()
 
 				if home.TabbedPane.GetLength() == 0 {
@@ -438,7 +439,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 				table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
 				App.ForceDraw()
-				table.FetchRecords(nil)
+				table.FetchRecords(nil, nil)
 			}
 		}
 
@@ -456,7 +457,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 				table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
 				App.ForceDraw()
-				table.FetchRecords(nil)
+				table.FetchRecords(nil, nil)
 			}
 		}
 	}
@@ -495,7 +496,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case commands.SwitchToEditorView:
 		home.createOrFocusEditorTab()
 	case commands.SwitchToConnectionsView:
-		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
+		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering()) || table == nil {
 			mainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
@@ -527,7 +528,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 					}
 				}
 				home.ListOfDBChanges = []models.DBDMLChange{}
-				table.FetchRecords(nil)
+				table.FetchRecords(nil, nil)
 				home.Tree.ForceRemoveHighlight()
 			})
 
@@ -549,7 +550,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 			home.toggleLeftWrapper()
 		}
 
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
 			home.focusLeftWrapper()
 		}
 
