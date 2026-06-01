@@ -807,6 +807,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 					records := table.GetRecords()
 					if len(records) > 0 {
 						table.Menu.SetSelectedOption(1)
+						table.SetIsFiltering(false)
 						App.SetFocus(table)
 						table.HighlightTable()
 						table.Filter.HighlightLocal()
@@ -1257,10 +1258,6 @@ func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 					}
 				}
 
-				if table.GetIsFiltering() {
-					table.SetIsFiltering(false)
-				}
-
 				table.SetColumns(columns)
 				table.SetConstraints(constraints)
 				table.SetForeignKeys(foreignKeys)
@@ -1695,8 +1692,11 @@ func (table *ResultsTable) search() {
 
 		switch len(split) {
 		case 1:
-			for _, col := range table.GetColumns()[1:] {
-				matches = append(matches, col[0])
+			cols := table.GetColumns()
+			if len(cols) > 1 {
+				for _, col := range cols[1:] {
+					matches = append(matches, col[0])
+				}
 			}
 
 		case 2:
