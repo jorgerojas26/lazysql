@@ -77,7 +77,6 @@ type ResultsTable struct {
 const checkConstraintsSectionLabel = "Check constraints"
 const checkConstraintsHiddenHint = "Check constraints (hidden - press x to show)"
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
-func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
 	state := &ResultsTableState{
 		records:               [][]string{},
 		columns:               [][]string{},
