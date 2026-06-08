@@ -14,10 +14,11 @@ import (
 )
 
 type Config struct {
-	ConfigFile  string
-	AppConfig   *models.AppConfig   `toml:"application"`
-	Connections []models.Connection `toml:"database"`
-	Keymaps     models.KeymapConfig `toml:"keymap"`
+	ConfigFile      string
+	LocalConfigFile string
+	AppConfig       *models.AppConfig   `toml:"application"`
+	Connections     []models.Connection `toml:"database"`
+	Keymaps         models.KeymapConfig `toml:"keymap"`
 }
 
 func defaultConfig() *Config {
@@ -143,6 +144,8 @@ func LoadConfig(configFile string) error {
 
 	mergedMap := globalMap
 	if localConfigPath != "" {
+		App.config.LocalConfigFile = localConfigPath
+
 		localFile, err := os.ReadFile(localConfigPath)
 		if err != nil {
 			return err
@@ -197,11 +200,16 @@ func expandEnvVars(s string) string {
 func (c *Config) SaveConnections(connections []models.Connection) error {
 	c.Connections = connections
 
-	if err := os.MkdirAll(filepath.Dir(c.ConfigFile), 0o755); err != nil {
+	configFile := c.ConfigFile
+	if c.LocalConfigFile != "" {
+		configFile = c.LocalConfigFile
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
 		return err
 	}
 
-	file, err := os.Create(c.ConfigFile)
+	file, err := os.Create(configFile)
 	if err != nil {
 		return err
 	}

@@ -215,7 +215,7 @@ With this local config, `DefaultPageSize` overrides the global value, and only t
 
 Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config.
 
-Note: The local config file is read-only — saving connections from the UI always writes to the global config file.
+Note: When a local `.lazysql.toml` is found, the full config is saved to the local file when you modify connections from the UI.
 
 
 ## Usage
