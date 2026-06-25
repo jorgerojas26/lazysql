@@ -819,7 +819,7 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 
 	functions := make(map[string][]string)
 
-	query := "USE"
+	query := "USE "
 	query += database
 	query += ";"
 	query += `
