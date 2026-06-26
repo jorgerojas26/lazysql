@@ -887,7 +887,7 @@ func (tree *Tree) InitializeNodes(dbName string) {
 
 	for _, database := range databases {
 		childNode := tview.NewTreeNode(database)
-		childNode.SetExpanded(false)
+		childNode.SetExpanded(dbName != "")
 		childNode.SetReference(database)
 		childNode.SetColor(app.Styles.PrimaryTextColor)
 		rootNode.AddChild(childNode)
