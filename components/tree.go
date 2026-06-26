@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/lithammer/fuzzysearch/fuzzy"
@@ -35,6 +36,8 @@ type Tree struct {
 	FoundNodeCountInput *tview.InputField
 	subscribers         []chan models.StateChange
 	Schemas             []string
+	OnReady             func()
+	onReadyMu           sync.Mutex
 }
 
 type TreeNodeType int
@@ -924,6 +927,14 @@ func (tree *Tree) InitializeNodes(dbName string) {
 			}
 
 			App.Draw()
+
+			tree.onReadyMu.Lock()
+			onReady := tree.OnReady
+			tree.OnReady = nil
+			tree.onReadyMu.Unlock()
+			if onReady != nil {
+				onReady()
+			}
 		}(database, childNode)
 	}
 }

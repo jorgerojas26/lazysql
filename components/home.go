@@ -13,6 +13,7 @@ import (
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/internal/history"
+	"github.com/jorgerojas26/lazysql/internal/session"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -120,6 +121,17 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 			home.focusRightWrapper()
 		}
 	})
+
+	if app.App.Config().RememberLastTable {
+		savedSession, err := session.Load(connectionIdentifier)
+		if err != nil {
+			logger.Error("Failed to load session", map[string]any{"error": err})
+		} else if savedSession.Database != "" && savedSession.Table != "" {
+			tree.OnReady = func() {
+				home.showTable(savedSession.Database, savedSession.Table)
+			}
+		}
+	}
 
 	mainPages.AddPage(connection.URL, home, true, false)
 	return home
@@ -501,6 +513,16 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	case commands.Quit:
 		if tab == nil || (!table.GetIsEditing() && !table.GetIsFiltering()) {
+			if app.App.Config().RememberLastTable {
+				var db, tbl string
+				if tab != nil {
+					db = table.GetDatabaseName()
+					tbl = table.GetTableName()
+				}
+				if err := session.Save(home.ConnectionIdentifier, db, tbl); err != nil {
+					logger.Error("Failed to save session", map[string]any{"error": err})
+				}
+			}
 			app.App.Stop()
 		}
 	case commands.Save:
