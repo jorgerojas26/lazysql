@@ -417,7 +417,31 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 // The functions/procedures/views maps are keyed by database name and contain schema-qualified names.
 func (tree *Tree) buildSchemaTree(database string, node *tview.TreeNode, tables, functions, procedures, views map[string][]string) {
 	supportsProgramming := tree.DBDriver.SupportsProgramming()
-	sortedKeys := slices.Sorted(maps.Keys(tables))
+
+	// Collect unique schema names from tables and, when supported, from
+	// functions/procedures/views (whose values are "schema.name" strings).
+	schemaSet := make(map[string]struct{})
+	for k := range tables {
+		schemaSet[k] = struct{}{}
+	}
+	if supportsProgramming {
+		for _, items := range functions[database] {
+			if idx := strings.IndexByte(items, '.'); idx > 0 {
+				schemaSet[items[:idx]] = struct{}{}
+			}
+		}
+		for _, items := range procedures[database] {
+			if idx := strings.IndexByte(items, '.'); idx > 0 {
+				schemaSet[items[:idx]] = struct{}{}
+			}
+		}
+		for _, items := range views[database] {
+			if idx := strings.IndexByte(items, '.'); idx > 0 {
+				schemaSet[items[:idx]] = struct{}{}
+			}
+		}
+	}
+	sortedKeys := slices.Sorted(maps.Keys(schemaSet))
 
 	for _, schema := range sortedKeys {
 		// Filter schemas if Schemas is configured
