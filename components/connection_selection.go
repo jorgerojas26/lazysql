@@ -131,26 +131,7 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			connectionPages.SwitchToPage(pageNameConnectionForm)
 		case commands.Quit:
 			if wrapper.HasFocus() {
-				if !app.App.Config().ConfirmOnQuit {
-					app.App.Stop()
-					return nil
-				}
-				if mainPages == nil {
-					app.App.Stop()
-					return nil
-				}
-				if mainPages.HasPage(pageNameConfirmation) {
-					return nil
-				}
-				confirmationModal := NewConfirmationModal("Exit LazySQL?")
-				confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
-					mainPages.RemovePage(pageNameConfirmation)
-					if buttonLabel == confirmationYes {
-						app.App.Stop()
-					}
-				})
-				mainPages.AddPage(pageNameConfirmation, confirmationModal, true, true)
-				app.App.SetFocus(confirmationModal)
+				showQuitConfirmation()
 				return nil
 			}
 		}
