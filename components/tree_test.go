@@ -1,9 +1,13 @@
 package components
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/rivo/tview"
+
+	"github.com/jorgerojas26/lazysql/drivers"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 // ── stripColorTags ──────────────────────────────────────────────────────────
@@ -288,5 +292,328 @@ func TestExpandAncestors_AlreadyExpanded(t *testing.T) {
 
 	if !db.IsExpanded() {
 		t.Error("db should remain expanded")
+	}
+}
+
+// ── schemaProgrammingMock ───────────────────────────────────────────────────────
+// Implements drivers.Driver with SupportsProgramming()=true and UseSchemas()=true.
+// Used to test buildSchemaTree, addSchemaProgrammingSection, and the new
+// GetTreeNodeData paths.
+
+var _ drivers.Driver = (*schemaProgrammingMock)(nil)
+
+type schemaProgrammingMock struct{}
+
+func (m *schemaProgrammingMock) Connect(string) error                               { return nil }
+func (m *schemaProgrammingMock) TestConnection(string) error                        { return nil }
+func (m *schemaProgrammingMock) GetDatabases() ([]string, error)                    { return nil, nil }
+func (m *schemaProgrammingMock) GetTables(string) (map[string][]string, error)      { return nil, nil }
+func (m *schemaProgrammingMock) GetTableColumns(string, string) ([][]string, error) { return nil, nil }
+func (m *schemaProgrammingMock) GetConstraints(string, string) ([][]string, error)  { return nil, nil }
+func (m *schemaProgrammingMock) GetForeignKeys(string, string) ([][]string, error)  { return nil, nil }
+func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error)      { return nil, nil }
+func (m *schemaProgrammingMock) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
+	return nil, 0, "", nil
+}
+func (m *schemaProgrammingMock) UpdateRecord(string, string, string, string, string, string) error {
+	return nil
+}
+func (m *schemaProgrammingMock) DeleteRecord(string, string, string, string) error { return nil }
+func (m *schemaProgrammingMock) ExecuteDMLStatement(string) (string, error)        { return "", nil }
+func (m *schemaProgrammingMock) ExecuteQuery(string) ([][]string, int, error)      { return nil, 0, nil }
+func (m *schemaProgrammingMock) ExecutePendingChanges([]models.DBDMLChange) error  { return nil }
+func (m *schemaProgrammingMock) GetProvider() string                               { return "mock" }
+func (m *schemaProgrammingMock) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) SupportsProgramming() bool                            { return true }
+func (m *schemaProgrammingMock) UseSchemas() bool                                     { return true }
+func (m *schemaProgrammingMock) GetFunctions(string) (map[string][]string, error)     { return nil, nil }
+func (m *schemaProgrammingMock) GetProcedures(string) (map[string][]string, error)    { return nil, nil }
+func (m *schemaProgrammingMock) GetViews(string) (map[string][]string, error)         { return nil, nil }
+func (m *schemaProgrammingMock) GetFunctionDefinition(string, string) (string, error) { return "", nil }
+func (m *schemaProgrammingMock) GetProcedureDefinition(string, string) (string, error) {
+	return "", nil
+}
+func (m *schemaProgrammingMock) GetViewDefinition(string, string) (string, error) { return "", nil }
+
+func (m *schemaProgrammingMock) FormatArg(arg any, _ models.CellValueType) any {
+	return arg
+}
+func (m *schemaProgrammingMock) FormatArgForQueryString(arg any) string {
+	return fmt.Sprintf("%v", arg)
+}
+func (m *schemaProgrammingMock) FormatReference(reference string) string {
+	return fmt.Sprintf("\"%s\"", reference)
+}
+func (m *schemaProgrammingMock) FormatPlaceholder(index int) string {
+	return fmt.Sprintf("$%d", index)
+}
+func (m *schemaProgrammingMock) DMLChangeToQueryString(models.DBDMLChange) (string, error) {
+	return "", nil
+}
+func (m *schemaProgrammingMock) SetProvider(string) {}
+
+// ── buildSchemaTree tests ───────────────────────────────────────────────────────
+
+func TestBuildSchemaTree_BasicStructure(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tables := map[string][]string{"public": {"users", "posts"}}
+	functions := map[string][]string{"mydb": {"public.add_user"}}
+	procedures := map[string][]string{"mydb": {"public.cleanup"}}
+	views := map[string][]string{"mydb": {"public.user_view"}}
+
+	tree.buildSchemaTree("mydb", dbNode, tables, functions, procedures, views)
+
+	// ── db node has 1 child (schema "public") ──
+	children := dbNode.GetChildren()
+	if len(children) != 1 {
+		t.Fatalf("expected 1 child (schema) under db node, got %d", len(children))
+	}
+
+	schemaNode := children[0]
+	if schemaNode.GetText() != "public" {
+		t.Errorf("expected schema node text 'public', got '%s'", schemaNode.GetText())
+	}
+
+	// ── schema node has 4 children: tables, functions, procedures, views ──
+	schemaChildren := schemaNode.GetChildren()
+	if len(schemaChildren) != 4 {
+		t.Fatalf("expected 4 children under schema node, got %d", len(schemaChildren))
+	}
+
+	sectionNames := []string{"tables", "functions", "procedures", "views"}
+	for i, name := range sectionNames {
+		if schemaChildren[i].GetText() != name {
+			t.Errorf("expected section %d text '%s', got '%s'", i, name, schemaChildren[i].GetText())
+		}
+	}
+
+	// ── "tables" section has 2 children: "users", "posts" ──
+	tablesSection := schemaChildren[0]
+	tableChildren := tablesSection.GetChildren()
+	if len(tableChildren) != 2 {
+		t.Fatalf("expected 2 table children, got %d", len(tableChildren))
+	}
+	if tableChildren[0].GetText() != "users" {
+		t.Errorf("expected first table 'users', got '%s'", tableChildren[0].GetText())
+	}
+	if tableChildren[1].GetText() != "posts" {
+		t.Errorf("expected second table 'posts', got '%s'", tableChildren[1].GetText())
+	}
+	if tableChildren[0].GetReference().(string) != "mydb.public.tables.users" {
+		t.Errorf("expected table reference 'mydb.public.tables.users', got '%s'", tableChildren[0].GetReference().(string))
+	}
+	if tableChildren[1].GetReference().(string) != "mydb.public.tables.posts" {
+		t.Errorf("expected table reference 'mydb.public.tables.posts', got '%s'", tableChildren[1].GetReference().(string))
+	}
+
+	// ── "functions" section has 1 child: "add_user" (NOT "public.add_user") ──
+	functionsSection := schemaChildren[1]
+	funcChildren := functionsSection.GetChildren()
+	if len(funcChildren) != 1 {
+		t.Fatalf("expected 1 function child, got %d", len(funcChildren))
+	}
+	if funcChildren[0].GetText() != "add_user" {
+		t.Errorf("expected function 'add_user', got '%s'", funcChildren[0].GetText())
+	}
+	if funcChildren[0].GetReference().(string) != "mydb.public.functions.add_user" {
+		t.Errorf("expected reference 'mydb.public.functions.add_user', got '%s'", funcChildren[0].GetReference().(string))
+	}
+
+	// ── "procedures" section has 1 child: "cleanup" ──
+	proceduresSection := schemaChildren[2]
+	procChildren := proceduresSection.GetChildren()
+	if len(procChildren) != 1 {
+		t.Fatalf("expected 1 procedure child, got %d", len(procChildren))
+	}
+	if procChildren[0].GetText() != "cleanup" {
+		t.Errorf("expected procedure 'cleanup', got '%s'", procChildren[0].GetText())
+	}
+	if procChildren[0].GetReference().(string) != "mydb.public.procedures.cleanup" {
+		t.Errorf("expected reference 'mydb.public.procedures.cleanup', got '%s'", procChildren[0].GetReference().(string))
+	}
+
+	// ── "views" section has 1 child: "user_view" ──
+	viewsSection := schemaChildren[3]
+	viewChildren := viewsSection.GetChildren()
+	if len(viewChildren) != 1 {
+		t.Fatalf("expected 1 view child, got %d", len(viewChildren))
+	}
+	if viewChildren[0].GetText() != "user_view" {
+		t.Errorf("expected view 'user_view', got '%s'", viewChildren[0].GetText())
+	}
+	if viewChildren[0].GetReference().(string) != "mydb.public.views.user_view" {
+		t.Errorf("expected reference 'mydb.public.views.user_view', got '%s'", viewChildren[0].GetReference().(string))
+	}
+}
+
+// TestBuildSchemaTree_SchemaWithOnlyFunctions validates that schemas containing
+// only programming objects (functions/procedures/views) but no tables still
+// appear in the tree. On this branch, buildSchemaTree collects schema names
+// from all maps (tables + functions/procedures/views), so "api" appears even
+// though it has no tables.
+func TestBuildSchemaTree_SchemaWithOnlyFunctions(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tables := map[string][]string{"public": {"users"}}
+	functions := map[string][]string{"mydb": {"api.get_data"}}
+	procedures := map[string][]string{}
+	views := map[string][]string{}
+
+	tree.buildSchemaTree("mydb", dbNode, tables, functions, procedures, views)
+
+	children := dbNode.GetChildren()
+
+	// Expect both "api" (from functions) and "public" (from tables)
+	if len(children) != 2 {
+		t.Fatalf("expected 2 schema children (api, public), got %d", len(children))
+	}
+
+	// Sorted keys: ["api", "public"] — "api" comes first alphabetically
+	apiNode := children[0]
+	if apiNode.GetText() != "api" {
+		t.Errorf("expected first schema 'api', got '%s'", apiNode.GetText())
+	}
+
+	// "api" has a "tables" section (created unconditionally when supportsProgramming)
+	// plus a "functions" section with "get_data"
+	apiChildren := apiNode.GetChildren()
+	if len(apiChildren) != 2 {
+		t.Fatalf("expected 2 children under 'api' (tables + functions), got %d", len(apiChildren))
+	}
+	if apiChildren[0].GetText() != "tables" {
+		t.Errorf("expected 'tables' section under 'api', got '%s'", apiChildren[0].GetText())
+	}
+	if apiChildren[1].GetText() != "functions" {
+		t.Errorf("expected 'functions' section under 'api', got '%s'", apiChildren[1].GetText())
+	}
+
+	// "api" tables section should have no children (no tables for "api")
+	if len(apiChildren[0].GetChildren()) != 0 {
+		t.Errorf("expected no tables under 'api', got %d", len(apiChildren[0].GetChildren()))
+	}
+
+	// Verify the function item
+	funcSection := apiChildren[1]
+	funcItems := funcSection.GetChildren()
+	if len(funcItems) != 1 {
+		t.Fatalf("expected 1 function under api, got %d", len(funcItems))
+	}
+	if funcItems[0].GetText() != "get_data" {
+		t.Errorf("expected function 'get_data', got '%s'", funcItems[0].GetText())
+	}
+
+	// Second child: "public" has tables but no matching functions/procedures/views
+	publicNode := children[1]
+	if publicNode.GetText() != "public" {
+		t.Errorf("expected second schema 'public', got '%s'", publicNode.GetText())
+	}
+	publicChildren := publicNode.GetChildren()
+	if len(publicChildren) != 1 {
+		t.Fatalf("expected 1 child under 'public' (just tables), got %d", len(publicChildren))
+	}
+	if publicChildren[0].GetText() != "tables" {
+		t.Errorf("expected 'tables' section under 'public', got '%s'", publicChildren[0].GetText())
+	}
+	if len(publicChildren[0].GetChildren()) != 1 {
+		t.Fatalf("expected 1 table under 'public', got %d", len(publicChildren[0].GetChildren()))
+	}
+	if publicChildren[0].GetChildren()[0].GetText() != "users" {
+		t.Errorf("expected table 'users', got '%s'", publicChildren[0].GetChildren()[0].GetText())
+	}
+}
+
+// ── addSchemaProgrammingSection tests ───────────────────────────────────────────
+
+func TestAddSchemaProgrammingSection_EmptySection(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+
+	schemaNode := tview.NewTreeNode("public")
+	schemaNode.SetReference("public")
+
+	// programmingMap with no items for the "public" schema
+	programmingMap := map[string][]string{"mydb": {"other_schema.some_func"}}
+
+	tree.addSchemaProgrammingSection(schemaNode, "mydb", "public", "functions", programmingMap)
+
+	// No child should have been added because no items matched the prefix "public."
+	if len(schemaNode.GetChildren()) != 0 {
+		t.Errorf("expected no children added for empty section, got %d", len(schemaNode.GetChildren()))
+	}
+}
+
+// ── GetTreeNodeData schema programming tests ────────────────────────────────────
+
+func TestGetTreeNodeDataSchemaProgramming_SectionHeader(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+
+	node := tview.NewTreeNode("functions")
+	node.SetReference("mydb.public.functions")
+
+	data := tree.GetTreeNodeData(node)
+
+	if data.Type != NodeTypeSection {
+		t.Errorf("expected NodeTypeSection, got %v", data.Type)
+	}
+	if data.Database != "mydb" {
+		t.Errorf("expected Database 'mydb', got '%s'", data.Database)
+	}
+	if data.Schema != "public" {
+		t.Errorf("expected Schema 'public', got '%s'", data.Schema)
+	}
+	if data.Name != "functions" {
+		t.Errorf("expected Name 'functions', got '%s'", data.Name)
+	}
+}
+
+func TestGetTreeNodeDataSchemaProgramming_ItemNode(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+
+	node := tview.NewTreeNode("add_user")
+	node.SetReference("mydb.public.functions.add_user")
+
+	data := tree.GetTreeNodeData(node)
+
+	if data.Type != NodeTypeFunction {
+		t.Errorf("expected NodeTypeFunction, got %v", data.Type)
+	}
+	if data.Database != "mydb" {
+		t.Errorf("expected Database 'mydb', got '%s'", data.Database)
+	}
+	if data.Schema != "public" {
+		t.Errorf("expected Schema 'public', got '%s'", data.Schema)
+	}
+	if data.Name != "add_user" {
+		t.Errorf("expected Name 'add_user', got '%s'", data.Name)
+	}
+}
+
+func TestGetTreeNodeDataSchemaProgramming_TableItem(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+
+	node := tview.NewTreeNode("users")
+	node.SetReference("mydb.public.tables.users")
+
+	data := tree.GetTreeNodeData(node)
+
+	if data.Type != NodeTypeTable {
+		t.Errorf("expected NodeTypeTable, got %v", data.Type)
+	}
+	if data.Database != "mydb" {
+		t.Errorf("expected Database 'mydb', got '%s'", data.Database)
+	}
+	if data.Schema != "public" {
+		t.Errorf("expected Schema 'public', got '%s'", data.Schema)
+	}
+	if data.Name != "users" {
+		t.Errorf("expected Name 'users', got '%s'", data.Name)
 	}
 }

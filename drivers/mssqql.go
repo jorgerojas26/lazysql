@@ -155,8 +155,8 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
         FROM sys.columns c
         INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
         LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
-        LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id 
-            AND ep.minor_id = c.column_id 
+        LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id
+            AND ep.minor_id = c.column_id
             AND ep.name = 'MS_Description'
         WHERE c.object_id = OBJECT_ID(@p2)
         AND t.name <> 'sysname'
@@ -173,20 +173,20 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
 
 	query := fmt.Sprintf(`
 		USE %s;
-        SELECT 
+        SELECT
             kc.name AS constraint_name,
             c.name AS column_name,
             kc.type_desc AS constraint_type
         FROM sys.key_constraints kc
-        INNER JOIN sys.tables t 
+        INNER JOIN sys.tables t
             ON kc.parent_object_id = t.object_id
-        INNER JOIN sys.schemas s 
+        INNER JOIN sys.schemas s
             ON t.schema_id = s.schema_id
-        INNER JOIN sys.index_columns ic 
-            ON kc.unique_index_id = ic.index_id 
+        INNER JOIN sys.index_columns ic
+            ON kc.unique_index_id = ic.index_id
             AND kc.parent_object_id = ic.object_id
-        INNER JOIN sys.columns c 
-            ON ic.column_id = c.column_id 
+        INNER JOIN sys.columns c
+            ON ic.column_id = c.column_id
             AND ic.object_id = c.object_id
         WHERE s.name = @p1
           AND t.name = @p2
@@ -198,27 +198,27 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
 func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
 	query := fmt.Sprintf(`
 		USE %s;
-        SELECT 
+        SELECT
             fk.name AS constraint_name,
             c.name AS column_name,
             DB_NAME(DB_ID(@p1)) AS current_database,
-            OBJECT_SCHEMA_NAME(fk.referenced_object_id, DB_ID(@p1)) + '.' + 
+            OBJECT_SCHEMA_NAME(fk.referenced_object_id, DB_ID(@p1)) + '.' +
             OBJECT_NAME(fk.referenced_object_id, DB_ID(@p1)) AS referenced_table,
             rc.name AS referenced_column,
             fk.delete_referential_action_desc AS delete_rule,
             fk.update_referential_action_desc AS update_rule
         FROM sys.foreign_keys fk
-        INNER JOIN sys.foreign_key_columns fkc 
+        INNER JOIN sys.foreign_key_columns fkc
             ON fk.object_id = fkc.constraint_object_id
-        INNER JOIN sys.columns c 
-            ON fkc.parent_column_id = c.column_id 
+        INNER JOIN sys.columns c
+            ON fkc.parent_column_id = c.column_id
             AND fkc.parent_object_id = c.object_id
-        INNER JOIN sys.columns rc 
-            ON fkc.referenced_column_id = rc.column_id 
+        INNER JOIN sys.columns rc
+            ON fkc.referenced_column_id = rc.column_id
             AND fkc.referenced_object_id = rc.object_id
-        INNER JOIN sys.tables t 
+        INNER JOIN sys.tables t
             ON fk.parent_object_id = t.object_id
-        INNER JOIN sys.schemas s 
+        INNER JOIN sys.schemas s
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
           AND DB_NAME(DB_ID(@p1)) = @p1
@@ -246,17 +246,17 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
             CAST(i.has_filter AS BIT) AS has_filter,
             i.filter_definition
         FROM sys.tables t
-        INNER JOIN sys.schemas s 
+        INNER JOIN sys.schemas s
             ON t.schema_id = s.schema_id
-        INNER JOIN sys.databases d 
+        INNER JOIN sys.databases d
             ON d.name = @p1
-        INNER JOIN sys.indexes i 
+        INNER JOIN sys.indexes i
             ON t.object_id = i.object_id
-        INNER JOIN sys.index_columns ic 
-            ON i.object_id = ic.object_id 
+        INNER JOIN sys.index_columns ic
+            ON i.object_id = ic.object_id
             AND i.index_id = ic.index_id
-        INNER JOIN sys.columns c 
-            ON ic.column_id = c.column_id 
+        INNER JOIN sys.columns c
+            ON ic.column_id = c.column_id
             AND t.object_id = c.object_id
         WHERE t.name = @p2
           AND s.name = @p3
@@ -595,7 +595,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 			sys.columns c
 				ON ic.column_id = c.column_id
 				AND t.object_id = c.object_id
-		WHERE 
+		WHERE
 			s.name = @p2
 			AND t.name = @p3
 		ORDER BY ic.key_ordinal
@@ -819,7 +819,7 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 
 	functions := make(map[string][]string)
 
-	query := "USE"
+	query := "USE "
 	query += database
 	query += ";"
 	query += `

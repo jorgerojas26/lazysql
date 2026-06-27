@@ -205,32 +205,80 @@ func (home *Home) showTable(databaseName, tableName string) {
 		table = tab.Content.(*ResultsTable)
 		home.TabbedPane.SwitchToTabByReference(tab.Reference)
 	} else {
-		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
+		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
 		table.SetDatabaseName(databaseName)
 		table.SetTableName(tableName)
 
 		home.TabbedPane.AppendTab(tableName, table, tabReference)
 	}
 
-	results := table.FetchRecords(func() {
+	table.FetchRecords(func() {
 		home.focusLeftWrapper()
+	}, func() {
+		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
+			records := table.GetRecords()
+			if len(records) > 1 {
+				table.ShowSidebar(true)
+			}
+		}
+
+		if table.state.error == "" {
+			if !home.treePinned && home.leftWrapperVisible {
+				home.toggleLeftWrapper()
+			}
+		}
+
+		App.ForceDraw()
 	})
 
-	// Show sidebar if there is more then 1 row (row 0 are
-	// the column names) and the sidebar is not disabled.
-	if !app.App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
-		table.ShowSidebar(true)
+	home.focusRightWrapper()
+}
+
+func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
+	if tableName == "" {
+		return
 	}
 
-	if table.state.error == "" {
+	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
+	tab := home.TabbedPane.GetTabByReference(tabReference)
+
+	var table *ResultsTable
+	if tab != nil {
+		table = tab.Content.(*ResultsTable)
+		home.TabbedPane.SwitchToTabByReference(tab.Reference)
+	} else {
+		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
+		table.SetDatabaseName(databaseName)
+		table.SetTableName(tableName)
+		home.TabbedPane.AppendTab(tableName, table, tabReference)
+	}
+
+	if table.Filter != nil {
+		table.Filter.SetCurrentFilterUnsafe(where)
+	}
+
+	table.FetchRecords(func() {
+		home.focusLeftWrapper()
+	}, func() {
+		if table.state.error != "" {
+			App.ForceDraw()
+			return
+		}
+
+		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
+			records := table.GetRecords()
+			if len(records) > 1 {
+				table.ShowSidebar(true)
+			}
+		}
+
 		if !home.treePinned && home.leftWrapperVisible {
 			home.toggleLeftWrapper()
 		}
+		App.ForceDraw()
+	})
 
-		home.focusRightWrapper()
-	}
-
-	app.App.ForceDraw()
+	home.focusRightWrapper()
 }
 
 func (home *Home) focusRightWrapper() {
@@ -368,7 +416,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		if tab != nil {
 			table := tab.Content.(*ResultsTable)
 
-			if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
+			if !table.GetIsFiltering() && !table.GetIsEditing() {
 				home.TabbedPane.RemoveCurrentTab()
 
 				if home.TabbedPane.GetLength() == 0 {
@@ -391,7 +439,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 				table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
 				App.ForceDraw()
-				table.FetchRecords(nil)
+				table.FetchRecords(nil, nil)
 			}
 		}
 
@@ -409,7 +457,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 				table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
 				App.ForceDraw()
-				table.FetchRecords(nil)
+				table.FetchRecords(nil, nil)
 			}
 		}
 	}
@@ -448,7 +496,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case commands.SwitchToEditorView:
 		home.createOrFocusEditorTab()
 	case commands.SwitchToConnectionsView:
-		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
+		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering()) || table == nil {
 			mainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
@@ -481,7 +529,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 					}
 				}
 				home.ListOfDBChanges = []models.DBDMLChange{}
-				table.FetchRecords(nil)
+				table.FetchRecords(nil, nil)
 				home.Tree.ForceRemoveHighlight()
 			})
 
@@ -494,11 +542,16 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 		mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 	case commands.SearchGlobal:
+		// Don't intercept Ctrl+P when the SQL editor is in insert mode
+		if table != nil && table.Editor != nil && app.App.GetFocus() == table.Editor && table.Editor.vimMode == VimModeInsert {
+			return event
+		}
+
 		if !home.leftWrapperVisible {
 			home.toggleLeftWrapper()
 		}
 
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
 			home.focusLeftWrapper()
 		}
 
@@ -530,13 +583,35 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 func (home *Home) createOrFocusEditorTab() {
 	tab := home.TabbedPane.GetTabByName(tabNameEditor)
+	dbName := home.Tree.GetSelectedDatabase()
+
+	// Fallback: extract database name from connection URL
+	if dbName == "" && home.ConnectionURL != "" {
+		dbName = extractDatabaseName(home.ConnectionURL)
+	}
 
 	if tab != nil {
 		home.TabbedPane.SwitchToTabByName(tabNameEditor)
 		table := tab.Content.(*ResultsTable)
 		table.SetIsFiltering(true)
+		// Refresh schema from current database context
+		if dbName != "" {
+			table.SetDatabaseName(dbName)
+			go table.loadEditorSchema()
+		}
 	} else {
-		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithEditor()
+		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly)
+		// Set database name before WithEditor so the table is ready for schema loading
+		if dbName != "" {
+			tableWithEditor.SetDatabaseName(dbName)
+		}
+		tableWithEditor = tableWithEditor.WithEditor()
+
+		// Kick off schema loading for autocomplete (async, non-blocking)
+		if dbName != "" && tableWithEditor.DBDriver != nil {
+			go tableWithEditor.loadEditorSchema()
+		}
+
 		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 		tableWithEditor.SetIsFiltering(true)
 		home.TabbedPane.GetCurrentTab()
@@ -545,6 +620,24 @@ func (home *Home) createOrFocusEditorTab() {
 	home.HelpStatus.SetStatusOnEditorView()
 	home.focusRightWrapper()
 	App.ForceDraw()
+}
+
+// extractDatabaseName pulls the database name from a connection URL like
+// "mysql://user:pass@host:3306/mydb" → "mydb". Returns "" if none is found.
+func extractDatabaseName(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimPrefix(u.Path, "/")
+	// Remove any trailing path segments after the db name
+	if idx := strings.IndexAny(name, "/?"); idx >= 0 {
+		name = name[:idx]
+	}
+	return name
 }
 
 func (home *Home) toggleLeftWrapper() {

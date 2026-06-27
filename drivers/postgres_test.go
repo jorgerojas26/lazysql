@@ -9,6 +9,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	_ "github.com/lib/pq"
+	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -360,7 +361,7 @@ func TestPostgres_GetRecords(t *testing.T) {
 }
 
 func TestPostgres_GetForeignKeys(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {
 		t.Fatalf("Error creating mock: %v", err)
 	}
@@ -370,30 +371,33 @@ func TestPostgres_GetForeignKeys(t *testing.T) {
 
 	rows := sqlmock.NewRows([]string{
 		"constraint_name", "column_name",
-		"foreign_table_name", "foreign_column_name",
+		"foreign_table_schema", "foreign_table_name", "foreign_column_name",
 		"update_rule", "delete_rule",
 	}).AddRow(
 		"fk_test", "user_id",
-		"users", "id",
+		"public", "users", "id",
 		"CASCADE", "SET NULL",
 	)
 
 	mock.ExpectQuery(fmt.Sprintf(`
         SELECT
-            tc.constraint_name,
-            kcu.column_name,
-            ccu.table_name AS foreign_table_name,
-            ccu.column_name AS foreign_column_name
-        FROM
-            information_schema.table_constraints AS tc
-            JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
-            AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
-            AND ccu.table_schema = tc.table_schema
-        WHERE
-            tc.constraint_type = 'FOREIGN KEY'
-          	AND tc.table_schema = '%s'
-            AND tc.table_name = '%s'
+            con.conname AS constraint_name,
+            src_att.attname AS column_name,
+            ref_ns.nspname AS foreign_table_schema,
+            ref_cls.relname AS foreign_table_name,
+            ref_att.attname AS foreign_column_name
+        FROM pg_constraint con
+        JOIN pg_class src_cls ON src_cls.oid = con.conrelid
+        JOIN pg_namespace src_ns ON src_ns.oid = src_cls.relnamespace
+        JOIN pg_class ref_cls ON ref_cls.oid = con.confrelid
+        JOIN pg_namespace ref_ns ON ref_ns.oid = ref_cls.relnamespace
+        JOIN LATERAL unnest(con.conkey, con.confkey) AS fk(src_attnum, ref_attnum) ON true
+        JOIN pg_attribute src_att ON src_att.attrelid = con.conrelid AND src_att.attnum = fk.src_attnum
+        JOIN pg_attribute ref_att ON ref_att.attrelid = con.confrelid AND ref_att.attnum = fk.ref_attnum
+        WHERE con.contype = 'f'
+          AND src_ns.nspname = '%s'
+          AND src_cls.relname = '%s'
+        ORDER BY con.conname, src_att.attnum
   `, schemaPostgres, tableNamePostgres)).WillReturnRows(rows)
 
 	constraints, err := pg.GetForeignKeys(DBNamePostgres, schemaAndTablePostgres)
@@ -402,8 +406,8 @@ func TestPostgres_GetForeignKeys(t *testing.T) {
 	}
 
 	expected := [][]string{
-		{"constraint_name", "column_name", "foreign_table_name", "foreign_column_name", "update_rule", "delete_rule"},
-		{"fk_test", "user_id", "users", "id", "CASCADE", "SET NULL"},
+		{"constraint_name", "column_name", "foreign_table_schema", "foreign_table_name", "foreign_column_name", "update_rule", "delete_rule"},
+		{"fk_test", "user_id", "public", "users", "id", "CASCADE", "SET NULL"},
 	}
 
 	if !reflect.DeepEqual(constraints, expected) {
@@ -611,5 +615,125 @@ func TestPostgres_formatTableName(t *testing.T) {
 
 	if tableName != expected {
 		t.Fatalf("formatTableName failed: got %s, expected %s", tableName, expected)
+	}
+}
+
+func TestDSNValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		dsn      string
+		key      string
+		expected string
+	}{
+		{"extracts host", "host=/var/run/postgresql port= dbname=", "host", "/var/run/postgresql"},
+		{"extracts dbname", "host=/tmp dbname=postgres", "dbname", "postgres"},
+		{"empty value", "host= port=", "host", ""},
+		{"missing key", "host=/tmp dbname=postgres", "user", ""},
+		{"empty dsn", "", "host", ""},
+		{"key is prefix of another key", "hostaddr=1.2.3.4 host=/tmp", "host", "/tmp"},
+		{"no space separators but key=value", "host=/tmp", "host", "/tmp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dsnValue(tt.dsn, tt.key)
+			if got != tt.expected {
+				t.Errorf("dsnValue(%q, %q) = %q, want %q", tt.dsn, tt.key, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestBuildReconnectURL(t *testing.T) {
+	tests := []struct {
+		name          string
+		urlstr        string
+		newDB         string
+		wantTransport string
+		wantHost      string
+	}{
+		{
+			name:          "unix socket — no dbname in path",
+			urlstr:        "postgresql:///tmp",
+			newDB:         "mydb",
+			wantTransport: "unix",
+			wantHost:      "",
+		},
+		{
+			name:          "unix socket — dbname in path, replaced",
+			urlstr:        "postgresql:///tmp/postgres",
+			newDB:         "mydb",
+			wantTransport: "unix",
+			wantHost:      "",
+		},
+		{
+			name:          "unix socket with custom port — port preserved",
+			urlstr:        "postgresql:///tmp:6666/postgres",
+			newDB:         "mydb",
+			wantTransport: "unix",
+			wantHost:      "",
+		},
+		{
+			name:          "tcp — database replaced in path, host preserved",
+			urlstr:        "postgresql://localhost/postgres",
+			newDB:         "mydb",
+			wantTransport: "tcp",
+			wantHost:      "localhost",
+		},
+		{
+			name:          "tcp with user and sslmode — user + query preserved",
+			urlstr:        "postgresql://user@localhost/postgres?sslmode=disable",
+			newDB:         "other",
+			wantTransport: "tcp",
+			wantHost:      "localhost",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original, err := dburl.Parse(tt.urlstr)
+			if err != nil {
+				t.Fatalf("dburl.Parse(%q): %v", tt.urlstr, err)
+			}
+			originalHost := dsnValue(original.DSN, "host")
+			originalPort := dsnValue(original.DSN, "port")
+
+			got, err := buildReconnectURL(tt.urlstr, tt.newDB)
+			if err != nil {
+				t.Fatalf("buildReconnectURL(%q, %q): %v", tt.urlstr, tt.newDB, err)
+			}
+
+			reparsed, err := dburl.Parse(got)
+			if err != nil {
+				t.Fatalf("re-parse of %q failed: %v", got, err)
+			}
+			newHost := dsnValue(reparsed.DSN, "host")
+			newPort := dsnValue(reparsed.DSN, "port")
+			newDBName := dsnValue(reparsed.DSN, "dbname")
+
+			if reparsed.Transport != tt.wantTransport {
+				t.Errorf("Transport = %q, want %q", reparsed.Transport, tt.wantTransport)
+			}
+			if reparsed.Hostname() != tt.wantHost {
+				t.Errorf("Hostname = %q, want %q", reparsed.Hostname(), tt.wantHost)
+			}
+			if newHost != originalHost {
+				t.Errorf("host must be preserved: original=%q rebuilt=%q", originalHost, newHost)
+			}
+			if newPort != originalPort {
+				t.Errorf("port must be preserved: original=%q rebuilt=%q", originalPort, newPort)
+			}
+			if newDBName != tt.newDB {
+				t.Errorf("dbname = %q, want %q (rebuilt URL: %s)", newDBName, tt.newDB, got)
+			}
+			if tt.urlstr == "postgresql://user@localhost/postgres?sslmode=disable" {
+				if u := reparsed.User; u != nil {
+					if u.Username() != "user" {
+						t.Errorf("Username = %q, want %q", u.Username(), "user")
+					}
+				}
+				if reparsed.Query().Get("sslmode") != "disable" {
+					t.Errorf("sslmode = %q, want %q", reparsed.Query().Get("sslmode"), "disable")
+				}
+			}
+		})
 	}
 }

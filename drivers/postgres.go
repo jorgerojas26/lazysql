@@ -23,10 +23,6 @@ type Postgres struct {
 	Urlstr           string
 }
 
-const (
-	defaultPort = "5432"
-)
-
 func (db *Postgres) TestConnection(urlstr string) error {
 	return db.Connect(urlstr)
 }
@@ -291,20 +287,23 @@ func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
 
 	rows, err := conn.Query(fmt.Sprintf(`
         SELECT
-            tc.constraint_name,
-            kcu.column_name,
-            ccu.table_name AS foreign_table_name,
-            ccu.column_name AS foreign_column_name
-        FROM
-            information_schema.table_constraints AS tc
-            JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
-            AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
-            AND ccu.table_schema = tc.table_schema
-        WHERE
-            tc.constraint_type = 'FOREIGN KEY'
-          	AND tc.table_schema = '%s'
-            AND tc.table_name = '%s'
+            con.conname AS constraint_name,
+            src_att.attname AS column_name,
+            ref_ns.nspname AS foreign_table_schema,
+            ref_cls.relname AS foreign_table_name,
+            ref_att.attname AS foreign_column_name
+        FROM pg_constraint con
+        JOIN pg_class src_cls ON src_cls.oid = con.conrelid
+        JOIN pg_namespace src_ns ON src_ns.oid = src_cls.relnamespace
+        JOIN pg_class ref_cls ON ref_cls.oid = con.confrelid
+        JOIN pg_namespace ref_ns ON ref_ns.oid = ref_cls.relnamespace
+        JOIN LATERAL unnest(con.conkey, con.confkey) AS fk(src_attnum, ref_attnum) ON true
+        JOIN pg_attribute src_att ON src_att.attrelid = con.conrelid AND src_att.attnum = fk.src_attnum
+        JOIN pg_attribute ref_att ON ref_att.attrelid = con.confrelid AND ref_att.attnum = fk.ref_attnum
+        WHERE con.contype = 'f'
+          AND src_ns.nspname = '%s'
+          AND src_cls.relname = '%s'
+        ORDER BY con.conname, src_att.attnum
   `, tableSchema, tableName))
 	if err != nil {
 		return nil, err
@@ -759,33 +758,43 @@ func (db *Postgres) GetProvider() string {
 	return db.Provider
 }
 
+func dsnValue(dsn, key string) string {
+	prefix := key + "="
+	for _, part := range strings.Split(dsn, " ") {
+		if after, ok := strings.CutPrefix(part, prefix); ok {
+			return after
+		}
+	}
+	return ""
+}
+
+func buildReconnectURL(urlstr, newDB string) (string, error) {
+	parsed, err := dburl.Parse(urlstr)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Transport == "unix" {
+		host := dsnValue(parsed.DSN, "host")
+		port := dsnValue(parsed.DSN, "port")
+		if port != "" {
+			parsed.Path = host + ":" + port + "/" + newDB
+		} else {
+			parsed.Path = host + "/" + newDB
+		}
+	} else {
+		parsed.Path = "/" + newDB
+	}
+	return parsed.String(), nil
+}
+
 // connectToDatabase opens a new connection to the given database without
 // mutating the receiver. The caller must close the returned connection.
 func (db *Postgres) connectToDatabase(database string) (*sql.DB, error) {
-	parsedConn, err := dburl.Parse(db.Urlstr)
+	urlstr, err := buildReconnectURL(db.Urlstr, database)
 	if err != nil {
 		return nil, err
 	}
-
-	user := parsedConn.User.Username()
-	password, hasPassword := parsedConn.User.Password()
-	host := parsedConn.Hostname()
-	port := parsedConn.Port()
-	if port == "" {
-		port = defaultPort
-	}
-
-	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable", host, port, user, database)
-	if hasPassword {
-		dsn += fmt.Sprintf(" password=%s", password)
-	}
-
-	conn, err := sql.Open("postgres", dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	return conn, nil
+	return dburl.Open(urlstr)
 }
 
 // connectionFor returns a connection to the given database. If it matches
@@ -927,34 +936,239 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 	return queryStr, nil
 }
 
-func (db *Postgres) GetFunctions(_ string) (map[string][]string, error) {
-	return nil, errors.New("not implemented")
+func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(`
+		SELECT n.nspname || '.' || p.proname
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+		AND p.prokind = 'f'
+		ORDER BY n.nspname, p.proname
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	functions := make(map[string][]string)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		functions[database] = append(functions[database], name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return functions, nil
 }
 
-func (db *Postgres) GetProcedures(_ string) (map[string][]string, error) {
-	return nil, errors.New("not implemented")
+func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(`
+		SELECT n.nspname || '.' || p.proname
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+		AND p.prokind = 'p'
+		ORDER BY n.nspname, p.proname
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	procedures := make(map[string][]string)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		procedures[database] = append(procedures[database], name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return procedures, nil
 }
 
-func (db *Postgres) GetViews(_ string) (map[string][]string, error) {
-	return nil, errors.New("not implemented")
+func (db *Postgres) GetViews(database string) (map[string][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(`
+		SELECT table_schema || '.' || table_name
+		FROM information_schema.views
+		WHERE table_catalog = $1
+		AND table_schema NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY table_schema, table_name
+	`, database)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	views := make(map[string][]string)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		views[database] = append(views[database], name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return views, nil
 }
 
 func (db *Postgres) SupportsProgramming() bool {
-	return false
+	return true
 }
 
 func (db *Postgres) UseSchemas() bool {
 	return true
 }
 
-func (db *Postgres) GetFunctionDefinition(_ string, _ string) (string, error) {
-	return "", errors.New("not implemented")
+func (db *Postgres) GetFunctionDefinition(database, name string) (string, error) {
+	if database == "" {
+		return "", errors.New("database name is required")
+	}
+	if name == "" {
+		return "", errors.New("function name is required")
+	}
+
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) != 2 {
+		return "", errors.New("function name must be in format schema.name")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var result string
+	row := conn.QueryRow(`
+		SELECT pg_get_functiondef(p.oid)
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = $1 AND p.proname = $2
+		LIMIT 1
+	`, parts[0], parts[1])
+	if err := row.Scan(&result); err != nil {
+		return "", err
+	}
+
+	return result, nil
 }
 
-func (db *Postgres) GetProcedureDefinition(_ string, _ string) (string, error) {
-	return "", errors.New("not implemented")
+func (db *Postgres) GetProcedureDefinition(database, name string) (string, error) {
+	if database == "" {
+		return "", errors.New("database name is required")
+	}
+	if name == "" {
+		return "", errors.New("procedure name is required")
+	}
+
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) != 2 {
+		return "", errors.New("procedure name must be in format schema.name")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var result string
+	row := conn.QueryRow(`
+		SELECT pg_get_functiondef(p.oid)
+		FROM pg_catalog.pg_proc p
+		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = $1 AND p.proname = $2
+		AND p.prokind = 'p'
+		LIMIT 1
+	`, parts[0], parts[1])
+	if err := row.Scan(&result); err != nil {
+		return "", err
+	}
+
+	return result, nil
 }
 
-func (db *Postgres) GetViewDefinition(_ string, _ string) (string, error) {
-	return "", errors.New("not implemented")
+func (db *Postgres) GetViewDefinition(database, name string) (string, error) {
+	if database == "" {
+		return "", errors.New("database name is required")
+	}
+	if name == "" {
+		return "", errors.New("view name is required")
+	}
+
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) != 2 {
+		return "", errors.New("view name must be in format schema.name")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var result string
+	row := conn.QueryRow(`
+		SELECT definition
+		FROM pg_catalog.pg_views
+		WHERE schemaname = $1 AND viewname = $2
+	`, parts[0], parts[1])
+	if err := row.Scan(&result); err != nil {
+		return "", err
+	}
+
+	return result, nil
 }
