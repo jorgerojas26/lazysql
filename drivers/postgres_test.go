@@ -9,6 +9,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	_ "github.com/lib/pq"
+	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -614,5 +615,125 @@ func TestPostgres_formatTableName(t *testing.T) {
 
 	if tableName != expected {
 		t.Fatalf("formatTableName failed: got %s, expected %s", tableName, expected)
+	}
+}
+
+func TestDSNValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		dsn      string
+		key      string
+		expected string
+	}{
+		{"extracts host", "host=/var/run/postgresql port= dbname=", "host", "/var/run/postgresql"},
+		{"extracts dbname", "host=/tmp dbname=postgres", "dbname", "postgres"},
+		{"empty value", "host= port=", "host", ""},
+		{"missing key", "host=/tmp dbname=postgres", "user", ""},
+		{"empty dsn", "", "host", ""},
+		{"key is prefix of another key", "hostaddr=1.2.3.4 host=/tmp", "host", "/tmp"},
+		{"no space separators but key=value", "host=/tmp", "host", "/tmp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dsnValue(tt.dsn, tt.key)
+			if got != tt.expected {
+				t.Errorf("dsnValue(%q, %q) = %q, want %q", tt.dsn, tt.key, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestBuildReconnectURL(t *testing.T) {
+	tests := []struct {
+		name          string
+		urlstr        string
+		newDB         string
+		wantTransport string
+		wantHost      string
+	}{
+		{
+			name:          "unix socket — no dbname in path",
+			urlstr:        "postgresql:///tmp",
+			newDB:         "mydb",
+			wantTransport: "unix",
+			wantHost:      "",
+		},
+		{
+			name:          "unix socket — dbname in path, replaced",
+			urlstr:        "postgresql:///tmp/postgres",
+			newDB:         "mydb",
+			wantTransport: "unix",
+			wantHost:      "",
+		},
+		{
+			name:          "unix socket with custom port — port preserved",
+			urlstr:        "postgresql:///tmp:6666/postgres",
+			newDB:         "mydb",
+			wantTransport: "unix",
+			wantHost:      "",
+		},
+		{
+			name:          "tcp — database replaced in path, host preserved",
+			urlstr:        "postgresql://localhost/postgres",
+			newDB:         "mydb",
+			wantTransport: "tcp",
+			wantHost:      "localhost",
+		},
+		{
+			name:          "tcp with user and sslmode — user + query preserved",
+			urlstr:        "postgresql://user@localhost/postgres?sslmode=disable",
+			newDB:         "other",
+			wantTransport: "tcp",
+			wantHost:      "localhost",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original, err := dburl.Parse(tt.urlstr)
+			if err != nil {
+				t.Fatalf("dburl.Parse(%q): %v", tt.urlstr, err)
+			}
+			originalHost := dsnValue(original.DSN, "host")
+			originalPort := dsnValue(original.DSN, "port")
+
+			got, err := buildReconnectURL(tt.urlstr, tt.newDB)
+			if err != nil {
+				t.Fatalf("buildReconnectURL(%q, %q): %v", tt.urlstr, tt.newDB, err)
+			}
+
+			reparsed, err := dburl.Parse(got)
+			if err != nil {
+				t.Fatalf("re-parse of %q failed: %v", got, err)
+			}
+			newHost := dsnValue(reparsed.DSN, "host")
+			newPort := dsnValue(reparsed.DSN, "port")
+			newDBName := dsnValue(reparsed.DSN, "dbname")
+
+			if reparsed.Transport != tt.wantTransport {
+				t.Errorf("Transport = %q, want %q", reparsed.Transport, tt.wantTransport)
+			}
+			if reparsed.Hostname() != tt.wantHost {
+				t.Errorf("Hostname = %q, want %q", reparsed.Hostname(), tt.wantHost)
+			}
+			if newHost != originalHost {
+				t.Errorf("host must be preserved: original=%q rebuilt=%q", originalHost, newHost)
+			}
+			if newPort != originalPort {
+				t.Errorf("port must be preserved: original=%q rebuilt=%q", originalPort, newPort)
+			}
+			if newDBName != tt.newDB {
+				t.Errorf("dbname = %q, want %q (rebuilt URL: %s)", newDBName, tt.newDB, got)
+			}
+			if tt.urlstr == "postgresql://user@localhost/postgres?sslmode=disable" {
+				if u := reparsed.User; u != nil {
+					if u.Username() != "user" {
+						t.Errorf("Username = %q, want %q", u.Username(), "user")
+					}
+				}
+				if reparsed.Query().Get("sslmode") != "disable" {
+					t.Errorf("sslmode = %q, want %q", reparsed.Query().Get("sslmode"), "disable")
+				}
+			}
+		})
 	}
 }

@@ -23,10 +23,6 @@ type Postgres struct {
 	Urlstr           string
 }
 
-const (
-	defaultPort = "5432"
-)
-
 func (db *Postgres) TestConnection(urlstr string) error {
 	return db.Connect(urlstr)
 }
@@ -762,33 +758,43 @@ func (db *Postgres) GetProvider() string {
 	return db.Provider
 }
 
+func dsnValue(dsn, key string) string {
+	prefix := key + "="
+	for _, part := range strings.Split(dsn, " ") {
+		if after, ok := strings.CutPrefix(part, prefix); ok {
+			return after
+		}
+	}
+	return ""
+}
+
+func buildReconnectURL(urlstr, newDB string) (string, error) {
+	parsed, err := dburl.Parse(urlstr)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Transport == "unix" {
+		host := dsnValue(parsed.DSN, "host")
+		port := dsnValue(parsed.DSN, "port")
+		if port != "" {
+			parsed.Path = host + ":" + port + "/" + newDB
+		} else {
+			parsed.Path = host + "/" + newDB
+		}
+	} else {
+		parsed.Path = "/" + newDB
+	}
+	return parsed.String(), nil
+}
+
 // connectToDatabase opens a new connection to the given database without
 // mutating the receiver. The caller must close the returned connection.
 func (db *Postgres) connectToDatabase(database string) (*sql.DB, error) {
-	parsedConn, err := dburl.Parse(db.Urlstr)
+	urlstr, err := buildReconnectURL(db.Urlstr, database)
 	if err != nil {
 		return nil, err
 	}
-
-	user := parsedConn.User.Username()
-	password, hasPassword := parsedConn.User.Password()
-	host := parsedConn.Hostname()
-	port := parsedConn.Port()
-	if port == "" {
-		port = defaultPort
-	}
-
-	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable", host, port, user, database)
-	if hasPassword {
-		dsn += fmt.Sprintf(" password=%s", password)
-	}
-
-	conn, err := sql.Open("postgres", dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	return conn, nil
+	return dburl.Open(urlstr)
 }
 
 // connectionFor returns a connection to the given database. If it matches
