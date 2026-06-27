@@ -14,6 +14,7 @@ type AppConfig struct {
 	TreeWidth                    int
 	JSONViewerWordWrap           bool
 	EnterOpensJSONViewer         bool
+	ConfirmOnQuit                bool
 }
 
 type Connection struct {

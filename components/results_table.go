@@ -880,6 +880,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							table.Pagination.SetLimit(records)
 							table.SetRecords(rows)
 							table.SetLoading(false)
+							closeQuitConfirmation()
 							table.SetIsFiltering(false)
 							table.HighlightTable()
 							table.Editor.SetBlur()
@@ -927,6 +928,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 							table.SetResultsInfo(result)
 							table.SetLoading(false)
+							closeQuitConfirmation()
 							table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
 							App.SetFocus(table.Editor)
 
@@ -1084,6 +1086,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
 		table.Page.HidePage(pageNameTableError)
+		closeQuitConfirmation()
 		if table.GetIsFiltering() {
 			if table.Editor != nil {
 				App.SetFocus(table.Editor)

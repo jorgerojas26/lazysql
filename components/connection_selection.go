@@ -131,7 +131,8 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			connectionPages.SwitchToPage(pageNameConnectionForm)
 		case commands.Quit:
 			if wrapper.HasFocus() {
-				app.App.Stop()
+				showQuitConfirmation()
+				return nil
 			}
 		}
 
