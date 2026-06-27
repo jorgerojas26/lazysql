@@ -29,6 +29,7 @@ func defaultConfig() *Config {
 			TreeWidth:                    30,
 			JSONViewerWordWrap:           false,
 			EnterOpensJSONViewer:         false,
+			ConfirmOnQuit:                true,
 		},
 	}
 }

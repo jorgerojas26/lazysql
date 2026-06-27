@@ -453,6 +453,10 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	case commands.Quit:
 		if tab == nil || (!table.GetIsEditing() && !table.GetIsFiltering()) {
+			if !app.App.Config().ConfirmOnQuit {
+				app.App.Stop()
+				return nil
+			}
 			if mainPages == nil {
 				app.App.Stop()
 				return nil

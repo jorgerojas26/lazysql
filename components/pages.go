@@ -9,6 +9,10 @@ import (
 var mainPages *tview.Pages
 
 func showQuitConfirmation() {
+	if !app.App.Config().ConfirmOnQuit {
+		app.App.Stop()
+		return
+	}
 	if mainPages == nil {
 		app.App.Stop()
 		return
