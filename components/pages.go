@@ -29,6 +29,12 @@ func showQuitConfirmation() {
 	app.App.SetFocus(confirmationModal)
 }
 
+func closeQuitConfirmation() {
+	if mainPages != nil {
+		mainPages.RemovePage(pageNameConfirmation)
+	}
+}
+
 func MainPages() *tview.Pages {
 	mainPages = tview.NewPages()
 	mainPages.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)

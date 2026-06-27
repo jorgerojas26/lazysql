@@ -936,6 +936,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
 		table.Page.HidePage(pageNameTableError)
+		closeQuitConfirmation()
 		if table.GetIsFiltering() {
 			if table.Editor != nil {
 				App.SetFocus(table.Editor)
@@ -966,6 +967,7 @@ func (table *ResultsTable) SetLoading(show bool) {
 		App.SetFocus(table.Loading)
 	} else {
 		table.Page.HidePage(pageNameTableLoading)
+		closeQuitConfirmation()
 		if table.state.error != "" {
 			App.SetFocus(table.Error)
 		} else {
