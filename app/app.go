@@ -27,7 +27,7 @@ type Application struct {
 	waitGroup sync.WaitGroup
 
 	onQuitRequestMu sync.RWMutex
-	onQuitRequest func()
+	onQuitRequest   func()
 }
 
 type Theme struct {
