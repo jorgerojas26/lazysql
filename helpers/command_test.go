@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -129,5 +130,57 @@ func TestRunCommand_OutputCapture(t *testing.T) {
 		}
 	case <-time.After(6 * time.Second):
 		t.Error("timeout waiting for output")
+	}
+}
+
+func TestRunCommand_SupportsQuotedArgs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("quoted shell syntax test is Unix-specific")
+	}
+
+	ctx := context.Background()
+	done := make(chan string, 1)
+
+	err := RunCommand(ctx, "printf '%s' 'hello world'", 5*time.Second, func(output string) {
+		done <- output
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	select {
+	case output := <-done:
+		if output != "hello world" {
+			t.Fatalf("expected exact quoted arg output %q, got %q", "hello world", output)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("timeout waiting for output")
+	}
+}
+
+func TestRunCommand_SupportsLogicalOperators(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("logical shell operator test is Unix-specific")
+	}
+
+	ctx := context.Background()
+	done := make(chan string, 1)
+
+	err := RunCommand(ctx, "false || printf '%s' fallback", 5*time.Second, func(output string) {
+		done <- output
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	select {
+	case output := <-done:
+		if output != "fallback" {
+			t.Fatalf("expected logical operator fallback output %q, got %q", "fallback", output)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("timeout waiting for output")
 	}
 }
