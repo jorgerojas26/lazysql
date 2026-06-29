@@ -24,6 +24,7 @@ const (
 	pageNameTableEditorTable       string = "TableEditorTable"
 	pageNameTableEditorResultsInfo string = "TableEditorResultsInfo"
 	pageNameTableEditCell          string = "TableEditCell"
+	pageNameTableLoading           string = "TableLoading"
 	pageNameQueryPreviewError      string = "QueryPreviewError"
 	pageNameJSONViewer                    = "json_viewer"
 
@@ -75,6 +76,10 @@ const (
 	eventTreeSelectedProcedure string = "SelectedProcedure"
 	eventTreeSelectedView      string = "SelectedView"
 	eventTreeIsFiltering       string = "IsFiltering"
+
+	eventNoSQLTreeSelectedDatabase   string = "NoSQLSelectedDatabase"
+	eventNoSQLTreeSelectedCollection string = "NoSQLSelectedCollection"
+	eventNoSQLTreeIsFiltering        string = "NoSQLIsFiltering"
 )
 
 // Results table menu items
