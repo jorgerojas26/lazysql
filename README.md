@@ -532,6 +532,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | Z | ShowRowJSONViewer | Toggle JSON viewer for row |
 | z | ShowCellJSONViewer | Toggle JSON viewer for cell |
 | E | ExportCSV | Export to CSV |
+| x | Toggle check constraints |
 
 #### Editor
 
