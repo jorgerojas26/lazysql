@@ -1,4 +1,5 @@
 ---
+version: "2"
 # golangci-lint configuration file made by @ccoVeille
 # Source: https://github.com/ccoVeille/golangci-lint-config-examples/
 # Author: @ccoVeille
@@ -14,53 +15,39 @@ linters:
   enable:
     # Errcheck is a program for checking for unchecked errors in Go code.
     - errcheck
-
-    # Linter for Go source code that specializes in simplifying code.
-    - gosimple
-
     # Vet examines Go source code and reports suspicious constructs.
     - govet
-
     # Detects when assignments to existing variables are not used.
     - ineffassign
-
     # It's a set of rules from staticcheck. See https://staticcheck.io/
     - staticcheck
-
     # Fast, configurable, extensible, flexible, and beautiful linter for Go.
     # Drop-in replacement of golint.
     - revive
-
-    # check imports order and makes it always deterministic.
-    - gci
-
     # make sure to use t.Helper() when needed
     - thelper
-
     # mirror suggests rewrites to avoid unnecessary []byte/string conversion
     - mirror
-
     # detect the possibility to use variables/constants from the Go standard library.
     - usestdlibvars
-
     # Finds commonly misspelled English words.
     - misspell
-
     # Checks for duplicate words in the source code.
     - dupword
-
     # Inspects source code for security problems.
     - gosec
-
     # Checks that sql.Rows, sql.Stmt, sqlx.NamedStmt, pgx.Query are closed.
     - sqlclosecheck
-
     # Checks whether Rows.Err of rows is checked successfully.
     - rowserrcheck
 
-linters-settings:
-  gci:  # define the section orders for imports
-    sections:
+formatters:
+  enable:
+    # check imports order and makes it always deterministic.
+    - gci
+  settings:
+    gci:
+      sections:
       # Standard section: captures all standard packages.
       - standard
       # Default section: catchall that is not standard or custom
@@ -68,6 +55,7 @@ linters-settings:
       # linters that related to local tool, so they should be separated
       - localmodule
 
+linters-settings:
   revive:
     rules:
       # these are the default revive rules
