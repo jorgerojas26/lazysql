@@ -39,6 +39,7 @@
     </li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#commands">Commands</a></li>
+    <li><a href="#environment-variables">Environment variables</a></li>
     <li><a href="#keybindings">Keybindings</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -89,7 +90,7 @@ I use Lazysql daily in my full-time job as a full-stack javascript developer in 
 #### Homebrew (macOS/Linux)
 
 ```bash
-$ brew install lazysql
+brew install lazysql
 ```
 
 #### Install with go package manager
@@ -166,11 +167,56 @@ URL = 'postgres://postgres:urlencodedpassword@localhost:5432/foo'
 DefaultPageSize = 300
 DisableSidebar = false
 SidebarOverlay = false
+JSONViewerWordWrap = false
+EnterOpensJSONViewer = false
 ```
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
 The `[application]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
+
+### Application settings
+
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| DefaultPageSize | 300 | Number of records to fetch per page |
+| DisableSidebar | false | Disable the sidebar |
+| SidebarOverlay | false | Show sidebar as overlay instead of side panel |
+| JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
+| EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+
+### Local Configuration
+
+You can place a `.lazysql.toml` file in your project directory (next to your `.git` folder) to override the global configuration for that project. This is useful for defining project-specific database connections or settings.
+
+lazysql searches for `.lazysql.toml` by walking up from the current working directory. It stops at the git repository root (where `.git` is found). If no local config is found, the global configuration is used as-is.
+
+**Merge behavior:**
+
+| Section | Behavior |
+| ------- | -------- |
+| `[application]` | Deep merge — local values override global, unset fields keep global/defaults |
+| `[[database]]` | Replace — local connections completely replace global connections |
+| `[keymap.*]` | Deep merge — local keybindings override global ones for the same command |
+
+**Example `.lazysql.toml`:**
+
+```toml
+[application]
+DefaultPageSize = 500
+
+[[database]]
+Name = 'Local development'
+Provider = 'postgres'
+URL = 'postgres://localhost/myproject_dev'
+```
+
+With this local config, `DefaultPageSize` overrides the global value, and only the `Local development` connection is available (global connections are replaced).
+
+Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config.
+
+Note: When a local `.lazysql.toml` is found, the full config is saved to the local file when you modify connections from the UI.
+
 
 ## Usage
 
@@ -264,6 +310,29 @@ You can update the tree by pressing `R`, so you can see your newly created table
 4. Press `c` to edit, Press `<Enter>` to submit
 5. Press `<Ctrl+S>` to save the changes
 
+### Export to CSV
+
+#### From Table View
+
+1. [Open a table](#openview-a-table)
+2. Apply filters or sorting as needed
+3. Press `E` to open the export dialog
+4. Optionally modify the file path and batch size
+5. Select export scope:
+   - Export Current Page: Export only the currently displayed rows
+   - Export All Records: Fetch and export all records from the table
+
+> Batch size (default: 10000): When exporting all records, data is fetched in batches to avoid timeout or memory issues with large tables. Increase for faster exports, decrease if you encounter any errors.
+>
+> The default file path is `~/Downloads/{database}_{table}_{timestamp}.csv`.
+
+#### From SQL Editor
+
+1. [Execute a SQL query](#execute-sql-queries)
+2. Press `E` to open the export dialog
+3. Optionally modify the file path
+4. Select **Export** to save all query results
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Support
@@ -327,58 +396,220 @@ Commands = [
 ]
 ```
 
+## Environment variables
+
+You can use environment variables in the configuration file using the `${env:VAR_NAME}` syntax. This is useful for keeping sensitive information like passwords out of the configuration file.
+
+```toml
+[[database]]
+Name = 'Production'
+Provider = 'postgres'
+URL = 'postgres://${env:DB_USER}:${env:DB_PASSWORD}@localhost:5432/mydb'
+```
+
+```bash
+export DB_USER=admin
+export DB_PASSWORD=secret
+lazysql
+```
+
+Note: Undefined environment variables will be replaced with an empty string.
+
 <!-- KEYBINDINGS -->
 
 ## Keybindings
 
-### Global
+### Custom Keybindings
 
-| Key       | Action                         |
-| --------- | ------------------------------ |
-| q         | Quit                           |
-| CTRL + e  | Open SQL editor                |
-| Backspace | Return to connection selection |
-| ?         | Show keybindings popup         |
+You can customize keybindings by adding a `[keymap.<Group>]` section to your `config.toml` file. Each entry maps a command name to a key.
 
-### Table
+```toml
+[keymap.Home]
+SwitchToEditorView = "i"
+Quit = "Esc"
 
-| Key      | Action                               |
-| -------- | ------------------------------------ |
-| c        | Edit table cell                      |
-| d        | Delete row                           |
-| o        | Add row                              |
-| /        | Focus the filter input or SQL editor |
-| CTRL + s | Commit changes                       |
-| >        | Next page                            |
-| <        | Previous page                        |
-| K        | Sort ASC                             |
-| J        | Sort DESC                            |
-| H        | Focus tree panel                     |
-| {        | Focus previous tab                   |
-| }        | Focus next tab                       |
-| X        | Close current tab                    |
-| R        | Refresh the current table            |
+[keymap.Tree]
+GotoTop = "t"
+Search = "Ctrl-F"
 
-### Tree
+```
 
-| Key    | Action                         |
-| ------ | ------------------------------ |
-| L      | Focus table panel              |
-| G      | Focus last database tree node  |
-| g      | Focus first database tree node |
-| CTRL+u | Scroll 5 items up              |
-| CTRL+d | Scroll 5 items down            |
+For single character keys, use the character directly (e.g., `"q"`, `"G"`, `"1"`, `"/"`). For special keys, use the [tcell key name](https://github.com/gdamore/tcell/blob/v2.7.4/key.go#L83) (e.g., `"Enter"`, `"Esc"`, `"Ctrl-S"`). Only key names defined in tcell are supported.
 
-### SQL Editor
+Group names are case-insensitive (`Home`, `home`, and `HOME` all work).
 
-| Key          | Action                            |
-| ------------ | --------------------------------- |
-| CTRL + R     | Run the SQL statement             |
-| CTRL + Space | Open external editor (Linux only) |
+Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`, `Sidebar`, `QueryPreview`, `QueryHistory`, `JSONViewer`.
+
+### Default Keybindings
+
+#### Home
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| L | MoveRight | Focus table |
+| H | MoveLeft | Focus tree |
+| Ctrl-E | SwitchToEditorView | Open SQL editor |
+| Ctrl-S | Save | Execute pending changes |
+| q | Quit | Quit |
+| Backspace | SwitchToConnectionsView | Switch to connections list |
+| ? | HelpPopup | Help |
+| Ctrl-P | SearchGlobal | Global search |
+| Ctrl-_ | ToggleQueryHistory | Toggle query history modal |
+| T | ToggleTree | Toggle file tree |
+
+#### Connection
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| n | NewConnection | Create a new database connection |
+| c | Connect | Connect to database |
+| Enter | Connect | Connect to database |
+| e | EditConnection | Edit a database connection |
+| d | DeleteConnection | Delete a database connection |
+| q | Quit | Quit |
+
+#### Tree
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| g | GotoTop | Go to top |
+| G | GotoBottom | Go to bottom |
+| Enter | Execute | Open |
+| j | MoveDown | Go down |
+| Down | MoveDown | Go down |
+| Ctrl-U | PagePrev | Go page up |
+| Ctrl-D | PageNext | Go page down |
+| k | MoveUp | Go up |
+| Up | MoveUp | Go up |
+| / | Search | Search |
+| n | NextFoundNode | Go to next found node |
+| N | PreviousFoundNode | Go to previous found node |
+| p | PreviousFoundNode | Go to previous found node |
+| P | NextFoundNode | Go to next found node |
+| c | TreeCollapseAll | Collapse all |
+| e | ExpandAll | Expand all |
+| R | Refresh | Refresh tree |
+
+#### Tree Filter
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| Esc | UnfocusTreeFilter | Unfocus tree filter |
+| Enter | CommitTreeFilter | Commit tree filter search |
+
+#### Table
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| / | Search | Search |
+| c | Edit | Change cell |
+| d | Delete | Delete row |
+| w | GotoNext | Go to next cell |
+| b | GotoPrev | Go to previous cell |
+| $ | GotoEnd | Go to last cell |
+| 0 | GotoStart | Go to first cell |
+| y | Copy | Copy cell value to clipboard |
+| o | AppendNewRow | Append new row |
+| O | DuplicateRow | Duplicate row |
+| J | SortDesc | Sort descending |
+| R | Refresh | Refresh the current table |
+| K | SortAsc | Sort ascending |
+| C | SetValue | Toggle value menu (NULL, EMPTY, DEFAULT) |
+| [ | TabPrev | Switch to previous tab |
+| ] | TabNext | Switch to next tab |
+| { | TabFirst | Switch to first tab |
+| } | TabLast | Switch to last tab |
+| X | TabClose | Close tab |
+| > | PageNext | Switch to next page |
+| < | PagePrev | Switch to previous page |
+| 1 | RecordsMenu | Switch to records menu |
+| 2 | ColumnsMenu | Switch to columns menu |
+| 3 | ConstraintsMenu | Switch to constraints menu |
+| 4 | ForeignKeysMenu | Switch to foreign keys menu |
+| 5 | IndexesMenu | Switch to indexes menu |
+| S | ToggleSidebar | Toggle sidebar |
+| s | FocusSidebar | Focus sidebar |
+| Z | ShowRowJSONViewer | Toggle JSON viewer for row |
+| z | ShowCellJSONViewer | Toggle JSON viewer for cell |
+| E | ExportCSV | Export to CSV |
+
+#### Editor
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| Ctrl-R | Execute | Execute query |
+| Esc | UnfocusEditor | Unfocus editor |
+| Ctrl-Space | OpenInExternalEditor | Open in external editor |
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.
 
-Specific terminal for opening editor can be set by `$SQL_TERMINAL`
+### JSON Viewer
+
+| Key | Action           |
+| --- | ---------------- |
+| w   | Toggle word wrap |
+| y   | Copy to clipboard|
+| z/Z | Close viewer     |
+
+The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cell. If `EnterOpensJSONViewer` is enabled, pressing Enter on a cell will also open the JSON viewer.
+
+
+#### Sidebar
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| s | UnfocusSidebar | Focus table |
+| S | ToggleSidebar | Toggle sidebar |
+| j | MoveDown | Focus next field |
+| k | MoveUp | Focus previous field |
+| g | GotoStart | Focus first field |
+| G | GotoEnd | Focus last field |
+| c | Edit | Edit field |
+| Enter | CommitEdit | Add edit to pending changes |
+| Esc | DiscardEdit | Discard edit |
+| C | SetValue | Toggle value menu (NULL, EMPTY, DEFAULT) |
+| y | Copy | Copy value to clipboard |
+
+#### Query Preview
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| Ctrl-S | Save | Execute queries |
+| q | Quit | Quit |
+| y | Copy | Copy query to clipboard |
+| d | Delete | Delete query |
+
+#### Query History
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| s | Save | Save query |
+| d | Delete | Delete query |
+| q | Quit | Quit |
+| y | Copy | Copy query to clipboard |
+| / | Search | Search |
+| Ctrl-_ | ToggleQueryHistory | Toggle query history modal |
+| [ | TabPrev | Switch to previous tab |
+| ] | TabNext | Switch to next tab |
+
+#### JSON Viewer
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| Z | ShowRowJSONViewer | Toggle JSON viewer |
+| z | ShowCellJSONViewer | Toggle JSON viewer |
+| y | Copy | Copy value to clipboard |
+| w | ToggleJSONViewerWrap | Toggle word wrap |
+
+### External Editor
+
+The external editor feature (CTRL + Space in SQL Editor, CTRL + o in Table) uses the following environment variables to determine which editor to use:
+
+- SQL Editor: `$SQL_EDITOR` > `$EDITOR` > `$VISUAL` > `vi`
+- Table cells: `$EDITOR` > `$VISUAL` > `vi`
+
+This feature is only available on Linux and macOS.
+
 
 ## Example connection URLs
 
@@ -404,7 +635,7 @@ odbc+postgres://user:pass@localhost:port/dbname?option1=
 - [ ] Support for NoSQL databases
 - [ ] Columns and indexes creation through TUI
 - [x] Table tree input filter
-- [ ] Custom keybindings
+- [x] Custom keybindings
 - [x] Show keybindings on a modal
 - [x] Rewrite row `create`, `update` and `delete` logic
 
@@ -472,3 +703,13 @@ Jorge Rojas - [LinkedIn](https://www.linkedin.com/in/jorgerojas26/) - jorgeluisr
 [product-screenshot2]: images/lazysql.png
 [golang-shield]: https://img.shields.io/badge/Golang-gray?style=for-the-badge&logo=go
 [tview-shield]: https://img.shields.io/badge/tview-gray?style=for-the-badge&logo=go
+
+## Star History
+
+<a href="https://www.star-history.com/#jorgerojas26/lazysql&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
+ </picture>
+</a>

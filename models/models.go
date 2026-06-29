@@ -11,32 +11,43 @@ type AppConfig struct {
 	DisableSidebar               bool
 	SidebarOverlay               bool
 	MaxQueryHistoryPerConnection int
+	TreeWidth                    int
+	JSONViewerWordWrap           bool
+	EnterOpensJSONViewer         bool
+	ConfirmOnQuit                bool
 }
 
 type Connection struct {
 	Name string
 
 	// either use this directly
-	URL string
+	URL string `toml:",omitempty"`
 
 	// or parse manually
-	Provider  string
-	Username  string
-	Password  string
-	Hostname  string
-	Port      string
-	DBName    string
-	URLParams string
+	Provider  string `toml:",omitempty"`
+	Username  string `toml:",omitempty"`
+	Password  string `toml:",omitempty"`
+	Hostname  string `toml:",omitempty"`
+	Port      string `toml:",omitempty"`
+	DBName    string `toml:",omitempty"`
+	URLParams string `toml:",omitempty"`
 
-	ReadOnly bool
+	ReadOnly bool `toml:",omitempty"`
 
-	Commands []*Command
+	// Schemas filters the schemas shown in the tree (PostgreSQL/MSSQL only).
+	// If empty, all schemas are shown.
+	Schemas []string `toml:",omitempty"`
+
+	Commands []*Command `toml:",omitempty"`
 }
+
+type KeymapConfig map[string]map[string]string
 
 type Command struct {
 	Command      string
 	WaitForPort  string
 	SaveOutputTo string
+	Timeout      int // Timeout in seconds for command to start (default: 5)
 }
 
 type StateChange struct {

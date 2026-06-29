@@ -22,6 +22,9 @@ type Home struct {
 	TabbedPane           *TabbedPane
 	LeftWrapper          *tview.Flex
 	RightWrapper         *tview.Flex
+	MainContent          *tview.Flex
+	leftWrapperVisible   bool
+	treePinned           bool
 	HelpStatus           HelpStatus
 	HelpModal            *HelpModal
 	QueryHistoryModal    *QueryHistoryModal
@@ -34,7 +37,7 @@ type Home struct {
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
-	tree := NewTree(connection.DBName, dbdriver)
+	tree := NewTree(connection.DBName, dbdriver, connection.Schemas)
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
@@ -51,12 +54,15 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	}
 
 	home := &Home{
-		Flex:         tview.NewFlex().SetDirection(tview.FlexRow),
-		Tree:         tree,
-		LeftWrapper:  leftWrapper,
-		RightWrapper: rightWrapper,
-		HelpStatus:   NewHelpStatus(),
-		HelpModal:    NewHelpModal(),
+		Flex:               tview.NewFlex().SetDirection(tview.FlexRow),
+		Tree:               tree,
+		LeftWrapper:        leftWrapper,
+		RightWrapper:       rightWrapper,
+		MainContent:        maincontent,
+		leftWrapperVisible: true,
+		treePinned:         true,
+		HelpStatus:         NewHelpStatus(),
+		HelpModal:          NewHelpModal(),
 
 		DBDriver:             dbdriver,
 		ListOfDBChanges:      []models.DBDMLChange{},
@@ -99,7 +105,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	maincontent.AddItem(leftWrapper, 30, 1, false)
+	maincontent.AddItem(leftWrapper, app.App.Config().TreeWidth, 1, false)
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
@@ -128,38 +134,7 @@ func (home *Home) subscribeToTreeChanges() {
 			databaseName := home.Tree.GetSelectedDatabase()
 			tableName := stateChange.Value.(string)
 
-			tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
-
-			tab := home.TabbedPane.GetTabByReference(tabReference)
-
-			var table *ResultsTable
-
-			if tab != nil {
-				table = tab.Content.(*ResultsTable)
-				home.TabbedPane.SwitchToTabByReference(tab.Reference)
-			} else {
-				table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
-				table.SetDatabaseName(databaseName)
-				table.SetTableName(tableName)
-
-				home.TabbedPane.AppendTab(tableName, table, tabReference)
-			}
-
-			results := table.FetchRecords(func() {
-				home.focusLeftWrapper()
-			})
-
-			// Show sidebar if there is more then 1 row (row 0 are
-			// the column names) and the sidebar is not disabled.
-			if !app.App.Config().DisableSidebar && len(results) > 1 && !table.GetShowSidebar() {
-				table.ShowSidebar(true)
-			}
-
-			if table.state.error == "" {
-				home.focusRightWrapper()
-			}
-
-			app.App.ForceDraw()
+			home.showTable(databaseName, tableName)
 		case eventTreeIsFiltering:
 			isFiltering := stateChange.Value.(bool)
 			if isFiltering {
@@ -214,6 +189,96 @@ func (home *Home) subscribeToTreeChanges() {
 			}
 		}
 	}
+}
+
+func (home *Home) showTable(databaseName, tableName string) {
+	if tableName == "" {
+		return
+	}
+	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
+
+	tab := home.TabbedPane.GetTabByReference(tabReference)
+
+	var table *ResultsTable
+
+	if tab != nil {
+		table = tab.Content.(*ResultsTable)
+		home.TabbedPane.SwitchToTabByReference(tab.Reference)
+	} else {
+		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
+		table.SetDatabaseName(databaseName)
+		table.SetTableName(tableName)
+
+		home.TabbedPane.AppendTab(tableName, table, tabReference)
+	}
+
+	table.FetchRecords(func() {
+		home.focusLeftWrapper()
+	}, func() {
+		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
+			records := table.GetRecords()
+			if len(records) > 1 {
+				table.ShowSidebar(true)
+			}
+		}
+
+		if table.state.error == "" {
+			if !home.treePinned && home.leftWrapperVisible {
+				home.toggleLeftWrapper()
+			}
+		}
+
+		App.ForceDraw()
+	})
+
+	home.focusRightWrapper()
+}
+
+func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
+	if tableName == "" {
+		return
+	}
+
+	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
+	tab := home.TabbedPane.GetTabByReference(tabReference)
+
+	var table *ResultsTable
+	if tab != nil {
+		table = tab.Content.(*ResultsTable)
+		home.TabbedPane.SwitchToTabByReference(tab.Reference)
+	} else {
+		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
+		table.SetDatabaseName(databaseName)
+		table.SetTableName(tableName)
+		home.TabbedPane.AppendTab(tableName, table, tabReference)
+	}
+
+	if table.Filter != nil {
+		table.Filter.SetCurrentFilterUnsafe(where)
+	}
+
+	table.FetchRecords(func() {
+		home.focusLeftWrapper()
+	}, func() {
+		if table.state.error != "" {
+			App.ForceDraw()
+			return
+		}
+
+		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
+			records := table.GetRecords()
+			if len(records) > 1 {
+				table.ShowSidebar(true)
+			}
+		}
+
+		if !home.treePinned && home.leftWrapperVisible {
+			home.toggleLeftWrapper()
+		}
+		App.ForceDraw()
+	})
+
+	home.focusRightWrapper()
 }
 
 func (home *Home) focusRightWrapper() {
@@ -351,7 +416,7 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 		if tab != nil {
 			table := tab.Content.(*ResultsTable)
 
-			if !table.GetIsFiltering() && !table.GetIsEditing() && !table.GetIsLoading() {
+			if !table.GetIsFiltering() && !table.GetIsEditing() {
 				home.TabbedPane.RemoveCurrentTab()
 
 				if home.TabbedPane.GetLength() == 0 {
@@ -373,7 +438,8 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
 				table.Menu == nil) && !table.Pagination.GetIsFirstPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() - table.Pagination.GetLimit())
-				table.FetchRecords(nil)
+				App.ForceDraw()
+				table.FetchRecords(nil, nil)
 			}
 		}
 
@@ -390,7 +456,8 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 			if ((table.Menu != nil && table.Menu.GetSelectedOption() == 1) ||
 				table.Menu == nil) && !table.Pagination.GetIsLastPage() && !table.GetIsLoading() {
 				table.Pagination.SetOffset(table.Pagination.GetOffset() + table.Pagination.GetLimit())
-				table.FetchRecords(nil)
+				App.ForceDraw()
+				table.FetchRecords(nil, nil)
 			}
 		}
 	}
@@ -412,21 +479,30 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	switch command {
 	case commands.MoveLeft:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
+			if !home.leftWrapperVisible {
+				home.toggleLeftWrapper()
+			}
+
 			home.focusLeftWrapper()
 		}
 	case commands.MoveRight:
 		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperLeft {
+			if home.leftWrapperVisible && !home.treePinned {
+				home.toggleLeftWrapper()
+			}
+
 			home.focusRightWrapper()
 		}
 	case commands.SwitchToEditorView:
 		home.createOrFocusEditorTab()
 	case commands.SwitchToConnectionsView:
-		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading()) || table == nil {
+		if (table != nil && !table.GetIsEditing() && !table.GetIsFiltering()) || table == nil {
 			mainPages.SwitchToPage(pageNameConnections)
 		}
 	case commands.Quit:
 		if tab == nil || (!table.GetIsEditing() && !table.GetIsFiltering()) {
-			app.App.Stop()
+			showQuitConfirmation()
+			return nil
 		}
 	case commands.Save:
 		if home.ReadOnly {
@@ -453,18 +529,29 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 					}
 				}
 				home.ListOfDBChanges = []models.DBDMLChange{}
-				table.FetchRecords(nil)
+				table.FetchRecords(nil, nil)
 				home.Tree.ForceRemoveHighlight()
 			})
 
 			mainPages.AddPage(pageNameDMLPreview, queryPreviewModal, true, true)
 		}
 	case commands.HelpPopup:
-		if table == nil || !table.GetIsEditing() {
-			mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
+		if table != nil && (table.GetIsEditing() || table.GetIsFiltering()) {
+			return event
 		}
+
+		mainPages.AddPage(pageNameHelp, home.HelpModal, true, true)
 	case commands.SearchGlobal:
-		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && !table.GetIsLoading() && home.FocusedWrapper == focusedWrapperRight {
+		// Don't intercept Ctrl+P when the SQL editor is in insert mode
+		if table != nil && table.Editor != nil && app.App.GetFocus() == table.Editor && table.Editor.vimMode == VimModeInsert {
+			return event
+		}
+
+		if !home.leftWrapperVisible {
+			home.toggleLeftWrapper()
+		}
+
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() && home.FocusedWrapper == focusedWrapperRight {
 			home.focusLeftWrapper()
 		}
 
@@ -481,6 +568,14 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 		home.QueryHistoryModal.queryHistoryComponent.LoadHistory(home.ConnectionIdentifier)
 		return nil
+	case commands.ToggleTree:
+		if table != nil && !table.GetIsEditing() && !table.GetIsFiltering() {
+			home.toggleLeftWrapper()
+			home.treePinned = home.leftWrapperVisible
+			return nil
+		}
+
+		return event
 	}
 
 	return event
@@ -488,13 +583,35 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 func (home *Home) createOrFocusEditorTab() {
 	tab := home.TabbedPane.GetTabByName(tabNameEditor)
+	dbName := home.Tree.GetSelectedDatabase()
+
+	// Fallback: extract database name from connection URL
+	if dbName == "" && home.ConnectionURL != "" {
+		dbName = extractDatabaseName(home.ConnectionURL)
+	}
 
 	if tab != nil {
 		home.TabbedPane.SwitchToTabByName(tabNameEditor)
 		table := tab.Content.(*ResultsTable)
 		table.SetIsFiltering(true)
+		// Refresh schema from current database context
+		if dbName != "" {
+			table.SetDatabaseName(dbName)
+			go table.loadEditorSchema()
+		}
 	} else {
-		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithEditor()
+		tableWithEditor := NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly)
+		// Set database name before WithEditor so the table is ready for schema loading
+		if dbName != "" {
+			tableWithEditor.SetDatabaseName(dbName)
+		}
+		tableWithEditor = tableWithEditor.WithEditor()
+
+		// Kick off schema loading for autocomplete (async, non-blocking)
+		if dbName != "" && tableWithEditor.DBDriver != nil {
+			go tableWithEditor.loadEditorSchema()
+		}
+
 		home.TabbedPane.AppendTab(tabNameEditor, tableWithEditor, tabNameEditor)
 		tableWithEditor.SetIsFiltering(true)
 		home.TabbedPane.GetCurrentTab()
@@ -503,4 +620,38 @@ func (home *Home) createOrFocusEditorTab() {
 	home.HelpStatus.SetStatusOnEditorView()
 	home.focusRightWrapper()
 	App.ForceDraw()
+}
+
+// extractDatabaseName pulls the database name from a connection URL like
+// "mysql://user:pass@host:3306/mydb" → "mydb". Returns "" if none is found.
+func extractDatabaseName(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimPrefix(u.Path, "/")
+	// Remove any trailing path segments after the db name
+	if idx := strings.IndexAny(name, "/?"); idx >= 0 {
+		name = name[:idx]
+	}
+	return name
+}
+
+func (home *Home) toggleLeftWrapper() {
+	if home.leftWrapperVisible {
+		home.MainContent.Clear()
+		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
+		home.leftWrapperVisible = false
+		home.focusRightWrapper()
+	} else {
+		home.MainContent.Clear()
+		home.MainContent.AddItem(home.LeftWrapper, app.App.Config().TreeWidth, 1, false)
+		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
+		home.leftWrapperVisible = true
+		home.focusLeftWrapper()
+	}
+	app.App.ForceDraw()
 }

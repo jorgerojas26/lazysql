@@ -126,17 +126,16 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 				for i, database := range databases {
 					if i == row {
-						newDatabases[i] = parsedDatabaseData
-
-						// newDatabases[i].Name = connectionName
-						// newDatabases[i].Provider = database.Provider
-						// newDatabases[i].User = parsed.User.Username()
-						// newDatabases[i].Password, _ = parsed.User.Password()
-						// newDatabases[i].Host = parsed.Hostname()
-						// newDatabases[i].Port = parsed.Port()
-						// newDatabases[i].Query = parsed.Query().Encode()
-						// newDatabases[i].DBName = helpers.ParsedDBName(parsed.Path)
-						// newDatabases[i].DSN = parsed.DSN
+						// Start from the existing connection so fields not
+						// present on the form (Commands, Username, Password,
+						// Hostname, Port, URLParams, Schemas, ...) are preserved.
+						updated := database
+						updated.Name = parsedDatabaseData.Name
+						updated.Provider = parsedDatabaseData.Provider
+						updated.DBName = parsedDatabaseData.DBName
+						updated.URL = parsedDatabaseData.URL
+						updated.ReadOnly = parsedDatabaseData.ReadOnly
+						newDatabases[i] = updated
 					} else {
 						newDatabases[i] = database
 					}

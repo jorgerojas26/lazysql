@@ -34,6 +34,7 @@ type Tree struct {
 	Wrapper             *tview.Flex
 	FoundNodeCountInput *tview.InputField
 	subscribers         []chan models.StateChange
+	Schemas             []string
 }
 
 type TreeNodeType int
@@ -73,7 +74,12 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 	case len(split) == 3 && useSchemas && !supportsProgramming:
 		nodeType = NodeTypeTable
 		schema = split[len(split)-2]
+	case len(split) == 3 && useSchemas && supportsProgramming:
+		// Section header: [database, schema, section]
+		schema = split[1]
+		nodeType = NodeTypeSection
 	case len(split) == 3 && !useSchemas && supportsProgramming:
+		// Flat (non-schema) items: [database, section, name]
 		switch parentType := split[len(split)-2]; parentType {
 		case "tables":
 			nodeType = NodeTypeTable
@@ -87,7 +93,9 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 			nodeType = NodeTypeSection
 		}
 	case len(split) == 4 && useSchemas && supportsProgramming:
-		switch parentType := split[len(split)-2]; parentType {
+		// Items under a schema: [database, schema, section, name]
+		schema = split[1]
+		switch split[2] {
 		case "tables":
 			nodeType = NodeTypeTable
 		case "procedures":
@@ -99,8 +107,6 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 		default:
 			nodeType = NodeTypeSection
 		}
-
-		schema = split[len(split)-2]
 	default:
 		nodeType = NodeTypeSection
 	}
@@ -113,7 +119,7 @@ func (tree *Tree) GetTreeNodeData(node *tview.TreeNode) *TreeNodeData {
 	}
 }
 
-func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
+func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	state := &TreeState{
 		selectedDatabase: "",
 		selectedTable:    "",
@@ -127,6 +133,7 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 		DBDriver:            dbdriver,
 		Filter:              tview.NewInputField(),
 		FoundNodeCountInput: tview.NewInputField(),
+		Schemas:             schemas,
 	}
 
 	tree.SetTopLevel(1)
@@ -329,6 +336,20 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 	sortedKeys := slices.Sorted(maps.Keys(children))
 
 	for _, key := range sortedKeys {
+		// Filter schemas if Schemas is configured (PostgreSQL/MSSQL)
+		if len(tree.Schemas) > 0 && tree.DBDriver.UseSchemas() {
+			found := false
+			for _, schema := range tree.Schemas {
+				if schema == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
 		values := children[key]
 
 		// Sort the values.
@@ -371,9 +392,8 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			childNode := tview.NewTreeNode(child)
 			childNode.SetExpanded(defaultExpanded)
 			childNode.SetColor(app.Styles.PrimaryTextColor)
-			if tree.DBDriver.GetProvider() == "sqlite3" {
-				childNode.SetReference(child)
-			} else if tree.DBDriver.UseSchemas() {
+
+			if tree.DBDriver.UseSchemas() {
 				if supportsProgramming {
 					childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", nodeReference, key, child))
 				} else {
@@ -392,13 +412,129 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 	}
 }
 
+// buildSchemaTree builds the complete per-schema subtree for a database node.
+// Each schema gets a node with "tables", and optionally "functions", "procedures", "views" sections.
+// The functions/procedures/views maps are keyed by database name and contain schema-qualified names.
+func (tree *Tree) buildSchemaTree(database string, node *tview.TreeNode, tables, functions, procedures, views map[string][]string) {
+	supportsProgramming := tree.DBDriver.SupportsProgramming()
+
+	// Collect unique schema names from tables and, when supported, from
+	// functions/procedures/views (whose values are "schema.name" strings).
+	schemaSet := make(map[string]struct{})
+	for k := range tables {
+		schemaSet[k] = struct{}{}
+	}
+	if supportsProgramming {
+		for _, items := range functions[database] {
+			if idx := strings.IndexByte(items, '.'); idx > 0 {
+				schemaSet[items[:idx]] = struct{}{}
+			}
+		}
+		for _, items := range procedures[database] {
+			if idx := strings.IndexByte(items, '.'); idx > 0 {
+				schemaSet[items[:idx]] = struct{}{}
+			}
+		}
+		for _, items := range views[database] {
+			if idx := strings.IndexByte(items, '.'); idx > 0 {
+				schemaSet[items[:idx]] = struct{}{}
+			}
+		}
+	}
+	sortedKeys := slices.Sorted(maps.Keys(schemaSet))
+
+	for _, schema := range sortedKeys {
+		// Filter schemas if Schemas is configured
+		if len(tree.Schemas) > 0 {
+			found := false
+			for _, s := range tree.Schemas {
+				if s == schema {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
+		schemaNode := tview.NewTreeNode(schema)
+		schemaNode.SetExpanded(false)
+		schemaNode.SetReference(schema)
+		schemaNode.SetColor(app.Styles.PrimaryTextColor)
+		node.AddChild(schemaNode)
+
+		if supportsProgramming {
+			tablesNode := tview.NewTreeNode("tables")
+			tablesNode.SetExpanded(false)
+			tablesNode.SetReference(fmt.Sprintf("%s.tables", schema))
+			tablesNode.SetColor(app.Styles.PrimaryTextColor)
+			schemaNode.AddChild(tablesNode)
+
+			for _, child := range tables[schema] {
+				childNode := tview.NewTreeNode(child)
+				childNode.SetExpanded(true)
+				childNode.SetColor(app.Styles.PrimaryTextColor)
+				childNode.SetReference(fmt.Sprintf("%s.%s.tables.%s", database, schema, child))
+				tablesNode.AddChild(childNode)
+			}
+		} else {
+			for _, child := range tables[schema] {
+				childNode := tview.NewTreeNode(child)
+				childNode.SetExpanded(true)
+				childNode.SetColor(app.Styles.PrimaryTextColor)
+				childNode.SetReference(fmt.Sprintf("%s.%s.%s", database, schema, child))
+				schemaNode.AddChild(childNode)
+			}
+		}
+
+		if supportsProgramming {
+			tree.addSchemaProgrammingSection(schemaNode, database, schema, "functions", functions)
+			tree.addSchemaProgrammingSection(schemaNode, database, schema, "procedures", procedures)
+			tree.addSchemaProgrammingSection(schemaNode, database, schema, "views", views)
+		}
+	}
+}
+
+// addSchemaProgrammingSection adds a single programming section (e.g. "functions") under a schema node.
+// It filters items from the programmingMap that belong to the given schema (schema-qualified names).
+func (tree *Tree) addSchemaProgrammingSection(schemaNode *tview.TreeNode, database, schema, section string, programmingMap map[string][]string) {
+	prefix := schema + "."
+	var items []string
+	for _, qualified := range programmingMap[database] {
+		if strings.HasPrefix(qualified, prefix) {
+			items = append(items, strings.TrimPrefix(qualified, prefix))
+		}
+	}
+
+	if len(items) == 0 {
+		return
+	}
+
+	sort.Strings(items)
+
+	sectionNode := tview.NewTreeNode(section)
+	sectionNode.SetExpanded(false)
+	sectionNode.SetReference(fmt.Sprintf("%s.%s.%s", database, schema, section))
+	sectionNode.SetColor(app.Styles.PrimaryTextColor)
+	schemaNode.AddChild(sectionNode)
+
+	for _, item := range items {
+		itemNode := tview.NewTreeNode(item)
+		itemNode.SetExpanded(false)
+		itemNode.SetColor(app.Styles.PrimaryTextColor)
+		itemNode.SetReference(fmt.Sprintf("%s.%s.%s.%s", database, schema, section, item))
+		sectionNode.AddChild(itemNode)
+	}
+}
+
 func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures map[string][]string, views map[string][]string, node *tview.TreeNode) {
-	var database = node.GetText()
-	var dbFunctions = functions[database]
+	database := node.GetText()
+	dbFunctions := functions[database]
 	sort.Strings(dbFunctions)
 
 	var functionsNode *tview.TreeNode
-	var functionsNodeReference = fmt.Sprintf("%s.functions", node.GetReference().(string))
+	functionsNodeReference := fmt.Sprintf("%s.functions", node.GetReference().(string))
 	functionsNode = tview.NewTreeNode("functions")
 	functionsNode.SetExpanded(false)
 	functionsNode.SetReference(functionsNodeReference)
@@ -413,11 +549,11 @@ func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures 
 		functionsNode.AddChild(functionNode)
 	}
 
-	var dbProcedures = procedures[database]
+	dbProcedures := procedures[database]
 	sort.Strings(dbProcedures)
 
 	var proceduresNode *tview.TreeNode
-	var proceduresNodeReference = fmt.Sprintf("%s.procedures", node.GetReference().(string))
+	proceduresNodeReference := fmt.Sprintf("%s.procedures", node.GetReference().(string))
 	proceduresNode = tview.NewTreeNode("procedures")
 	proceduresNode.SetExpanded(false)
 	proceduresNode.SetReference(proceduresNodeReference)
@@ -432,11 +568,11 @@ func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures 
 		proceduresNode.AddChild(procedureNode)
 	}
 
-	var dbViews = views[database]
+	dbViews := views[database]
 	sort.Strings(dbViews)
 
 	var viewsNode *tview.TreeNode
-	var viewsNodeReference = fmt.Sprintf("%s.views", node.GetReference().(string))
+	viewsNodeReference := fmt.Sprintf("%s.views", node.GetReference().(string))
 	viewsNode = tview.NewTreeNode("views")
 	viewsNode.SetExpanded(false)
 	viewsNode.SetReference(viewsNodeReference)
@@ -450,6 +586,31 @@ func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures 
 		viewNode.SetReference(fmt.Sprintf("%s.%s", viewsNodeReference, view))
 		viewsNode.AddChild(viewNode)
 	}
+}
+
+// stripColorTags removes tview color formatting like [black:primary] from node text
+func stripColorTags(text string) string {
+	for {
+		start := strings.Index(text, "[")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(text[start:], "]")
+		if end == -1 {
+			break
+		}
+		end += start // make absolute
+
+		inner := text[start+1 : end]
+		// tview color tags never contain spaces: [black:primary], [red], [green:black:b]
+		if !strings.Contains(inner, " ") {
+			text = text[:start] + text[end+1:]
+		} else {
+			// Not a color tag: replace '[' with sentinel so we don't loop forever
+			text = text[:start] + "\x00" + text[start+1:]
+		}
+	}
+	return strings.ReplaceAll(text, "\x00", "[")
 }
 
 func prioritizeResult(pattern, target string, fuzzyRank int) int {
@@ -482,6 +643,52 @@ func prioritizeResult(pattern, target string, fuzzyRank int) int {
 
 	// If no other matches, fall back to fuzzy match with a low score
 	return 10000 + fuzzyRank
+}
+
+// expandAncestors expands all ancestor nodes of the given node up to (but not including) root.
+// tview TreeNode doesn't expose a parent pointer, so we walk from root to find the path.
+func expandAncestors(target *tview.TreeNode, root *tview.TreeNode) {
+	// Collect ancestors by walking the tree with a parent stack
+	type stackEntry struct {
+		node   *tview.TreeNode
+		parent *tview.TreeNode
+	}
+	stack := []stackEntry{{node: root, parent: nil}}
+	var ancestors []*tview.TreeNode
+
+	for len(stack) > 0 {
+		entry := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if entry.node == target {
+			// Build ancestor chain walking back up
+			for e := entry.parent; e != nil && e != root; {
+				ancestors = append(ancestors, e)
+				// Find e's parent by walking the tree (brute force but tree is small)
+				found := false
+				root.Walk(func(n, p *tview.TreeNode) bool {
+					if n == e {
+						e = p
+						found = true
+						return false
+					}
+					return true
+				})
+				if !found {
+					break
+				}
+			}
+			// Expand from top to bottom
+			for i := len(ancestors) - 1; i >= 0; i-- {
+				ancestors[i].SetExpanded(true)
+			}
+			return
+		}
+
+		for _, child := range entry.node.GetChildren() {
+			stack = append(stack, stackEntry{node: child, parent: entry.node})
+		}
+	}
 }
 
 func (tree *Tree) search(searchText string) {
@@ -518,24 +725,20 @@ func (tree *Tree) search(searchText string) {
 	var rankedNodes []rankedNode
 
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
-		nodeText := strings.ToLower(node.GetText())
+		nodeText := strings.ToLower(stripColorTags(node.GetText()))
 
 		if databaseNameFilter == "" {
 			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
 			if rank >= 0 {
-				if parent != nil {
-					parent.SetExpanded(true)
-				}
 				adjustedRank := prioritizeResult(tableNameFilter, nodeText, rank)
 				rankedNodes = append(rankedNodes, rankedNode{node: node, rank: adjustedRank})
 			}
 		} else {
 			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
 			if rank >= 0 && parent != nil {
-				parentText := strings.ToLower(parent.GetText())
+				parentText := strings.ToLower(stripColorTags(parent.GetText()))
 				parentRank := fuzzy.RankMatch(databaseNameFilter, parentText)
 				if parentRank >= 0 {
-					parent.SetExpanded(true)
 					adjustedTableRank := prioritizeResult(tableNameFilter, nodeText, rank)
 					adjustedParentRank := prioritizeResult(databaseNameFilter, parentText, parentRank)
 					// Combine ranks: prioritize table match but factor in database match
@@ -558,8 +761,10 @@ func (tree *Tree) search(searchText string) {
 
 	// Set current node to best match
 	if len(tree.state.searchFoundNodes) > 0 {
-		tree.SetCurrentNode(tree.state.searchFoundNodes[0])
-		tree.state.currentFocusFoundNode = tree.state.searchFoundNodes[0]
+		bestNode := tree.state.searchFoundNodes[0]
+		expandAncestors(bestNode, rootNode)
+		tree.SetCurrentNode(bestNode)
+		tree.state.currentFocusFoundNode = bestNode
 	}
 }
 
@@ -791,14 +996,19 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		if err != nil {
 			panic(err.Error())
 		}
-		databases = dbs
+		sanitizedDbs := make([]string, 0, len(dbs))
+		for _, db := range dbs {
+			sanitizedDbs = append(sanitizedDbs, sanitizeDBName(db))
+		}
+		databases = sanitizedDbs
 	} else {
-		databases = []string{dbName}
+		sanitizedDBName := sanitizeDBName(dbName)
+		databases = []string{sanitizedDBName}
 	}
 
 	for _, database := range databases {
 		childNode := tview.NewTreeNode(database)
-		childNode.SetExpanded(false)
+		childNode.SetExpanded(dbName != "")
 		childNode.SetReference(database)
 		childNode.SetColor(app.Styles.PrimaryTextColor)
 		rootNode.AddChild(childNode)
@@ -810,28 +1020,37 @@ func (tree *Tree) InitializeNodes(dbName string) {
 				return
 			}
 
-			tree.databasesToNodes(tables, node, true)
+			supportsProgramming := tree.DBDriver.SupportsProgramming()
+			useSchemas := tree.DBDriver.UseSchemas()
 
-			if tree.DBDriver.SupportsProgramming() {
-				functions, err := tree.DBDriver.GetFunctions(database)
+			var functions, procedures, views map[string][]string
+			if supportsProgramming {
+				functions, err = tree.DBDriver.GetFunctions(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
 
-				procedures, err := tree.DBDriver.GetProcedures(database)
+				procedures, err = tree.DBDriver.GetProcedures(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
 
-				views, err := tree.DBDriver.GetViews(database)
+				views, err = tree.DBDriver.GetViews(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
+			}
 
-				tree.addProgrammingNodes(functions, procedures, views, node)
+			if useSchemas {
+				tree.buildSchemaTree(database, node, tables, functions, procedures, views)
+			} else {
+				tree.databasesToNodes(tables, node, true)
+				if supportsProgramming {
+					tree.addProgrammingNodes(functions, procedures, views, node)
+				}
 			}
 
 			App.Draw()
@@ -851,4 +1070,9 @@ func (tree *Tree) ClearSearch() {
 	tree.FoundNodeCountInput.SetText("")
 	tree.SetBorderPadding(0, 0, 0, 0)
 	tree.Filter.SetText("")
+}
+
+func sanitizeDBName(dbName string) string {
+	// Remove dots from db name
+	return strings.ReplaceAll(dbName, ".", "_")
 }

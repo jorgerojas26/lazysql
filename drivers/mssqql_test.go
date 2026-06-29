@@ -391,6 +391,83 @@ func TestMSSQL_ExecutePendingChanges(t *testing.T) {
 	}
 }
 
+func TestMSSQL_GetTableColumns(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	pg := &MSSQL{Connection: db}
+
+	// Mock the expected query with all 5 columns including the new "comment" column
+	rows := sqlmock.NewRows([]string{
+		"column_name",
+		"data_type",
+		"is_nullable",
+		"column_default",
+		"comment",
+	}).AddRow(
+		"id",
+		"int",
+		"0",
+		"",
+		"Primary key identifier",
+	).AddRow(
+		"name",
+		"varchar",
+		"1",
+		"",
+		"User name field",
+	).AddRow(
+		"email",
+		"varchar",
+		"0",
+		"",
+		"", // Empty comment
+	)
+
+	mock.ExpectQuery(`USE test_db;
+        SELECT
+            c.name AS column_name,
+            t.name AS data_type,
+            c.is_nullable,
+            def.definition AS column_default,
+            ISNULL(ep.value, '') AS comment
+        FROM sys.columns c
+        INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
+        LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
+        LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id 
+            AND ep.minor_id = c.column_id 
+            AND ep.name = 'MS_Description'
+        WHERE c.object_id = OBJECT_ID(@p2)
+        AND t.name <> 'sysname'
+        ORDER BY c.column_id;
+    `).
+		WithArgs(DBNameMSSQL, tableNameMSSQL).
+		WillReturnRows(rows)
+
+	columns, err := pg.GetTableColumns(DBNameMSSQL, tableNameMSSQL)
+	if err != nil {
+		t.Fatalf("GetTableColumns failed: %v", err)
+	}
+
+	expected := [][]string{
+		{"column_name", "data_type", "is_nullable", "column_default", "comment"},
+		{"id", "int", "0", "", "Primary key identifier"},
+		{"name", "varchar", "1", "", "User name field"},
+		{"email", "varchar", "0", "", ""},
+	}
+
+	if !reflect.DeepEqual(columns, expected) {
+		t.Fatalf("Expected %v, got %v", expected, columns)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
 func TestMSSQL_GetRecords(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

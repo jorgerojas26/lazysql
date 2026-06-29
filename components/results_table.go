@@ -1,7 +1,12 @@
 package components
 
 import (
+	"cmp"
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -30,10 +35,19 @@ type ResultsTableState struct {
 	foreignKeys           [][]string
 	indexes               [][]string
 	records               [][]string
+	foreignKeyColumns     map[string]bool
+	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
+	fkRawCellValues       map[string]string
 	isEditing             bool
 	isFiltering           bool
 	isLoading             bool
 	showSidebar           bool
+	loadingCancel         context.CancelFunc
+}
+
+type foreignKeyJumpTarget struct {
+	ReferencedTable  string
+	ReferencedColumn string
 }
 
 type ResultsTable struct {
@@ -44,7 +58,6 @@ type ResultsTable struct {
 	Menu                 *ResultsTableMenu
 	Filter               *ResultsTableFilter
 	Error                *tview.Modal
-	Loading              *tview.Modal
 	jsonViewer           *JSONViewer
 	Pagination           *Pagination
 	Editor               *SQLEditor
@@ -54,22 +67,26 @@ type ResultsTable struct {
 	Sidebar              *Sidebar
 	SidebarContainer     *tview.Flex
 	DBDriver             drivers.Driver
+	Home                 *Home
 	connectionIdentifier string
 	ConnectionURL        string
 	ReadOnly             bool
 }
 
-func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
+func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
 	state := &ResultsTableState{
-		records:         [][]string{},
-		columns:         [][]string{},
-		constraints:     [][]string{},
-		foreignKeys:     [][]string{},
-		indexes:         [][]string{},
-		isEditing:       false,
-		isLoading:       false,
-		listOfDBChanges: listOfDBChanges,
-		showSidebar:     false,
+		records:               [][]string{},
+		columns:               [][]string{},
+		constraints:           [][]string{},
+		foreignKeys:           [][]string{},
+		indexes:               [][]string{},
+		foreignKeyColumns:     map[string]bool{},
+		foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
+		fkRawCellValues:       map[string]string{},
+		isEditing:             false,
+		isLoading:             false,
+		listOfDBChanges:       listOfDBChanges,
+		showSidebar:           false,
 	}
 
 	wrapper := tview.NewFlex()
@@ -83,16 +100,9 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
 	errorModal.SetFocus(0)
 
-	loadingModal := tview.NewModal()
-	loadingModal.SetText("Loading...")
-	loadingModal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
-	loadingModal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
-	loadingModal.SetTextColor(app.Styles.SecondaryTextColor)
-
 	pages := tview.NewPages()
 	pages.AddPage(pageNameTable, wrapper, true, true)
 	pages.AddPage(pageNameTableError, errorModal, true, false)
-	pages.AddPage(pageNameTableLoading, loadingModal, false, false)
 
 	pagination := NewPagination()
 
@@ -104,11 +114,11 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		Page:       pages,
 		Wrapper:    wrapper,
 		Error:      errorModal,
-		Loading:    loadingModal,
 		Pagination: pagination,
 		Editor:     nil,
 		Tree:       tree,
 		DBDriver:   dbdriver,
+		Home:       home,
 		Sidebar:    sidebar,
 		// SidebarContainer is only used when AppConfig.SidebarOverlay is false.
 		SidebarContainer:     tview.NewFlex(),
@@ -219,6 +229,82 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	return table
 }
 
+// loadEditorSchema queries the driver for tables and columns to populate
+// autocomplete suggestions in the editor.
+func (table *ResultsTable) loadEditorSchema() {
+	dbName := table.GetDatabaseName()
+	if dbName == "" || table.DBDriver == nil {
+		return
+	}
+
+	tablesMap, err := table.DBDriver.GetTables(dbName)
+	if err != nil {
+		logger.Error("Failed to load tables for editor autocomplete", map[string]any{"error": err.Error()})
+		return
+	}
+	if len(tablesMap) == 0 {
+		return
+	}
+
+	// Collect all bare table names (for SetTables) and also build
+	// schema-qualified names for the GetTableColumns driver call.
+	// Postgres returns {schema: [tables]}, others return {dbName: [tables]}.
+	type namedTable struct {
+		bareName      string // stored in autocompleter for "table." lookup
+		qualifiedName string // passed to GetTableColumns (schema.table for Postgres)
+	}
+	var allTables []string
+	var tableList []namedTable
+
+	for schema, tbls := range tablesMap {
+		for _, tbl := range tbls {
+			allTables = append(allTables, tbl)
+			qn := tbl
+			// Postgres-style drivers use schemas distinct from the database name.
+			if schema != "" && schema != dbName {
+				qn = schema + "." + tbl
+			}
+			tableList = append(tableList, namedTable{bareName: tbl, qualifiedName: qn})
+		}
+	}
+
+	app.App.QueueUpdateDraw(func() {
+		if table.Editor != nil {
+			table.Editor.SetTables(allTables)
+		}
+	})
+
+	// Load columns for each table, using the qualified name for the driver call
+	// but storing under the bare table name for autocomplete lookup ("table.col").
+	for _, nt := range tableList {
+		cols, err := table.DBDriver.GetTableColumns(dbName, nt.qualifiedName)
+		if err != nil {
+			_ = err
+			continue
+		}
+		if len(cols) < 2 {
+			continue
+		}
+		// cols[0] = headers, cols[1:] = data rows, column name at index 0
+		colNames := make([]string, 0, len(cols)-1)
+		for i := 1; i < len(cols); i++ {
+			if len(cols[i]) > 0 && cols[i][0] != "" {
+				colNames = append(colNames, cols[i][0])
+			}
+		}
+		if len(colNames) == 0 {
+			continue
+		}
+
+		tblCopy := nt.bareName
+		app.App.QueueUpdateDraw(func() {
+			if table.Editor != nil {
+				table.Editor.SetColumns(tblCopy, colNames)
+			}
+		})
+	}
+}
+
 func (table *ResultsTable) subscribeToTreeChanges() {
 	ch := table.Tree.Subscribe()
 
@@ -238,41 +324,45 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 			editing := stateChange.Value.(bool)
 			table.SetIsEditing(editing)
 		case eventSidebarUnfocusing:
-			App.SetFocus(table)
-			App.ForceDraw()
+			App.QueueUpdateDraw(func() {
+				App.SetFocus(table)
+			})
 		case eventSidebarToggling:
-			table.ShowSidebar(false)
-			App.ForceDraw()
+			App.QueueUpdateDraw(func() {
+				table.ShowSidebar(false)
+			})
 		case eventSidebarCommitEditing:
 			params := stateChange.Value.(models.SidebarEditingCommitParams)
 
-			table.SetInputCapture(table.tableInputCapture)
-			table.SetIsEditing(false)
+			App.QueueUpdateDraw(func() {
+				table.SetInputCapture(table.tableInputCapture)
+				table.SetIsEditing(false)
 
-			row, _ := table.GetSelection()
-			changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
-			tableCell := table.GetCell(row, changedColumnIndex)
+				row, _ := table.GetSelection()
+				changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
+				tableCell := table.GetCell(row, changedColumnIndex)
 
-			tableCell.SetText(params.NewValue)
+				tableCell.SetText(params.NewValue)
 
-			cellValue := models.CellValue{
-				Type:             params.Type,
-				Column:           params.ColumnName,
-				Value:            params.NewValue,
-				TableColumnIndex: changedColumnIndex,
-				TableRowIndex:    row,
-			}
+				cellValue := models.CellValue{
+					Type:             params.Type,
+					Column:           params.ColumnName,
+					Value:            params.NewValue,
+					TableColumnIndex: changedColumnIndex,
+					TableRowIndex:    row,
+				}
 
-			logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
-			err := table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
-			if err != nil {
-				table.SetError(err.Error(), nil)
-			}
-
-			App.ForceDraw()
+				logger.Info("eventSidebarCommitEditing", map[string]any{"cellValue": cellValue, "params": params, "rowIndex": row, "changedColumnIndex": changedColumnIndex})
+				err := table.AppendNewChange(models.DMLUpdateType, row, changedColumnIndex, cellValue)
+				if err != nil {
+					table.SetError(err.Error(), nil)
+				}
+			})
 		case eventSidebarError:
 			errorMessage := stateChange.Value.(string)
-			table.SetError(errorMessage, nil)
+			App.QueueUpdateDraw(func() {
+				table.SetError(errorMessage, nil)
+			})
 		}
 	}
 }
@@ -291,6 +381,14 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 
 			tableCell.SetSelectable(i > 0)
 			tableCell.SetExpansion(1)
+
+			if i == 0 && table.shouldShowForeignKeyHeaderMarker(j) {
+				tableCell.SetStyle(tcell.StyleDefault.Underline(true))
+			}
+
+			if i > 0 && table.shouldShowForeignKeyMarker(i, j, cell) {
+				tableCell.SetStyle(tcell.StyleDefault.Underline(true))
+			}
 
 			table.SetCell(i, j, tableCell)
 		}
@@ -384,6 +482,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.UpdateRows(table.GetRecords())
 			table.colorChangedCells()
 			table.AddInsertedRows()
+			table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 		case commands.ColumnsMenu:
 			table.Menu.SetSelectedOption(2)
 			table.UpdateRows(table.GetColumns())
@@ -397,13 +496,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.Menu.SetSelectedOption(5)
 			table.UpdateRows(table.GetIndexes())
 		case commands.Refresh:
-			if table.Loading != nil {
-				app.App.SetFocus(table.Loading)
-			}
 			table.Menu.SetSelectedOption(1)
-			if err := table.FetchRecords(nil); err != nil {
-				return event
-			}
+			table.FetchRecords(nil, nil)
 		}
 	}
 
@@ -540,6 +634,14 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ShowCellJSONViewer {
 		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 		return nil
+	} else if event.Key() == tcell.KeyEnter {
+		if table.handleForeignKeyEnter(selectedRowIndex, selectedColumnIndex) {
+			return nil
+		}
+		if app.App.Config().EnterOpensJSONViewer {
+			table.handleShowJSONViewer(commands.ShowCellJSONViewer)
+			return nil
+		}
 	} else if command == commands.Copy {
 		selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 		if selectedCell != nil {
@@ -549,6 +651,44 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				table.SetError(err.Error(), nil)
 			}
 		}
+	} else if command == commands.OpenCellInExternalEditor {
+		if table.ReadOnly {
+			table.SetError("Cannot modify data: Connection is in read-only mode", nil)
+			return nil
+		}
+		if table.Editor == nil && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+			if selectedCell != nil {
+				originalText := selectedCell.Text
+				var newText string
+				app.App.Suspend(func() {
+					newText = openCellInExternalEditor(originalText)
+				})
+				// Strip trailing newline that editors typically add
+				newText = strings.TrimSuffix(newText, "\n")
+				if newText != originalText {
+					selectedCell.SetText(newText)
+					columnName := table.GetColumnNameByIndex(selectedColumnIndex)
+					err := table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{
+						Type:             models.String,
+						Value:            newText,
+						Column:           columnName,
+						TableColumnIndex: selectedColumnIndex,
+						TableRowIndex:    selectedRowIndex,
+					})
+					if err != nil {
+						table.SetError(err.Error(), nil)
+					}
+					if table.GetShowSidebar() {
+						table.UpdateSidebar()
+					}
+				}
+			}
+		}
+		return nil
+	} else if command == commands.ExportCSV {
+		table.showCSVExportModal()
+		return nil
 	}
 
 	if len(table.GetRecords()) > 0 {
@@ -568,6 +708,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 }
 
 func (table *ResultsTable) UpdateRows(rows [][]string) {
+	table.state.fkRawCellValues = map[string]string{}
 	table.Clear()
 	table.AddRows(rows)
 	App.ForceDraw()
@@ -579,18 +720,46 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 		for j := 0; j < table.GetColumnCount(); j++ {
 			cell := table.GetCell(i, j)
 			if i == 0 && headerColor != 0 {
-				cell.SetTextColor(headerColor)
+				if table.shouldShowForeignKeyHeaderMarker(j) {
+					cell.SetStyle(tcell.StyleDefault.Underline(true))
+					cell.SetTextColor(headerColor)
+				} else {
+					cell.SetStyle(tcell.StyleDefault)
+					cell.SetTextColor(headerColor)
+				}
 			} else {
 				cellReference := cell.GetReference()
 
 				if cellReference != nil && (cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&") && (cell.BackgroundColor != colorTableDelete && cell.BackgroundColor != colorTableChange && cell.BackgroundColor != colorTableInsert) {
 					cell.SetStyle(table.GetItalicStyle())
+				} else if table.shouldShowForeignKeyMarker(i, j, cell.Text) {
+					cell.SetStyle(tcell.StyleDefault.Underline(true))
+					cell.SetTextColor(rowColor)
 				} else {
+					cell.SetStyle(tcell.StyleDefault)
 					cell.SetTextColor(rowColor)
 				}
 			}
 		}
 	}
+}
+
+func (table *ResultsTable) shouldShowForeignKeyHeaderMarker(columnIndex int) bool {
+	if table.Menu != nil && table.Menu.GetSelectedOption() != 1 {
+		return false
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return false
+	}
+
+	columnName := table.GetColumnNameByIndex(columnIndex)
+	if columnName == "" || !table.isForeignKeyColumn(columnName) {
+		return false
+	}
+
+	_, ok := table.getForeignKeyJumpTarget(columnName)
+	return ok
 }
 
 func (table *ResultsTable) RemoveHighlightTable() {
@@ -634,34 +803,25 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 		switch stateChange.Key {
 		case eventResultsTableFiltering:
 			if stateChange.Value != "" {
-				rows := table.FetchRecords(nil)
-
-				if len(rows) > 0 {
-					table.Menu.SetSelectedOption(1)
+				table.FetchRecords(nil, func() {
+					records := table.GetRecords()
+					if len(records) > 0 {
+						table.Menu.SetSelectedOption(1)
+						table.SetIsFiltering(false)
+						App.SetFocus(table)
+						table.HighlightTable()
+						table.Filter.HighlightLocal()
+						table.SetInputCapture(table.tableInputCapture)
+					}
+				})
+			} else {
+				App.QueueUpdateDraw(func() {
+					table.SetIsFiltering(false)
+					table.SetInputCapture(table.tableInputCapture)
 					App.SetFocus(table)
 					table.HighlightTable()
 					table.Filter.HighlightLocal()
-					table.SetInputCapture(table.tableInputCapture)
-					App.ForceDraw()
-				}
-				/* else if len(rows) == 1 {
-					table.SetInputCapture(nil)
-					App.SetFocus(table.Filter.Input)
-					table.RemoveHighlightTable()
-					table.Filter.HighlightLocal()
-					table.SetIsFiltering(true)
-					App.ForceDraw()
-				} */
-
-			} else {
-				// table.FetchRecords(nil)
-
-				table.SetIsFiltering(false)
-				table.SetInputCapture(table.tableInputCapture)
-				App.SetFocus(table)
-				table.HighlightTable()
-				table.Filter.HighlightLocal()
-				App.ForceDraw()
+				})
 			}
 		}
 	}
@@ -678,8 +838,6 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				queryLower := strings.ToLower(query)
 				queryTrimmed := strings.TrimSpace(queryLower)
 
-				// Check if query STARTS with SELECT (not just contains it)
-				// This prevents DELETE...WHERE id IN (SELECT...) from being treated as SELECT
 				isSelect := strings.HasPrefix(queryTrimmed, "select") ||
 					strings.HasPrefix(queryTrimmed, "with") ||
 					strings.HasPrefix(queryTrimmed, "explain") ||
@@ -687,71 +845,108 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					strings.HasPrefix(queryTrimmed, "describe") ||
 					strings.HasPrefix(queryTrimmed, "desc")
 
+				// Clear existing records immediately for SQL editor queries and
+				// start a cancellable loading cycle on the UI goroutine.
+				var ctx context.Context
+				App.QueueUpdateDraw(func() {
+					table.SetRecords([][]string{})
+					ctx = table.StartLoad()
+				})
+
 				if isSelect {
-					table.SetLoading(true)
-					App.Draw()
-
-					rows, records, err := table.DBDriver.ExecuteQuery(query)
-					table.Pagination.SetTotalRecords(records)
-					table.Pagination.SetLimit(records)
-
-					if err != nil {
-						table.SetLoading(false)
-						table.SetError(err.Error(), nil)
-						App.Draw()
-					} else {
-						table.UpdateRows(rows)
-						table.SetLoading(false)
-						table.SetIsFiltering(false)
-						table.HighlightTable()
-						table.Editor.SetBlur()
-						table.SetInputCapture(table.tableInputCapture)
-						table.EditorPages.SwitchToPage(pageNameTableEditorTable)
-						App.SetFocus(table)
-						// Add successful SELECT query to history
-						if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
-							logger.Error("Failed to add SELECT query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+					go func() {
+						if ctx.Err() != nil {
+							return
 						}
-						App.Draw()
-					}
+
+						rows, records, err := table.DBDriver.ExecuteQuery(query)
+
+						if ctx.Err() != nil {
+							return
+						}
+
+						App.QueueUpdateDraw(func() {
+							if ctx.Err() != nil {
+								return
+							}
+
+							if err != nil {
+								table.SetLoading(false)
+								table.SetError(err.Error(), nil)
+								return
+							}
+
+							table.Pagination.SetTotalRecords(records)
+							table.Pagination.SetLimit(records)
+							table.SetRecords(rows)
+							table.SetLoading(false)
+							closeQuitConfirmation()
+							table.SetIsFiltering(false)
+							table.HighlightTable()
+							table.Editor.SetBlur()
+							table.SetInputCapture(table.tableInputCapture)
+							table.EditorPages.SwitchToPage(pageNameTableEditorTable)
+							App.SetFocus(table)
+
+							if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
+								logger.Error("Failed to add SELECT query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+							}
+						})
+					}()
 				} else {
 					if table.ReadOnly {
 						if err := drivers.ValidateQueryForReadOnly(query); err != nil {
-							table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
+							App.QueueUpdateDraw(func() {
+								table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
+								table.SetLoading(false)
+							})
+							continue
+						}
+					}
+
+					go func() {
+						if ctx.Err() != nil {
 							return
 						}
-					}
 
-					table.SetRecords([][]string{})
-					table.SetLoading(true)
-					App.Draw()
+						result, err := table.DBDriver.ExecuteDMLStatement(query)
 
-					result, err := table.DBDriver.ExecuteDMLStatement(query)
-
-					if err != nil {
-						table.SetLoading(false)
-						App.Draw()
-						table.SetError(err.Error(), nil)
-					} else {
-						table.SetResultsInfo(result)
-						table.SetLoading(false)
-						table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
-						App.SetFocus(table.Editor)
-						// Add successful DML query to history
-						if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
-							logger.Error("Failed to add DML query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+						if ctx.Err() != nil {
+							return
 						}
-						App.Draw()
-					}
+
+						App.QueueUpdateDraw(func() {
+							if ctx.Err() != nil {
+								return
+							}
+
+							if err != nil {
+								table.SetLoading(false)
+								table.SetError(err.Error(), nil)
+								return
+							}
+
+							table.SetResultsInfo(result)
+							table.SetLoading(false)
+							closeQuitConfirmation()
+							table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
+							App.SetFocus(table.Editor)
+
+							if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
+								logger.Error("Failed to add DML query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+							}
+						})
+					}()
 				}
 			}
 		case eventSQLEditorEscape:
-			table.SetIsFiltering(false)
-			App.SetFocus(table)
-			table.HighlightTable()
-			table.Editor.SetBlur()
-			table.SetInputCapture(table.tableInputCapture)
-			App.Draw()
+			App.QueueUpdateDraw(func() {
+				table.SetIsFiltering(false)
+				App.SetFocus(table)
+				table.HighlightTable()
+				table.Editor.SetBlur()
+				table.SetInputCapture(table.tableInputCapture)
+			})
 		}
 	}
 }
@@ -840,6 +1035,17 @@ func (table *ResultsTable) GetPrimaryKeyColumnNames() []string {
 	return table.state.primaryKeyColumnNames
 }
 
+// GetPrimaryKeySort returns an ORDER BY clause using primary key columns.
+// Returns empty string if no primary key columns are available.
+func (table *ResultsTable) GetPrimaryKeySort() string {
+	pkColumnNames := table.GetPrimaryKeyColumnNames()
+	if len(pkColumnNames) == 0 {
+		return ""
+	}
+	// Use first primary key column for sorting
+	return fmt.Sprintf("%s ASC", pkColumnNames[0])
+}
+
 // Setters
 
 func (table *ResultsTable) SetRecords(rows [][]string) {
@@ -858,6 +1064,7 @@ func (table *ResultsTable) SetConstraints(constraints [][]string) {
 
 func (table *ResultsTable) SetForeignKeys(foreignKeys [][]string) {
 	table.state.foreignKeys = foreignKeys
+	table.rebuildForeignKeyJumpMetadata()
 }
 
 func (table *ResultsTable) SetIndexes(indexes [][]string) {
@@ -879,6 +1086,7 @@ func (table *ResultsTable) SetError(err string, done func()) {
 	table.Error.SetDoneFunc(func(_ int, _ string) {
 		table.state.error = ""
 		table.Page.HidePage(pageNameTableError)
+		closeQuitConfirmation()
 		if table.GetIsFiltering() {
 			if table.Editor != nil {
 				App.SetFocus(table.Editor)
@@ -903,20 +1111,22 @@ func (table *ResultsTable) SetResultsInfo(text string) {
 
 func (table *ResultsTable) SetLoading(show bool) {
 	table.state.isLoading = show
+	table.Pagination.SetLoading(show)
+}
 
-	if show {
-		table.Page.ShowPage(pageNameTableLoading)
-		App.SetFocus(table.Loading)
-	} else {
-		table.Page.HidePage(pageNameTableLoading)
-		if table.state.error != "" {
-			App.SetFocus(table.Error)
-		} else {
-			App.SetFocus(table)
-		}
+func (table *ResultsTable) CancelLoading() {
+	if table.state.loadingCancel != nil {
+		table.state.loadingCancel()
+		table.state.loadingCancel = nil
 	}
+}
 
-	App.ForceDraw()
+func (table *ResultsTable) StartLoad() context.Context {
+	table.CancelLoading()
+	ctx, cancel := context.WithCancel(app.App.Context())
+	table.state.loadingCancel = cancel
+	table.SetLoading(true)
+	return ctx
 }
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
@@ -935,47 +1145,67 @@ func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	sort := fmt.Sprintf("%s %s", column, direction)
 
 	if table.GetCurrentSort() != sort {
-		where := ""
-		if table.Filter != nil {
-			where = table.Filter.GetCurrentFilter()
-		}
-		table.SetLoading(true)
-		records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
-		table.SetLoading(false)
+		ctx := table.StartLoad()
 
-		if err != nil {
-			table.SetError(err.Error(), nil)
-		} else {
-			previousRow, previousColumn := table.GetSelection()
-			table.SetRecords(records)
-			table.Select(previousRow, previousColumn)
-			App.ForceDraw()
-		}
-
-		table.SetCurrentSort(sort)
-
-		columns := table.GetColumns()
-		iconDirection := "▲"
-
-		if direction == "DESC" {
-			iconDirection = "▼"
-		}
-
-		for i, col := range columns {
-			if i > 0 {
-				tableCell := tview.NewTableCell(col[0])
-				tableCell.SetSelectable(false)
-				tableCell.SetExpansion(1)
-				tableCell.SetTextColor(app.Styles.PrimaryTextColor)
-
-				if col[0] == column {
-					tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
-					table.SetCell(0, i-1, tableCell)
-				} else {
-					table.SetCell(0, i-1, tableCell)
-				}
+		go func() {
+			if ctx.Err() != nil {
+				return
 			}
-		}
+
+			where := ""
+			if table.Filter != nil {
+				where = table.Filter.GetCurrentFilter()
+			}
+
+			records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			App.QueueUpdateDraw(func() {
+				if ctx.Err() != nil {
+					return
+				}
+
+				if err != nil {
+					table.SetLoading(false)
+					table.SetError(err.Error(), nil)
+					return
+				}
+
+				previousRow, previousColumn := table.GetSelection()
+				table.SetRecords(records)
+				table.Select(previousRow, previousColumn)
+				table.SetCurrentSort(sort)
+
+				columns := table.GetColumns()
+				iconDirection := "▲"
+
+				if direction == "DESC" {
+					iconDirection = "▼"
+				}
+
+				for i, col := range columns {
+					if i > 0 {
+						tableCell := tview.NewTableCell(col[0])
+						tableCell.SetSelectable(false)
+						tableCell.SetExpansion(1)
+						tableCell.SetTextColor(app.Styles.PrimaryTextColor)
+
+						if col[0] == column {
+							tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
+							table.SetCell(0, i-1, tableCell)
+						} else {
+							table.SetCell(0, i-1, tableCell)
+						}
+					}
+				}
+
+				table.SetLoading(false)
+				App.ForceDraw()
+			})
+		}()
 	}
 }
 
@@ -983,79 +1213,86 @@ func (table *ResultsTable) SetPrimaryKeyColumnNames(primaryKeyColumnNames []stri
 	table.state.primaryKeyColumnNames = primaryKeyColumnNames
 }
 
-func (table *ResultsTable) FetchRecords(onError func()) [][]string {
-	tableName := table.GetTableName()
+func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 	databaseName := table.GetDatabaseName()
+	tableName := table.GetTableName()
 
-	table.SetLoading(true)
+	ctx := table.StartLoad()
 
-	where := ""
-	if table.Filter != nil {
-		where = table.Filter.GetCurrentFilter()
-	}
-	sort := table.GetCurrentSort()
+	go func() {
+		if ctx.Err() != nil {
+			return
+		}
 
-	records, totalRecords, executedQuery, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+		where := ""
+		if table.Filter != nil {
+			where = table.Filter.GetCurrentFilter()
+		}
+		sort := table.GetCurrentSort()
 
-	if err != nil {
-		table.SetError(err.Error(), onError)
-		table.SetLoading(false)
-	} else {
-		// Add filter query to history if a filter was applied and a query was executed
-		if where != "" && executedQuery != "" {
-			if err := history.AddQueryToHistory(table.connectionIdentifier, executedQuery); err != nil {
-				logger.Error("Failed to add filter query to history", map[string]any{"error": err, "query": executedQuery, "connection": table.connectionIdentifier})
+		records, totalRecords, executedQuery, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
+
+		if ctx.Err() != nil {
+			return
+		}
+
+		if err == nil {
+			var columns, constraints, foreignKeys, indexes [][]string
+			var primaryKeyColumnNames []string
+
+			columns, _ = table.DBDriver.GetTableColumns(databaseName, tableName)
+			constraints, _ = table.DBDriver.GetConstraints(databaseName, tableName)
+			foreignKeys, _ = table.DBDriver.GetForeignKeys(databaseName, tableName)
+			indexes, _ = table.DBDriver.GetIndexes(databaseName, tableName)
+			primaryKeyColumnNames, _ = table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+
+			if ctx.Err() != nil {
+				return
 			}
+
+			App.QueueUpdateDraw(func() {
+				if ctx.Err() != nil {
+					return
+				}
+
+				if where != "" && executedQuery != "" {
+					if err := history.AddQueryToHistory(table.connectionIdentifier, executedQuery); err != nil {
+						logger.Error("Failed to add filter query to history", map[string]any{"error": err, "query": executedQuery, "connection": table.connectionIdentifier})
+					}
+				}
+
+				table.SetColumns(columns)
+				table.SetConstraints(constraints)
+				table.SetForeignKeys(foreignKeys)
+				table.SetIndexes(indexes)
+				table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
+
+				if len(records) > 0 {
+					table.SetRecords(records)
+				}
+				table.Select(1, 0)
+				table.Pagination.SetTotalRecords(totalRecords)
+				table.SetLoading(false)
+
+				if len(primaryKeyColumnNames) == 0 {
+					currentText := table.Pagination.textView.GetText(false)
+					table.Pagination.textView.SetText(currentText + " ⚠ No Primary Key")
+				}
+
+				if onSuccess != nil {
+					onSuccess()
+				}
+			})
+		} else {
+			App.QueueUpdateDraw(func() {
+				if ctx.Err() != nil {
+					return
+				}
+				table.SetError(err.Error(), onError)
+				table.SetLoading(false)
+			})
 		}
-
-		if table.GetIsFiltering() {
-			table.SetIsFiltering(false)
-		}
-
-		columns, err := table.DBDriver.GetTableColumns(databaseName, tableName)
-		if err != nil {
-			table.SetError(err.Error(), nil)
-		}
-
-		constraints, err := table.DBDriver.GetConstraints(databaseName, tableName)
-		if err != nil {
-			table.SetError(err.Error(), nil)
-		}
-
-		foreignKeys, err := table.DBDriver.GetForeignKeys(databaseName, tableName)
-		if err != nil {
-			table.SetError(err.Error(), nil)
-		}
-
-		indexes, err := table.DBDriver.GetIndexes(databaseName, tableName)
-		if err != nil {
-			table.SetError(err.Error(), nil)
-		}
-
-		primaryKeyColumnNames, err := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
-		if err != nil {
-			table.SetError(err.Error(), nil)
-		}
-
-		if len(records) > 0 {
-			table.SetRecords(records)
-		}
-
-		table.SetColumns(columns)
-		table.SetConstraints(constraints)
-		table.SetForeignKeys(foreignKeys)
-		table.SetIndexes(indexes)
-		table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
-		table.Select(1, 0)
-
-		table.Pagination.SetTotalRecords(totalRecords)
-
-		table.SetLoading(false)
-
-		return records
-	}
-
-	return [][]string{}
+	}()
 }
 
 func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newValue string, row, col int)) {
@@ -1207,6 +1444,13 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	isAnInsertedRow, _ := table.isAnInsertedRow(rowIndex)
 
 	if isAnInsertedRow {
+		if changeType == models.DMLUpdateType {
+			switch value.Type {
+			case models.Null, models.Empty, models.Default:
+				tableCell.SetText(value.Value.(string))
+				tableCell.SetStyle(tcell.StyleDefault.Italic(true))
+			}
+		}
 		table.MutateInsertedRowCell(tableCellReference.(string), value)
 		return nil
 	}
@@ -1305,10 +1549,37 @@ func (table *ResultsTable) GetPrimaryKeyValue(rowIndex int) []models.PrimaryKeyI
 
 	info := []models.PrimaryKeyInfo{}
 
+	if len(primaryKeyColumnNames) == 0 {
+		allRecords := table.GetRecords()
+		// Unsaved-new-row deletions shrink the record slice while the
+		// caller still passes the original rowIndex; without these
+		// guards lazysql panicked with 'index out of range' instead of
+		// no-op'ing the second delete.
+		if len(allRecords) == 0 || rowIndex < 0 || rowIndex >= len(allRecords) {
+			return info
+		}
+		columns := allRecords[0]
+		row := allRecords[rowIndex]
+		for i, colName := range columns {
+			if i >= len(row) {
+				break
+			}
+			info = append(info, models.PrimaryKeyInfo{Name: colName, Value: row[i]})
+		}
+		return info
+	}
+
 	for _, primaryKeyColumnName := range primaryKeyColumnNames {
 		columnIndex := table.GetColumnIndexByName(primaryKeyColumnName)
 		records := table.GetRecords()
-		primaryKeyValue := records[rowIndex][columnIndex]
+		if rowIndex < 0 || rowIndex >= len(records) {
+			continue
+		}
+		row := records[rowIndex]
+		if columnIndex < 0 || columnIndex >= len(row) {
+			continue
+		}
+		primaryKeyValue := row[columnIndex]
 
 		info = append(info, models.PrimaryKeyInfo{Name: primaryKeyColumnName, Value: primaryKeyValue})
 	}
@@ -1424,8 +1695,11 @@ func (table *ResultsTable) search() {
 
 		switch len(split) {
 		case 1:
-			for _, col := range table.GetColumns()[1:] {
-				matches = append(matches, col[0])
+			cols := table.GetColumns()
+			if len(cols) > 1 {
+				for _, col := range cols[1:] {
+					matches = append(matches, col[0])
+				}
 			}
 
 		case 2:
@@ -1519,6 +1793,247 @@ func (table *ResultsTable) ShowSidebar(show bool) {
 		}
 		App.SetFocus(table)
 	}
+}
+
+func (table *ResultsTable) handleForeignKeyEnter(selectedRowIndex, selectedColumnIndex int) bool {
+	if selectedRowIndex <= 0 {
+		return false
+	}
+
+	if table.Menu != nil && table.Menu.GetSelectedOption() != 1 {
+		return false
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return false
+	}
+
+	columnName := table.GetColumnNameByIndex(selectedColumnIndex)
+	if columnName == "" {
+		return false
+	}
+
+	if !table.isForeignKeyColumn(columnName) {
+		return false
+	}
+
+	target, ok := table.getForeignKeyJumpTarget(columnName)
+	if !ok {
+		return true
+	}
+
+	rawValue := table.getRawCellValue(selectedRowIndex, selectedColumnIndex)
+	if !isNavigableForeignKeyValue(rawValue) {
+		return true
+	}
+
+	if table.Home == nil || table.Filter == nil {
+		return true
+	}
+
+	where := fmt.Sprintf("WHERE %s = '%s'", table.DBDriver.FormatReference(target.ReferencedColumn), escapeSingleQuotes(rawValue))
+	table.Home.ShowTableWithFilter(table.GetDatabaseName(), target.ReferencedTable, where)
+
+	return true
+}
+
+func (table *ResultsTable) foreignKeyCellMapKey(rowIndex, columnIndex int) string {
+	return fmt.Sprintf("%d:%d", rowIndex, columnIndex)
+}
+
+func (table *ResultsTable) shouldShowForeignKeyMarker(rowIndex, columnIndex int, rawValue string) bool {
+	if table.Menu != nil && table.Menu.GetSelectedOption() != 1 {
+		return false
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return false
+	}
+
+	columnName := table.GetColumnNameByIndex(columnIndex)
+	if columnName == "" || !table.isForeignKeyColumn(columnName) {
+		return false
+	}
+
+	if _, ok := table.getForeignKeyJumpTarget(columnName); !ok {
+		return false
+	}
+
+	if !isNavigableForeignKeyValue(rawValue) {
+		return false
+	}
+
+	if isInsertedRow, _ := table.isAnInsertedRow(rowIndex); isInsertedRow {
+		return false
+	}
+
+	cell := table.GetCell(rowIndex, columnIndex)
+	if cell != nil {
+		switch cell.BackgroundColor {
+		case colorTableDelete, colorTableChange, colorTableInsert:
+			return false
+		}
+	}
+
+	return true
+}
+
+func (table *ResultsTable) getRawCellValue(rowIndex, columnIndex int) string {
+	key := table.foreignKeyCellMapKey(rowIndex, columnIndex)
+	if value, ok := table.state.fkRawCellValues[key]; ok {
+		return value
+	}
+
+	cell := table.GetCell(rowIndex, columnIndex)
+	if cell == nil {
+		return ""
+	}
+
+	return cell.Text
+}
+
+func (table *ResultsTable) isForeignKeyColumn(columnName string) bool {
+	return table.state.foreignKeyColumns[columnName]
+}
+
+func (table *ResultsTable) getForeignKeyJumpTarget(columnName string) (foreignKeyJumpTarget, bool) {
+	target, ok := table.state.foreignKeyJumpTargets[columnName]
+	return target, ok
+}
+
+func (table *ResultsTable) rebuildForeignKeyJumpMetadata() {
+	table.state.foreignKeyColumns = map[string]bool{}
+	table.state.foreignKeyJumpTargets = map[string]foreignKeyJumpTarget{}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return
+	}
+
+	if len(table.GetForeignKeys()) <= 1 {
+		return
+	}
+
+	provider := table.DBDriver.GetProvider()
+	headers := table.GetForeignKeys()[0]
+	columnNameIndex, okColumn := foreignKeyHeaderIndex(headers, provider, "column_name", "from")
+	foreignTableSchemaIndex, _ := foreignKeyHeaderIndex(headers, provider, "foreign_table_schema")
+	referencedTableIndex, okTable := foreignKeyHeaderIndex(headers, provider, "foreign_table_name", "table", "referenced_table")
+	referencedColumnIndex, okReferencedColumn := foreignKeyHeaderIndex(headers, provider, "foreign_column_name", "to", "referenced_column")
+	constraintIndex, okConstraint := foreignKeyHeaderIndex(headers, provider, "constraint_name", "id")
+	if !(okColumn && okTable && okReferencedColumn && okConstraint) {
+		return
+	}
+
+	constraintCounts := map[string]int{}
+	for _, row := range table.GetForeignKeys()[1:] {
+		if constraintIndex >= len(row) {
+			continue
+		}
+		constraintName := strings.TrimSpace(row[constraintIndex])
+		if constraintName == "" {
+			continue
+		}
+		constraintCounts[constraintName]++
+	}
+
+	for _, row := range table.GetForeignKeys()[1:] {
+		if columnNameIndex >= len(row) || referencedTableIndex >= len(row) || referencedColumnIndex >= len(row) || constraintIndex >= len(row) {
+			continue
+		}
+
+		constraintName := strings.TrimSpace(row[constraintIndex])
+		if constraintName == "" || constraintCounts[constraintName] != 1 {
+			continue
+		}
+
+		columnName := strings.TrimSpace(row[columnNameIndex])
+		foreignTableSchema := ""
+		if foreignTableSchemaIndex >= 0 && foreignTableSchemaIndex < len(row) {
+			foreignTableSchema = strings.TrimSpace(row[foreignTableSchemaIndex])
+		}
+		referencedTable := strings.TrimSpace(row[referencedTableIndex])
+		referencedColumn := strings.TrimSpace(row[referencedColumnIndex])
+
+		if columnName == "" || referencedTable == "" || referencedColumn == "" {
+			continue
+		}
+
+		table.state.foreignKeyColumns[columnName] = true
+		table.state.foreignKeyJumpTargets[columnName] = foreignKeyJumpTarget{
+			ReferencedTable:  table.normalizeForeignKeyReferencedTable(referencedTable, foreignTableSchema),
+			ReferencedColumn: referencedColumn,
+		}
+	}
+}
+
+func (table *ResultsTable) normalizeForeignKeyReferencedTable(referencedTable string, foreignTableSchema string) string {
+	provider := table.DBDriver.GetProvider()
+	if provider == drivers.DriverPostgres {
+		if strings.Contains(referencedTable, ".") {
+			return referencedTable
+		}
+
+		if foreignTableSchema != "" {
+			return foreignTableSchema + "." + referencedTable
+		}
+
+		currentTable := table.GetTableName()
+		if strings.Contains(currentTable, ".") {
+			schema := strings.SplitN(currentTable, ".", 2)[0]
+			if schema != "" {
+				return schema + "." + referencedTable
+			}
+		}
+	}
+
+	return referencedTable
+}
+
+func (table *ResultsTable) IsForeignKeyJumpSupportedProvider() bool {
+	provider := table.DBDriver.GetProvider()
+	return provider == drivers.DriverPostgres || provider == drivers.DriverSqlite || provider == drivers.DriverMSSQL
+}
+
+func foreignKeyHeaderIndex(headers []string, provider string, keys ...string) (int, bool) {
+	for i, header := range headers {
+		normalized := strings.ToLower(strings.TrimSpace(header))
+		for _, key := range keys {
+			if normalized == key {
+				return i, true
+			}
+		}
+	}
+
+	if provider == drivers.DriverPostgres {
+		for i, header := range headers {
+			normalized := strings.ToLower(strings.TrimSpace(header))
+			for _, key := range keys {
+				if strings.Contains(normalized, key) {
+					return i, true
+				}
+			}
+		}
+	}
+
+	return -1, false
+}
+
+func isNavigableForeignKeyValue(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+
+	switch strings.ToUpper(trimmed) {
+	case "NULL", "EMPTY", "DEFAULT", "NULL&", "EMPTY&", "DEFAULT&":
+		return false
+	default:
+		return true
+	}
+}
+
+func escapeSingleQuotes(value string) string {
+	return strings.ReplaceAll(value, "'", "''")
 }
 
 func (table *ResultsTable) UpdateSidebar() {
@@ -1617,7 +2132,14 @@ func (table *ResultsTable) isAnInsertedRow(rowIndex int) (isAnInsertedRow bool, 
 }
 
 func (table *ResultsTable) colorChangedCells() {
+	tableName := table.GetTableName()
+	databaseName := table.GetDatabaseName()
+
 	for _, dmlChange := range *table.state.listOfDBChanges {
+		if dmlChange.Table != tableName || dmlChange.Database != databaseName {
+			continue
+		}
+
 		switch dmlChange.Type {
 		case models.DMLDeleteType:
 			table.SetRowColor(dmlChange.Values[0].TableRowIndex, colorTableDelete)
@@ -1631,4 +2153,210 @@ func (table *ResultsTable) colorChangedCells() {
 
 func (table *ResultsTable) GetPrimitive() tview.Primitive {
 	return table.Page
+}
+
+func (table *ResultsTable) showCSVExportModal() {
+	databaseName := table.GetDatabaseName()
+	tableName := table.GetTableName()
+
+	// Pagination exists only when we have both database and table context (table view)
+	// Query results don't have pagination - all records are already in memory
+	hasPagination := databaseName != "" && tableName != ""
+
+	rowCount := max(len(table.GetRecords())-1, 0)
+
+	opts := CSVExportOptions{
+		DatabaseName:  cmp.Or(databaseName, "database"),
+		TableName:     cmp.Or(tableName, "query_result"),
+		HasPagination: hasPagination,
+		RowCount:      rowCount,
+	}
+
+	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope, batchSize int) {
+		App.ForceDraw()
+
+		ctx := table.StartLoad()
+
+		go func() {
+			if ctx.Err() != nil {
+				return
+			}
+
+			var exportedRowCount int
+			var exportErr error
+
+			if !hasPagination || scope == ExportCurrentPage {
+				exportedRowCount, exportErr = table.exportCurrentPage(filePath)
+			} else {
+				where := ""
+				if table.Filter != nil {
+					where = table.Filter.GetCurrentFilter()
+				}
+				sort := cmp.Or(table.GetCurrentSort(), table.GetPrimaryKeySort())
+				if sort == "" {
+					if records := table.GetRecords(); len(records) > 0 && len(records[0]) > 0 {
+						sort = records[0][0] + " ASC"
+					}
+				}
+				exportedRowCount, exportErr = table.exportAllRecordsInBatches(
+					filePath, databaseName, tableName, where, sort, batchSize,
+				)
+			}
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			App.QueueUpdateDraw(func() {
+				if ctx.Err() != nil {
+					return
+				}
+
+				if exportErr != nil {
+					table.SetError("Failed to export CSV: "+exportErr.Error(), nil)
+					App.ForceDraw()
+					return
+				}
+
+				table.showExportSuccessModal(filePath, exportedRowCount)
+				App.ForceDraw()
+			})
+		}()
+	})
+
+	mainPages.AddPage(pageNameCSVExport, modal, true, true)
+}
+
+// exportCurrentPage exports the current page records (already in memory) to CSV.
+// Returns the number of rows written (excluding header) and any error.
+func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
+	records := table.GetRecords()
+	writer, err := helpers.NewCSVWriter(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer writer.Abort()
+
+	if err := writer.WriteRecords(records, true); err != nil {
+		return 0, err
+	}
+	if err := writer.Commit(); err != nil {
+		return writer.RowCount(), err
+	}
+	return writer.RowCount(), nil
+}
+
+// exportAllRecordsInBatches exports all records using batch fetching to avoid timeouts.
+// Returns the number of rows written (excluding header) and any error.
+func (table *ResultsTable) exportAllRecordsInBatches(
+	filePath, databaseName, tableName, where, sort string,
+	batchSize int,
+) (int, error) {
+	writer, err := helpers.NewCSVWriter(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer writer.Abort()
+
+	for offset := 0; ; offset += batchSize {
+		records, _, _, err := table.DBDriver.GetRecords(
+			databaseName, tableName, where, sort, offset, batchSize,
+		)
+		if err != nil {
+			return writer.RowCount(), err
+		}
+
+		// Header row only = no more data
+		if len(records) <= 1 && offset > 0 {
+			break
+		}
+
+		includeHeader := (offset == 0)
+		if err := writer.WriteRecords(records, includeHeader); err != nil {
+			return writer.RowCount(), err
+		}
+	}
+
+	if err := writer.Commit(); err != nil {
+		return writer.RowCount(), err
+	}
+	return writer.RowCount(), nil
+}
+
+func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int) {
+	modal := tview.NewModal()
+	modal.SetText(fmt.Sprintf("Successfully exported %d rows to:\n%s", rowCount, filePath))
+	modal.AddButtons([]string{"OK"})
+	modal.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	modal.SetBorderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	modal.SetTextColor(app.Styles.PrimaryTextColor)
+	modal.SetButtonActivatedStyle(
+		tcell.StyleDefault.
+			Background(app.Styles.InverseTextColor).
+			Foreground(app.Styles.ContrastSecondaryTextColor),
+	)
+	modal.SetDoneFunc(func(_ int, _ string) {
+		mainPages.RemovePage(pageNameCSVExportSuccess)
+	})
+
+	mainPages.AddPage(pageNameCSVExportSuccess, modal, true, true)
+	App.SetFocus(modal)
+}
+
+// openCellInExternalEditor opens the user's preferred editor to edit a cell value.
+// It should be called within app.Suspend() to ensure the TUI is properly restored.
+func openCellInExternalEditor(currentText string) string {
+	tmpFile, err := os.CreateTemp("", "lazysql-cell-*.txt")
+	if err != nil {
+		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(currentText); err != nil {
+		logger.Error("Failed to write to temporary file", map[string]any{"error": err.Error()})
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			logger.Error("Failed to close temporary file", map[string]any{"error": closeErr.Error()})
+		}
+		return currentText
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		logger.Error("Failed to close temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
+
+	editorParts := getCellEditorParts()
+	editorArgs := append(editorParts[1:], tmpFile.Name())
+
+	cmd := exec.Command(editorParts[0], editorArgs...) //nolint:gosec // editor comes from trusted $EDITOR env var
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		logger.Error("Error executing editor", map[string]any{"error": err.Error(), "command": cmd.String()})
+		return currentText
+	}
+
+	updatedContent, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		logger.Error("Failed to read from temporary file", map[string]any{"error": err.Error()})
+		return currentText
+	}
+
+	return string(updatedContent)
+}
+
+// getCellEditorParts returns the editor command and its arguments for cell editing.
+// Supports editor strings with flags like "code --wait" or "vim -u NONE".
+func getCellEditorParts() []string {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = os.Getenv("VISUAL")
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+	return strings.Fields(editor)
 }

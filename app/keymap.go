@@ -1,10 +1,14 @@
 package app
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 
 	cmd "github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/keymap"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 // local alias added for clarity purpose
@@ -64,6 +68,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '?'}, Cmd: cmd.HelpPopup, Description: "Help"},
 			Bind{Key: Key{Code: tcell.KeyCtrlP}, Cmd: cmd.SearchGlobal, Description: "Global search"},
 			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
+			Bind{Key: Key{Char: 'T'}, Cmd: cmd.ToggleTree, Description: "Toggle file tree"},
 		},
 		ConnectionGroup: {
 			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},
@@ -130,6 +135,10 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
 			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Toggle JSON viewer for row"},
 			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer for cell"},
+			// Export
+			Bind{Key: Key{Char: 'E'}, Cmd: cmd.ExportCSV, Description: "Export to CSV"},
+			// External editor
+			Bind{Key: Key{Char: 'e'}, Cmd: cmd.OpenCellInExternalEditor, Description: "Edit cell in external editor"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
@@ -169,6 +178,75 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Toggle JSON viewer"},
 			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy value to clipboard"},
+			Bind{Key: Key{Char: 'w'}, Cmd: cmd.ToggleJSONViewerWrap, Description: "Toggle word wrap"},
 		},
 	},
+}
+
+var keyNameToCode = func() map[string]tcell.Key {
+	keys := make(map[string]tcell.Key, len(tcell.KeyNames))
+	for code, name := range tcell.KeyNames {
+		keys[name] = code
+	}
+	return keys
+}()
+
+func parseKeyString(s string) (Key, error) {
+	runes := []rune(s)
+	if len(runes) == 1 {
+		return Key{Char: runes[0]}, nil
+	}
+
+	if code, ok := keyNameToCode[s]; ok {
+		return Key{Code: code}, nil
+	}
+
+	return Key{}, fmt.Errorf("unknown key: %s", s)
+}
+
+func setBindings(bindings map[string]string, group Map, groupName string) (Map, error) {
+	for cmdName, keyStr := range bindings {
+		key, err := parseKeyString(keyStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid key %q for command %s in group %s: %w", keyStr, cmdName, groupName, err)
+		}
+
+		found := false
+		for index, bind := range group {
+			if bind.Cmd.String() == cmdName {
+				group[index].Key = key
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return nil, fmt.Errorf("command %s not found in group %s", cmdName, groupName)
+		}
+	}
+
+	return group, nil
+}
+
+func ApplyKeymapConfig(keymaps models.KeymapConfig) error {
+	if len(keymaps) == 0 {
+		return nil
+	}
+
+	for groupName, bindings := range keymaps {
+		groupKey := strings.ToLower(groupName)
+		group, ok := Keymaps.Groups[groupKey]
+		if !ok {
+			return fmt.Errorf("unknown keymap group: %s", groupName)
+		}
+
+		updated, err := setBindings(bindings, group, groupName)
+		if err != nil {
+			return err
+		}
+
+		Keymaps.Groups[groupKey] = updated
+	}
+
+	return nil
 }

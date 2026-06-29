@@ -21,10 +21,10 @@ const (
 	// Results table
 	pageNameTable                  string = "Table"
 	pageNameTableError             string = "TableError"
-	pageNameTableLoading           string = "TableLoading"
 	pageNameTableEditorTable       string = "TableEditorTable"
 	pageNameTableEditorResultsInfo string = "TableEditorResultsInfo"
 	pageNameTableEditCell          string = "TableEditCell"
+	pageNameTableLoading           string = "TableLoading"
 	pageNameQueryPreviewError      string = "QueryPreviewError"
 	pageNameJSONViewer                    = "json_viewer"
 
@@ -42,6 +42,11 @@ const (
 	pageNameQueryHistory     string = "QueryHistoryModal"
 	pageNameSaveQuery        string = "SaveQueryModal"
 	pageNameSavedQueryDelete string = "SavedQueryDeleteModal"
+
+	// CSV Export
+	pageNameCSVExport        string = "CSVExportModal"
+	pageNameCSVExportSuccess string = "CSVExportSuccessModal"
+	pageNameCSVExportError   string = "CSVExportErrorModal"
 )
 
 // Tabs

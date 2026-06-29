@@ -3,7 +3,7 @@ package helpers
 import (
 	"bytes"
 	"context"
-	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"strings"
@@ -15,7 +15,8 @@ import (
 )
 
 // [doneFn] is invoked when the [command] is completed with its stdout.
-func RunCommand(ctx context.Context, command string, doneFn func(output string)) error {
+// [timeout] is the duration to wait for the command to start before timing out.
+func RunCommand(ctx context.Context, command string, timeout time.Duration, doneFn func(output string)) error {
 	var cmd *exec.Cmd
 
 	parts := strings.Fields(command)
@@ -39,7 +40,7 @@ func RunCommand(ctx context.Context, command string, doneFn func(output string))
 	cmd.Stdout = io.MultiWriter(pw, &stdoutBytes)
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("failed to start command '%s': %w", command, err)
 	}
 
 	go func() {
@@ -56,11 +57,12 @@ func RunCommand(ctx context.Context, command string, doneFn func(output string))
 	select {
 	case <-ctx.Done():
 		logger.Error("Command canceled", map[string]any{"error": ctx.Err()})
+		return ctx.Err()
 	case <-startedCh:
 		logger.Info("Command started", map[string]any{"command": command})
-	case <-time.After(5 * time.Second):
+	case <-time.After(timeout):
 		_ = cmd.Process.Kill()
-		return errors.New("command timeout")
+		return fmt.Errorf("command timed out after %v: %s", timeout, command)
 	}
 
 	return nil
