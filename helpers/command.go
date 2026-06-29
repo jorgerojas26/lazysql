@@ -22,9 +22,9 @@ func RunCommand(ctx context.Context, command string, timeout time.Duration, done
 	// Run the command through the platform shell so configured commands support
 	// shell syntax such as quoting, pipes, redirects, and logical operators.
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", command)
+		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", command) // #nosec G204
 	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		cmd = exec.CommandContext(ctx, "sh", "-c", command) // #nosec G204
 	}
 
 	// Create a pipe to read the output from.
