@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"strings"
+	"runtime"
 	"time"
 
 	"github.com/mitchellh/go-linereader"
@@ -19,11 +19,12 @@ import (
 func RunCommand(ctx context.Context, command string, timeout time.Duration, doneFn func(output string)) error {
 	var cmd *exec.Cmd
 
-	parts := strings.Fields(command)
-	if len(parts) == 1 {
-		cmd = exec.CommandContext(ctx, parts[0]) // #nosec G204
+	// Run the command through the platform shell so configured commands support
+	// shell syntax such as quoting, pipes, redirects, and logical operators.
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", command) // #nosec G204
 	} else {
-		cmd = exec.CommandContext(ctx, parts[0], parts[1:]...) // #nosec G204
+		cmd = exec.CommandContext(ctx, "sh", "-c", command) // #nosec G204
 	}
 
 	// Create a pipe to read the output from.
