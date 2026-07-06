@@ -424,6 +424,8 @@ func (e *SQLEditor) handleNormalMode(event *tcell.EventKey) {
 			e.moveRight()
 		case 'w':
 			e.wordForward()
+		case 'e':
+			e.wordEnd()
 		case 'b':
 			e.wordBackward()
 		case '0':
@@ -556,6 +558,8 @@ func (e *SQLEditor) handleVisualMode(event *tcell.EventKey) {
 			e.moveRight()
 		case 'w':
 			e.wordForward()
+		case 'e':
+			e.wordEnd()
 		case 'b':
 			e.wordBackward()
 		case '0':
@@ -928,6 +932,32 @@ func (e *SQLEditor) wordForward() {
 	for e.cx < len(line) && line[e.cx] != ' ' && line[e.cx] != '\t' {
 		e.cx++
 	}
+}
+
+func (e *SQLEditor) wordEnd() {
+	line := e.lines[e.cy]
+	cx := e.cx
+	// Step over current position to seek next word end
+	cx++
+	if cx >= len(line) {
+		if e.cy < len(e.lines)-1 {
+			e.cy++
+			e.cx = 0
+			line = e.lines[e.cy]
+			cx = 0
+		} else {
+			return
+		}
+	}
+	// Skip whitespace
+	for cx < len(line) && (line[cx] == ' ' || line[cx] == '\t') {
+		cx++
+	}
+	// Move to end of word
+	for cx < len(line)-1 && line[cx+1] != ' ' && line[cx+1] != '\t' {
+		cx++
+	}
+	e.cx = cx
 }
 
 func (e *SQLEditor) wordBackward() {
