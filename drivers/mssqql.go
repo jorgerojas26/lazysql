@@ -116,9 +116,11 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := "SELECT name FROM "
+	query := "SELECT\n\t\t\ts.name AS schema_name,\n\t\t\tt.name AS table_name\n\t\tFROM "
 	query += database
-	query += ".sys.tables"
+	query += ".sys.tables t\n\t\tINNER JOIN "
+	query += database
+	query += ".sys.schemas s\n\t\t\tON t.schema_id = s.schema_id\n\t\tORDER BY s.name, t.name"
 
 	rows, err := db.Connection.Query(query)
 	if err != nil {
@@ -128,12 +130,12 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
+		var schemaName, table string
+		if err := rows.Scan(&schemaName, &table); err != nil {
 			return nil, err
 		}
 
-		tables[database] = append(tables[database], table)
+		tables[schemaName] = append(tables[schemaName], table)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -143,7 +145,35 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
+func (db *MSSQL) resolveSchemaQualifiedName(name string) (string, string, error) {
+	schemaName, objectName, err := ParseSchemaQualifiedName(name)
+	if err == nil {
+		return schemaName, objectName, nil
+	}
+
+	currentSchema, currentSchemaErr := db.getCurrentSchema()
+	if currentSchemaErr != nil {
+		return "", "", err
+	}
+
+	return currentSchema, name, nil
+}
+
+func formatSchemaQualifiedReference(reference string) string {
+	schema, name, err := ParseSchemaQualifiedName(reference)
+	if err != nil {
+		return fmt.Sprintf("[%s]", reference)
+	}
+
+	return fmt.Sprintf("[%s].[%s]", schema, name)
+}
+
 func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
+	qualifiedTable := table
+	if schemaName, tableName, err := ParseSchemaQualifiedName(table); err == nil {
+		qualifiedTable = fmt.Sprintf("[%s].[%s]", schemaName, tableName)
+	}
+
 	query := fmt.Sprintf(`
 		USE %s;
         SELECT
@@ -158,15 +188,15 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
         LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id
             AND ep.minor_id = c.column_id
             AND ep.name = 'MS_Description'
-        WHERE c.object_id = OBJECT_ID(@p2)
-        AND t.name <> 'sysname'
-        ORDER BY c.column_id;
+	        WHERE c.object_id = OBJECT_ID(@p2)
+	        AND t.name <> 'sysname'
+	        ORDER BY c.column_id;
     `, database)
-	return db.getTableInformation(query, database, table, "")
+	return db.getTableInformation(query, database, qualifiedTable, "")
 }
 
 func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+	schemaName, tableName, err := db.resolveSchemaQualifiedName(table)
 	if err != nil {
 		return nil, err
 	}
@@ -188,14 +218,19 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
         INNER JOIN sys.columns c
             ON ic.column_id = c.column_id
             AND ic.object_id = c.object_id
-        WHERE s.name = @p1
-          AND t.name = @p2
-          AND kc.type IN ('PK', 'UQ')  -- Primary keys and unique constraints
+	        WHERE s.name = @p1
+	          AND t.name = @p2
+	          AND kc.type IN ('PK', 'UQ')  -- Primary keys and unique constraints
     `, database)
-	return db.getTableInformation(query, currentSchema, table, "")
+	return db.getTableInformation(query, schemaName, tableName, "")
 }
 
 func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
+	schemaName, tableName, err := db.resolveSchemaQualifiedName(table)
+	if err != nil {
+		return nil, err
+	}
+
 	query := fmt.Sprintf(`
 		USE %s;
         SELECT
@@ -218,16 +253,17 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
             AND fkc.referenced_object_id = rc.object_id
         INNER JOIN sys.tables t
             ON fk.parent_object_id = t.object_id
-        INNER JOIN sys.schemas s
-            ON t.schema_id = s.schema_id
-        WHERE t.name = @p2
-          AND DB_NAME(DB_ID(@p1)) = @p1
+	        INNER JOIN sys.schemas s
+	            ON t.schema_id = s.schema_id
+	        WHERE t.name = @p2
+	          AND s.name = @p3
+	          AND DB_NAME(DB_ID(@p1)) = @p1
     `, database)
-	return db.getTableInformation(query, database, table, "")
+	return db.getTableInformation(query, database, tableName, schemaName)
 }
 
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+	schemaName, tableName, err := db.resolveSchemaQualifiedName(table)
 	if err != nil {
 		return nil, err
 	}
@@ -258,12 +294,12 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
         INNER JOIN sys.columns c
             ON ic.column_id = c.column_id
             AND t.object_id = c.object_id
-        WHERE t.name = @p2
-          AND s.name = @p3
-          AND DB_ID(@p1) = d.database_id
-        ORDER BY i.type_desc
+	        WHERE t.name = @p2
+	          AND s.name = @p3
+	          AND DB_ID(@p1) = d.database_id
+	        ORDER BY i.type_desc
     `, database)
-	return db.getTableInformation(query, database, table, currentSchema)
+	return db.getTableInformation(query, database, tableName, schemaName)
 }
 
 func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) (results [][]string, totalRecords int, displayQueryString string, err error) {
@@ -566,7 +602,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	currentSchema, err := db.getCurrentSchema()
+	schemaName, tableName, err := db.resolveSchemaQualifiedName(table)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +636,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 			AND t.name = @p3
 		ORDER BY ic.key_ordinal
 	`
-	rows, err := db.Connection.Query(query, "PK", currentSchema, table)
+	rows, err := db.Connection.Query(query, "PK", schemaName, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -772,7 +808,7 @@ func (db *MSSQL) FormatArgForQueryString(arg any) string {
 }
 
 func (db *MSSQL) FormatReference(reference string) string {
-	return fmt.Sprintf("[%s]", reference)
+	return formatSchemaQualifiedReference(reference)
 }
 
 func (db *MSSQL) FormatPlaceholder(index int) string {
@@ -821,15 +857,18 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 
 	query := "USE "
 	query += database
-	query += ";"
+	query += ";\n"
 	query += `
-		SELECT o.name
-		FROM sys.sql_modules m
-		JOIN sys.objects o ON m.object_id = o.object_id
-		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION')
+		SELECT
+			s.name + '.' + o.name AS qualified_name
+		FROM sys.objects o
+		INNER JOIN sys.schemas s
+			ON o.schema_id = s.schema_id
+		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION', 'SQL_INLINE_TABLE_VALUED_FUNCTION')
+		ORDER BY s.name, o.name
 		`
 
-	rows, err := db.Connection.Query(query, database)
+	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -861,12 +900,15 @@ func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
 
 	query := "USE "
 	query += database
-	query += "; "
+	query += ";\n"
 	query += `
-		SELECT o.name
-		FROM sys.sql_modules m
-		JOIN sys.objects o ON m.object_id = o.object_id
+		SELECT
+			s.name + '.' + o.name AS qualified_name
+		FROM sys.objects o
+		INNER JOIN sys.schemas s
+			ON o.schema_id = s.schema_id
 		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')
+		ORDER BY s.name, o.name
 		`
 
 	rows, err := db.Connection.Query(query)
@@ -897,7 +939,7 @@ func (db *MSSQL) SupportsProgramming() bool {
 }
 
 func (db *MSSQL) UseSchemas() bool {
-	return false
+	return true
 }
 
 func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
@@ -909,12 +951,15 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 
 	query := "USE "
 	query += database
-	query += "; "
+	query += ";\n"
 	query += `
-		SELECT o.name
-		FROM sys.sql_modules m
-		JOIN sys.objects o ON m.object_id = o.object_id
+		SELECT
+			s.name + '.' + o.name AS qualified_name
+		FROM sys.objects o
+		INNER JOIN sys.schemas s
+			ON o.schema_id = s.schema_id
 		WHERE o.type_desc IN ('VIEW')
+		ORDER BY s.name, o.name
 	`
 
 	rows, err := db.Connection.Query(query)
@@ -944,8 +989,15 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
 	if database == "" {
 		return "", errors.New("database name is required")
 	}
+	if name == "" {
+		return "", errors.New("object name is required")
+	}
 
 	result := ""
+	qualifiedName := name
+	if schemaName, objectName, err := ParseSchemaQualifiedName(name); err == nil {
+		qualifiedName = fmt.Sprintf("[%s].[%s]", schemaName, objectName)
+	}
 
 	query := "USE "
 	query += database
@@ -963,7 +1015,7 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
     select @proc_source as result;
 	`
 
-	row := db.Connection.QueryRow(query, sql.Named("name", name))
+	row := db.Connection.QueryRow(query, sql.Named("name", qualifiedName))
 	if err := row.Scan(&result); err != nil {
 		return result, err
 	}

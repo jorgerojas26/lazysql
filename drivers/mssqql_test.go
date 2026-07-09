@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"database/sql"
 	"fmt"
 	"reflect"
 	"testing"
@@ -17,6 +18,262 @@ const (
 	tableNameMSSQL = "test_table"
 	schemaMSSQL    = "dbo" // Explicit schema handling
 )
+
+func TestMSSQL_UseSchemas(t *testing.T) {
+	if !(&MSSQL{}).UseSchemas() {
+		t.Fatal("expected MSSQL to report schema support")
+	}
+}
+
+func TestMSSQL_GetTables_ReturnsSchemaQualifiedListings(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+
+	rows := sqlmock.NewRows([]string{"schema_name", "table_name"}).
+		AddRow("dbo", "users").
+		AddRow("sales", "orders").
+		AddRow("sales", "users")
+
+	mock.ExpectQuery(`SELECT
+			s.name AS schema_name,
+			t.name AS table_name
+		FROM test_db.sys.tables t
+		INNER JOIN test_db.sys.schemas s
+			ON t.schema_id = s.schema_id
+		ORDER BY s.name, t.name`).WillReturnRows(rows)
+
+	tables, err := mssql.GetTables(DBNameMSSQL)
+	if err != nil {
+		t.Fatalf("GetTables failed: %v", err)
+	}
+
+	expected := map[string][]string{
+		"dbo":   {"users"},
+		"sales": {"orders", "users"},
+	}
+
+	if !reflect.DeepEqual(tables, expected) {
+		t.Fatalf("Expected %v, got %v", expected, tables)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetProgrammingObjects_ReturnQualifiedNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		getter   func(*MSSQL, string) (map[string][]string, error)
+		expected []string
+	}{
+		{
+			name: "functions",
+			query: `USE test_db;
+		SELECT
+			s.name + '.' + o.name AS qualified_name
+		FROM sys.objects o
+		INNER JOIN sys.schemas s
+			ON o.schema_id = s.schema_id
+		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION', 'SQL_INLINE_TABLE_VALUED_FUNCTION')
+		ORDER BY s.name, o.name`,
+			getter:   (*MSSQL).GetFunctions,
+			expected: []string{"dbo.monthly_sales", "sales.monthly_sales"},
+		},
+		{
+			name: "procedures",
+			query: `USE test_db;
+		SELECT
+			s.name + '.' + o.name AS qualified_name
+		FROM sys.objects o
+		INNER JOIN sys.schemas s
+			ON o.schema_id = s.schema_id
+		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')
+		ORDER BY s.name, o.name`,
+			getter:   (*MSSQL).GetProcedures,
+			expected: []string{"dbo.sync_customers", "sales.sync_customers"},
+		},
+		{
+			name: "views",
+			query: `USE test_db;
+		SELECT
+			s.name + '.' + o.name AS qualified_name
+		FROM sys.objects o
+		INNER JOIN sys.schemas s
+			ON o.schema_id = s.schema_id
+		WHERE o.type_desc IN ('VIEW')
+		ORDER BY s.name, o.name`,
+			getter:   (*MSSQL).GetViews,
+			expected: []string{"dbo.active_users", "sales.active_users"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			if err != nil {
+				t.Fatalf("Error creating mock: %v", err)
+			}
+			defer db.Close()
+
+			mssql := &MSSQL{Connection: db}
+			rows := sqlmock.NewRows([]string{"qualified_name"})
+			for _, value := range tt.expected {
+				rows.AddRow(value)
+			}
+
+			mock.ExpectQuery(tt.query).WillReturnRows(rows)
+
+			objects, err := tt.getter(mssql, DBNameMSSQL)
+			if err != nil {
+				t.Fatalf("getter failed: %v", err)
+			}
+
+			expected := map[string][]string{DBNameMSSQL: tt.expected}
+			if !reflect.DeepEqual(objects, expected) {
+				t.Fatalf("Expected %v, got %v", expected, objects)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("Unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
+
+func TestFormatSchemaQualifiedReference(t *testing.T) {
+	tests := []struct {
+		name      string
+		reference string
+		expected  string
+	}{
+		{name: "qualified", reference: "sales.orders", expected: "[sales].[orders]"},
+		{name: "unqualified", reference: "orders", expected: "[orders]"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatSchemaQualifiedReference(tt.reference); got != tt.expected {
+				t.Fatalf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestMSSQL_QualifiedLookupsUseBracketedSchemaReference(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+
+	recordRows := sqlmock.NewRows([]string{"id", "name"}).AddRow(1, "Alice")
+	mock.ExpectQuery("SELECT \\* FROM \\[sales\\]\\.\\[orders\\] ORDER BY \\(SELECT NULL\\) OFFSET \\@p1 ROWS FETCH NEXT \\@p2 ROWS ONLY").
+		WithArgs(0, DefaultRowLimit).
+		WillReturnRows(recordRows)
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM \\[sales\\]\\.\\[orders\\]").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	if _, _, _, err := mssql.GetRecords(DBNameMSSQL, "sales.orders", "", "", 0, DefaultRowLimit); err != nil {
+		t.Fatalf("GetRecords failed: %v", err)
+	}
+
+	definitionRow := sqlmock.NewRows([]string{"result"}).AddRow("ALTER VIEW [sales].[active_users] AS SELECT 1")
+	mock.ExpectQuery("USE test_db; declare @proc_source nvarchar\\(max\\); select @proc_source = object_definition\\(object_id\\(@name\\)\\); if charindex\\('create', @proc_source\\) > 0 and charindex\\('create', @proc_source\\) < charindex\\(@name, @proc_source\\) begin set @proc_source = stuff\\(@proc_source, charindex\\('create', @proc_source\\), 6, 'alter'\\) end select @proc_source as result;").WithArgs(sql.Named("name", "[sales].[active_users]")).WillReturnRows(definitionRow)
+
+	definition, err := mssql.GetViewDefinition(DBNameMSSQL, "sales.active_users")
+	if err != nil {
+		t.Fatalf("GetViewDefinition failed: %v", err)
+	}
+
+	if definition != "ALTER VIEW [sales].[active_users] AS SELECT 1" {
+		t.Fatalf("unexpected definition: %s", definition)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetQualifiedTableMetadataAndPrimaryKeys(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+
+	columnRows := sqlmock.NewRows([]string{"column_name", "data_type", "is_nullable", "column_default", "comment"}).
+		AddRow("id", "int", "0", "", "")
+
+	mock.ExpectQuery(`USE test_db;
+        SELECT
+            c.name AS column_name,
+            t.name AS data_type,
+            c.is_nullable,
+            def.definition AS column_default,
+            ISNULL(ep.value, '') AS comment
+        FROM sys.columns c
+        INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
+        LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
+        LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id 
+            AND ep.minor_id = c.column_id 
+            AND ep.name = 'MS_Description'
+        WHERE c.object_id = OBJECT_ID(@p2)
+        AND t.name <> 'sysname'
+        ORDER BY c.column_id;
+    `).
+		WithArgs(DBNameMSSQL, "[sales].[orders]").
+		WillReturnRows(columnRows)
+
+	if _, err := mssql.GetTableColumns(DBNameMSSQL, "sales.orders"); err != nil {
+		t.Fatalf("GetTableColumns failed: %v", err)
+	}
+
+	pkRows := sqlmock.NewRows([]string{"column_name"}).AddRow("id")
+	mock.ExpectQuery(`USE test_db; SELECT
+			c.name AS column_name
+		FROM
+			sys.tables t
+		INNER JOIN
+			sys.schemas s
+				ON t.schema_id = s.schema_id
+		INNER JOIN
+			sys.key_constraints kc
+				ON t.object_id = kc.parent_object_id
+				AND kc.type = @p1
+		INNER JOIN
+			sys.index_columns ic
+				ON kc.unique_index_id = ic.index_id
+				AND t.object_id = ic.object_id
+		INNER JOIN
+			sys.columns c
+				ON ic.column_id = c.column_id
+				AND t.object_id = c.object_id
+		WHERE
+			s.name = @p2
+			AND t.name = @p3
+		ORDER BY ic.key_ordinal`).
+		WithArgs("PK", "sales", "orders").
+		WillReturnRows(pkRows)
+
+	if _, err := mssql.GetPrimaryKeyColumnNames(DBNameMSSQL, "sales.orders"); err != nil {
+		t.Fatalf("GetPrimaryKeyColumnNames failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
 
 func TestMSSQL_FormatArgForQueryString_SpecialCharacters(t *testing.T) {
 	db := &MSSQL{}
@@ -71,10 +328,6 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"column_name"}).
 		AddRow("id")
 
-	schemaRow := sqlmock.NewRows([]string{"CurrentSchema"}).AddRow("dbo")
-
-	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
-
 	// Match exact query structure with schema and USE prefix
 	mock.ExpectQuery(`USE test_db; SELECT
 			c.name AS column_name
@@ -102,7 +355,7 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 		WithArgs("PK", schemaMSSQL, tableNameMSSQL). // Use schema, not database name
 		WillReturnRows(rows)
 
-	keys, err := pg.GetPrimaryKeyColumnNames(DBNameMSSQL, tableNameMSSQL)
+	keys, err := pg.GetPrimaryKeyColumnNames(DBNameMSSQL, "dbo."+tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetPrimaryKeyColumnNames failed: %v", err)
 	}
@@ -170,10 +423,11 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
         INNER JOIN sys.schemas s 
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
+          AND s.name = @p3
           AND DB_NAME(DB_ID(@p1)) = @p1
-    `).WithArgs(DBNameMSSQL, tableNameMSSQL).WillReturnRows(rows)
+    `).WithArgs(DBNameMSSQL, tableNameMSSQL, schemaMSSQL).WillReturnRows(rows)
 
-	constraints, err := pg.GetForeignKeys(DBNameMSSQL, tableNameMSSQL)
+	constraints, err := pg.GetForeignKeys(DBNameMSSQL, "dbo."+tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}
@@ -289,10 +543,6 @@ func TestMSSQL_GetIndexes(t *testing.T) {
 		"name",
 	)
 
-	schemaRow := sqlmock.NewRows([]string{"CurrentSchema"}).AddRow("dbo")
-
-	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
-
 	mock.ExpectQuery(`
         USE test_db; SELECT
             t.name AS table_name,
@@ -326,7 +576,7 @@ func TestMSSQL_GetIndexes(t *testing.T) {
 		WithArgs(DBNameMSSQL, tableNameMSSQL, schemaMSSQL).
 		WillReturnRows(rows)
 
-	indexes, err := pg.GetIndexes(DBNameMSSQL, tableNameMSSQL)
+	indexes, err := pg.GetIndexes(DBNameMSSQL, "dbo."+tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetIndexes failed: %v", err)
 	}
