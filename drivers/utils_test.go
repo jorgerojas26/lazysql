@@ -72,6 +72,46 @@ func (m *mockDriver) FormatPlaceholder(index int) string {
 	return fmt.Sprintf("$%d", index)
 }
 
+func TestParseSchemaQualifiedName(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		schema    string
+		object    string
+		wantError bool
+	}{
+		{name: "qualified", input: "sales.orders", schema: "sales", object: "orders"},
+		{name: "missing schema", input: "orders", wantError: true},
+		{name: "missing object", input: "sales.", wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema, object, err := ParseSchemaQualifiedName(tt.input)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("expected error for %q", tt.input)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", tt.input, err)
+			}
+
+			if schema != tt.schema || object != tt.object {
+				t.Fatalf("expected (%q,%q), got (%q,%q)", tt.schema, tt.object, schema, object)
+			}
+		})
+	}
+}
+
+func TestBuildSchemaQualifiedName(t *testing.T) {
+	if got := BuildSchemaQualifiedName("sales", "orders"); got != "sales.orders" {
+		t.Fatalf("expected sales.orders, got %q", got)
+	}
+}
+
 func Test_queriesInTransaction(t *testing.T) {
 	tests := []struct {
 		setMockExpectations func(mock gomock.Sqlmock)

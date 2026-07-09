@@ -34,6 +34,27 @@ func queriesInTransaction(db *sql.DB, queries []models.Query) (err error) {
 	return nil
 }
 
+func ParseSchemaQualifiedName(name string) (string, string, error) {
+	if name == "" {
+		return "", "", fmt.Errorf("object name is required")
+	}
+
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("object name must be in format schema.name")
+	}
+
+	return parts[0], parts[1], nil
+}
+
+func BuildSchemaQualifiedName(schema string, name string) string {
+	if schema == "" {
+		return name
+	}
+
+	return schema + "." + name
+}
+
 func buildInsertQueryString(formattedTableName string, columns []string, values []any, driver Driver) string {
 	sanitizedValues := make([]string, len(values))
 
