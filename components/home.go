@@ -213,7 +213,10 @@ func (home *Home) showTable(databaseName, tableName string) {
 	}
 
 	table.FetchRecords(func() {
-		home.focusLeftWrapper()
+		if !quitConfirmationVisible() {
+			home.focusLeftWrapper()
+		}
+		keepQuitConfirmationFocused()
 	}, func() {
 		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
 			records := table.GetRecords()
@@ -223,15 +226,28 @@ func (home *Home) showTable(databaseName, tableName string) {
 		}
 
 		if table.state.error == "" {
-			if !home.treePinned && home.leftWrapperVisible {
+			// toggleLeftWrapper moves focus to the table; skip it while the quit
+			// dialog is up so a load finishing after 'q' can't steal focus from
+			// the dialog and leave it undismissable.
+			if !home.treePinned && home.leftWrapperVisible && !quitConfirmationVisible() {
 				home.toggleLeftWrapper()
 			}
 		}
 
 		App.ForceDraw()
+		keepQuitConfirmationFocused()
 	})
 
-	home.focusRightWrapper()
+	// showTable runs on the tree-subscription goroutine, so a bare focus call
+	// here races with a 'q' pressed while the table is opening. Marshal it onto
+	// the UI loop so the "is the quit dialog up?" check is atomic with the
+	// dialog being shown; if it is up, leave focus on it so it stays dismissable.
+	App.QueueUpdateDraw(func() {
+		if !quitConfirmationVisible() {
+			home.focusRightWrapper()
+		}
+		keepQuitConfirmationFocused()
+	})
 }
 
 func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
@@ -258,10 +274,14 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 	}
 
 	table.FetchRecords(func() {
-		home.focusLeftWrapper()
+		if !quitConfirmationVisible() {
+			home.focusLeftWrapper()
+		}
+		keepQuitConfirmationFocused()
 	}, func() {
 		if table.state.error != "" {
 			App.ForceDraw()
+			keepQuitConfirmationFocused()
 			return
 		}
 
@@ -272,13 +292,19 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 			}
 		}
 
-		if !home.treePinned && home.leftWrapperVisible {
+		if !home.treePinned && home.leftWrapperVisible && !quitConfirmationVisible() {
 			home.toggleLeftWrapper()
 		}
 		App.ForceDraw()
+		keepQuitConfirmationFocused()
 	})
 
-	home.focusRightWrapper()
+	// See showTable: this runs on the tree-subscription goroutine and races
+	// with a 'q' pressed while the table is opening.
+	if !quitConfirmationVisible() {
+		home.focusRightWrapper()
+	}
+	keepQuitConfirmationFocused()
 }
 
 func (home *Home) focusRightWrapper() {
