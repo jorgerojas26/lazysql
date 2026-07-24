@@ -372,6 +372,13 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 		if tab != nil {
 			table := tab.Content.(*ResultsTable)
+			if tab.Name == tabNameEditor {
+				if table.Editor != nil && table.Editor.vimMode == VimModeInsert {
+					return event
+				}
+				home.TabbedPane.SwitchToPreviousTab()
+				return nil
+			}
 			if !table.GetIsEditing() && !table.GetIsFiltering() {
 				home.TabbedPane.SwitchToPreviousTab()
 				// home.focusTab(home.TabbedPane.SwitchToPreviousTab())
@@ -386,6 +393,13 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 
 		if tab != nil {
 			table := tab.Content.(*ResultsTable)
+			if tab.Name == tabNameEditor {
+				if table.Editor != nil && table.Editor.vimMode == VimModeInsert {
+					return event
+				}
+				home.TabbedPane.SwitchToNextTab()
+				return nil
+			}
 			if !table.GetIsEditing() && !table.GetIsFiltering() {
 				home.TabbedPane.SwitchToNextTab()
 				// home.focusTab(home.TabbedPane.SwitchToNextTab())
