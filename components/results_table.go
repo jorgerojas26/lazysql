@@ -2048,9 +2048,15 @@ func (table *ResultsTable) UpdateSidebar() {
 
 		table.Sidebar.Clear()
 
-		for i := 1; i < len(columns); i++ {
-			name := columns[i][0]
-			colType := columns[i][1]
+		isRecordsTab := table.Menu == nil || table.Menu.GetSelectedOption() == 1
+
+		for i := 1; i <= table.GetColumnCount(); i++ {
+			name := table.GetCell(0, i-1).Text
+
+			colType := ""
+			if isRecordsTab && i < len(columns) {
+				colType = columns[i][1]
+			}
 
 			sidebarWidth := table.getSidebarWidth()
 
