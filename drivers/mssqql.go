@@ -116,9 +116,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := "SELECT name FROM "
-	query += database
-	query += ".sys.tables"
+	query := "SELECT name FROM " + db.FormatReference(database) + ".sys.tables"
 
 	rows, err := db.Connection.Query(query)
 	if err != nil {
@@ -161,7 +159,7 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
         WHERE c.object_id = OBJECT_ID(@p2)
         AND t.name <> 'sysname'
         ORDER BY c.column_id;
-    `, database)
+    `, db.FormatReference(database))
 	return db.getTableInformation(query, database, table, "")
 }
 
@@ -191,7 +189,7 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
         WHERE s.name = @p1
           AND t.name = @p2
           AND kc.type IN ('PK', 'UQ')  -- Primary keys and unique constraints
-    `, database)
+    `, db.FormatReference(database))
 	return db.getTableInformation(query, currentSchema, table, "")
 }
 
@@ -222,7 +220,7 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
           AND DB_NAME(DB_ID(@p1)) = @p1
-    `, database)
+    `, db.FormatReference(database))
 	return db.getTableInformation(query, database, table, "")
 }
 
@@ -262,7 +260,7 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
           AND s.name = @p3
           AND DB_ID(@p1) = d.database_id
         ORDER BY i.type_desc
-    `, database)
+    `, db.FormatReference(database))
 	return db.getTableInformation(query, database, table, currentSchema)
 }
 
@@ -281,7 +279,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	results = make([][]string, 0)
 
-	baseQuery := fmt.Sprintf("USE %s; SELECT * FROM ", database)
+	baseQuery := fmt.Sprintf("USE %s; SELECT * FROM ", db.FormatReference(database))
 	baseQuery += db.FormatReference(table)
 
 	if where != "" {
@@ -382,9 +380,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		return nil, 0, displayQueryString, err
 	}
 
-	countQuery := "USE "
-	countQuery += database
-	countQuery += "; "
+	countQuery := "USE " + db.FormatReference(database) + "; "
 	countQuery += "SELECT COUNT(*) FROM "
 	countQuery += db.FormatReference(table)
 
@@ -425,15 +421,12 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 		return errors.New("primary key value is required")
 	}
 
-	query := "USE "
-	query += database
-	query += "; UPDATE "
-	query += database
-	query += table
+	query := "USE " + db.FormatReference(database) + "; UPDATE "
+	query += db.FormatReference(table)
 	query += " SET "
-	query += column
+	query += db.FormatReference(column)
 	query += " = @p1 WHERE "
-	query += primaryKeyColumnName
+	query += db.FormatReference(primaryKeyColumnName)
 	query += " = @p2"
 	_, err := db.Connection.Exec(query, value, primaryKeyValue)
 
@@ -457,12 +450,10 @@ func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 		return errors.New("primary key value is required")
 	}
 
-	query := "USE "
-	query += database
-	query += "; DELETE FROM "
-	query += table
+	query := "USE " + db.FormatReference(database) + "; DELETE FROM "
+	query += db.FormatReference(table)
 	query += " WHERE "
-	query += primaryKeyColumnName
+	query += db.FormatReference(primaryKeyColumnName)
 	query += " = @p1"
 	_, err := db.Connection.Exec(query, primaryKeyValue)
 
@@ -572,9 +563,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 	}
 
 	pkColumnName := make([]string, 0)
-	query := "USE "
-	query += database
-	query += "; "
+	query := "USE " + db.FormatReference(database) + "; "
 	query += `
 		SELECT
 			c.name AS column_name
@@ -819,9 +808,7 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 
 	functions := make(map[string][]string)
 
-	query := "USE "
-	query += database
-	query += ";"
+	query := "USE " + db.FormatReference(database) + "; "
 	query += `
 		SELECT o.name
 		FROM sys.sql_modules m
@@ -859,9 +846,7 @@ func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
 
 	procedures := make(map[string][]string)
 
-	query := "USE "
-	query += database
-	query += "; "
+	query := "USE " + db.FormatReference(database) + "; "
 	query += `
 		SELECT o.name
 		FROM sys.sql_modules m
@@ -907,9 +892,7 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 
 	views := make(map[string][]string)
 
-	query := "USE "
-	query += database
-	query += "; "
+	query := "USE " + db.FormatReference(database) + "; "
 	query += `
 		SELECT o.name
 		FROM sys.sql_modules m
@@ -947,9 +930,7 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
 
 	result := ""
 
-	query := "USE "
-	query += database
-	query += "; "
+	query := "USE " + db.FormatReference(database) + "; "
 	query += `
 	declare @proc_source nvarchar(max);
     select @proc_source = object_definition(object_id(@name));
