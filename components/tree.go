@@ -529,7 +529,7 @@ func (tree *Tree) addSchemaProgrammingSection(schemaNode *tview.TreeNode, databa
 }
 
 func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures map[string][]string, views map[string][]string, node *tview.TreeNode) {
-	database := node.GetText()
+	database := node.GetReference().(string)
 	dbFunctions := functions[database]
 	sort.Strings(dbFunctions)
 
