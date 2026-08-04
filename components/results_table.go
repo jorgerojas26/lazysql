@@ -859,7 +859,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							return
 						}
 
-						rows, records, err := table.DBDriver.ExecuteQuery(query)
+						rows, records, err := table.DBDriver.ExecuteQuery(table.GetDatabaseName(), query)
 
 						if ctx.Err() != nil {
 							return

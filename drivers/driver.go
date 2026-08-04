@@ -17,7 +17,12 @@ type Driver interface {
 	UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
 	DeleteRecord(database, table string, primaryKeyColumnName, primaryKeyValue string) error
 	ExecuteDMLStatement(query string) (string, error)
-	ExecuteQuery(query string) ([][]string, int, error)
+	// database selects which database the query runs against. Drivers that
+	// support switching database context within a single connection (MSSQL,
+	// MySQL) prefix the query accordingly; drivers that require a dedicated
+	// connection per database (PostgreSQL) route the query through it.
+	// An empty database falls back to the connection's current database.
+	ExecuteQuery(database, query string) ([][]string, int, error)
 	ExecutePendingChanges(changes []models.DBDMLChange) error
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
