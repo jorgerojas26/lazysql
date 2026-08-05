@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/rivo/tview"
@@ -9,6 +10,78 @@ import (
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
+
+// ── parseSearchQuery ────────────────────────────────────────────────────────
+
+func TestParseSearchQuery(t *testing.T) {
+	testCases := []struct {
+		name            string
+		query           string
+		wantAncestors   []string
+		wantTableFilter string
+	}{
+		{
+			name:            "single part, no separators",
+			query:           "users",
+			wantAncestors:   nil,
+			wantTableFilter: "users",
+		},
+		{
+			name:            "dotted two-part",
+			query:           "dba.users",
+			wantAncestors:   []string{"dba"},
+			wantTableFilter: "users",
+		},
+		{
+			name:            "dotted three-part",
+			query:           "postgres.auth.users",
+			wantAncestors:   []string{"postgres", "auth"},
+			wantTableFilter: "users",
+		},
+		{
+			name:            "space two-part (legacy syntax)",
+			query:           "auth users",
+			wantAncestors:   []string{"auth"},
+			wantTableFilter: "users",
+		},
+		{
+			name:            "dot takes priority over space when both present",
+			query:           "postgres.auth users",
+			wantAncestors:   []string{"postgres"},
+			wantTableFilter: "auth users",
+		},
+		{
+			name:            "leading/trailing/duplicate dots are ignored",
+			query:           "..dba..users..",
+			wantAncestors:   []string{"dba"},
+			wantTableFilter: "users",
+		},
+		{
+			name:            "only dots",
+			query:           "...",
+			wantAncestors:   nil,
+			wantTableFilter: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ancestors, tableFilter := parseSearchQuery(tc.query)
+
+			if len(ancestors) != len(tc.wantAncestors) {
+				t.Fatalf("ancestors = %v, want %v", ancestors, tc.wantAncestors)
+			}
+			for i := range ancestors {
+				if ancestors[i] != tc.wantAncestors[i] {
+					t.Errorf("ancestors[%d] = %q, want %q", i, ancestors[i], tc.wantAncestors[i])
+				}
+			}
+			if tableFilter != tc.wantTableFilter {
+				t.Errorf("tableFilter = %q, want %q", tableFilter, tc.wantTableFilter)
+			}
+		})
+	}
+}
 
 // ── stripColorTags ──────────────────────────────────────────────────────────
 
@@ -772,6 +845,202 @@ func TestSearch_SinglePartWorksNormally(t *testing.T) {
 	tables.AddChild(orders)
 
 	tree.search("users")
+
+	if len(tree.state.searchFoundNodes) == 0 {
+		t.Fatal("expected search results, got none")
+	}
+
+	best := tree.state.searchFoundNodes[0]
+	if best.GetText() != "users" {
+		t.Errorf("expected best match 'users', got '%s'", best.GetText())
+	}
+}
+
+func buildTwoDatabaseTreeWithSameTableName() *Tree {
+	// Build:
+	//   dbA > tables > users, orders
+	//   dbB > tables > users, invoices
+	// Both databases have a "users" table so an unscoped search for "users"
+	// would legitimately match both. A dotted "dbA.users" search must only
+	// return dbA's node.
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+	}
+	root := tview.NewTreeNode("-")
+	root.SetReference("-")
+	tree.SetRoot(root)
+
+	dbA := tview.NewTreeNode("dbA")
+	dbA.SetReference("dbA")
+	root.AddChild(dbA)
+
+	dbATables := tview.NewTreeNode("tables")
+	dbATables.SetReference("dbA.tables")
+	dbA.AddChild(dbATables)
+
+	dbAUsers := tview.NewTreeNode("users")
+	dbAUsers.SetReference("dbA.tables.users")
+	dbATables.AddChild(dbAUsers)
+
+	dbAOrders := tview.NewTreeNode("orders")
+	dbAOrders.SetReference("dbA.tables.orders")
+	dbATables.AddChild(dbAOrders)
+
+	dbB := tview.NewTreeNode("dbB")
+	dbB.SetReference("dbB")
+	root.AddChild(dbB)
+
+	dbBTables := tview.NewTreeNode("tables")
+	dbBTables.SetReference("dbB.tables")
+	dbB.AddChild(dbBTables)
+
+	dbBUsers := tview.NewTreeNode("users")
+	dbBUsers.SetReference("dbB.tables.users")
+	dbBTables.AddChild(dbBUsers)
+
+	dbBInvoices := tview.NewTreeNode("invoices")
+	dbBInvoices.SetReference("dbB.tables.invoices")
+	dbBTables.AddChild(dbBInvoices)
+
+	return tree
+}
+
+func TestSearch_DottedTwoPartScopesToDatabase(t *testing.T) {
+	tree := buildTwoDatabaseTreeWithSameTableName()
+
+	tree.search("dbA.users")
+
+	if len(tree.state.searchFoundNodes) == 0 {
+		t.Fatal("expected search results, got none")
+	}
+
+	for _, n := range tree.state.searchFoundNodes {
+		ref, _ := n.GetReference().(string)
+		if strings.HasPrefix(ref, "dbB") {
+			t.Errorf("dotted search 'dbA.users' must not match nodes under dbB, but matched %q (ref=%s)", n.GetText(), ref)
+		}
+	}
+
+	best := tree.state.searchFoundNodes[0]
+	bestRef, _ := best.GetReference().(string)
+	if bestRef != "dbA.tables.users" {
+		t.Errorf("expected best match ref 'dbA.tables.users', got '%s' (text=%s)", bestRef, best.GetText())
+	}
+}
+
+func TestSearch_DottedTwoPartOtherDatabaseScopesCorrectly(t *testing.T) {
+	tree := buildTwoDatabaseTreeWithSameTableName()
+
+	tree.search("dbB.users")
+
+	if len(tree.state.searchFoundNodes) == 0 {
+		t.Fatal("expected search results, got none")
+	}
+
+	for _, n := range tree.state.searchFoundNodes {
+		ref, _ := n.GetReference().(string)
+		if strings.HasPrefix(ref, "dbA") {
+			t.Errorf("dotted search 'dbB.users' must not match nodes under dbA, but matched %q (ref=%s)", n.GetText(), ref)
+		}
+	}
+
+	best := tree.state.searchFoundNodes[0]
+	bestRef, _ := best.GetReference().(string)
+	if bestRef != "dbB.tables.users" {
+		t.Errorf("expected best match ref 'dbB.tables.users', got '%s' (text=%s)", bestRef, best.GetText())
+	}
+}
+
+func TestSearch_DottedThreePartScopesToDatabaseAndSchema(t *testing.T) {
+	// Build: postgres > auth > tables > users
+	//                 > billing > tables > users
+	// Same table name "users" under two different schemas in the same
+	// database. A three-part dotted search must disambiguate by schema too.
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+	}
+	root := tview.NewTreeNode("-")
+	root.SetReference("-")
+	tree.SetRoot(root)
+
+	db := tview.NewTreeNode("postgres")
+	db.SetReference("postgres")
+	root.AddChild(db)
+
+	authSchema := tview.NewTreeNode("auth")
+	authSchema.SetReference("auth")
+	db.AddChild(authSchema)
+
+	authTables := tview.NewTreeNode("tables")
+	authTables.SetReference("postgres.auth.tables")
+	authSchema.AddChild(authTables)
+
+	authUsers := tview.NewTreeNode("users")
+	authUsers.SetReference("postgres.auth.tables.users")
+	authTables.AddChild(authUsers)
+
+	billingSchema := tview.NewTreeNode("billing")
+	billingSchema.SetReference("billing")
+	db.AddChild(billingSchema)
+
+	billingTables := tview.NewTreeNode("tables")
+	billingTables.SetReference("postgres.billing.tables")
+	billingSchema.AddChild(billingTables)
+
+	billingUsers := tview.NewTreeNode("users")
+	billingUsers.SetReference("postgres.billing.tables.users")
+	billingTables.AddChild(billingUsers)
+
+	tree.search("postgres.auth.users")
+
+	if len(tree.state.searchFoundNodes) == 0 {
+		t.Fatal("expected search results, got none")
+	}
+
+	best := tree.state.searchFoundNodes[0]
+	bestRef, _ := best.GetReference().(string)
+	if bestRef != "postgres.auth.tables.users" {
+		t.Errorf("expected best match ref 'postgres.auth.tables.users', got '%s' (text=%s)", bestRef, best.GetText())
+	}
+
+	for _, n := range tree.state.searchFoundNodes {
+		ref, _ := n.GetReference().(string)
+		if ref == "postgres.billing.tables.users" {
+			t.Errorf("three-part dotted search 'postgres.auth.users' must not match billing schema's users table")
+		}
+	}
+}
+
+func TestSearch_SpaceSeparatedTwoPartStillWorks(t *testing.T) {
+	// Regression guard: existing space-based two-part syntax must keep
+	// working exactly as before the dotted-path support was added.
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+	}
+	root := tview.NewTreeNode("-")
+	root.SetReference("-")
+	tree.SetRoot(root)
+
+	db := tview.NewTreeNode("postgres")
+	db.SetReference("postgres")
+	root.AddChild(db)
+
+	schema := tview.NewTreeNode("auth")
+	schema.SetReference("auth")
+	db.AddChild(schema)
+
+	tablesSection := tview.NewTreeNode("tables")
+	tablesSection.SetReference("auth.tables")
+	schema.AddChild(tablesSection)
+
+	usersNode := tview.NewTreeNode("users")
+	usersNode.SetReference("postgres.auth.tables.users")
+	tablesSection.AddChild(usersNode)
+
+	tree.search("auth users")
 
 	if len(tree.state.searchFoundNodes) == 0 {
 		t.Fatal("expected search results, got none")

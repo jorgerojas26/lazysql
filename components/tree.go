@@ -691,6 +691,44 @@ func expandAncestors(target *tview.TreeNode, root *tview.TreeNode) {
 	}
 }
 
+// parseSearchQuery splits a lowercased search query into ancestor filters
+// (outermost first) and a final table/node name filter.
+//
+// Supports:
+//   - single part: "users"                         -> ([], "users")
+//   - dotted path: "db.users"                       -> (["db"], "users")
+//   - dotted path: "db.schema.users"                -> (["db", "schema"], "users")
+//   - space form:  "schema users"                   -> (["schema"], "users") (legacy, still supported)
+//
+// A "." anywhere in the query takes priority over spaces, since qualified
+// database/schema/table paths (as typed in SQL, e.g. db.schema.table) are
+// the primary use case for multi-part search. The legacy single-space,
+// two-part syntax ( "schema table") keeps working unchanged when no dot is
+// present.
+func parseSearchQuery(lowerSearchText string) (ancestorFilters []string, tableNameFilter string) {
+	if strings.Contains(lowerSearchText, ".") {
+		parts := strings.Split(lowerSearchText, ".")
+		// Drop empty segments (e.g. leading/trailing/duplicate dots) so a
+		// stray "." doesn't produce a spurious empty filter.
+		nonEmpty := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if p != "" {
+				nonEmpty = append(nonEmpty, p)
+			}
+		}
+		if len(nonEmpty) == 0 {
+			return nil, ""
+		}
+		return nonEmpty[:len(nonEmpty)-1], nonEmpty[len(nonEmpty)-1]
+	}
+
+	parts := strings.SplitN(lowerSearchText, " ", 2)
+	if len(parts) == 1 {
+		return nil, parts[0]
+	}
+	return []string{parts[0]}, parts[1]
+}
+
 func (tree *Tree) search(searchText string) {
 	rootNode := tree.GetRoot()
 	lowerSearchText := strings.ToLower(searchText)
@@ -706,16 +744,11 @@ func (tree *Tree) search(searchText string) {
 		return
 	}
 
-	parts := strings.SplitN(lowerSearchText, " ", 2)
-	databaseNameFilter := ""
-	tableNameFilter := ""
-
-	if len(parts) == 1 {
-		tableNameFilter = parts[0]
-	} else {
-		databaseNameFilter = parts[0]
-		tableNameFilter = parts[1]
-	}
+	// ancestorFilters are, in order from outermost to innermost, the
+	// qualifiers that must each match a distinct ancestor of the node
+	// (further qualifiers must match closer ancestors than earlier ones).
+	// tableNameFilter always matches the node itself.
+	ancestorFilters, tableNameFilter := parseSearchQuery(lowerSearchText)
 
 	// Collect nodes with their match ranks
 	type rankedNode struct {
@@ -725,44 +758,67 @@ func (tree *Tree) search(searchText string) {
 	var rankedNodes []rankedNode
 
 	// Build parent map while walking so we can walk up the ancestor chain
-	// when a two-part search (e.g. "schema tablename") needs to match against
-	// a non-immediate ancestor in deep trees with section headers.
+	// when a qualified search (e.g. "schema tablename" or "db.schema.table")
+	// needs to match against non-immediate ancestors in deep trees with
+	// section headers.
 	parentMap := make(map[*tview.TreeNode]*tview.TreeNode)
 
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
 		parentMap[node] = parent
 		nodeText := strings.ToLower(stripColorTags(node.GetText()))
 
-		if databaseNameFilter == "" {
+		if len(ancestorFilters) == 0 {
 			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
 			if rank >= 0 {
 				adjustedRank := prioritizeResult(tableNameFilter, nodeText, rank)
 				rankedNodes = append(rankedNodes, rankedNode{node: node, rank: adjustedRank})
 			}
-		} else {
-			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
-			if rank >= 0 {
-				// Walk up the ancestor chain (not just the immediate parent)
-				// so two-part search works through section headers
-				// (e.g. "auth users" in postgres > auth > tables > users).
-				var bestAncestorRank int = -1
-				var bestAncestorText string
-				for e := parentMap[node]; e != nil && e != rootNode; e = parentMap[e] {
-					eText := strings.ToLower(stripColorTags(e.GetText()))
-					eRank := fuzzy.RankMatch(databaseNameFilter, eText)
-					if eRank >= 0 && (bestAncestorRank < 0 || eRank < bestAncestorRank) {
-						bestAncestorRank = eRank
-						bestAncestorText = eText
-					}
-				}
-				if bestAncestorRank >= 0 {
-					adjustedTableRank := prioritizeResult(tableNameFilter, nodeText, rank)
-					adjustedAncestorRank := prioritizeResult(databaseNameFilter, bestAncestorText, bestAncestorRank)
-					// Combine ranks: prioritize table match but factor in ancestor match
-					combinedRank := adjustedTableRank + (adjustedAncestorRank / 2)
-					rankedNodes = append(rankedNodes, rankedNode{node: node, rank: combinedRank})
-				}
+			return true
+		}
+
+		rank := fuzzy.RankMatch(tableNameFilter, nodeText)
+		if rank < 0 {
+			return true
+		}
+
+		// Walk up the ancestor chain once, matching each ancestor filter
+		// (outermost first) against the closest possible ancestor that is
+		// still further from the node than the previous filter's match.
+		// This lets e.g. "db.schema.table" require the "db" match to be a
+		// stricter (or equal) ancestor than the "schema" match, walking
+		// through section headers (tables/views/functions) in between.
+		ancestorRanks := make([]int, len(ancestorFilters))
+		for i := range ancestorRanks {
+			ancestorRanks[i] = -1
+		}
+		filterIdx := len(ancestorFilters) - 1
+		for e := parentMap[node]; e != nil && e != rootNode && filterIdx >= 0; e = parentMap[e] {
+			eText := strings.ToLower(stripColorTags(e.GetText()))
+			eRank := fuzzy.RankMatch(ancestorFilters[filterIdx], eText)
+			if eRank >= 0 {
+				ancestorRanks[filterIdx] = prioritizeResult(ancestorFilters[filterIdx], eText, eRank)
+				filterIdx--
 			}
+		}
+
+		// Every ancestor filter must have matched some ancestor for this
+		// node to be considered a result at all (this is what actually
+		// scopes "dbA.users" to dbA instead of leaking dbB's users table).
+		allMatched := true
+		ancestorScore := 0
+		for _, ar := range ancestorRanks {
+			if ar < 0 {
+				allMatched = false
+				break
+			}
+			ancestorScore += ar
+		}
+
+		if allMatched {
+			adjustedTableRank := prioritizeResult(tableNameFilter, nodeText, rank)
+			// Combine ranks: prioritize table match but factor in ancestor matches.
+			combinedRank := adjustedTableRank + (ancestorScore / (2 * len(ancestorFilters)))
+			rankedNodes = append(rankedNodes, rankedNode{node: node, rank: combinedRank})
 		}
 
 		return true
