@@ -173,6 +173,18 @@ EnterOpensJSONViewer = false
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
+The `DBName` field (optional) controls how the sidebar tree is populated when a connection is opened:
+
+- **`DBName` set** (e.g. `DBName = 'foo'`): the tree is pinned to that single database only. This is the default behavior when a connection is created/edited through the in-app connection form, since `DBName` is auto-filled from whatever database is embedded in the connection URL.
+- **`DBName` empty or omitted**: the tree lists *every* database in the instance that the connecting user has `CONNECT` privileges on (via `GetDatabases()`), not just the one in the URL. This is useful when you regularly need to browse or query across multiple databases/catalogs on the same PostgreSQL or MSSQL server — PostgreSQL in particular requires a database to be specified in the connection string even though the same login is often valid for several databases on that instance.
+
+To enable multi-database browsing for a connection, either:
+
+- Remove/comment out the `DBName` line for that connection directly in `config.toml`, **or**
+- Check **"Show all databases in this instance"** when adding or editing the connection through the in-app connection form (`a` to add, `e` to edit from the connection picker). This overrides the auto-filled `DBName` and saves the connection with it left empty, without you needing to hand-edit the TOML file. When re-opening an existing connection for editing, the checkbox is automatically pre-checked if it was previously saved this way.
+
+Note: this setting only affects which databases populate the sidebar tree. It does not change which database the initial connection is authenticated against — that is still determined entirely by the database in the connection URL (a requirement of the PostgreSQL and MSSQL wire protocols).
+
 The `[application]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
 
 ### Application settings
