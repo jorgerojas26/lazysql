@@ -127,6 +127,8 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 			connectionForm.SetAction(actionNewConnection)
 			connectionForm.GetFormItemByLabel("Name").(*tview.InputField).SetText("")
 			connectionForm.GetFormItemByLabel("URL").(*tview.InputField).SetText("")
+			connectionForm.GetFormItemByLabel("Read-Only").(*tview.Checkbox).SetChecked(false)
+			connectionForm.GetFormItemByLabel("Show all databases in this instance").(*tview.Checkbox).SetChecked(false)
 			connectionForm.StatusText.SetText("")
 			connectionPages.SwitchToPage(pageNameConnectionForm)
 		case commands.Quit:
