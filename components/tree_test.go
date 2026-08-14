@@ -1051,3 +1051,122 @@ func TestSearch_SpaceSeparatedTwoPartStillWorks(t *testing.T) {
 		t.Errorf("expected best match 'users', got '%s'", best.GetText())
 	}
 }
+
+// ── exact-match collapse for fully-qualified queries ────────────────────────
+
+// buildSchemaTreeWithNearNameTables builds:
+//
+//	dados > dd > tables > dad, dado, cidade
+//
+// "dad" and "dado" are deliberately near-name so bare fuzzy matching on the
+// final segment would rank both, which is exactly the behavior a fully
+// qualified query must collapse away.
+func buildSchemaTreeWithNearNameTables() *Tree {
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+	}
+	root := tview.NewTreeNode("-")
+	root.SetReference("-")
+	tree.SetRoot(root)
+
+	db := tview.NewTreeNode("dados")
+	db.SetReference("dados")
+	root.AddChild(db)
+
+	schema := tview.NewTreeNode("dd")
+	schema.SetReference("dd")
+	db.AddChild(schema)
+
+	tablesSection := tview.NewTreeNode("tables")
+	tablesSection.SetReference("dados.dd.tables")
+	schema.AddChild(tablesSection)
+
+	for _, name := range []string{"dad", "dado", "cidade"} {
+		n := tview.NewTreeNode(name)
+		n.SetReference(fmt.Sprintf("dados.dd.tables.%s", name))
+		tablesSection.AddChild(n)
+	}
+
+	return tree
+}
+
+func TestSearch_DottedThreePartExactMatchCollapsesNearNameSiblings(t *testing.T) {
+	// Regression for the reported UX gap: once the full qualified path
+	// matches an existing node exactly, near-name siblings ("dado") must not
+	// also appear in the result list alongside the exact hit ("dad").
+	tree := buildSchemaTreeWithNearNameTables()
+
+	tree.search("dados.dd.dad")
+
+	if len(tree.state.searchFoundNodes) != 1 {
+		t.Fatalf("expected exactly 1 result for exact qualified match, got %d", len(tree.state.searchFoundNodes))
+	}
+
+	best := tree.state.searchFoundNodes[0]
+	bestRef, _ := best.GetReference().(string)
+	if bestRef != "dados.dd.tables.dad" {
+		t.Errorf("expected exact match ref 'dados.dd.tables.dad', got '%s' (text=%s)", bestRef, best.GetText())
+	}
+}
+
+func TestSearch_DottedThreePartPartialSegmentStillFuzzyMatches(t *testing.T) {
+	// Mid-typing UX guard: when the final segment has no exact match yet,
+	// fuzzy matching across the ancestor-scoped set must still work so the
+	// user sees candidates while still typing.
+	tree := buildSchemaTreeWithNearNameTables()
+
+	tree.search("dados.dd.da")
+
+	if len(tree.state.searchFoundNodes) < 2 {
+		t.Fatalf("expected fuzzy matches for partial segment 'da', got %d result(s)", len(tree.state.searchFoundNodes))
+	}
+
+	foundNames := map[string]bool{}
+	for _, n := range tree.state.searchFoundNodes {
+		foundNames[n.GetText()] = true
+	}
+	if !foundNames["dad"] || !foundNames["dado"] {
+		t.Errorf("expected both 'dad' and 'dado' in partial-segment fuzzy results, got %v", foundNames)
+	}
+}
+
+func TestSearch_SpaceSeparatedExactMatchCollapsesNearNameSiblings(t *testing.T) {
+	// Exact-match collapse must apply uniformly regardless of separator
+	// syntax (dotted vs. legacy space-separated), since both funnel through
+	// the same ancestor-filter mechanism.
+	tree := buildSchemaTreeWithNearNameTables()
+
+	tree.search("dd dad")
+
+	if len(tree.state.searchFoundNodes) != 1 {
+		t.Fatalf("expected exactly 1 result for exact qualified match via space syntax, got %d", len(tree.state.searchFoundNodes))
+	}
+
+	best := tree.state.searchFoundNodes[0]
+	if best.GetText() != "dad" {
+		t.Errorf("expected exact match 'dad', got '%s'", best.GetText())
+	}
+}
+
+func TestSearch_SinglePartExactMatchDoesNotCollapseSiblings(t *testing.T) {
+	// Single-part (unqualified) search must keep its existing fuzzy behavior
+	// unchanged: exact-collapse only triggers once the user has qualified
+	// the query with at least one ancestor filter.
+	tree := buildSchemaTreeWithNearNameTables()
+
+	tree.search("dad")
+
+	foundNames := map[string]bool{}
+	for _, n := range tree.state.searchFoundNodes {
+		foundNames[n.GetText()] = true
+	}
+	if !foundNames["dad"] {
+		t.Errorf("expected exact match 'dad' to be present, got %v", foundNames)
+	}
+	// "dado" fuzzy-matches "dad" too (prefix match); unqualified search
+	// behavior must remain unchanged by this increment.
+	if !foundNames["dado"] {
+		t.Errorf("expected unqualified search to keep pre-existing fuzzy behavior (should still include 'dado'), got %v", foundNames)
+	}
+}

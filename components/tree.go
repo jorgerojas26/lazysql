@@ -824,6 +824,36 @@ func (tree *Tree) search(searchText string) {
 		return true
 	})
 
+	// Once the query is qualified (at least one ancestor filter present,
+	// i.e. a dotted or space-separated "db[.schema].table" query), an exact
+	// (case-insensitive) match on the final segment collapses the result
+	// set to just the exact hit(s), dropping near-name fuzzy siblings that
+	// only partially match. This only applies once an exact match actually
+	// exists among the ancestor-scoped candidates — mid-typing queries with
+	// no exact hit yet keep fuzzy-matching normally, so the "narrow as you
+	// type" UX is preserved. Unqualified (single-part) queries are
+	// untouched, keeping their existing fuzzy behavior.
+	if len(ancestorFilters) > 0 {
+		hasExactMatch := false
+		for _, rn := range rankedNodes {
+			nodeText := strings.ToLower(stripColorTags(rn.node.GetText()))
+			if nodeText == tableNameFilter {
+				hasExactMatch = true
+				break
+			}
+		}
+		if hasExactMatch {
+			exactNodes := rankedNodes[:0]
+			for _, rn := range rankedNodes {
+				nodeText := strings.ToLower(stripColorTags(rn.node.GetText()))
+				if nodeText == tableNameFilter {
+					exactNodes = append(exactNodes, rn)
+				}
+			}
+			rankedNodes = exactNodes
+		}
+	}
+
 	sort.Slice(rankedNodes, func(i, j int) bool {
 		return rankedNodes[i].rank < rankedNodes[j].rank
 	})
