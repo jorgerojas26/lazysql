@@ -866,6 +866,18 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 					ctx = table.StartLoad()
 				})
 
+				// Validate before routing: a CTE such as "WITH ... INSERT" starts
+				// with "with" and would otherwise take the SELECT branch unchecked.
+				if table.ReadOnly {
+					if err := drivers.ValidateQueryForReadOnly(query); err != nil {
+						App.QueueUpdateDraw(func() {
+							table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
+							table.SetLoading(false)
+						})
+						continue
+					}
+				}
+
 				if isSelect {
 					go func() {
 						if ctx.Err() != nil {
@@ -907,16 +919,6 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 						})
 					}()
 				} else {
-					if table.ReadOnly {
-						if err := drivers.ValidateQueryForReadOnly(query); err != nil {
-							App.QueueUpdateDraw(func() {
-								table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
-								table.SetLoading(false)
-							})
-							continue
-						}
-					}
-
 					go func() {
 						if ctx.Err() != nil {
 							return
