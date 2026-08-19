@@ -745,7 +745,7 @@ func (tree *Tree) search(searchText string) {
 				// Walk up the ancestor chain (not just the immediate parent)
 				// so two-part search works through section headers
 				// (e.g. "auth users" in postgres > auth > tables > users).
-				var bestAncestorRank int = -1
+				var bestAncestorRank = -1
 				var bestAncestorText string
 				for e := parentMap[node]; e != nil && e != rootNode; e = parentMap[e] {
 					eText := strings.ToLower(stripColorTags(e.GetText()))

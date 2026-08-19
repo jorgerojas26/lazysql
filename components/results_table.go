@@ -1390,13 +1390,14 @@ func (table *ResultsTable) handleShowJSONViewer(command commands.Command) {
 
 	rowData := make(map[string]string)
 
-	if command == commands.ShowRowJSONViewer {
+	switch command {
+	case commands.ShowRowJSONViewer:
 		for i := 0; i < table.GetColumnCount(); i++ {
 			columnName := table.GetColumnNameByIndex(i)
 			cellValue := table.GetCell(selectedRow, i).Text
 			rowData[columnName] = cellValue
 		}
-	} else if command == commands.ShowCellJSONViewer {
+	case commands.ShowCellJSONViewer:
 		columnName := table.GetColumnNameByIndex(selectedCol)
 		cellValue := table.GetCell(selectedRow, selectedCol).Text
 		rowData[columnName] = cellValue
@@ -1458,7 +1459,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	rowPrimaryKeyInfo := table.GetPrimaryKeyValue(rowIndex)
 
 	if len(rowPrimaryKeyInfo) == 0 {
-		return fmt.Errorf("Primary key not found for row %d", rowIndex)
+		return fmt.Errorf("primary key not found for row %d", rowIndex)
 	}
 
 	if changeType == models.DMLUpdateType {
@@ -1920,7 +1921,7 @@ func (table *ResultsTable) rebuildForeignKeyJumpMetadata() {
 	referencedTableIndex, okTable := foreignKeyHeaderIndex(headers, provider, "foreign_table_name", "table", "referenced_table")
 	referencedColumnIndex, okReferencedColumn := foreignKeyHeaderIndex(headers, provider, "foreign_column_name", "to", "referenced_column")
 	constraintIndex, okConstraint := foreignKeyHeaderIndex(headers, provider, "constraint_name", "id")
-	if !(okColumn && okTable && okReferencedColumn && okConstraint) {
+	if !okColumn || !okTable || !okReferencedColumn || !okConstraint {
 		return
 	}
 
