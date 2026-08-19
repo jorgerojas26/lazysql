@@ -310,6 +310,14 @@ You can update the tree by pressing `R`, so you can see your newly created table
 4. Press `c` to edit, Press `<Enter>` to submit
 5. Press `<Ctrl+S>` to save the changes
 
+### Copy rows
+
+1. [Open a table](#openview-a-table)
+2. Move to a row and press `<Space>` to mark it. Repeat to mark as many rows as you want (press `<Space>` again to unmark)
+3. Press `y` to copy every marked row to the clipboard as tab separated values, one row per line
+
+> With no rows marked, `y` keeps its original behavior and copies the value of the selected cell.
+
 ### Export to CSV
 
 #### From Table View
@@ -508,7 +516,8 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | b | GotoPrev | Go to previous cell |
 | $ | GotoEnd | Go to last cell |
 | 0 | GotoStart | Go to first cell |
-| y | Copy | Copy cell value to clipboard |
+| y | Copy | Copy cell value to clipboard (or marked rows if any) |
+| Space | RowSelect | Toggle row selection |
 | o | AppendNewRow | Append new row |
 | O | DuplicateRow | Duplicate row |
 | J | SortDesc | Sort descending |

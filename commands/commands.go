@@ -47,6 +47,7 @@ const (
 	Refresh
 	UnfocusEditor
 	Copy
+	RowSelect
 	Edit
 	CommitEdit
 	DiscardEdit
@@ -147,6 +148,8 @@ func (c Command) String() string {
 	// Operations
 	case Copy:
 		return "Copy"
+	case RowSelect:
+		return "RowSelect"
 	case Edit:
 		return "Edit"
 	case Save:

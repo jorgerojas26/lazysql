@@ -100,4 +100,5 @@ const (
 	colorTableChange = tcell.ColorOrange
 	colorTableInsert = tcell.ColorDarkGreen
 	colorTableDelete = tcell.ColorRed
+	colorTableMarked = tcell.ColorSteelBlue
 )
