@@ -464,6 +464,10 @@ func (tree *Tree) buildSchemaTree(database string, node *tview.TreeNode, tables,
 		schemaNode.SetColor(app.Styles.PrimaryTextColor)
 		node.AddChild(schemaNode)
 
+		// Sort the tables.
+		schemaTables := tables[schema]
+		sort.Strings(schemaTables)
+
 		if supportsProgramming {
 			tablesNode := tview.NewTreeNode("tables")
 			tablesNode.SetExpanded(false)
@@ -471,7 +475,7 @@ func (tree *Tree) buildSchemaTree(database string, node *tview.TreeNode, tables,
 			tablesNode.SetColor(app.Styles.PrimaryTextColor)
 			schemaNode.AddChild(tablesNode)
 
-			for _, child := range tables[schema] {
+			for _, child := range schemaTables {
 				childNode := tview.NewTreeNode(child)
 				childNode.SetExpanded(true)
 				childNode.SetColor(app.Styles.PrimaryTextColor)
@@ -479,7 +483,7 @@ func (tree *Tree) buildSchemaTree(database string, node *tview.TreeNode, tables,
 				tablesNode.AddChild(childNode)
 			}
 		} else {
-			for _, child := range tables[schema] {
+			for _, child := range schemaTables {
 				childNode := tview.NewTreeNode(child)
 				childNode.SetExpanded(true)
 				childNode.SetColor(app.Styles.PrimaryTextColor)
