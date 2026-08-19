@@ -16,6 +16,10 @@ jobs:
 
       - name: Golangci-lint
         uses: golangci/golangci-lint-action@v6
+        with:
+          # the config is in the v2 format (version: "2", formatters section);
+          # v1 (default "latest" resolution) rejects it in `config verify`
+          version: v2.12.2
 
       - name: Test
         run: go test -v ./...
