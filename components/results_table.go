@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -38,6 +39,7 @@ type ResultsTableState struct {
 	foreignKeyColumns     map[string]bool
 	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
 	fkRawCellValues       map[string]string
+	markedRows            map[int]bool
 	isEditing             bool
 	isFiltering           bool
 	isLoading             bool
@@ -83,6 +85,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		foreignKeyColumns:     map[string]bool{},
 		foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
 		fkRawCellValues:       map[string]string{},
+		markedRows:            map[int]bool{},
 		isEditing:             false,
 		isLoading:             false,
 		listOfDBChanges:       listOfDBChanges,
@@ -642,13 +645,22 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 			return nil
 		}
+	} else if command == commands.RowSelect {
+		table.toggleRowMark(selectedRowIndex)
+		return nil
 	} else if command == commands.Copy {
-		selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
-		if selectedCell != nil {
-			clipboard := lib.NewClipboard()
-			err := clipboard.Write(selectedCell.Text)
-			if err != nil {
+		clipboard := lib.NewClipboard()
+
+		if len(table.state.markedRows) > 0 {
+			if err := clipboard.Write(table.markedRowsToText()); err != nil {
 				table.SetError(err.Error(), nil)
+			}
+		} else {
+			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+			if selectedCell != nil {
+				if err := clipboard.Write(selectedCell.Text); err != nil {
+					table.SetError(err.Error(), nil)
+				}
 			}
 		}
 	} else if command == commands.OpenCellInExternalEditor {
@@ -709,6 +721,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.state.fkRawCellValues = map[string]string{}
+	table.clearRowMarks()
 	table.Clear()
 	table.AddRows(rows)
 	App.ForceDraw()
@@ -1595,6 +1608,76 @@ func (table *ResultsTable) SetRowColor(rowIndex int, color tcell.Color) {
 
 func (table *ResultsTable) SetCellColor(rowIndex int, colIndex int, color tcell.Color) {
 	table.GetCell(rowIndex, colIndex).SetBackgroundColor(color)
+}
+
+// toggleRowMark adds or removes a row from the selection used by Copy.
+// The header row (index 0) can never be marked.
+func (table *ResultsTable) toggleRowMark(rowIndex int) {
+	if rowIndex <= 0 {
+		return
+	}
+
+	if table.state.markedRows == nil {
+		table.state.markedRows = map[int]bool{}
+	}
+
+	if table.state.markedRows[rowIndex] {
+		delete(table.state.markedRows, rowIndex)
+		table.SetRowColor(rowIndex, tcell.ColorDefault)
+		// Restore any change/delete highlighting the row had before it was marked.
+		table.colorChangedCells()
+	} else {
+		table.state.markedRows[rowIndex] = true
+		table.SetRowColor(rowIndex, colorTableMarked)
+	}
+}
+
+// clearRowMarks drops every marked row. It is called whenever the table
+// content is rebuilt so a mark can never point at a stale row.
+func (table *ResultsTable) clearRowMarks() {
+	table.state.markedRows = map[int]bool{}
+}
+
+// GetMarkedRowIndexes returns the marked row indexes ordered from top to bottom.
+func (table *ResultsTable) GetMarkedRowIndexes() []int {
+	indexes := make([]int, 0, len(table.state.markedRows))
+	for rowIndex := range table.state.markedRows {
+		indexes = append(indexes, rowIndex)
+	}
+	slices.Sort(indexes)
+	return indexes
+}
+
+// markedRowsToText renders the marked rows as tab separated values, one row
+// per line, ordered from top to bottom. Out of range indexes are skipped so a
+// stale mark can never cause a panic.
+func (table *ResultsTable) markedRowsToText() string {
+	columnCount := table.GetColumnCount()
+	rowCount := table.GetRowCount()
+
+	var builder strings.Builder
+	wroteRow := false
+
+	for _, rowIndex := range table.GetMarkedRowIndexes() {
+		if rowIndex <= 0 || rowIndex >= rowCount {
+			continue
+		}
+
+		if wroteRow {
+			builder.WriteByte('\n')
+		}
+
+		for columnIndex := 0; columnIndex < columnCount; columnIndex++ {
+			if columnIndex > 0 {
+				builder.WriteByte('\t')
+			}
+			builder.WriteString(table.getRawCellValue(rowIndex, columnIndex))
+		}
+
+		wroteRow = true
+	}
+
+	return builder.String()
 }
 
 func (table *ResultsTable) appendNewRow() {
