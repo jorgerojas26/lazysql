@@ -11,6 +11,8 @@ const (
 	HelpPopup
 	ToggleQueryHistory
 	ToggleTree
+	WidenTree
+	NarrowTree
 
 	// Movement: Basic
 	MoveUp
@@ -103,6 +105,10 @@ func (c Command) String() string {
 		return "ToggleQueryHistory"
 	case ToggleTree:
 		return "ToggleLeftWrapper"
+	case WidenTree:
+		return "WidenTree"
+	case NarrowTree:
+		return "NarrowTree"
 
 	// Movement: Basic
 	case MoveUp:
