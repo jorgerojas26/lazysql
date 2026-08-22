@@ -518,23 +518,23 @@ func TestBuildSchemaTree_BasicStructure(t *testing.T) {
 		}
 	}
 
-	// ── "tables" section has 2 children: "users", "posts" ──
+	// ── "tables" section has 2 children, sorted alphabetically: "posts", "users" ──
 	tablesSection := schemaChildren[0]
 	tableChildren := tablesSection.GetChildren()
 	if len(tableChildren) != 2 {
 		t.Fatalf("expected 2 table children, got %d", len(tableChildren))
 	}
-	if tableChildren[0].GetText() != "users" {
-		t.Errorf("expected first table 'users', got '%s'", tableChildren[0].GetText())
+	if tableChildren[0].GetText() != "posts" {
+		t.Errorf("expected first table 'posts', got '%s'", tableChildren[0].GetText())
 	}
-	if tableChildren[1].GetText() != "posts" {
-		t.Errorf("expected second table 'posts', got '%s'", tableChildren[1].GetText())
+	if tableChildren[1].GetText() != "users" {
+		t.Errorf("expected second table 'users', got '%s'", tableChildren[1].GetText())
 	}
-	if tableChildren[0].GetReference().(string) != "mydb.public.tables.users" {
-		t.Errorf("expected table reference 'mydb.public.tables.users', got '%s'", tableChildren[0].GetReference().(string))
+	if tableChildren[0].GetReference().(string) != "mydb.public.tables.posts" {
+		t.Errorf("expected table reference 'mydb.public.tables.posts', got '%s'", tableChildren[0].GetReference().(string))
 	}
-	if tableChildren[1].GetReference().(string) != "mydb.public.tables.posts" {
-		t.Errorf("expected table reference 'mydb.public.tables.posts', got '%s'", tableChildren[1].GetReference().(string))
+	if tableChildren[1].GetReference().(string) != "mydb.public.tables.users" {
+		t.Errorf("expected table reference 'mydb.public.tables.users', got '%s'", tableChildren[1].GetReference().(string))
 	}
 
 	// ── "functions" section has 1 child: "add_user" (NOT "public.add_user") ──
@@ -574,6 +574,34 @@ func TestBuildSchemaTree_BasicStructure(t *testing.T) {
 	}
 	if viewChildren[0].GetReference().(string) != "mydb.public.views.user_view" {
 		t.Errorf("expected reference 'mydb.public.views.user_view', got '%s'", viewChildren[0].GetReference().(string))
+	}
+}
+
+func TestBuildSchemaTree_TablesAreSorted(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	// Unsorted on purpose: drivers do not guarantee table order.
+	tables := map[string][]string{"public": {"zebra", "users", "posts", "alpha"}}
+
+	tree.buildSchemaTree("mydb", dbNode, tables, nil, nil, nil)
+
+	children := dbNode.GetChildren()
+	if len(children) != 1 {
+		t.Fatalf("expected 1 schema child, got %d", len(children))
+	}
+
+	tableChildren := children[0].GetChildren()[0].GetChildren()
+	want := []string{"alpha", "posts", "users", "zebra"}
+	if len(tableChildren) != len(want) {
+		t.Fatalf("expected %d tables, got %d", len(want), len(tableChildren))
+	}
+	for i, name := range want {
+		if tableChildren[i].GetText() != name {
+			t.Errorf("table %d: expected %q, got %q", i, name, tableChildren[i].GetText())
+		}
 	}
 }
 

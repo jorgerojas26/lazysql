@@ -26,7 +26,7 @@ type CSVWriter struct {
 // Call Commit() to finalize the file, or Abort() to discard it.
 func NewCSVWriter(filePath string) (*CSVWriter, error) {
 	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 

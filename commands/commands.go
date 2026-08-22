@@ -11,6 +11,8 @@ const (
 	HelpPopup
 	ToggleQueryHistory
 	ToggleTree
+	WidenTree
+	NarrowTree
 
 	// Movement: Basic
 	MoveUp
@@ -47,6 +49,7 @@ const (
 	Refresh
 	UnfocusEditor
 	Copy
+	RowSelect
 	Edit
 	CommitEdit
 	DiscardEdit
@@ -102,6 +105,10 @@ func (c Command) String() string {
 		return "ToggleQueryHistory"
 	case ToggleTree:
 		return "ToggleLeftWrapper"
+	case WidenTree:
+		return "WidenTree"
+	case NarrowTree:
+		return "NarrowTree"
 
 	// Movement: Basic
 	case MoveUp:
@@ -147,6 +154,8 @@ func (c Command) String() string {
 	// Operations
 	case Copy:
 		return "Copy"
+	case RowSelect:
+		return "RowSelect"
 	case Edit:
 		return "Edit"
 	case Save:

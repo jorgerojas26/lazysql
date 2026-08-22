@@ -162,7 +162,7 @@ func TestFindLocalConfig(t *testing.T) {
 			name: "finds config in parent directory",
 			setup: func(tmpDir string) error {
 				subDir := filepath.Join(tmpDir, "subdir")
-				if err := os.MkdirAll(subDir, 0o755); err != nil {
+				if err := os.MkdirAll(subDir, 0o700); err != nil {
 					return err
 				}
 				if err := os.Chdir(subDir); err != nil {
@@ -181,10 +181,10 @@ func TestFindLocalConfig(t *testing.T) {
 				//   tmpDir/repo/project/   ← CWD
 				repoDir := filepath.Join(tmpDir, "repo")
 				projectDir := filepath.Join(repoDir, "project")
-				if err := os.MkdirAll(projectDir, 0o755); err != nil {
+				if err := os.MkdirAll(projectDir, 0o700); err != nil {
 					return err
 				}
-				if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o700); err != nil {
 					return err
 				}
 				if err := os.WriteFile(filepath.Join(tmpDir, ".lazysql.toml"), []byte("test"), 0o600); err != nil {
@@ -201,11 +201,11 @@ func TestFindLocalConfig(t *testing.T) {
 				//   tmpDir/.git/            ← git boundary
 				//   tmpDir/.lazysql.toml   ← config at repo root, SHOULD be found
 				//   tmpDir/project/         ← CWD
-				if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o700); err != nil {
 					return err
 				}
 				projectDir := filepath.Join(tmpDir, "project")
-				if err := os.MkdirAll(projectDir, 0o755); err != nil {
+				if err := os.MkdirAll(projectDir, 0o700); err != nil {
 					return err
 				}
 				if err := os.WriteFile(filepath.Join(tmpDir, ".lazysql.toml"), []byte("test"), 0o600); err != nil {
@@ -222,7 +222,7 @@ func TestFindLocalConfig(t *testing.T) {
 					return err
 				}
 				// Create .git to stop the search before it reaches system temp
-				return os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o755)
+				return os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o700)
 			},
 			expectFound: false,
 		},
@@ -281,7 +281,7 @@ func TestLoadConfigWithLocal(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create .git directory to act as repo boundary
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -364,7 +364,7 @@ func TestLoadConfigLocalReplacesConnections(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -435,7 +435,7 @@ func TestLoadConfigPreservesDefaults(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
