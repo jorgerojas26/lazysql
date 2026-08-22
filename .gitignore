@@ -6,3 +6,6 @@ dist/
 test.db
 
 .aider*
+# Local Pi runtime state
+.atl/
+.codegraph
