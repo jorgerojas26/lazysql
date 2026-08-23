@@ -893,8 +893,11 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							table.Pagination.SetLimit(records)
 							table.SetRecords(rows)
 							table.SetLoading(false)
-							closeQuitConfirmation()
+							// Clear filtering state before closing the quit confirmation:
+							// closing it can synchronously trigger Home.focusTab, which
+							// re-focuses the editor while filtering is still active.
 							table.SetIsFiltering(false)
+							closeQuitConfirmation()
 							table.HighlightTable()
 							table.Editor.SetBlur()
 							table.SetInputCapture(table.tableInputCapture)
@@ -941,9 +944,24 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 
 							table.SetResultsInfo(result)
 							table.SetLoading(false)
+							// Clear filtering state before closing the quit confirmation:
+							// closing it can synchronously trigger Home.focusTab, which
+							// re-focuses the editor while filtering is still active.
+							table.SetIsFiltering(false)
 							closeQuitConfirmation()
-							table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
-							App.SetFocus(table.Editor)
+							// Return focus to the table, mirroring the SELECT branch,
+							// instead of leaving it on the SQL editor.
+							table.HighlightTable()
+							table.Editor.SetBlur()
+							table.SetInputCapture(table.tableInputCapture)
+							table.EditorPages.SwitchToPage(pageNameTableEditorTable)
+							App.SetFocus(table)
+
+							// Refresh the records so the table reflects the mutation
+							// when the editor tab has a table context.
+							if table.GetDatabaseName() != "" && table.GetTableName() != "" {
+								table.FetchRecords(nil, nil)
+							}
 
 							if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
 								logger.Error("Failed to add DML query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})

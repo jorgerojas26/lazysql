@@ -279,6 +279,7 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 		if e.vimMode == VimModeNormal {
 			// Check for keymap Execute (Ctrl+R) — still handled in normal mode
 			if cmd == commands.Execute {
+				e.acVisible = false
 				e.Publish(eventSQLEditorQuery, e.GetText())
 				return
 			}
@@ -288,6 +289,7 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 
 		// Insert & Visual mode: keymap commands first
 		if cmd == commands.Execute {
+			e.acVisible = false
 			e.Publish(eventSQLEditorQuery, e.GetText())
 			return
 		}
