@@ -31,7 +31,11 @@ type TabbedPaneState struct {
 	Length     int
 }
 
-const headerArrowMaxWidth = 3
+const (
+	// headerArrowWidth is the number of columns reserved on each side of the
+	// header strip to show that tabs are hidden outside the visible area.
+	headerArrowWidth = 2
+)
 
 type TabbedPane struct {
 	*tview.Pages
@@ -57,15 +61,26 @@ func NewTabbedPane() *TabbedPane {
 		innerWidth := width - 2
 
 		leftReserve, rightReserve := 0, 0
+		availWidth := innerWidth
 		for {
-			tabbedPane.alignHeaderToWidth(innerWidth - leftReserve - rightReserve)
+			availWidth = innerWidth - leftReserve - rightReserve
+			if availWidth <= 0 {
+				// Not enough room left for the arrows: drop them instead of
+				// oscillating between reserving and releasing space.
+				leftReserve, rightReserve = 0, 0
+				availWidth = innerWidth
+				tabbedPane.alignHeaderToWidth(availWidth)
+				break
+			}
+
+			tabbedPane.alignHeaderToWidth(availWidth)
 
 			newLeft, newRight := 0, 0
 			if tabbedPane.headerHasHiddenLeft {
-				newLeft = headerArrowMaxWidth
+				newLeft = headerArrowWidth
 			}
 			if tabbedPane.headerHasHiddenRight {
-				newRight = headerArrowMaxWidth
+				newRight = headerArrowWidth
 			}
 
 			if newLeft == leftReserve && newRight == rightReserve {
@@ -74,14 +89,14 @@ func NewTabbedPane() *TabbedPane {
 			leftReserve, rightReserve = newLeft, newRight
 		}
 
-		if tabbedPane.headerHasHiddenLeft {
-			tview.Print(screen, "<< ", x+1, y, leftReserve, tview.AlignLeft, app.Styles.TertiaryTextColor)
+		if leftReserve > 0 {
+			tview.Print(screen, "◀ ", x+1, y, leftReserve, tview.AlignLeft, app.Styles.GraphicsColor)
 		}
-		if tabbedPane.headerHasHiddenRight {
-			tview.Print(screen, " >>", x+1+innerWidth-rightReserve, y, rightReserve, tview.AlignRight, app.Styles.TertiaryTextColor)
+		if rightReserve > 0 {
+			tview.Print(screen, " ▶", x+1+innerWidth-rightReserve, y, rightReserve, tview.AlignRight, app.Styles.GraphicsColor)
 		}
 
-		return x + 1 + leftReserve, y, innerWidth - leftReserve - rightReserve, height
+		return x + 1 + leftReserve, y, availWidth, height
 	})
 
 	return tabbedPane
@@ -90,6 +105,7 @@ func NewTabbedPane() *TabbedPane {
 func (t *TabbedPane) AppendTab(name string, content TabContent, reference string) {
 	textView := tview.NewTextView()
 	textView.SetText(name)
+	textView.SetTextAlign(tview.AlignCenter)
 	item := &Header{textView}
 
 	newTab := &Tab{
@@ -205,7 +221,9 @@ func (t *TabbedPane) rebuildHeaderStrip() {
 
 	tab := t.state.FirstTab
 	for i := 0; tab != nil && i < len(t.headerWidths); i++ {
-		t.HeaderContainer.AddItem(tab.Header, 0, i, 1, 1, 1, t.headerWidths[i], false)
+		// minGridWidth is 1 so tabs are still drawn (clipped) in narrow
+		// terminals instead of being skipped by the grid.
+		t.HeaderContainer.AddItem(tab.Header, 0, i, 1, 1, 1, 1, false)
 		tab = tab.NextTab
 	}
 }
@@ -222,7 +240,7 @@ func (t *TabbedPane) alignHeaderToWidth(width int) {
 	t.headerHasHiddenLeft = false
 	t.headerHasHiddenRight = false
 
-	if width <= 0 {
+	if width <= 0 || len(t.headerWidths) == 0 {
 		t.HeaderContainer.SetOffset(0, 0)
 		return
 	}
@@ -378,36 +396,30 @@ func (t *TabbedPane) SwitchToTabByReference(reference string) *Tab {
 }
 
 func (t *TabbedPane) HighlightTabHeader(tab *Tab) {
-	tabToHighlight := t.state.FirstTab
-
-	for i := 0; tabToHighlight != nil && i < t.state.Length; i++ {
-		if tabToHighlight.Header == tab.Header {
-			tabToHighlight.Header.SetTextColor(app.Styles.SecondaryTextColor)
-		} else {
-			tabToHighlight.Header.SetTextColor(app.Styles.PrimaryTextColor)
-		}
-		tabToHighlight = tabToHighlight.NextTab
-	}
+	t.styleHeaders(tab, app.Styles.PrimaryTextColor)
 }
 
 func (t *TabbedPane) Highlight() {
-	tab := t.state.FirstTab
-
-	for i := 0; tab != nil && i < t.state.Length; i++ {
-		if tab == t.state.CurrentTab {
-			tab.Header.SetTextColor(app.Styles.SecondaryTextColor)
-		} else {
-			tab.Header.SetTextColor(app.Styles.PrimaryTextColor)
-		}
-		tab = tab.NextTab
-	}
+	t.styleHeaders(t.state.CurrentTab, app.Styles.PrimaryTextColor)
 }
 
 func (t *TabbedPane) SetBlur() {
-	tab := t.state.FirstTab
+	t.styleHeaders(t.state.CurrentTab, app.Styles.InverseTextColor)
+}
 
-	for i := 0; tab != nil && i < t.state.Length; i++ {
-		tab.Header.SetTextColor(app.Styles.InverseTextColor)
-		tab = tab.NextTab
+// styleHeaders paints the selected tab with a solid background and every other
+// tab with plain text. The selected tab keeps its highlight while the pane is
+// blurred so the active table stays identifiable.
+func (t *TabbedPane) styleHeaders(selected *Tab, normalColor tcell.Color) {
+	selectedStyle := tcell.StyleDefault.
+		Background(app.Styles.SecondaryTextColor).
+		Foreground(app.Styles.ContrastSecondaryTextColor)
+
+	for tab := t.state.FirstTab; tab != nil; tab = tab.NextTab {
+		if tab == selected {
+			tab.Header.SetTextStyle(selectedStyle)
+			continue
+		}
+		tab.Header.SetTextStyle(tcell.StyleDefault.Foreground(normalColor))
 	}
 }
