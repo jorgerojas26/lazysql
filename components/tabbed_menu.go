@@ -44,6 +44,7 @@ type TabbedPane struct {
 	headerWidths         []int
 	headerHasHiddenLeft  bool
 	headerHasHiddenRight bool
+	headerRightShift     int
 }
 
 func NewTabbedPane() *TabbedPane {
@@ -96,7 +97,12 @@ func NewTabbedPane() *TabbedPane {
 			tview.Print(screen, " ▶", x+1+innerWidth-rightReserve, y, rightReserve, tview.AlignRight, app.Styles.GraphicsColor)
 		}
 
-		return x + 1 + leftReserve, y, availWidth, height
+		// When the strip has scrolled to the last tab and does not fill the
+		// available width, right-align it so the active tab touches the right
+		// edge instead of leaving dead space after it.
+		shift := tabbedPane.headerRightShift
+
+		return x + 1 + leftReserve + shift, y, availWidth - shift, height
 	})
 
 	return tabbedPane
@@ -239,6 +245,7 @@ func (t *TabbedPane) AlignHeaderToCurrentTab() {
 func (t *TabbedPane) alignHeaderToWidth(width int) {
 	t.headerHasHiddenLeft = false
 	t.headerHasHiddenRight = false
+	t.headerRightShift = 0
 
 	if width <= 0 || len(t.headerWidths) == 0 {
 		t.HeaderContainer.SetOffset(0, 0)
@@ -278,6 +285,13 @@ func (t *TabbedPane) alignHeaderToWidth(width int) {
 
 	t.headerHasHiddenLeft = target > 0
 	t.headerHasHiddenRight = visibleColumns < len(t.headerWidths)-target
+
+	// Reaching the last tab parks the remaining tabs flush against the right
+	// edge of the available space (only when the strip is scrolled, so tabs
+	// that all fit stay left-aligned like a browser bar).
+	if t.headerHasHiddenLeft && !t.headerHasHiddenRight && t.state.CurrentTab == t.state.LastTab && used < width {
+		t.headerRightShift = width - used
+	}
 
 	t.HeaderContainer.SetOffset(0, target)
 }

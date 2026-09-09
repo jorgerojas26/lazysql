@@ -97,3 +97,55 @@ func TestAlignHeaderToWidth(t *testing.T) {
 		})
 	}
 }
+
+func TestHeaderRightShift(t *testing.T) {
+	tests := []struct {
+		name      string
+		names     []string
+		current   string
+		width     int
+		wantShift int
+	}{
+		{
+			name:      "scrolled to the last tab parks the strip at the right edge",
+			names:     []string{"users", "orders", "products", "invoices", "sessions"},
+			current:   "sessions",
+			width:     36,
+			wantShift: 6, // 36 - (10 + 10 + 10)
+		},
+		{
+			name:      "exact fit leaves no shift",
+			names:     []string{"users", "orders", "products", "invoices", "sessions"},
+			current:   "sessions",
+			width:     30,
+			wantShift: 0,
+		},
+		{
+			name:      "all tabs fit keeps the strip left-aligned",
+			names:     []string{"users", "orders", "products", "invoices", "sessions"},
+			current:   "sessions",
+			width:     80,
+			wantShift: 0,
+		},
+		{
+			name:      "middle tab never shifts",
+			names:     []string{"users", "orders", "products", "invoices", "sessions"},
+			current:   "products",
+			width:     36,
+			wantShift: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pane := newTestTabbedPane(t, tt.names...)
+			pane.SetCurrentTab(pane.GetTabByName(tt.current))
+
+			pane.alignHeaderToWidth(tt.width)
+
+			if pane.headerRightShift != tt.wantShift {
+				t.Errorf("rightShift = %d, want %d", pane.headerRightShift, tt.wantShift)
+			}
+		})
+	}
+}
