@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,8 +14,9 @@ import (
 )
 
 type MySQL struct {
-	Connection *sql.DB
-	Provider   string
+	Connection      *sql.DB
+	Provider        string
+	CurrentDatabase string
 }
 
 func (db *MySQL) TestConnection(urlstr string) (err error) {
@@ -33,6 +35,18 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Track the database in scope at connection time so ExecuteQuery can
+	// avoid an unnecessary "USE" statement when the caller targets the same
+	// database the connection is already on.
+	row := db.Connection.QueryRow("SELECT DATABASE()")
+
+	var database sql.NullString
+	if err := row.Scan(&database); err != nil {
+		return err
+	}
+
+	db.CurrentDatabase = database.String
 
 	return nil
 }
@@ -384,13 +398,46 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	return paginatedResults, totalRecords, queryString, nil
 }
 
-func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
+func (db *MySQL) ExecuteQuery(database, query string) ([][]string, int, error) {
+	// The MySQL driver does not support multiple statements in a single
+	// Query call by default (no multiStatements=true in the DSN), so "USE"
+	// and the actual query must run sequentially on the *same* pooled
+	// connection to avoid the USE landing on a different physical
+	// connection than the query.
+	if database != "" && database != db.CurrentDatabase {
+		ctx := context.Background()
+
+		conn, err := db.Connection.Conn(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer conn.Close()
+
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("USE `%s`", database)); err != nil {
+			return nil, 0, err
+		}
+
+		rows, err := conn.QueryContext(ctx, query)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer rows.Close()
+
+		return scanMySQLRows(rows)
+	}
+
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
+	return scanMySQLRows(rows)
+}
+
+// scanMySQLRows scans a *sql.Rows into the [][]string shape used across the
+// codebase, with the column names prepended as the first row.
+func scanMySQLRows(rows *sql.Rows) ([][]string, int, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, 0, err
@@ -403,8 +450,7 @@ func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		err = rows.Scan(rowValues...)
-		if err != nil {
+		if err := rows.Scan(rowValues...); err != nil {
 			return nil, 0, err
 		}
 

@@ -511,3 +511,64 @@ func TestMSSQL_GetRecords(t *testing.T) {
 		t.Errorf("Unfulfilled expectations: %s", err)
 	}
 }
+
+func TestMSSQL_ExecuteQuery_CrossDatabase(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db, CurrentDatabase: "otherdb"}
+
+	rows := sqlmock.NewRows([]string{"id", "name"}).AddRow(1, "Alice")
+
+	mock.ExpectQuery("USE targetdb; SELECT * FROM users").WillReturnRows(rows)
+
+	results, total, err := mssql.ExecuteQuery("targetdb", "SELECT * FROM users")
+	if err != nil {
+		t.Fatalf("ExecuteQuery failed: %v", err)
+	}
+
+	if total != 1 {
+		t.Fatalf("Expected total 1, got %d", total)
+	}
+
+	expected := [][]string{
+		{"id", "name"},
+		{"1", "Alice"},
+	}
+
+	if !reflect.DeepEqual(results, expected) {
+		t.Fatalf("Expected %v, got %v", expected, results)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_ExecuteQuery_SameDatabase_NoUseStatement(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db, CurrentDatabase: "targetdb"}
+
+	rows := sqlmock.NewRows([]string{"id"}).AddRow(1)
+
+	// Exact-match query matcher: if a USE prefix leaked in, this expectation
+	// would fail to match and the test would fail.
+	mock.ExpectQuery("SELECT * FROM users").WillReturnRows(rows)
+
+	_, _, err = mssql.ExecuteQuery("targetdb", "SELECT * FROM users")
+	if err != nil {
+		t.Fatalf("ExecuteQuery failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}

@@ -620,8 +620,23 @@ func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error)
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *Postgres) ExecuteQuery(query string) ([][]string, int, error) {
-	rows, err := db.Connection.Query(query)
+func (db *Postgres) ExecuteQuery(database, query string) ([][]string, int, error) {
+	// An empty database falls back to whatever the connection is currently
+	// on (preserves pre-existing behavior for callers that don't resolve a
+	// database name).
+	if database == "" {
+		database = db.CurrentDatabase
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, 0, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(query)
 	if err != nil {
 		return nil, 0, err
 	}

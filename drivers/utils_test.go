@@ -30,11 +30,11 @@ func (m *mockDriver) GetRecords(string, string, string, string, int, int) ([][]s
 func (m *mockDriver) UpdateRecord(string, string, string, string, string, string) error {
 	panic("not used")
 }
-func (m *mockDriver) DeleteRecord(string, string, string, string) error { panic("not used") }
-func (m *mockDriver) ExecuteDMLStatement(string) (string, error)        { panic("not used") }
-func (m *mockDriver) ExecuteQuery(string) ([][]string, int, error)      { panic("not used") }
-func (m *mockDriver) ExecutePendingChanges([]models.DBDMLChange) error  { panic("not used") }
-func (m *mockDriver) GetProvider() string                               { return "mock" }
+func (m *mockDriver) DeleteRecord(string, string, string, string) error    { panic("not used") }
+func (m *mockDriver) ExecuteDMLStatement(string) (string, error)           { panic("not used") }
+func (m *mockDriver) ExecuteQuery(string, string) ([][]string, int, error) { panic("not used") }
+func (m *mockDriver) ExecutePendingChanges([]models.DBDMLChange) error     { panic("not used") }
+func (m *mockDriver) GetProvider() string                                  { return "mock" }
 func (m *mockDriver) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
 	panic("not used")
 }

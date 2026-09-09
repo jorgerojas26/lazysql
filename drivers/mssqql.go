@@ -19,8 +19,9 @@ import (
 )
 
 type MSSQL struct {
-	Connection *sql.DB
-	Provider   string
+	Connection      *sql.DB
+	Provider        string
+	CurrentDatabase string
 }
 
 // mssqlGUIDToUUID converts a 16-byte little-endian GUID from MSSQL
@@ -73,6 +74,18 @@ func (db *MSSQL) Connect(urlstr string) error {
 	if err := db.Connection.Ping(); err != nil {
 		return err
 	}
+
+	// Track the database in scope at connection time so ExecuteQuery can
+	// avoid an unnecessary "USE" statement when the caller targets the same
+	// database the connection is already on.
+	row := db.Connection.QueryRow("SELECT DB_NAME()")
+
+	var database string
+	if err := row.Scan(&database); err != nil {
+		return err
+	}
+
+	db.CurrentDatabase = database
 
 	return nil
 }
@@ -487,12 +500,17 @@ func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
+func (db *MSSQL) ExecuteQuery(database, query string) ([][]string, int, error) {
 	if query == "" {
 		return nil, 0, errors.New("query can not be empty")
 	}
 
-	rows, err := db.Connection.Query(query)
+	executableQuery := query
+	if database != "" && database != db.CurrentDatabase {
+		executableQuery = fmt.Sprintf("USE %s; %s", database, query)
+	}
+
+	rows, err := db.Connection.Query(executableQuery)
 	if err != nil {
 		return nil, 0, err
 	}
