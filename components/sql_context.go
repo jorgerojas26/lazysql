@@ -110,9 +110,10 @@ func cursorDepth(text string, cursorPos int) int {
 			break
 		}
 		w := text[t.Start:t.End]
-		if w == "(" {
+		switch w {
+		case "(":
 			depth++
-		} else if w == ")" {
+		case ")":
 			depth--
 		}
 	}
@@ -204,9 +205,10 @@ func skipParenBlock(text string, tokens []SQLToken, i *int) {
 	*i++
 	for *i < len(tokens) && depth > 0 {
 		w := text[tokens[*i].Start:tokens[*i].End]
-		if w == "(" {
+		switch w {
+		case "(":
 			depth++
-		} else if w == ")" {
+		case ")":
 			depth--
 		}
 		*i++

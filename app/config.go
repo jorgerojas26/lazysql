@@ -206,7 +206,7 @@ func (c *Config) SaveConnections(connections []models.Connection) error {
 		configFile = c.LocalConfigFile
 	}
 
-	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configFile), 0o700); err != nil {
 		return err
 	}
 
