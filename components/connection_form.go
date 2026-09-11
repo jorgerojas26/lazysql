@@ -28,6 +28,7 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 	addForm.AddCheckbox("Read-Only", false, nil)
+	addForm.AddCheckbox("Show all databases in this instance", false, nil)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
@@ -99,13 +100,21 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			databases := app.App.Connections()
 			newDatabases := make([]models.Connection, len(databases))
 
-			DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
-
-			if DBName == "NULL" {
-				DBName = ""
-			}
-
 			readOnly := form.GetFormItem(2).(*tview.Checkbox).IsChecked()
+			showAllDatabases := form.GetFormItem(3).(*tview.Checkbox).IsChecked()
+
+			// When the user opts in to browsing every database in the
+			// instance, force DBName empty so the tree's InitializeNodes
+			// falls back to GetDatabases() instead of pinning to whatever
+			// database happens to be embedded in the connection URL.
+			var DBName string
+			if !showAllDatabases {
+				DBName = strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
+
+				if DBName == "NULL" {
+					DBName = ""
+				}
+			}
 
 			parsedDatabaseData := models.Connection{
 				Name:     connectionName,
@@ -205,4 +214,26 @@ func (form *ConnectionForm) SetConnectionData(conn models.Connection) {
 	form.GetFormItem(0).(*tview.InputField).SetText(conn.Name)
 	form.GetFormItem(1).(*tview.InputField).SetText(conn.URL)
 	form.GetFormItem(2).(*tview.Checkbox).SetChecked(conn.ReadOnly)
+	form.GetFormItem(3).(*tview.Checkbox).SetChecked(showAllDatabasesChecked(conn))
+}
+
+// showAllDatabasesChecked infers whether the "show all databases" checkbox
+// should be pre-checked when editing an existing connection: true when the
+// connection has no DBName pinned but its URL does carry an embedded
+// database (i.e. it was previously saved with this option enabled, or the
+// user cleared DBName by hand). False for freshly created / legacy
+// connections where DBName mirrors the URL, preserving prior behavior.
+func showAllDatabasesChecked(conn models.Connection) bool {
+	if conn.DBName != "" {
+		return false
+	}
+
+	parsed, err := helpers.ParseConnectionString(conn.URL)
+	if err != nil {
+		return false
+	}
+
+	urlDBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
+
+	return urlDBName != "" && urlDBName != "NULL"
 }
