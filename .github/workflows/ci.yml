@@ -7,6 +7,11 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    env:
+      # `,direct` only falls back for 404/410 responses. Use `|direct` so
+      # transient proxy errors (such as HTTP/2 stream failures) also fall
+      # back to fetching the module from its source repository.
+      GOPROXY: "https://proxy.golang.org|direct"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
