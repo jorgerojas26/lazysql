@@ -10,6 +10,110 @@ import (
 	"github.com/jorgerojas26/lazysql/models"
 )
 
+func newMarkTestTable(rows [][]string) *ResultsTable {
+	changes := []models.DBDMLChange{}
+
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			listOfDBChanges: &changes,
+			markedRows:      map[int]bool{},
+			fkRawCellValues: map[string]string{},
+		},
+	}
+
+	for rowIndex, row := range rows {
+		for columnIndex, cell := range row {
+			table.SetCell(rowIndex, columnIndex, tview.NewTableCell(cell))
+		}
+	}
+
+	return table
+}
+
+func TestToggleRowMarkNeverMarksHeader(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id", "name"},
+		{"1", "alice"},
+	})
+
+	table.toggleRowMark(0)
+
+	if len(table.state.markedRows) != 0 {
+		t.Fatalf("expected header row to be unmarkable, got %d marked rows", len(table.state.markedRows))
+	}
+}
+
+func TestToggleRowMarkAddsAndRemoves(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id", "name"},
+		{"1", "alice"},
+		{"2", "bob"},
+	})
+
+	table.toggleRowMark(1)
+	table.toggleRowMark(2)
+
+	if got := table.GetMarkedRowIndexes(); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("expected marked rows [1 2], got %v", got)
+	}
+
+	table.toggleRowMark(1)
+
+	if got := table.GetMarkedRowIndexes(); len(got) != 1 || got[0] != 2 {
+		t.Fatalf("expected marked rows [2] after unmark, got %v", got)
+	}
+}
+
+func TestClearRowMarks(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id"},
+		{"1"},
+		{"2"},
+	})
+
+	table.toggleRowMark(1)
+	table.toggleRowMark(2)
+	table.clearRowMarks()
+
+	if len(table.state.markedRows) != 0 {
+		t.Fatalf("expected no marked rows after clear, got %d", len(table.state.markedRows))
+	}
+}
+
+func TestMarkedRowsToTextIsOrderedTSV(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id", "name"},
+		{"1", "alice"},
+		{"2", "bob"},
+		{"3", "carol"},
+	})
+
+	// Mark out of order to prove the output is sorted top to bottom.
+	table.toggleRowMark(3)
+	table.toggleRowMark(1)
+
+	want := "1\talice\n3\tcarol"
+	if got := table.markedRowsToText(); got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestMarkedRowsToTextSkipsStaleIndexes(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id"},
+		{"1"},
+	})
+
+	// Simulate a mark left over from a larger result set.
+	table.state.markedRows[5] = true
+	table.toggleRowMark(1)
+
+	if got := table.markedRowsToText(); got != "1" {
+		t.Fatalf("expected only the in-range row, got %q", got)
+	}
+}
+
 // TestSetLoadingIsSynchronous verifies that SetLoading does not use
 // QueueUpdateDraw or any other blocking mechanism.
 func TestSetLoadingIsSynchronous(t *testing.T) {

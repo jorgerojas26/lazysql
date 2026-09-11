@@ -25,6 +25,7 @@ type Home struct {
 	MainContent          *tview.Flex
 	leftWrapperVisible   bool
 	treePinned           bool
+	treeWidth            int
 	HelpStatus           HelpStatus
 	HelpModal            *HelpModal
 	QueryHistoryModal    *QueryHistoryModal
@@ -61,6 +62,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		MainContent:        maincontent,
 		leftWrapperVisible: true,
 		treePinned:         true,
+		treeWidth:          app.App.Config().TreeWidth,
 		HelpStatus:         NewHelpStatus(),
 		HelpModal:          NewHelpModal(),
 
@@ -105,7 +107,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	maincontent.AddItem(leftWrapper, app.App.Config().TreeWidth, 1, false)
+	maincontent.AddItem(leftWrapper, home.treeWidth, 1, false)
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
@@ -590,6 +592,17 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 
 		return event
+	case commands.WidenTree, commands.NarrowTree:
+		if home.leftWrapperVisible && table != nil && !table.GetIsEditing() && !table.GetIsFiltering() {
+			delta := treeResizeStep
+			if command == commands.NarrowTree {
+				delta = -treeResizeStep
+			}
+			home.adjustTreeWidth(delta)
+			return nil
+		}
+
+		return event
 	}
 
 	return event
@@ -662,10 +675,32 @@ func (home *Home) toggleLeftWrapper() {
 		home.focusRightWrapper()
 	} else {
 		home.MainContent.Clear()
-		home.MainContent.AddItem(home.LeftWrapper, app.App.Config().TreeWidth, 1, false)
+		home.MainContent.AddItem(home.LeftWrapper, home.treeWidth, 1, false)
 		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
 		home.leftWrapperVisible = true
 		home.focusLeftWrapper()
 	}
+	app.App.ForceDraw()
+}
+
+const (
+	minTreeWidth   = 24
+	treeResizeStep = 2
+)
+
+// clampTreeWidth keeps the tree at least minTreeWidth wide (when it fits) and
+// at most half the container.
+func clampTreeWidth(width, containerWidth int) int {
+	width = max(width, minTreeWidth)
+	if containerWidth <= 0 {
+		return width
+	}
+	return min(width, max(containerWidth/2, minTreeWidth), containerWidth)
+}
+
+func (home *Home) adjustTreeWidth(delta int) {
+	_, _, containerWidth, _ := home.MainContent.GetInnerRect()
+	home.treeWidth = clampTreeWidth(home.treeWidth+delta, containerWidth)
+	home.MainContent.ResizeItem(home.LeftWrapper, home.treeWidth, 1)
 	app.App.ForceDraw()
 }
