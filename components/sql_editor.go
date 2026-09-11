@@ -279,6 +279,7 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 		if e.vimMode == VimModeNormal {
 			// Check for keymap Execute (Ctrl+R) — still handled in normal mode
 			if cmd == commands.Execute {
+				e.acVisible = false
 				e.Publish(eventSQLEditorQuery, e.GetText())
 				return
 			}
@@ -288,6 +289,7 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 
 		// Insert & Visual mode: keymap commands first
 		if cmd == commands.Execute {
+			e.acVisible = false
 			e.Publish(eventSQLEditorQuery, e.GetText())
 			return
 		}
@@ -1173,8 +1175,8 @@ func (e *SQLEditor) acceptCompletion() {
 
 // Draw renders the editor on the screen.
 func (e *SQLEditor) Draw(screen tcell.Screen) {
-	e.Box.DrawForSubclass(screen, e)
-	x, y, width, height := e.Box.GetInnerRect()
+	e.DrawForSubclass(screen, e)
+	x, y, width, height := e.GetInnerRect()
 
 	if width <= 0 || height <= 0 {
 		return
@@ -1587,7 +1589,7 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 // ---------------------------------------------------------------------------
 
 func (e *SQLEditor) scrollToCursor() {
-	_, _, width, height := e.Box.GetInnerRect()
+	_, _, width, height := e.GetInnerRect()
 
 	// Vertical scroll
 	if e.cy < e.oy {
@@ -1738,7 +1740,7 @@ func openExternalEditor(currentText string, connectionURL string) string {
 
 	editor := getEditor()
 
-	cmd := exec.Command(editor, path)
+	cmd := exec.Command(editor, path) // #nosec G204 -- launching the user's configured external editor
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
