@@ -38,10 +38,14 @@ type Home struct {
 	ReadOnly             bool
 	metadataCache        *metadataCache
 	metadataCacheMu      sync.Mutex
+	schemaLoader         *schemaLoader
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
+	metadataCache := newMetadataCache()
+	schemaLoader := newSchemaLoader(dbdriver, metadataCache)
 	tree := NewTree(connection.DBName, dbdriver, connection.Schemas)
+	tree.schemaLoader = schemaLoader
 	leftWrapper := tview.NewFlex()
 	rightWrapper := tview.NewFlex()
 
@@ -74,7 +78,8 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
 		ReadOnly:             connection.ReadOnly,
-		metadataCache:        newMetadataCache(),
+		metadataCache:        metadataCache,
+		schemaLoader:         schemaLoader,
 	}
 
 	tabbedPane := NewTabbedPane()

@@ -16,6 +16,9 @@ import (
 type MetadataKind string
 
 const (
+	// MetadataTables is the shared schema-list cache entry. It is deliberately
+	// not part of metadataKinds because Records only loads per-table metadata.
+	MetadataTables      MetadataKind = "tables"
 	MetadataColumns     MetadataKind = "columns"
 	MetadataPrimaryKeys MetadataKind = "primary_keys"
 	MetadataForeignKeys MetadataKind = "foreign_keys"
@@ -192,6 +195,51 @@ func (cache *metadataCache) result(key metadataKey) (MetadataState, any, error) 
 	return entry.status, entry.value, entry.err
 }
 
+// completion returns the done channel for an in-flight request without
+// starting a request for an unloaded key. This lets secondary consumers join
+// work already started by another consumer while keeping lazy keys lazy.
+func (cache *metadataCache) completion(key metadataKey) <-chan struct{} {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	entry, ok := cache.entries[key]
+	if !ok || entry.status != MetadataLoading {
+		return nil
+	}
+	return entry.done
+}
+
+// store publishes a result obtained by a bulk loader under an individual
+// metadata key. Replacing a loading entry is safe: the old request checks its
+// entry identity before publishing, and its waiters are released here.
+func (cache *metadataCache) store(key metadataKey, value any, err error) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	if current, ok := cache.entries[key]; ok {
+		if current.status == MetadataReady {
+			return
+		}
+		if current.status == MetadataLoading && !current.doneClosed {
+			close(current.done)
+			current.doneClosed = true
+		}
+	}
+
+	entry := &metadataCacheEntry{
+		status: MetadataReady,
+		value:  value,
+		err:    err,
+		done:   make(chan struct{}),
+	}
+	if err != nil {
+		entry.status = MetadataFailed
+	}
+	close(entry.done)
+	entry.doneClosed = true
+	cache.entries[key] = entry
+}
+
 func metadataCacheForHome(home *Home) *metadataCache {
 	if home == nil {
 		return newMetadataCache()
@@ -203,7 +251,11 @@ func (home *Home) metadataCacheForConnection() *metadataCache {
 	home.metadataCacheMu.Lock()
 	defer home.metadataCacheMu.Unlock()
 	if home.metadataCache == nil {
-		home.metadataCache = newMetadataCache()
+		if home.schemaLoader != nil && home.schemaLoader.cache != nil {
+			home.metadataCache = home.schemaLoader.cache
+		} else {
+			home.metadataCache = newMetadataCache()
+		}
 	}
 	return home.metadataCache
 }
@@ -241,6 +293,8 @@ func (table *ResultsTable) metadataCacheForTable() *metadataCache {
 	if table.metadataCache == nil {
 		if table.Home != nil {
 			table.metadataCache = table.Home.metadataCacheForConnection()
+		} else if table.Tree != nil && table.Tree.schemaLoader != nil {
+			table.metadataCache = table.Tree.schemaLoader.cache
 		} else {
 			table.metadataCache = newMetadataCache()
 		}

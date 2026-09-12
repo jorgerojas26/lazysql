@@ -13,6 +13,14 @@ type PageResult struct {
 	HasNextPage bool
 }
 
+// BulkTableColumnLoader is an optional driver capability for loading column
+// metadata for several tables with one efficient catalog operation. Drivers
+// that cannot provide a useful bulk operation should omit this capability; the
+// shared schema loader will keep those tables lazy.
+type BulkTableColumnLoader interface {
+	GetTableColumnsBulk(database string, tables []string) (map[string][][]string, error)
+}
+
 type Driver interface {
 	Connect(urlstr string) error
 	TestConnection(urlstr string) error

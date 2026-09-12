@@ -110,27 +110,33 @@ func (run *csvExportRun) cancelled() bool {
 
 type ResultsTable struct {
 	*tview.Table
-	state                *ResultsTableState
-	Page                 *tview.Pages
-	Wrapper              *tview.Flex
-	Menu                 *ResultsTableMenu
-	Filter               *ResultsTableFilter
-	Error                *tview.Modal
-	jsonViewer           *JSONViewer
-	Pagination           *Pagination
-	Editor               *SQLEditor
-	EditorPages          *tview.Pages
-	ResultsInfo          *tview.TextView
-	Tree                 *Tree
-	Sidebar              *Sidebar
-	SidebarContainer     *tview.Flex
-	DBDriver             drivers.Driver
-	Home                 *Home
-	connectionIdentifier string
-	ConnectionURL        string
-	ReadOnly             bool
-	metadataCache        *metadataCache
-	metadataCacheMu      sync.Mutex
+	state                  *ResultsTableState
+	Page                   *tview.Pages
+	Wrapper                *tview.Flex
+	Menu                   *ResultsTableMenu
+	Filter                 *ResultsTableFilter
+	Error                  *tview.Modal
+	jsonViewer             *JSONViewer
+	Pagination             *Pagination
+	Editor                 *SQLEditor
+	EditorPages            *tview.Pages
+	ResultsInfo            *tview.TextView
+	Tree                   *Tree
+	Sidebar                *Sidebar
+	SidebarContainer       *tview.Flex
+	DBDriver               drivers.Driver
+	Home                   *Home
+	connectionIdentifier   string
+	ConnectionURL          string
+	ReadOnly               bool
+	metadataCache          *metadataCache
+	metadataCacheMu        sync.Mutex
+	schemaLoader           *schemaLoader
+	schemaLoaderMu         sync.Mutex
+	editorSchemaMu         sync.RWMutex
+	editorSchemaDatabase   string
+	editorSchemaGeneration uint64
+	editorSchemaTables     map[string]editorSchemaTable
 	// Metadata consumers survive load generations but not table identity changes.
 	metadataIdentityMu         sync.RWMutex
 	metadataIdentityGeneration uint64
@@ -280,6 +286,7 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 
 	table.Editor = editor
 	editor.SetQueryCancelFunc(table.CancelActiveQuery)
+	editor.SetColumnCompletionLoader(table.requestEditorColumns)
 
 	table.Wrapper.Clear()
 
@@ -310,84 +317,160 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	return table
 }
 
-// loadEditorSchema queries the driver for tables and columns to populate
-// autocomplete suggestions in the editor.
+// loadEditorSchema publishes visible table names first, then lets the shared
+// schema loader progressively enrich autocomplete with columns.
 func (table *ResultsTable) loadEditorSchema() {
 	dbName := table.GetDatabaseName()
 	if dbName == "" || table.DBDriver == nil {
 		return
 	}
 
-	tablesMap, err := table.DBDriver.GetTables(dbName)
+	loader := table.schemaMetadataLoader()
+	tablesMap, err := loader.loadTables(dbName)
 	if err != nil {
 		logger.Error("Failed to load tables for editor autocomplete", map[string]any{"error": err.Error()})
 		return
 	}
-	if len(tablesMap) == 0 {
-		return
-	}
 
-	// Collect all bare table names (for SetTables) and also build
-	// schema-qualified names for the GetTableColumns driver call.
-	// Postgres returns {schema: [tables]}, others return {dbName: [tables]}.
-	type namedTable struct {
-		bareName      string // stored in autocompleter for "table." lookup
-		qualifiedName string // passed to GetTableColumns (schema.table for Postgres)
+	schemas := []string(nil)
+	if table.Tree != nil {
+		schemas = table.Tree.Schemas
 	}
-	var allTables []string
-	var tableList []namedTable
-
-	for schema, tbls := range tablesMap {
-		for _, tbl := range tbls {
-			allTables = append(allTables, tbl)
-			qn := tbl
-			// Postgres-style drivers use schemas distinct from the database name.
-			if schema != "" && schema != dbName {
-				qn = schema + "." + tbl
-			}
-			tableList = append(tableList, namedTable{bareName: tbl, qualifiedName: qn})
+	tableList := loader.visibleTables(dbName, tablesMap, schemas)
+	generation := table.setEditorSchemaTables(dbName, tableList)
+	allTables := make([]string, 0, len(tableList))
+	seenTables := make(map[string]struct{}, len(tableList))
+	for _, schemaTable := range tableList {
+		if _, ok := seenTables[schemaTable.bareName]; ok {
+			continue
 		}
+		seenTables[schemaTable.bareName] = struct{}{}
+		allTables = append(allTables, schemaTable.bareName)
 	}
 
+	// This update is intentionally queued before any column work. The editor is
+	// useful as soon as the table catalog is available, even for a large schema.
 	app.App.QueueUpdateDraw(func() {
-		if table.Editor != nil {
+		if table.editorSchemaIsCurrent(dbName, generation) && table.Editor != nil {
 			table.Editor.SetTables(allTables)
 		}
 	})
 
-	// Load columns for each table, using the qualified name for the driver call
-	// but storing under the bare table name for autocomplete lookup ("table.col").
-	for _, nt := range tableList {
-		key, done := table.requestMetadata(dbName, nt.qualifiedName, MetadataColumns)
-		if done != nil {
-			<-done
-		}
-		status, value, err := table.metadataCacheForTable().result(key)
-		if err != nil || status != MetadataReady {
-			continue
-		}
-		cols, _ := value.([][]string)
-		if len(cols) < 2 {
-			continue
-		}
-		// cols[0] = headers, cols[1:] = data rows, column name at index 0
-		colNames := make([]string, 0, len(cols)-1)
-		for i := 1; i < len(cols); i++ {
-			if len(cols[i]) > 0 && cols[i][0] != "" {
-				colNames = append(colNames, cols[i][0])
-			}
-		}
-		if len(colNames) == 0 {
-			continue
-		}
+	go loader.preloadEditorColumns(dbName, tableList, schemaBulkLoadThreshold(), func(schemaTable editorSchemaTable, columnNames []string) {
+		table.publishEditorColumns(dbName, generation, schemaTable, columnNames)
+	})
+}
 
-		tblCopy := nt.bareName
-		app.App.QueueUpdateDraw(func() {
-			if table.Editor != nil {
-				table.Editor.SetColumns(tblCopy, colNames)
-			}
-		})
+func (table *ResultsTable) schemaMetadataLoader() *schemaLoader {
+	if table.Home != nil && table.Home.schemaLoader != nil {
+		return table.Home.schemaLoader
 	}
+	if table.Tree != nil && table.Tree.schemaLoader != nil {
+		return table.Tree.schemaLoader
+	}
+
+	table.schemaLoaderMu.Lock()
+	defer table.schemaLoaderMu.Unlock()
+	if table.schemaLoader == nil {
+		table.schemaLoader = newSchemaLoader(table.DBDriver, table.metadataCacheForTable())
+	}
+	return table.schemaLoader
+}
+
+func (table *ResultsTable) setEditorSchemaTables(database string, tables []editorSchemaTable) uint64 {
+	table.editorSchemaMu.Lock()
+	defer table.editorSchemaMu.Unlock()
+
+	table.editorSchemaGeneration++
+	table.editorSchemaDatabase = database
+	table.editorSchemaTables = make(map[string]editorSchemaTable, len(tables)*2)
+	for _, schemaTable := range tables {
+		for _, name := range []string{schemaTable.bareName, schemaTable.qualifiedName} {
+			key := strings.ToLower(name)
+			if _, exists := table.editorSchemaTables[key]; !exists {
+				table.editorSchemaTables[key] = schemaTable
+			}
+		}
+	}
+	return table.editorSchemaGeneration
+}
+
+func (table *ResultsTable) editorSchemaTableForHint(hint string) (editorSchemaTable, string, uint64, bool) {
+	table.editorSchemaMu.RLock()
+	defer table.editorSchemaMu.RUnlock()
+
+	schemaTable, ok := table.editorSchemaTables[strings.ToLower(strings.TrimSpace(hint))]
+	currentDatabase := ""
+	if table.state != nil {
+		currentDatabase = table.GetDatabaseName()
+	}
+	if !ok || (currentDatabase != "" && currentDatabase != table.editorSchemaDatabase) {
+		return editorSchemaTable{}, "", table.editorSchemaGeneration, false
+	}
+	return schemaTable, table.editorSchemaDatabase, table.editorSchemaGeneration, true
+}
+
+func (table *ResultsTable) editorSchemaIsCurrent(database string, generation uint64) bool {
+	table.editorSchemaMu.RLock()
+	defer table.editorSchemaMu.RUnlock()
+	if table.editorSchemaDatabase != database || table.editorSchemaGeneration != generation {
+		return false
+	}
+	if table.state == nil {
+		return true
+	}
+	currentDatabase := table.GetDatabaseName()
+	return currentDatabase == "" || currentDatabase == database
+}
+
+func (table *ResultsTable) requestEditorColumns(hint string) {
+	schemaTable, database, generation, ok := table.editorSchemaTableForHint(hint)
+	if !ok || database == "" || table.DBDriver == nil {
+		return
+	}
+
+	loader := table.schemaMetadataLoader()
+	key, done := loader.requestColumns(database, schemaTable.qualifiedName)
+	if done == nil {
+		status, value, err := loader.cache.result(key)
+		if err == nil && status == MetadataReady {
+			// The completion callback runs on the editor's UI event loop. Apply
+			// a ready cache hit directly rather than queueing onto that same loop.
+			table.applyEditorColumns(database, generation, schemaTable, editorColumnNames(value))
+		}
+		return
+	}
+
+	go func() {
+		<-done
+		status, value, err := loader.cache.result(key)
+		if err == nil && status == MetadataReady {
+			table.publishEditorColumns(database, generation, schemaTable, editorColumnNames(value))
+		}
+	}()
+}
+
+func (table *ResultsTable) publishEditorColumns(database string, generation uint64, schemaTable editorSchemaTable, columnNames []string) {
+	app.App.QueueUpdateDraw(func() {
+		table.applyEditorColumns(database, generation, schemaTable, columnNames)
+	})
+}
+
+func (table *ResultsTable) applyEditorColumns(database string, generation uint64, schemaTable editorSchemaTable, columnNames []string) {
+	if !table.editorSchemaIsCurrent(database, generation) || table.Editor == nil {
+		return
+	}
+	table.Editor.SetColumns(schemaTable.bareName, columnNames)
+	if schemaTable.qualifiedName != schemaTable.bareName {
+		table.Editor.SetColumns(schemaTable.qualifiedName, columnNames)
+	}
+}
+
+func schemaBulkLoadThreshold() int {
+	if App == nil || App.Config() == nil {
+		return 0
+	}
+	return App.Config().SchemaBulkLoadThreshold
 }
 
 func (table *ResultsTable) subscribeToTreeChanges() {

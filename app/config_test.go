@@ -23,6 +23,9 @@ func TestConnectionPoolDefaultsAndOverrides(t *testing.T) {
 	if config.ExactCountTimeoutMS != models.DefaultExactCountTimeoutMS {
 		t.Fatalf("ExactCountTimeoutMS = %d, want %d", config.ExactCountTimeoutMS, models.DefaultExactCountTimeoutMS)
 	}
+	if config.SchemaBulkLoadThreshold != models.DefaultSchemaBulkLoadThreshold {
+		t.Fatalf("SchemaBulkLoadThreshold = %d, want %d", config.SchemaBulkLoadThreshold, models.DefaultSchemaBulkLoadThreshold)
+	}
 
 	pool, err := config.EffectiveConnectionPool(models.Connection{})
 	if err != nil {
@@ -479,6 +482,33 @@ max_idle_connections = 3
 	if err := LoadConfig(configPath); err == nil {
 		t.Fatal("LoadConfig() error = nil, want invalid per-connection pool configuration error")
 	}
+
+	configText = `
+[application]
+schema_bulk_load_threshold = 0
+`
+	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	App.config = defaultConfig()
+	if err := LoadConfig(configPath); err != nil {
+		t.Fatalf("LoadConfig() with zero schema threshold error = %v", err)
+	}
+	if App.config.AppConfig.SchemaBulkLoadThreshold != 0 {
+		t.Fatalf("SchemaBulkLoadThreshold = %d, want explicit zero", App.config.AppConfig.SchemaBulkLoadThreshold)
+	}
+
+	configText = `
+[application]
+schema_bulk_load_threshold = -1
+`
+	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	App.config = defaultConfig()
+	if err := LoadConfig(configPath); err == nil {
+		t.Fatal("LoadConfig() error = nil, want invalid schema bulk threshold error")
+	}
 }
 
 func TestLoadConfigWithLocal(t *testing.T) {
@@ -691,6 +721,9 @@ DefaultPageSize = 500
 	}
 	if App.config.AppConfig.MaxQueryRows != models.DefaultMaxQueryRows {
 		t.Errorf("MaxQueryRows = %d, want %d (default)", App.config.AppConfig.MaxQueryRows, models.DefaultMaxQueryRows)
+	}
+	if App.config.AppConfig.SchemaBulkLoadThreshold != models.DefaultSchemaBulkLoadThreshold {
+		t.Errorf("SchemaBulkLoadThreshold = %d, want %d (default)", App.config.AppConfig.SchemaBulkLoadThreshold, models.DefaultSchemaBulkLoadThreshold)
 	}
 	if App.config.AppConfig.MaxOpenConnections != models.DefaultMaxOpenConnections {
 		t.Errorf("MaxOpenConnections = %d, want %d (default)", App.config.AppConfig.MaxOpenConnections, models.DefaultMaxOpenConnections)

@@ -36,6 +36,7 @@ func defaultConfig() *Config {
 			ExactCountThreshold:          models.DefaultExactCountThreshold,
 			ExactCountTimeoutMS:          models.DefaultExactCountTimeoutMS,
 			MaxQueryRows:                 models.DefaultMaxQueryRows,
+			SchemaBulkLoadThreshold:      models.DefaultSchemaBulkLoadThreshold,
 		},
 	}
 }
@@ -188,6 +189,9 @@ func LoadConfig(configFile string) error {
 
 	if App.config.AppConfig.MaxQueryRows < 0 {
 		return fmt.Errorf("invalid application max_query_rows: must be non-negative")
+	}
+	if App.config.AppConfig.SchemaBulkLoadThreshold < 0 {
+		return fmt.Errorf("invalid application schema_bulk_load_threshold: must be non-negative")
 	}
 
 	poolConfig, err := App.config.AppConfig.EffectiveConnectionPool(models.Connection{})

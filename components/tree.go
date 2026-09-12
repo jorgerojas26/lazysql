@@ -35,6 +35,7 @@ type Tree struct {
 	FoundNodeCountInput *tview.InputField
 	subscribers         []chan models.StateChange
 	Schemas             []string
+	schemaLoader        *schemaLoader
 }
 
 type TreeNodeType int
@@ -1121,7 +1122,13 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		rootNode.AddChild(childNode)
 
 		go func(database string, node *tview.TreeNode) {
-			tables, err := tree.DBDriver.GetTables(database)
+			var tables map[string][]string
+			var err error
+			if tree.schemaLoader != nil {
+				tables, err = tree.schemaLoader.loadTables(database)
+			} else {
+				tables, err = tree.DBDriver.GetTables(database)
+			}
 			if err != nil {
 				logger.Error(err.Error(), nil)
 				return
@@ -1166,6 +1173,9 @@ func (tree *Tree) InitializeNodes(dbName string) {
 }
 
 func (tree *Tree) Refresh(dbName string) {
+	if tree.schemaLoader != nil {
+		tree.schemaLoader.invalidateTables(dbName)
+	}
 	rootNode := tree.GetRoot()
 	rootNode.ClearChildren()
 	// re-add nodes

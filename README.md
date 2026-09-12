@@ -169,6 +169,7 @@ DisableSidebar = false
 SidebarOverlay = false
 JSONViewerWordWrap = false
 EnterOpensJSONViewer = false
+schema_bulk_load_threshold = 200
 ```
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
@@ -199,6 +200,7 @@ The `[application]` section is used to define some app settings. Not all setting
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
 | max_query_rows | 1000 | Maximum rows shown by an interactive SQL-editor result (0 = unlimited) |
+| schema_bulk_load_threshold | 200 | Maximum visible tables whose columns are eagerly loaded in bulk (0 = always lazy) |
 | max_open_connections | 8 | Maximum open connections for MySQL, PostgreSQL, and MSSQL |
 | max_idle_connections | 8 | Maximum idle connections for MySQL, PostgreSQL, and MSSQL |
 

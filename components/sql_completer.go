@@ -47,6 +47,14 @@ func (a *Autocompleter) SetColumns(table string, columns []string) {
 	a.columns[strings.ToLower(table)] = items
 }
 
+// HasColumns reports whether the loader has delivered a result for a table.
+// An empty slice is still a loaded result and must not trigger repeated
+// database requests.
+func (a *Autocompleter) HasColumns(table string) bool {
+	_, ok := a.columns[strings.ToLower(table)]
+	return ok
+}
+
 // GetCompletions returns completion items matching the given prefix using
 // fuzzy search (same ranking as the tree: exact > prefix > substring > fuzzy).
 // If tableHint is non-empty, it prioritizes columns from that table.

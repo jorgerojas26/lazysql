@@ -8,11 +8,12 @@ import (
 )
 
 const (
-	DefaultMaxOpenConnections  = 8
-	DefaultMaxIdleConnections  = 8
-	DefaultExactCountThreshold = 50000
-	DefaultExactCountTimeoutMS = 200
-	DefaultMaxQueryRows        = 1000
+	DefaultMaxOpenConnections      = 8
+	DefaultMaxIdleConnections      = 8
+	DefaultExactCountThreshold     = 50000
+	DefaultExactCountTimeoutMS     = 200
+	DefaultMaxQueryRows            = 1000
+	DefaultSchemaBulkLoadThreshold = 200
 )
 
 type AppConfig struct {
@@ -29,6 +30,7 @@ type AppConfig struct {
 	ExactCountThreshold          int `toml:"exact_count_threshold"`
 	ExactCountTimeoutMS          int `toml:"exact_count_timeout_ms"`
 	MaxQueryRows                 int `toml:"max_query_rows"`
+	SchemaBulkLoadThreshold      int `toml:"schema_bulk_load_threshold"`
 }
 
 type ConnectionPoolConfig struct {
