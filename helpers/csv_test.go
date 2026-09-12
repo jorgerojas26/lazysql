@@ -70,6 +70,69 @@ func TestCleanCellValue(t *testing.T) {
 	}
 }
 
+func TestCSVWriterWriteBatchStreamsRows(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "stream.csv")
+	writer, err := NewCSVWriter(filePath)
+	if err != nil {
+		t.Fatalf("NewCSVWriter failed: %v", err)
+	}
+	defer writer.Abort()
+
+	if err := writer.WriteBatch([]string{"id", "name"}, [][]string{{"1", "Alice"}}, true); err != nil {
+		t.Fatalf("WriteBatch header failed: %v", err)
+	}
+	if err := writer.WriteBatch([]string{"id", "name"}, [][]string{{"2", "Bob"}}, false); err != nil {
+		t.Fatalf("WriteBatch data failed: %v", err)
+	}
+	if got := writer.RowCount(); got != 2 {
+		t.Fatalf("RowCount = %d, want 2", got)
+	}
+	if err := writer.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if got, want := string(content), "id,name\n1,Alice\n2,Bob\n"; got != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+}
+
+func TestCSVWriterCommitRenameFailureCleansTemp(t *testing.T) {
+	tempDir := t.TempDir()
+	finalPath := filepath.Join(tempDir, "destination")
+	if err := os.Mkdir(finalPath, 0o700); err != nil {
+		t.Fatalf("Mkdir destination failed: %v", err)
+	}
+
+	writer, err := NewCSVWriter(finalPath)
+	if err != nil {
+		t.Fatalf("NewCSVWriter failed: %v", err)
+	}
+	if err := writer.WriteBatch([]string{"id"}, [][]string{{"1"}}, true); err != nil {
+		t.Fatalf("WriteBatch failed: %v", err)
+	}
+	if err := writer.Commit(); err == nil {
+		t.Fatal("Commit succeeded when final path was a directory")
+	}
+
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".lazysql_export_") {
+			t.Fatalf("temporary export remained after rename failure: %s", entry.Name())
+		}
+	}
+	if info, err := os.Stat(finalPath); err != nil || !info.IsDir() {
+		t.Fatalf("final path was changed by failed commit: info=%v err=%v", info, err)
+	}
+}
+
 func TestCSVWriter(t *testing.T) {
 	t.Run("Commit creates final file", func(t *testing.T) {
 		tempDir := t.TempDir()

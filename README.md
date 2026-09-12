@@ -356,7 +356,10 @@ You can update the tree by pressing `R`, so you can see your newly created table
 1. [Execute a SQL query](#execute-sql-queries)
 2. Press `E` to open the export dialog
 3. Optionally modify the file path
-4. Select **Export** to save all query results
+4. Select **Export Visible Results** to save the rows currently shown
+5. For replay-safe/read-only statements, select **Export All Results** to reexecute the query and stream every row
+
+> Export All Results may reexecute the query and may take significant time. Unknown or potentially mutating statements offer visible-results export only. Press `Esc` during an export to cancel it; a cancelled or failed export leaves the requested destination unchanged.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

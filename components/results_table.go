@@ -27,32 +27,35 @@ import (
 )
 
 type ResultsTableState struct {
-	listOfDBChanges       *[]models.DBDMLChange
-	error                 string
-	currentSort           string
-	databaseName          string
-	tableName             string
-	primaryKeyColumnNames []string
-	columns               [][]string
-	constraints           [][]string
-	foreignKeys           [][]string
-	indexes               [][]string
-	records               [][]string
-	foreignKeyColumns     map[string]bool
-	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
-	fkRawCellValues       map[string]string
-	queryStatus           string
-	markedRows            map[int]bool
-	isEditing             bool
-	isFiltering           bool
-	isLoading             bool
-	showSidebar           bool
-	loadingCancel         context.CancelFunc
-	loadingMu             sync.Mutex
-	loadGeneration        uint64
-	metadataStates        map[MetadataKind]MetadataState
-	metadataErrors        map[MetadataKind]error
-	metadataMu            sync.RWMutex
+	listOfDBChanges           *[]models.DBDMLChange
+	error                     string
+	currentSort               string
+	databaseName              string
+	tableName                 string
+	primaryKeyColumnNames     []string
+	columns                   [][]string
+	constraints               [][]string
+	foreignKeys               [][]string
+	indexes                   [][]string
+	records                   [][]string
+	foreignKeyColumns         map[string]bool
+	foreignKeyJumpTargets     map[string]foreignKeyJumpTarget
+	fkRawCellValues           map[string]string
+	queryStatus               string
+	lastEditorQuery           string
+	lastEditorQueryReplaySafe bool
+	editorResultAvailable     bool
+	markedRows                map[int]bool
+	isEditing                 bool
+	isFiltering               bool
+	isLoading                 bool
+	showSidebar               bool
+	loadingCancel             context.CancelFunc
+	loadingMu                 sync.Mutex
+	loadGeneration            uint64
+	metadataStates            map[MetadataKind]MetadataState
+	metadataErrors            map[MetadataKind]error
+	metadataMu                sync.RWMutex
 }
 
 type foreignKeyJumpTarget struct {
@@ -64,6 +67,45 @@ type editorQueryRun struct {
 	generation      uint64
 	cancel          context.CancelFunc
 	cancelRequested bool
+}
+
+type csvExportRun struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
+	generation uint64
+	finalPath  string
+
+	mu           sync.Mutex
+	rowsWritten  int
+	wasCancelled bool
+}
+
+func (run *csvExportRun) setRowsWritten(rows int) {
+	run.mu.Lock()
+	if rows > run.rowsWritten {
+		run.rowsWritten = rows
+	}
+	run.mu.Unlock()
+}
+
+func (run *csvExportRun) rows() int {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.rowsWritten
+}
+
+func (run *csvExportRun) cancelAndGetRows() int {
+	run.mu.Lock()
+	run.wasCancelled = true
+	rows := run.rowsWritten
+	run.mu.Unlock()
+	return rows
+}
+
+func (run *csvExportRun) cancelled() bool {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.wasCancelled
 }
 
 type ResultsTable struct {
@@ -103,6 +145,8 @@ type ResultsTable struct {
 	countManual     bool
 	queryMu         sync.Mutex
 	activeQuery     *editorQueryRun
+	exportMu        sync.Mutex
+	activeExport    *csvExportRun
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -502,7 +546,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 }
 
 func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() == tcell.KeyEscape && table.CancelActiveQuery() {
+	if event.Key() == tcell.KeyEscape && (table.CancelActiveQuery() || table.CancelExport()) {
 		return nil
 	}
 
@@ -513,7 +557,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	eventKey := event.Rune()
 
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
-	if command == commands.CancelQuery && table.CancelActiveQuery() {
+	if command == commands.CancelQuery && (table.CancelActiveQuery() || table.CancelExport()) {
 		return nil
 	}
 
@@ -926,6 +970,13 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 			var run *editorQueryRun
 			App.QueueUpdateDraw(func() {
 				ctx, generation = table.startLoad()
+				table.state.lastEditorQuery = ""
+				table.state.lastEditorQueryReplaySafe = false
+				table.state.editorResultAvailable = false
+				if isSelect {
+					table.state.lastEditorQuery = query
+					table.state.lastEditorQueryReplaySafe = isReplaySafeQuery(query)
+				}
 				table.SetRecords([][]string{})
 				table.Pagination.SetOffset(0)
 				table.Pagination.ClearCount()
@@ -956,13 +1007,22 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 }
 
 func isResultProducingQuery(query string) bool {
-	queryTrimmed := strings.TrimSpace(strings.ToLower(query))
-	return strings.HasPrefix(queryTrimmed, "select") ||
-		strings.HasPrefix(queryTrimmed, "with") ||
-		strings.HasPrefix(queryTrimmed, "explain") ||
-		strings.HasPrefix(queryTrimmed, "show") ||
-		strings.HasPrefix(queryTrimmed, "describe") ||
-		strings.HasPrefix(queryTrimmed, "desc")
+	tokens, ok := tokenizeReplayQuery(query)
+	if !ok {
+		return false
+	}
+	for _, token := range tokens {
+		if token.kind != replayTokenWord {
+			continue
+		}
+		switch token.text {
+		case "SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "DESC":
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func (table *ResultsTable) beginEditorQuery(generation uint64) *editorQueryRun {
@@ -1144,6 +1204,9 @@ func (table *ResultsTable) renderEditorQueryBatch(ctx context.Context, run *edit
 		}
 		firstPaint := len(table.GetRecords()) == 0
 		table.appendEditorQueryBatch(batch)
+		if len(batch.Columns) > 0 || len(batch.Rows) > 0 {
+			table.state.editorResultAvailable = true
+		}
 		table.Pagination.SetPageInfo(table.editorQueryRowCount(), true)
 		if firstPaint {
 			table.showEditorQueryResults()
@@ -1213,6 +1276,7 @@ func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editor
 		table.finishEditorQuery(run)
 		if len(table.GetRecords()) == 0 && len(result.Columns) > 0 {
 			table.appendEditorQueryBatch(drivers.QueryBatch{Columns: result.Columns})
+			table.state.editorResultAvailable = true
 		}
 
 		rowCount := table.editorQueryRowCount()
@@ -1417,6 +1481,9 @@ func (table *ResultsTable) GetPrimaryKeySort() string {
 
 func (table *ResultsTable) SetRecords(rows [][]string) {
 	table.state.records = rows
+	if table.Editor != nil && len(rows) > 0 {
+		table.state.editorResultAvailable = true
+	}
 	table.UpdateRows(rows)
 	table.colorChangedCells()
 }
@@ -1503,7 +1570,154 @@ func (table *ResultsTable) SetLoading(show bool) {
 	table.Pagination.SetLoading(show)
 }
 
-func (table *ResultsTable) CancelLoading() {
+func (table *ResultsTable) invalidateCSVExport() {
+	table.exportMu.Lock()
+	run := table.activeExport
+	table.activeExport = nil
+	table.exportMu.Unlock()
+
+	if run != nil {
+		run.cancelAndGetRows()
+		if run.cancel != nil {
+			run.cancel()
+		}
+	}
+}
+
+func (table *ResultsTable) beginCSVExport() *csvExportRun {
+	// A full export has its own lifecycle; do not wait for or share an
+	// interactive exact-count operation.
+	table.CancelExactCount()
+	ctx, generation := table.startLoad()
+	run := &csvExportRun{ctx: ctx, cancel: func() {}, generation: generation}
+
+	// startLoad owns the cancellation stored in ResultsTableState. Capture it
+	// for a dedicated export cancellation path without exposing generic load
+	// state to the CSV worker.
+	table.state.loadingMu.Lock()
+	if table.state.loadGeneration == generation && table.state.loadingCancel != nil {
+		run.cancel = table.state.loadingCancel
+	}
+	table.state.loadingMu.Unlock()
+
+	table.exportMu.Lock()
+	table.activeExport = run
+	table.exportMu.Unlock()
+	if table.Pagination != nil {
+		table.Pagination.ClearResultStatus()
+	}
+	return run
+}
+
+func (table *ResultsTable) isCurrentCSVExport(run *csvExportRun) bool {
+	if run == nil || run.cancelled() {
+		return false
+	}
+	table.exportMu.Lock()
+	defer table.exportMu.Unlock()
+	return table.activeExport == run
+}
+
+func (table *ResultsTable) updateCSVExportProgress(run *csvExportRun, rows int) {
+	if run == nil || !table.isCurrentCSVExport(run) {
+		return
+	}
+	run.setRowsWritten(rows)
+	App.QueueUpdateDraw(func() {
+		if !table.isCurrentCSVExport(run) || table.Pagination == nil {
+			return
+		}
+		table.Pagination.SetResultStatus(fmt.Sprintf("Exporting… %d rows written", run.rows()))
+	})
+}
+
+// finishCSVExport applies the terminal state for an export. It must run on
+// the UI goroutine so a cancelled or superseded worker can never show a stale
+// success modal.
+func (table *ResultsTable) finishCSVExport(run *csvExportRun, exportErr error) bool {
+	if run == nil {
+		return false
+	}
+
+	table.exportMu.Lock()
+	if table.activeExport != run {
+		table.exportMu.Unlock()
+		return false
+	}
+	table.activeExport = nil
+	rows := run.rows()
+	cancelled := run.cancelled() || run.ctx.Err() != nil || errors.Is(exportErr, context.Canceled)
+	table.exportMu.Unlock()
+
+	table.state.loadingMu.Lock()
+	if table.state.loadGeneration == run.generation {
+		table.state.loadingCancel = nil
+	}
+	table.state.loadingMu.Unlock()
+	table.SetLoading(false)
+
+	if cancelled {
+		if table.Pagination != nil {
+			table.Pagination.SetResultStatus(fmt.Sprintf("Export cancelled after %d rows written", rows))
+		}
+		return true
+	}
+	if exportErr != nil {
+		if table.Pagination != nil {
+			table.Pagination.ClearResultStatus()
+		}
+		table.SetError("Failed to export CSV: "+exportErr.Error(), nil)
+		return true
+	}
+
+	if table.Pagination != nil {
+		table.Pagination.ClearResultStatus()
+	}
+	table.showExportSuccessModal(run.finalPath, rows)
+	return true
+}
+
+// CancelExport cancels the active CSV export, including the database context
+// used by a full table or query export. It returns false when no export is
+// running.
+func (table *ResultsTable) CancelExport() bool {
+	table.exportMu.Lock()
+	run := table.activeExport
+	if run == nil {
+		table.exportMu.Unlock()
+		return false
+	}
+	table.activeExport = nil
+	rows := run.cancelAndGetRows()
+	table.exportMu.Unlock()
+
+	if run.cancel != nil {
+		run.cancel()
+	}
+	table.state.loadingMu.Lock()
+	if table.state.loadGeneration == run.generation {
+		table.state.loadingCancel = nil
+		table.state.loadGeneration++
+	}
+	table.state.loadingMu.Unlock()
+	table.SetLoading(false)
+	if table.Pagination != nil {
+		table.Pagination.SetResultStatus(fmt.Sprintf("Export cancelled after %d rows written", rows))
+	}
+	return true
+}
+
+// CancelActiveExport is the explicit alias used by callers that distinguish
+// an export operation from ordinary table loading.
+func (table *ResultsTable) CancelActiveExport() bool {
+	return table.CancelExport()
+}
+
+func (table *ResultsTable) CancelLoading() bool {
+	if table.CancelExport() {
+		return true
+	}
+
 	table.CancelExactCount()
 
 	table.state.loadingMu.Lock()
@@ -1514,13 +1728,17 @@ func (table *ResultsTable) CancelLoading() {
 
 	if cancel != nil {
 		cancel()
+		table.SetLoading(false)
+		return true
 	}
+	return false
 }
 
 func (table *ResultsTable) startLoad() (context.Context, uint64) {
-	// Any new operation supersedes an interactive result stream. Clearing the
-	// consumer before cancelling the old context prevents late batches from
-	// touching the new table state.
+	// Any new operation supersedes an interactive result stream or export.
+	// Clearing each consumer before cancelling its context prevents late
+	// batches from touching the new table state.
+	table.invalidateCSVExport()
 	table.invalidateEditorQuery()
 
 	ctx, cancel := context.WithCancel(app.App.Context())
@@ -2672,67 +2890,77 @@ func (table *ResultsTable) GetPrimitive() tview.Primitive {
 func (table *ResultsTable) showCSVExportModal() {
 	databaseName := table.GetDatabaseName()
 	tableName := table.GetTableName()
-
-	// Pagination exists only when we have both database and table context (table view)
-	// Query results don't have pagination - all records are already in memory
-	hasPagination := databaseName != "" && tableName != ""
+	isQueryResult := table.Editor != nil
+	// Editor tabs are the only non-paginated ResultsTable instances. A table
+	// view keeps both scopes even while its identity is still being populated.
+	hasPagination := !isQueryResult
 
 	rowCount := max(len(table.GetRecords())-1, 0)
-
+	canExportAll := isQueryResult && table.canExportAllQueryResults()
+	unavailableReason := ""
+	if isQueryResult && !canExportAll {
+		unavailableReason = table.queryExportAllUnavailableReason()
+	}
 	opts := CSVExportOptions{
-		DatabaseName:  cmp.Or(databaseName, "database"),
-		TableName:     cmp.Or(tableName, "query_result"),
-		HasPagination: hasPagination,
-		RowCount:      rowCount,
+		DatabaseName:               cmp.Or(databaseName, "database"),
+		TableName:                  cmp.Or(tableName, "query_result"),
+		HasPagination:              hasPagination,
+		RowCount:                   rowCount,
+		IsQueryResult:              isQueryResult,
+		CanExportAll:               canExportAll,
+		ExportAllUnavailableReason: unavailableReason,
 	}
 
 	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope, batchSize int) {
+		query := table.lastEditorQuery()
+		where := ""
+		sort := ""
+		if !isQueryResult {
+			if table.Filter != nil {
+				where = table.Filter.GetCurrentFilter()
+			}
+			sort = cmp.Or(table.GetCurrentSort(), table.GetPrimaryKeySort())
+			if sort == "" {
+				if records := table.GetRecords(); len(records) > 0 && len(records[0]) > 0 {
+					sort = records[0][0] + " ASC"
+				}
+			}
+		}
+
+		run := table.beginCSVExport()
+		run.finalPath = filePath
+		App.SetFocus(table)
 		App.ForceDraw()
 
-		ctx := table.StartLoad()
-
 		go func() {
-			if ctx.Err() != nil {
+			if run.ctx.Err() != nil {
 				return
 			}
 
-			var exportedRowCount int
+			progress := func(rows int) {
+				table.updateCSVExportProgress(run, rows)
+			}
 			var exportErr error
 
-			if !hasPagination || scope == ExportCurrentPage {
-				exportedRowCount, exportErr = table.exportCurrentPage(filePath)
-			} else {
-				where := ""
-				if table.Filter != nil {
-					where = table.Filter.GetCurrentFilter()
-				}
-				sort := cmp.Or(table.GetCurrentSort(), table.GetPrimaryKeySort())
-				if sort == "" {
-					if records := table.GetRecords(); len(records) > 0 && len(records[0]) > 0 {
-						sort = records[0][0] + " ASC"
-					}
-				}
-				exportedRowCount, exportErr = table.exportAllRecordsInBatches(
-					ctx, filePath, databaseName, tableName, where, sort, batchSize,
+			switch {
+			case scope == ExportCurrentPage || scope == ExportVisibleResults || (isQueryResult && scope == ExportAllRecords):
+				_, exportErr = table.exportCurrentPageWithContext(run.ctx, filePath, progress)
+			case isQueryResult && scope == ExportAllResults:
+				_, exportErr = table.exportAllQueryResults(run.ctx, filePath, query, progress)
+			case !isQueryResult && scope == ExportAllRecords:
+				_, exportErr = table.exportAllRecordsInBatchesWithProgress(
+					run.ctx, filePath, databaseName, tableName, where, sort, batchSize, progress,
 				)
+			default:
+				exportErr = errors.New("unsupported CSV export scope")
 			}
 
-			if ctx.Err() != nil {
-				return
+			if run.ctx.Err() != nil && exportErr == nil {
+				exportErr = run.ctx.Err()
 			}
 
 			App.QueueUpdateDraw(func() {
-				if ctx.Err() != nil {
-					return
-				}
-
-				if exportErr != nil {
-					table.SetError("Failed to export CSV: "+exportErr.Error(), nil)
-					App.ForceDraw()
-					return
-				}
-
-				table.showExportSuccessModal(filePath, exportedRowCount)
+				table.finishCSVExport(run, exportErr)
 				App.ForceDraw()
 			})
 		}()
@@ -2741,9 +2969,51 @@ func (table *ResultsTable) showCSVExportModal() {
 	mainPages.AddPage(pageNameCSVExport, modal, true, true)
 }
 
+func (table *ResultsTable) canExportAllQueryResults() bool {
+	query := table.lastEditorQuery()
+	resultAvailable := table.state.editorResultAvailable || len(table.state.records) > 0
+	if query == "" || !table.state.lastEditorQueryReplaySafe || !isReplaySafeQuery(query) || !resultAvailable {
+		return false
+	}
+	_, streamingSupported := table.DBDriver.(drivers.QueryStreamer)
+	return streamingSupported
+}
+
+func (table *ResultsTable) queryExportAllUnavailableReason() string {
+	query := table.lastEditorQuery()
+	if query == "" || !table.state.lastEditorQueryReplaySafe || !isReplaySafeQuery(query) {
+		return "query is not classified as replay-safe"
+	}
+	if !table.state.editorResultAvailable && len(table.state.records) == 0 {
+		return "no query result has been shown"
+	}
+	if table.DBDriver == nil {
+		return "no streaming database driver is available"
+	}
+	if _, ok := table.DBDriver.(drivers.QueryStreamer); !ok {
+		return "the database driver does not support streaming"
+	}
+	return "Export All is unavailable"
+}
+
+func (table *ResultsTable) lastEditorQuery() string {
+	return table.state.lastEditorQuery
+}
+
 // exportCurrentPage exports the current page records (already in memory) to CSV.
 // Returns the number of rows written (excluding header) and any error.
 func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
+	return table.exportCurrentPageWithContext(context.Background(), filePath, nil)
+}
+
+func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, filePath string, onProgress func(int)) (int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
 	records := table.GetRecords()
 	writer, err := helpers.NewCSVWriter(filePath)
 	if err != nil {
@@ -2754,19 +3024,43 @@ func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
 	if err := writer.WriteRecords(records, true); err != nil {
 		return 0, err
 	}
+	if onProgress != nil {
+		onProgress(writer.RowCount())
+	}
+	if err := ctx.Err(); err != nil {
+		return writer.RowCount(), err
+	}
 	if err := writer.Commit(); err != nil {
 		return writer.RowCount(), err
 	}
 	return writer.RowCount(), nil
 }
 
-// exportAllRecordsInBatches exports all records using batch fetching to avoid timeouts.
-// Returns the number of rows written (excluding header) and any error.
+// exportAllRecordsInBatches retains the original testable table-export seam.
 func (table *ResultsTable) exportAllRecordsInBatches(
 	ctx context.Context,
 	filePath, databaseName, tableName, where, sort string,
 	batchSize int,
 ) (int, error) {
+	return table.exportAllRecordsInBatchesWithProgress(ctx, filePath, databaseName, tableName, where, sort, batchSize, nil)
+}
+
+// exportAllRecordsInBatches exports all records using bounded page fetching.
+// It stops only when a returned page proves the end, never asking for an exact
+// count and never consulting the interactive max_query_rows cap.
+func (table *ResultsTable) exportAllRecordsInBatchesWithProgress(
+	ctx context.Context,
+	filePath, databaseName, tableName, where, sort string,
+	batchSize int,
+	onProgress func(int),
+) (int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if batchSize <= 0 {
+		batchSize = defaultBatchSize
+	}
+
 	writer, err := helpers.NewCSVWriter(filePath)
 	if err != nil {
 		return 0, err
@@ -2774,27 +3068,116 @@ func (table *ResultsTable) exportAllRecordsInBatches(
 	defer writer.Abort()
 
 	for offset := 0; ; offset += batchSize {
+		if err := ctx.Err(); err != nil {
+			return writer.RowCount(), err
+		}
 		page, err := table.DBDriver.GetRecords(
 			ctx, databaseName, tableName, where, sort, offset, batchSize,
 		)
 		if err != nil {
 			return writer.RowCount(), err
 		}
-
-		// Header row only = no more data.
-		if len(page.Rows) <= 1 && offset > 0 {
-			break
-		}
-
-		includeHeader := (offset == 0)
-		if err := writer.WriteRecords(page.Rows, includeHeader); err != nil {
+		if err := ctx.Err(); err != nil {
 			return writer.RowCount(), err
 		}
-		if !page.HasNextPage {
+
+		if len(page.Rows) == 0 {
+			break
+		}
+		if err := writer.WriteRecords(page.Rows, offset == 0); err != nil {
+			return writer.RowCount(), err
+		}
+		if onProgress != nil {
+			onProgress(writer.RowCount())
+		}
+
+		// A header-only batch is definitive even if a faulty driver reports a
+		// stale HasNextPage flag.
+		if len(page.Rows) <= 1 || !page.HasNextPage {
 			break
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return writer.RowCount(), err
+	}
+	if err := writer.Commit(); err != nil {
+		return writer.RowCount(), err
+	}
+	return writer.RowCount(), nil
+}
+
+// exportAllQueryResults reexecutes one replay-safe editor statement and writes
+// every streamed row. maxRows is deliberately zero: interactive result caps
+// must never limit a full export.
+func (table *ResultsTable) exportAllQueryResults(
+	ctx context.Context,
+	filePath, query string,
+	onProgress func(int),
+) (int, error) {
+	if !isReplaySafeQuery(query) {
+		return 0, errors.New("query is not classified as replay-safe for Export All Results")
+	}
+	streamer, ok := table.DBDriver.(drivers.QueryStreamer)
+	if !ok {
+		return 0, errors.New("driver does not support streaming Export All Results")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	writer, err := helpers.NewCSVWriter(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer writer.Abort()
+
+	headerWritten := false
+	var columns []string
+	onBatch := func(batch drivers.QueryBatch) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		batchColumns := batch.Columns
+		if len(batchColumns) == 0 {
+			batchColumns = columns
+		} else {
+			columns = append(columns[:0], batchColumns...)
+		}
+		if len(batch.Rows) > 0 && len(batchColumns) == 0 {
+			return errors.New("query stream returned rows without columns")
+		}
+		if err := writer.WriteBatch(batchColumns, batch.Rows, !headerWritten); err != nil {
+			return err
+		}
+		if len(batchColumns) > 0 {
+			headerWritten = true
+		}
+		if onProgress != nil {
+			onProgress(writer.RowCount())
+		}
+		return ctx.Err()
+	}
+
+	result, err := streamer.StreamQuery(ctx, query, 0, onBatch)
+	if err != nil {
+		return writer.RowCount(), err
+	}
+	if err := ctx.Err(); err != nil {
+		return writer.RowCount(), err
+	}
+	if !headerWritten && len(result.Columns) > 0 {
+		if err := writer.WriteBatch(result.Columns, nil, true); err != nil {
+			return writer.RowCount(), err
+		}
+		headerWritten = true
+		if onProgress != nil {
+			onProgress(writer.RowCount())
+		}
+	}
 	if err := writer.Commit(); err != nil {
 		return writer.RowCount(), err
 	}
