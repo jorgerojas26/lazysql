@@ -80,6 +80,65 @@ func (driver *retryForeignKeyDriver) setFail(fail bool) {
 	driver.mu.Unlock()
 }
 
+type pendingForeignKeyDriver struct {
+	*refreshCallDriver
+	started  chan struct{}
+	released chan struct{}
+	finished chan struct{}
+}
+
+func newPendingForeignKeyDriver() *pendingForeignKeyDriver {
+	return &pendingForeignKeyDriver{
+		refreshCallDriver: newRefreshCallDriver(),
+		started:           make(chan struct{}),
+		released:          make(chan struct{}),
+		finished:          make(chan struct{}),
+	}
+}
+
+func (driver *pendingForeignKeyDriver) GetProvider() string {
+	return drivers.DriverPostgres
+}
+
+func (driver *pendingForeignKeyDriver) GetForeignKeys(string, string) ([][]string, error) {
+	driver.record(MetadataForeignKeys)
+	close(driver.started)
+	<-driver.released
+	close(driver.finished)
+	return [][]string{
+		{"constraint_name", "column_name", "foreign_table_name", "foreign_column_name"},
+		{"orders_user_fk", "user_id", "users", "id"},
+	}, nil
+}
+
+type blockingProviderDriver struct {
+	*refreshCallDriver
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBlockingProviderDriver() *blockingProviderDriver {
+	return &blockingProviderDriver{
+		refreshCallDriver: newRefreshCallDriver(),
+		started:           make(chan struct{}),
+		release:           make(chan struct{}),
+	}
+}
+
+func (driver *blockingProviderDriver) GetProvider() string {
+	driver.once.Do(func() { close(driver.started) })
+	<-driver.release
+	return drivers.DriverPostgres
+}
+
+func (driver *blockingProviderDriver) GetForeignKeys(string, string) ([][]string, error) {
+	return [][]string{
+		{"constraint_name", "column_name", "foreign_table_name", "foreign_column_name"},
+		{"orders_user_fk", "user_id", "users", "id"},
+	}, nil
+}
+
 func (driver *refreshCallDriver) GetConstraints(string, string) ([][]string, error) {
 	driver.record(MetadataConstraints)
 	return [][]string{{"constraint_name"}, {"orders_pk"}}, nil
@@ -157,6 +216,21 @@ func waitForRefreshCount(t *testing.T, driver *refreshCallDriver, kind MetadataK
 	t.Fatalf("timed out waiting for %s call count %d; got %d", kind, want, driver.count(kind))
 }
 
+func waitForForeignKeyMetadata(t *testing.T, table *ResultsTable) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		applied := false
+		App.QueueUpdate(func() {
+			applied = table.GetMetadataState(MetadataForeignKeys) == MetadataReady && table.isForeignKeyColumn("user_id")
+		})
+		if applied {
+			return
+		}
+	}
+	t.Fatalf("timed out waiting for Foreign Keys metadata to apply")
+}
+
 func startRefreshApplication(t *testing.T, table *ResultsTable) func() {
 	t.Helper()
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -219,6 +293,120 @@ func TestRefreshMetadataReloadsOnlyActiveKind(t *testing.T) {
 				t.Fatalf("metadata refresh unexpectedly fetched %d Records pages", pageCalls)
 			}
 		})
+	}
+}
+
+func TestRefreshPreservesUnrelatedPendingMetadata(t *testing.T) {
+	driver := newPendingForeignKeyDriver()
+	table := newRefreshCallTable(driver)
+
+	// Seed the active surface so RefreshMetadata performs exactly one reload.
+	_, done := table.requestMetadata("database", "orders", MetadataColumns)
+	if done != nil {
+		<-done
+	}
+
+	stopApp := startRefreshApplication(t, table)
+	defer stopApp()
+
+	ctx, generation := table.startLoad()
+	table.loadMetadataKind(ctx, generation, "database", "orders", MetadataForeignKeys)
+	<-driver.started
+	if table.GetMetadataState(MetadataForeignKeys) != MetadataLoading {
+		t.Fatal("expected Foreign Keys to remain loading before controlled completion")
+	}
+
+	table.Menu.SetSelectedOption(2)
+	table.RefreshActiveSurface()
+	waitForRefreshCount(t, driver.refreshCallDriver, MetadataColumns, 2)
+	if got := driver.count(MetadataColumns); got != 2 {
+		t.Fatalf("Columns calls = %d, want exactly 2", got)
+	}
+
+	close(driver.released)
+	<-driver.finished
+	waitForForeignKeyMetadata(t, table)
+	foreignKeys := table.GetForeignKeys()
+	if len(foreignKeys) != 2 || foreignKeys[1][0] != "orders_user_fk" {
+		t.Fatalf("unrelated Foreign Keys result was not applied: %v", foreignKeys)
+	}
+	if !table.isForeignKeyColumn("user_id") {
+		t.Fatal("pending Foreign Keys result did not enable Foreign Key Jump")
+	}
+	if target, ok := table.getForeignKeyJumpTarget("user_id"); !ok || target.ReferencedTable != "users" || target.ReferencedColumn != "id" {
+		t.Fatalf("Foreign Key Jump target = %#v, present = %v", target, ok)
+	}
+	if got := driver.count(MetadataForeignKeys); got != 1 {
+		t.Fatalf("Foreign Keys calls = %d, want exactly 1", got)
+	}
+	if pageCalls, _, _, _, _ := driver.pageArgs(); pageCalls != 0 {
+		t.Fatalf("metadata refresh unexpectedly fetched %d Records pages", pageCalls)
+	}
+}
+
+func TestMetadataApplySerializesTableIdentityChanges(t *testing.T) {
+	driver := newBlockingProviderDriver()
+	table := newRefreshCallTable(driver)
+	identityGeneration := table.metadataIdentityGenerationValue()
+
+	applied := make(chan bool)
+	go func() {
+		applied <- table.applyMetadataResultForIdentity(identityGeneration, "database", "orders", MetadataForeignKeys, MetadataReady, [][]string{
+			{"constraint_name", "column_name", "foreign_table_name", "foreign_column_name"},
+			{"orders_user_fk", "user_id", "users", "id"},
+		}, nil)
+	}()
+	<-driver.started
+
+	identityChanged := make(chan struct{})
+	go func() {
+		table.SetTableName("customers")
+		close(identityChanged)
+	}()
+	select {
+	case <-identityChanged:
+		t.Fatal("table identity changed while metadata was being applied")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(driver.release)
+	if !<-applied {
+		t.Fatal("current metadata result was rejected")
+	}
+	<-identityChanged
+	if table.GetTableName() != "customers" {
+		t.Fatal("table identity update did not complete")
+	}
+}
+
+func TestRecordsRefreshPreservesPendingNonPrimaryKeyMetadata(t *testing.T) {
+	driver := newPendingForeignKeyDriver()
+	table := newRefreshCallTable(driver)
+	stopApp := startRefreshApplication(t, table)
+	defer stopApp()
+
+	ctx, generation := table.startLoad()
+	table.loadMetadataKind(ctx, generation, "database", "orders", MetadataForeignKeys)
+	<-driver.started
+
+	table.RefreshRecords()
+	waitForRefreshCount(t, driver.refreshCallDriver, MetadataPrimaryKeys, 1)
+
+	close(driver.released)
+	<-driver.finished
+	waitForForeignKeyMetadata(t, table)
+	foreignKeys := table.GetForeignKeys()
+	if len(foreignKeys) != 2 || foreignKeys[1][0] != "orders_user_fk" {
+		t.Fatalf("pending Foreign Keys result was not applied: %v", foreignKeys)
+	}
+	if !table.isForeignKeyColumn("user_id") {
+		t.Fatal("pending Foreign Keys result did not enable Foreign Key Jump")
+	}
+	if got := driver.count(MetadataForeignKeys); got != 1 {
+		t.Fatalf("Foreign Keys calls = %d, want exactly 1", got)
+	}
+	if pageCalls, _, _, _, _ := driver.pageArgs(); pageCalls != 1 {
+		t.Fatalf("Records refresh made %d page calls, want exactly 1", pageCalls)
 	}
 }
 

@@ -244,6 +244,20 @@ func (table *ResultsTable) metadataCacheForTable() *metadataCache {
 	return table.metadataCache
 }
 
+func (table *ResultsTable) metadataIdentityGenerationValue() uint64 {
+	table.metadataIdentityMu.RLock()
+	defer table.metadataIdentityMu.RUnlock()
+	return table.metadataIdentityGeneration
+}
+
+func (table *ResultsTable) isCurrentMetadataIdentity(generation uint64, databaseName, tableName string) bool {
+	table.metadataIdentityMu.RLock()
+	defer table.metadataIdentityMu.RUnlock()
+	return table.metadataIdentityGeneration == generation &&
+		table.state.databaseName == databaseName &&
+		table.state.tableName == tableName
+}
+
 func (table *ResultsTable) GetMetadataState(kind MetadataKind) MetadataState {
 	if table.state == nil {
 		return MetadataUnloaded
@@ -289,11 +303,22 @@ func (table *ResultsTable) setMetadataState(kind MetadataKind, status MetadataSt
 }
 
 func (table *ResultsTable) loadMetadataKind(ctx context.Context, generation uint64, databaseName, tableName string, kind MetadataKind) <-chan struct{} {
+	if !table.isCurrentLoad(ctx, generation) {
+		return nil
+	}
+
+	// Metadata consumers outlive Records and surface loads. Only a table
+	// identity change makes a pending result stale.
+	identityGeneration := table.metadataIdentityGenerationValue()
 	key, done := table.requestMetadata(databaseName, tableName, kind)
 	if done != nil {
-		table.setMetadataState(kind, MetadataLoading, nil)
+		table.metadataApplyMu.Lock()
+		if table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
+			table.setMetadataState(kind, MetadataLoading, nil)
+		}
+		table.metadataApplyMu.Unlock()
 	}
-	table.queueMetadataResult(ctx, generation, databaseName, tableName, kind, key, done)
+	table.queueMetadataResultForIdentity(identityGeneration, databaseName, tableName, kind, key, done)
 	return done
 }
 
@@ -393,19 +418,32 @@ func (table *ResultsTable) showMetadataSurface(kind MetadataKind) {
 	table.UpdateRows(rows)
 }
 
-func (table *ResultsTable) queueMetadataResult(ctx context.Context, generation uint64, databaseName, tableName string, kind MetadataKind, key metadataKey, done <-chan struct{}) {
+// queueMetadataResult is kept as a compatibility wrapper for callers that
+// already have a Records load token. Metadata delivery itself is keyed to the
+// table identity, not that token, so a same-table refresh cannot abandon it.
+func (table *ResultsTable) queueMetadataResult(_ context.Context, _ uint64, databaseName, tableName string, kind MetadataKind, key metadataKey, done <-chan struct{}) {
+	table.queueMetadataResultForIdentity(table.metadataIdentityGenerationValue(), databaseName, tableName, kind, key, done)
+}
+
+// queueMetadataResultForIdentity keeps the cache consumer alive across
+// Records/surface load generations while rejecting results from an older table
+// identity.
+func (table *ResultsTable) queueMetadataResultForIdentity(identityGeneration uint64, databaseName, tableName string, kind MetadataKind, key metadataKey, done <-chan struct{}) {
 	go func() {
 		if done != nil {
 			<-done
 		}
-		if !table.isCurrentLoad(ctx, generation) {
+		if !table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
 			return
 		}
 
 		cache := table.metadataCacheForTable()
 		App.QueueUpdateDraw(func() {
+			if !table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
+				return
+			}
 			status, value, err := cache.result(key)
-			table.applyMetadataResult(ctx, generation, databaseName, tableName, kind, status, value, err)
+			table.applyMetadataResultForIdentity(identityGeneration, databaseName, tableName, kind, status, value, err)
 		})
 	}()
 }
@@ -421,15 +459,28 @@ func (table *ResultsTable) updatePrimaryKeyIndicator(primaryKeyColumnNames []str
 	}
 }
 
-// applyMetadataResult is deliberately separate from queueMetadataResult so the
-// generation and table identity checks are made immediately before mutating
-// the visible table. The cache is still updated by the worker even when this
-// returns false for a stale view.
+// applyMetadataResult rejects a result from an obsolete Records/surface load.
+// The metadata queue uses applyMetadataResultForIdentity instead: same-table
+// refreshes must preserve its pending consumer.
 func (table *ResultsTable) applyMetadataResult(ctx context.Context, generation uint64, databaseName, tableName string, kind MetadataKind, status MetadataState, value any, err error) bool {
+	table.metadataApplyMu.Lock()
+	defer table.metadataApplyMu.Unlock()
 	if !table.isCurrentLoad(ctx, generation) || table.GetDatabaseName() != databaseName || table.GetTableName() != tableName {
 		return false
 	}
+	return table.applyMetadataResultValue(databaseName, tableName, kind, status, value, err)
+}
 
+func (table *ResultsTable) applyMetadataResultForIdentity(identityGeneration uint64, databaseName, tableName string, kind MetadataKind, status MetadataState, value any, err error) bool {
+	table.metadataApplyMu.Lock()
+	defer table.metadataApplyMu.Unlock()
+	if !table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
+		return false
+	}
+	return table.applyMetadataResultValue(databaseName, tableName, kind, status, value, err)
+}
+
+func (table *ResultsTable) applyMetadataResultValue(databaseName, tableName string, kind MetadataKind, status MetadataState, value any, err error) bool {
 	table.setMetadataState(kind, status, err)
 	if status == MetadataFailed {
 		logger.Error("Failed to load table metadata", map[string]any{

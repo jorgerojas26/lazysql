@@ -81,13 +81,18 @@ type ResultsTable struct {
 	ReadOnly             bool
 	metadataCache        *metadataCache
 	metadataCacheMu      sync.Mutex
-	countMu              sync.Mutex
-	countCancel          context.CancelFunc
-	countGeneration      uint64
-	countKey             rowCountKey
-	countKeySet          bool
-	countAttempted       bool
-	countManual          bool
+	// Metadata consumers survive load generations but not table identity changes.
+	metadataIdentityMu         sync.RWMutex
+	metadataIdentityGeneration uint64
+	// Serialize identity transitions with metadata mutations after validation.
+	metadataApplyMu sync.Mutex
+	countMu         sync.Mutex
+	countCancel     context.CancelFunc
+	countGeneration uint64
+	countKey        rowCountKey
+	countKeySet     bool
+	countAttempted  bool
+	countManual     bool
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -1035,10 +1040,14 @@ func (table *ResultsTable) GetForeignKeys() [][]string {
 }
 
 func (table *ResultsTable) GetTableName() string {
+	table.metadataIdentityMu.RLock()
+	defer table.metadataIdentityMu.RUnlock()
 	return table.state.tableName
 }
 
 func (table *ResultsTable) GetDatabaseName() string {
+	table.metadataIdentityMu.RLock()
+	defer table.metadataIdentityMu.RUnlock()
 	return table.state.databaseName
 }
 
@@ -1145,18 +1154,32 @@ func (table *ResultsTable) SetIndexes(indexes [][]string) {
 }
 
 func (table *ResultsTable) SetDatabaseName(databaseName string) {
+	table.metadataApplyMu.Lock()
+	table.metadataIdentityMu.Lock()
 	if table.state.databaseName == databaseName {
+		table.metadataIdentityMu.Unlock()
+		table.metadataApplyMu.Unlock()
 		return
 	}
 	table.state.databaseName = databaseName
+	table.metadataIdentityGeneration++
+	table.metadataIdentityMu.Unlock()
+	table.metadataApplyMu.Unlock()
 	table.invalidateRowCount()
 }
 
 func (table *ResultsTable) SetTableName(tableName string) {
+	table.metadataApplyMu.Lock()
+	table.metadataIdentityMu.Lock()
 	if table.state.tableName == tableName {
+		table.metadataIdentityMu.Unlock()
+		table.metadataApplyMu.Unlock()
 		return
 	}
 	table.state.tableName = tableName
+	table.metadataIdentityGeneration++
+	table.metadataIdentityMu.Unlock()
+	table.metadataApplyMu.Unlock()
 	table.invalidateRowCount()
 }
 

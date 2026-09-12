@@ -226,6 +226,28 @@ func TestMetadataCacheResultForUnknownKeyIsUnloaded(t *testing.T) {
 	}
 }
 
+func TestStaleMetadataIdentityCannotUpdateRevisitedTable(t *testing.T) {
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			databaseName:   "database",
+			tableName:      "orders",
+			metadataStates: newMetadataStates(),
+		},
+		Pagination: NewPagination(),
+	}
+	identityGeneration := table.metadataIdentityGenerationValue()
+	table.SetTableName("customers")
+	table.SetTableName("orders")
+
+	if table.applyMetadataResultForIdentity(identityGeneration, "database", "orders", MetadataColumns, MetadataReady, [][]string{{"column_name"}, {"id"}}, nil) {
+		t.Fatal("metadata from an earlier visit updated a newer table identity")
+	}
+	if table.GetMetadataState(MetadataColumns) != MetadataUnloaded {
+		t.Fatal("stale metadata changed the revisited table state")
+	}
+}
+
 type concurrentMetadataMock struct {
 	schemaProgrammingMock
 	started chan MetadataKind
