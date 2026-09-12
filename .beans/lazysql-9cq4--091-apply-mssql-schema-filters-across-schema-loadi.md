@@ -1,7 +1,7 @@
 ---
 # lazysql-9cq4
 title: '[09.1] Apply MSSQL schema filters across schema loading'
-status: todo
+status: completed
 type: bug
 priority: high
 tags:
@@ -10,7 +10,7 @@ tags:
     - review-finding
     - review-cycle-0002
 created_at: 2026-09-12T20:42:44Z
-updated_at: 2026-09-12T20:42:44Z
+updated_at: 2026-09-12T21:24:34Z
 parent: lazysql-a9lf
 ---
 
@@ -36,13 +36,20 @@ Preserve MSSQL schema identity throughout discovery and shared schema loading so
 
 ## Acceptance criteria
 
-- [ ] Configured MSSQL schema exclusions apply consistently to tree, autocomplete, bulk column loading, and lazy/on-demand column loading.
-- [ ] Hidden schemas generate no avoidable catalog traffic from these surfaces.
-- [ ] MSSQL table identities retain enough schema information to distinguish duplicate table names in different schemas.
-- [ ] Bulk and lazy column results are associated with the correct schema-qualified table without cross-schema merging.
-- [ ] Preserve progressive table-first rendering, shared-cache reuse, and supported behavior for PostgreSQL, MySQL, and SQLite.
-- [ ] Add regression coverage for excluded schemas and duplicate MSSQL table names that fails on the reviewed implementation and passes after correction.
+- [x] Configured MSSQL schema exclusions apply consistently to tree, autocomplete, bulk column loading, and lazy/on-demand column loading.
+- [x] Hidden schemas generate no avoidable catalog traffic from these surfaces.
+- [x] MSSQL table identities retain enough schema information to distinguish duplicate table names in different schemas.
+- [x] Bulk and lazy column results are associated with the correct schema-qualified table without cross-schema merging.
+- [x] Preserve progressive table-first rendering, shared-cache reuse, and supported behavior for PostgreSQL, MySQL, and SQLite.
+- [x] Add regression coverage for excluded schemas and duplicate MSSQL table names that fails on the reviewed implementation and passes after correction.
 
 ## Blocked by
 
 None. No implementation prerequisite is required.
+
+## Summary of Changes
+
+- Made MSSQL table discovery schema-aware and retained qualified identities through tree, autocomplete, bulk, and lazy metadata loading.
+- Added schema-qualified MSSQL bulk catalog filtering, duplicate-safe autocomplete mapping, and qualified table reference handling for table operations.
+- Added regression coverage for excluded schemas, duplicate table names, qualified bulk results, and filtered progressive tree references.
+- Verified with `go test ./...`.

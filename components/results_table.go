@@ -342,15 +342,7 @@ func (table *ResultsTable) loadEditorSchema() {
 	}
 	tableList := loader.visibleTables(dbName, tablesMap, schemas)
 	generation := table.setEditorSchemaTables(dbName, tableList)
-	allTables := make([]string, 0, len(tableList))
-	seenTables := make(map[string]struct{}, len(tableList))
-	for _, schemaTable := range tableList {
-		if _, ok := seenTables[schemaTable.bareName]; ok {
-			continue
-		}
-		seenTables[schemaTable.bareName] = struct{}{}
-		allTables = append(allTables, schemaTable.bareName)
-	}
+	allTables := editorTableNames(tableList)
 
 	// This update is intentionally queued before any column work. The editor is
 	// useful as soon as the table catalog is available, even for a large schema.
@@ -388,12 +380,14 @@ func (table *ResultsTable) setEditorSchemaTables(database string, tables []edito
 	table.editorSchemaGeneration++
 	table.editorSchemaDatabase = database
 	table.editorSchemaTables = make(map[string]editorSchemaTable, len(tables)*2)
+	bareCounts := make(map[string]int, len(tables))
 	for _, schemaTable := range tables {
-		for _, name := range []string{schemaTable.bareName, schemaTable.qualifiedName} {
-			key := strings.ToLower(name)
-			if _, exists := table.editorSchemaTables[key]; !exists {
-				table.editorSchemaTables[key] = schemaTable
-			}
+		bareCounts[strings.ToLower(schemaTable.bareName)]++
+	}
+	for _, schemaTable := range tables {
+		table.editorSchemaTables[strings.ToLower(schemaTable.qualifiedName)] = schemaTable
+		if bareCounts[strings.ToLower(schemaTable.bareName)] == 1 {
+			table.editorSchemaTables[strings.ToLower(schemaTable.bareName)] = schemaTable
 		}
 	}
 	return table.editorSchemaGeneration
@@ -464,10 +458,17 @@ func (table *ResultsTable) applyEditorColumns(database string, generation uint64
 	if !table.editorSchemaIsCurrent(database, generation) || table.Editor == nil {
 		return
 	}
-	table.Editor.SetColumns(schemaTable.bareName, columnNames)
-	if schemaTable.qualifiedName != schemaTable.bareName {
-		table.Editor.SetColumns(schemaTable.qualifiedName, columnNames)
+	table.Editor.SetColumns(schemaTable.qualifiedName, columnNames)
+	if schemaTable.qualifiedName == schemaTable.bareName || table.editorBareTableIsUnique(schemaTable) {
+		table.Editor.SetColumns(schemaTable.bareName, columnNames)
 	}
+}
+
+func (table *ResultsTable) editorBareTableIsUnique(schemaTable editorSchemaTable) bool {
+	table.editorSchemaMu.RLock()
+	defer table.editorSchemaMu.RUnlock()
+	mapped, ok := table.editorSchemaTables[strings.ToLower(schemaTable.bareName)]
+	return ok && mapped.qualifiedName == schemaTable.qualifiedName
 }
 
 func schemaBulkLoadThreshold() int {

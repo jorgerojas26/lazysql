@@ -182,9 +182,9 @@ func (db *Postgres) GetTableColumnsBulk(ctx context.Context, database string, ta
 	return results, nil
 }
 
-// GetTableColumnsBulk loads MSSQL columns for all requested tables after
-// switching to the requested database. MSSQL's existing API uses the current
-// schema, so table names remain bare just like GetTableColumns.
+// GetTableColumnsBulk loads MSSQL columns for all requested schema.table names
+// after switching to the requested database. Schema-qualified keys keep
+// same-named tables in different schemas separate in the shared cache.
 func (db *MSSQL) GetTableColumnsBulk(ctx context.Context, database string, tables []string) (map[string][][]string, error) {
 	ctx = contextOrBackground(ctx)
 	if database == "" {
@@ -196,29 +196,38 @@ func (db *MSSQL) GetTableColumnsBulk(ctx context.Context, database string, table
 
 	columnHeaders := []string{"column_name", "data_type", "is_nullable", "column_default", "comment"}
 	results := newBulkColumnResults(tables, columnHeaders)
-	placeholders := make([]string, len(tables))
-	args := make([]any, len(tables))
-	for i, table := range tables {
-		placeholders[i] = fmt.Sprintf("@p%d", i+1)
-		args[i] = table
+	filters := make([]string, 0, len(tables))
+	args := make([]any, 0, len(tables)*2)
+	for _, table := range tables {
+		schema, tableName, err := splitMSSQLTableName(table)
+		if err != nil {
+			return nil, err
+		}
+		schemaArg := len(args) + 1
+		args = append(args, schema)
+		tableArg := len(args) + 1
+		args = append(args, tableName)
+		filters = append(filters, fmt.Sprintf("(s.name = @p%d AND t.name = @p%d)", schemaArg, tableArg))
 	}
 
 	query := db.databasePrefix(database) + `
-		SELECT t.name AS table_name,
+		SELECT s.name AS schema_name,
+			t.name AS table_name,
 			c.name AS column_name,
 			ty.name AS data_type,
 			c.is_nullable,
 			def.definition AS column_default,
 			ISNULL(ep.value, '') AS comment
 		FROM sys.tables t
+		INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
 		INNER JOIN sys.columns c ON t.object_id = c.object_id
 		INNER JOIN sys.types ty ON c.system_type_id = ty.system_type_id
 		LEFT JOIN sys.default_constraints def ON c.default_object_id = def.parent_column_id
 		LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id
 			AND ep.minor_id = c.column_id AND ep.name = 'MS_Description'
-		WHERE t.name IN (` + strings.Join(placeholders, ", ") + `)
+		WHERE (` + strings.Join(filters, " OR ") + `)
 			AND ty.name <> 'sysname'
-		ORDER BY t.name, c.column_id;
+		ORDER BY s.name, t.name, c.column_id;
 	`
 	rows, err := db.Connection.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -228,14 +237,14 @@ func (db *MSSQL) GetTableColumnsBulk(ctx context.Context, database string, table
 
 	for rows.Next() {
 		var (
-			tableName, columnName, dataType    sql.NullString
-			isNullable, columnDefault, comment sql.NullString
+			schema, tableName, columnName, dataType sql.NullString
+			isNullable, columnDefault, comment      sql.NullString
 		)
-		if err := rows.Scan(&tableName, &columnName, &dataType, &isNullable, &columnDefault, &comment); err != nil {
+		if err := rows.Scan(&schema, &tableName, &columnName, &dataType, &isNullable, &columnDefault, &comment); err != nil {
 			return nil, err
 		}
 
-		key := bulkResultKey(results, tableName.String)
+		key := bulkResultKey(results, schema.String+"."+tableName.String)
 		if key == "" {
 			continue
 		}

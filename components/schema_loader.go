@@ -12,8 +12,8 @@ import (
 )
 
 // editorSchemaTable is the driver-facing name and the autocomplete-facing
-// name for one visible table. PostgreSQL needs the qualified name for catalog
-// lookups, while the editor traditionally displays the bare table name.
+// name for one visible table. Schema-aware drivers need the qualified name for
+// catalog lookups, while the editor displays bare names when they are unique.
 type editorSchemaTable struct {
 	bareName      string
 	qualifiedName string
@@ -106,6 +106,31 @@ func copySchemaTables(tables map[string][]string) map[string][]string {
 	return copy
 }
 
+// editorTableNames keeps the familiar bare-name completion for unique tables,
+// while exposing schema-qualified names when schemas contain duplicates.
+func editorTableNames(tables []editorSchemaTable) []string {
+	counts := make(map[string]int, len(tables))
+	for _, table := range tables {
+		counts[strings.ToLower(table.bareName)]++
+	}
+
+	names := make([]string, 0, len(tables))
+	seen := make(map[string]struct{}, len(tables))
+	for _, table := range tables {
+		name := table.bareName
+		if counts[strings.ToLower(table.bareName)] > 1 {
+			name = table.qualifiedName
+		}
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		names = append(names, name)
+	}
+	return names
+}
+
 // visibleTables converts the driver's table map into deterministic table
 // descriptors and excludes configured schemas before any column work begins.
 func (loader *schemaLoader) visibleTables(database string, tables map[string][]string, schemas []string) []editorSchemaTable {
@@ -128,7 +153,7 @@ func (loader *schemaLoader) visibleTables(database string, tables map[string][]s
 
 		for _, name := range names {
 			qualifiedName := name
-			if loader.driver.UseSchemas() && schema != "" && schema != database {
+			if loader.driver.UseSchemas() && schema != "" {
 				qualifiedName = schema + "." + name
 			}
 			visible = append(visible, editorSchemaTable{
@@ -268,16 +293,24 @@ func bulkColumnResult(results map[string][][]string, table editorSchemaTable) ([
 	if value, ok := results[table.qualifiedName]; ok {
 		return value, true
 	}
-	if value, ok := results[table.bareName]; ok {
-		return value, true
+	qualifiedName := strings.ToLower(table.qualifiedName)
+	for name, value := range results {
+		if strings.ToLower(name) == qualifiedName {
+			return value, true
+		}
 	}
 
-	qualifiedName := strings.ToLower(table.qualifiedName)
-	bareName := strings.ToLower(table.bareName)
-	for name, value := range results {
-		switch strings.ToLower(name) {
-		case qualifiedName, bareName:
+	// A bare result is safe only when the requested table is itself bare. A
+	// schema-qualified request must never borrow another schema's bare bucket.
+	if table.qualifiedName == table.bareName {
+		if value, ok := results[table.bareName]; ok {
 			return value, true
+		}
+		bareName := strings.ToLower(table.bareName)
+		for name, value := range results {
+			if strings.ToLower(name) == bareName {
+				return value, true
+			}
 		}
 	}
 	return nil, false

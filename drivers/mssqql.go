@@ -104,6 +104,27 @@ func quoteMSSQLIdentifier(identifier string) string {
 	return "[" + strings.ReplaceAll(identifier, "]", "]]") + "]"
 }
 
+func splitMSSQLTableName(table string) (schema, tableName string, err error) {
+	table = strings.TrimSpace(table)
+	schema, tableName, ok := strings.Cut(table, ".")
+	if !ok || strings.TrimSpace(schema) == "" || strings.TrimSpace(tableName) == "" || strings.Contains(tableName, ".") {
+		return "", "", fmt.Errorf("table must be in the format schema.table: %s", table)
+	}
+	return strings.TrimSpace(schema), strings.TrimSpace(tableName), nil
+}
+
+func splitMSSQLTableReference(table string) (schema, tableName string, qualified bool, err error) {
+	table = strings.TrimSpace(table)
+	if table == "" {
+		return "", "", false, errors.New("table name is required")
+	}
+	if strings.Contains(table, ".") {
+		schema, tableName, err := splitMSSQLTableName(table)
+		return schema, tableName, true, err
+	}
+	return "", table, false, nil
+}
+
 func (db *MSSQL) databasePrefix(database string) string {
 	if db.isAzureSQL {
 		return ""
@@ -164,7 +185,7 @@ func (db *MSSQL) GetTables(ctx context.Context, database string) (map[string][]s
 
 	tables := make(map[string][]string)
 
-	query := "SELECT name FROM " + quoteMSSQLIdentifier(database) + ".sys.tables"
+	query := "SELECT s.name AS schema_name, t.name AS table_name FROM " + quoteMSSQLIdentifier(database) + ".sys.tables AS t INNER JOIN " + quoteMSSQLIdentifier(database) + ".sys.schemas AS s ON t.schema_id = s.schema_id ORDER BY s.name, t.name"
 
 	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
@@ -174,12 +195,12 @@ func (db *MSSQL) GetTables(ctx context.Context, database string) (map[string][]s
 	defer rows.Close()
 
 	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
+		var schema, table string
+		if err := rows.Scan(&schema, &table); err != nil {
 			return nil, err
 		}
 
-		tables[database] = append(tables[database], table)
+		tables[schema] = append(tables[schema], table)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -214,9 +235,15 @@ func (db *MSSQL) GetTableColumns(ctx context.Context, database, table string) ([
 
 func (db *MSSQL) GetConstraints(ctx context.Context, database, table string) ([][]string, error) {
 	ctx = contextOrBackground(ctx)
-	currentSchema, err := db.getCurrentSchema(ctx)
+	schema, tableName, qualified, err := splitMSSQLTableReference(table)
 	if err != nil {
 		return nil, err
+	}
+	if !qualified {
+		schema, err = db.getCurrentSchema(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	query := db.databasePrefix(database) + `
@@ -235,17 +262,26 @@ func (db *MSSQL) GetConstraints(ctx context.Context, database, table string) ([]
         INNER JOIN sys.columns c
             ON ic.column_id = c.column_id
             AND ic.object_id = c.object_id
-        WHERE s.name = @p1
+        WHERE s.name = @p3
           AND t.name = @p2
           AND kc.type IN ('PK', 'UQ')
     `
 
-	return db.getTableInformation(ctx, query, currentSchema, table, "")
+	return db.getTableInformation(ctx, query, database, tableName, schema)
 }
 
 func (db *MSSQL) GetForeignKeys(ctx context.Context, database, table string) ([][]string, error) {
 	ctx = contextOrBackground(ctx)
-	query := db.databasePrefix(database) + `
+	schema, tableName, qualified, err := splitMSSQLTableReference(table)
+	if err != nil {
+		return nil, err
+	}
+
+	schemaFilter := ""
+	if qualified {
+		schemaFilter = "AND s.name = @p3"
+	}
+	query := db.databasePrefix(database) + fmt.Sprintf(`
         SELECT
             fk.name AS constraint_name,
             c.name AS column_name,
@@ -270,16 +306,26 @@ func (db *MSSQL) GetForeignKeys(ctx context.Context, database, table string) ([]
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
           AND DB_NAME(DB_ID(@p1)) = @p1
-    `
+          %s
+    `, schemaFilter)
 
-	return db.getTableInformation(ctx, query, database, table, "")
+	if qualified {
+		return db.getTableInformation(ctx, query, database, tableName, schema)
+	}
+	return db.getTableInformation(ctx, query, database, tableName, "")
 }
 
 func (db *MSSQL) GetIndexes(ctx context.Context, database, table string) ([][]string, error) {
 	ctx = contextOrBackground(ctx)
-	currentSchema, err := db.getCurrentSchema(ctx)
+	schema, tableName, qualified, err := splitMSSQLTableReference(table)
 	if err != nil {
 		return nil, err
+	}
+	if !qualified {
+		schema, err = db.getCurrentSchema(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	databaseJoin := `
@@ -326,7 +372,7 @@ func (db *MSSQL) GetIndexes(ctx context.Context, database, table string) ([][]st
         ORDER BY i.type_desc
     `, databaseJoin, databaseFilter)
 
-	return db.getTableInformation(ctx, query, database, table, currentSchema)
+	return db.getTableInformation(ctx, query, database, tableName, schema)
 }
 
 func (db *MSSQL) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
@@ -676,9 +722,15 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(ctx context.Context, database, table s
 		return nil, errors.New("table name is required")
 	}
 
-	currentSchema, err := db.getCurrentSchema(ctx)
+	schema, tableName, qualified, err := splitMSSQLTableReference(table)
 	if err != nil {
 		return nil, err
+	}
+	if !qualified {
+		schema, err = db.getCurrentSchema(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	pkColumnName := make([]string, 0)
@@ -709,7 +761,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(ctx context.Context, database, table s
 		ORDER BY ic.key_ordinal
 	`
 
-	rows, err := db.Connection.QueryContext(ctx, query, "PK", currentSchema, table)
+	rows, err := db.Connection.QueryContext(ctx, query, "PK", schema, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -878,7 +930,11 @@ func (db *MSSQL) FormatArgForQueryString(arg any) string {
 }
 
 func (db *MSSQL) FormatReference(reference string) string {
-	return quoteMSSQLIdentifier(reference)
+	parts := strings.Split(reference, ".")
+	for i, part := range parts {
+		parts[i] = quoteMSSQLIdentifier(part)
+	}
+	return strings.Join(parts, ".")
 }
 
 func (db *MSSQL) FormatPlaceholder(index int) string {
@@ -928,9 +984,10 @@ func (db *MSSQL) GetFunctions(ctx context.Context, database string) (map[string]
 	functions := make(map[string][]string)
 
 	query := db.databasePrefix(database) + `
-		SELECT o.name
+		SELECT s.name + '.' + o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
+		JOIN sys.schemas s ON o.schema_id = s.schema_id
 		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION')
 	`
 
@@ -967,9 +1024,10 @@ func (db *MSSQL) GetProcedures(ctx context.Context, database string) (map[string
 	procedures := make(map[string][]string)
 
 	query := db.databasePrefix(database) + `
-		SELECT o.name
+		SELECT s.name + '.' + o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
+		JOIN sys.schemas s ON o.schema_id = s.schema_id
 		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')
 	`
 
@@ -1002,7 +1060,7 @@ func (db *MSSQL) SupportsProgramming() bool {
 }
 
 func (db *MSSQL) UseSchemas() bool {
-	return false
+	return true
 }
 
 func (db *MSSQL) GetViews(ctx context.Context, database string) (map[string][]string, error) {
@@ -1014,9 +1072,10 @@ func (db *MSSQL) GetViews(ctx context.Context, database string) (map[string][]st
 	views := make(map[string][]string)
 
 	query := db.databasePrefix(database) + `
-		SELECT o.name
+		SELECT s.name + '.' + o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
+		JOIN sys.schemas s ON o.schema_id = s.schema_id
 		WHERE o.type_desc IN ('VIEW')
 	`
 

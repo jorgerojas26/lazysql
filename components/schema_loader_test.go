@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/jorgerojas26/lazysql/drivers"
 )
 
 type autocompleteSchemaDriver struct {
@@ -136,6 +138,59 @@ func TestSchemaLoaderFiltersHiddenSchemasBeforeBulkLoad(t *testing.T) {
 	}
 	if got := driver.requestedBulkTables(); len(got) != 1 || got[0] != "public.users" {
 		t.Fatalf("bulk tables = %v, want only public.users", got)
+	}
+}
+
+func TestSchemaLoaderMSSQLFiltersHiddenSchemasAndKeepsDuplicateIdentity(t *testing.T) {
+	loader := newSchemaLoader(&drivers.MSSQL{}, newMetadataCache())
+	tables := map[string][]string{
+		"audit":   {"users"},
+		"dbo":     {"users"},
+		"private": {"secrets"},
+	}
+
+	visible := loader.visibleTables("test_db", tables, []string{"audit", "dbo"})
+	if len(visible) != 2 {
+		t.Fatalf("visible tables = %+v, want two configured schemas", visible)
+	}
+	if visible[0].qualifiedName != "audit.users" || visible[1].qualifiedName != "dbo.users" {
+		t.Fatalf("visible table identities = %+v, want audit.users and dbo.users", visible)
+	}
+	for _, table := range visible {
+		if table.qualifiedName == "private.secrets" {
+			t.Fatal("hidden schema survived schema filtering")
+		}
+	}
+}
+
+func TestBulkColumnResultDoesNotMergeQualifiedSchemas(t *testing.T) {
+	if _, ok := bulkColumnResult(map[string][][]string{"users": autocompleteColumns("bare")}, editorSchemaTable{
+		bareName:      "users",
+		qualifiedName: "audit.users",
+	}); ok {
+		t.Fatal("qualified table reused a bare result from another schema")
+	}
+}
+
+func TestResultsTableKeepsDuplicateSchemaHintsQualified(t *testing.T) {
+	table := &ResultsTable{}
+	tables := []editorSchemaTable{
+		{bareName: "users", qualifiedName: "audit.users"},
+		{bareName: "users", qualifiedName: "dbo.users"},
+	}
+	table.setEditorSchemaTables("test_db", tables)
+
+	if _, _, _, ok := table.editorSchemaTableForHint("users"); ok {
+		t.Fatal("ambiguous bare table hint resolved to one schema")
+	}
+	for _, qualified := range []string{"audit.users", "dbo.users"} {
+		got, _, _, ok := table.editorSchemaTableForHint(qualified)
+		if !ok || got.qualifiedName != qualified {
+			t.Fatalf("qualified hint %q resolved to %+v, ok=%v", qualified, got, ok)
+		}
+	}
+	if got := editorTableNames(tables); len(got) != 2 || got[0] != "audit.users" || got[1] != "dbo.users" {
+		t.Fatalf("completion names = %v, want qualified duplicate names", got)
 	}
 }
 

@@ -590,10 +590,10 @@ func TestMSSQL_GetTablesQuotesDatabaseName(t *testing.T) {
 
 	db := &MSSQL{Connection: sqlDB}
 
-	mock.ExpectQuery("SELECT name FROM [sql-db].sys.tables").
+	mock.ExpectQuery("SELECT s.name AS schema_name, t.name AS table_name FROM [sql-db].sys.tables AS t INNER JOIN [sql-db].sys.schemas AS s ON t.schema_id = s.schema_id ORDER BY s.name, t.name").
 		WillReturnRows(
-			sqlmock.NewRows([]string{"name"}).
-				AddRow("users"),
+			sqlmock.NewRows([]string{"schema_name", "table_name"}).
+				AddRow("dbo", "users"),
 		)
 
 	tables, err := db.GetTables(context.Background(), "sql-db")
@@ -602,13 +602,91 @@ func TestMSSQL_GetTablesQuotesDatabaseName(t *testing.T) {
 	}
 
 	expected := map[string][]string{
-		"sql-db": {"users"},
+		"dbo": {"users"},
 	}
 
 	if !reflect.DeepEqual(tables, expected) {
 		t.Fatalf("expected %v, got %v", expected, tables)
 	}
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_UsesSchemas(t *testing.T) {
+	db := &MSSQL{}
+	if !db.UseSchemas() {
+		t.Fatal("UseSchemas() = false, want true for schema-qualified MSSQL metadata")
+	}
+}
+
+func TestMSSQL_FormatReferenceQuotesQualifiedTable(t *testing.T) {
+	db := &MSSQL{}
+	if got := db.FormatReference("dbo.users"); got != "[dbo].[users]" {
+		t.Fatalf("FormatReference(dbo.users) = %q, want [dbo].[users]", got)
+	}
+}
+
+func TestMSSQL_GetTablesPreservesSchemaIdentity(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New(
+		sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual),
+	)
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer sqlDB.Close()
+
+	db := &MSSQL{Connection: sqlDB}
+	mock.ExpectQuery("SELECT s.name AS schema_name, t.name AS table_name FROM [test_db].sys.tables AS t INNER JOIN [test_db].sys.schemas AS s ON t.schema_id = s.schema_id ORDER BY s.name, t.name").
+		WillReturnRows(sqlmock.NewRows([]string{"schema_name", "table_name"}).
+			AddRow("audit", "users").
+			AddRow("dbo", "users"))
+
+	tables, err := db.GetTables(context.Background(), DBNameMSSQL)
+	if err != nil {
+		t.Fatalf("GetTables failed: %v", err)
+	}
+
+	expected := map[string][]string{
+		"audit": {"users"},
+		"dbo":   {"users"},
+	}
+	if !reflect.DeepEqual(tables, expected) {
+		t.Fatalf("tables = %v, want %v", tables, expected)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetTableColumnsBulkUsesSchemaQualifiedIdentity(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer sqlDB.Close()
+
+	db := &MSSQL{Connection: sqlDB}
+	mock.ExpectQuery(`(?s)USE \[test_db\];.*SELECT s\.name AS schema_name, t\.name AS table_name, c\.name AS column_name.*WHERE \(\(s\.name = @p1 AND t\.name = @p2\).*OR \(s\.name = @p3 AND t\.name = @p4\).*`).
+		WithArgs("audit", "users", "dbo", "users").
+		WillReturnRows(sqlmock.NewRows([]string{"schema_name", "table_name", "column_name", "data_type", "is_nullable", "column_default", "comment"}).
+			AddRow("audit", "users", "id", "int", "0", "", "audit id").
+			AddRow("dbo", "users", "id", "int", "0", "", "dbo id"))
+
+	columns, err := db.GetTableColumnsBulk(context.Background(), DBNameMSSQL, []string{"audit.users", "dbo.users"})
+	if err != nil {
+		t.Fatalf("GetTableColumnsBulk failed: %v", err)
+	}
+	if got := columns["audit.users"][1][4]; got != "audit id" {
+		t.Fatalf("audit.users columns = %v, want audit id comment", columns["audit.users"])
+	}
+	if got := columns["dbo.users"][1][4]; got != "dbo id" {
+		t.Fatalf("dbo.users columns = %v, want dbo id comment", columns["dbo.users"])
+	}
+	if _, ok := columns["users"]; ok {
+		t.Fatal("bulk results collapsed duplicate table names into bare users key")
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("Unfulfilled expectations: %s", err)
 	}

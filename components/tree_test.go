@@ -624,6 +624,29 @@ func TestTreeRefreshKeepsOtherDatabaseNodesVisible(t *testing.T) {
 	}
 }
 
+func TestMSSQLTreeFiltersSchemasAndKeepsQualifiedTableReferences(t *testing.T) {
+	tree := &Tree{DBDriver: &drivers.MSSQL{}, Schemas: []string{"dbo"}}
+	dbNode := tview.NewTreeNode("test_db")
+	dbNode.SetReference("test_db")
+
+	tree.addTableNodes("test_db", dbNode, map[string][]string{
+		"audit": {"users"},
+		"dbo":   {"users"},
+	})
+
+	children := dbNode.GetChildren()
+	if len(children) != 1 || children[0].GetText() != "dbo" {
+		t.Fatalf("MSSQL tree schemas = %v, want only dbo", treeNodeTexts(children))
+	}
+	tables := children[0].GetChildren()
+	if len(tables) != 1 || tables[0].GetText() != "tables" {
+		t.Fatalf("MSSQL schema children = %v, want tables section", treeNodeTexts(tables))
+	}
+	if got := tables[0].GetChildren()[0].GetReference(); got != "test_db.dbo.tables.users" {
+		t.Fatalf("MSSQL table reference = %v, want schema-qualified reference", got)
+	}
+}
+
 func TestProgressiveTreeAddsTablesBeforeProgrammingObjects(t *testing.T) {
 	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
 	dbNode := tview.NewTreeNode("mydb")
