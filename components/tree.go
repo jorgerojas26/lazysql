@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/lithammer/fuzzysearch/fuzzy"
@@ -36,6 +37,9 @@ type Tree struct {
 	subscribers         []chan models.StateChange
 	Schemas             []string
 	schemaLoader        *schemaLoader
+	loadMu              sync.Mutex
+	loadGeneration      uint64
+	queueUpdateDraw     func(func())
 }
 
 type TreeNodeType int
@@ -135,6 +139,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 		Filter:              tview.NewInputField(),
 		FoundNodeCountInput: tview.NewInputField(),
 		Schemas:             schemas,
+		queueUpdateDraw:     func(update func()) { App.QueueUpdateDraw(update) },
 	}
 
 	tree.SetTopLevel(1)
@@ -511,7 +516,10 @@ func (tree *Tree) addSchemaProgrammingSection(schemaNode *tview.TreeNode, databa
 			items = append(items, strings.TrimPrefix(qualified, prefix))
 		}
 	}
+	tree.addSchemaProgrammingItems(schemaNode, database, schema, section, items)
+}
 
+func (tree *Tree) addSchemaProgrammingItems(schemaNode *tview.TreeNode, database, schema, section string, items []string) {
 	if len(items) == 0 {
 		return
 	}
@@ -531,6 +539,62 @@ func (tree *Tree) addSchemaProgrammingSection(schemaNode *tview.TreeNode, databa
 		itemNode.SetReference(fmt.Sprintf("%s.%s.%s.%s", database, schema, section, item))
 		sectionNode.AddChild(itemNode)
 	}
+}
+
+// addSchemaProgrammingNodes enriches the table-first schema tree. It creates
+// schema nodes that contain only programming objects as needed, while keeping
+// the programming sections in deterministic order.
+func (tree *Tree) addSchemaProgrammingNodes(node *tview.TreeNode, database string, functions, procedures, views map[string][]string) {
+	type programmingGroup struct {
+		section string
+		items   map[string][]string
+	}
+	groups := []programmingGroup{
+		{section: "functions", items: functions},
+		{section: "procedures", items: procedures},
+		{section: "views", items: views},
+	}
+
+	bySchema := make(map[string]map[string][]string)
+	for _, group := range groups {
+		for _, qualified := range group.items[database] {
+			separator := strings.IndexByte(qualified, '.')
+			if separator <= 0 || separator == len(qualified)-1 {
+				continue
+			}
+			schema := qualified[:separator]
+			if len(tree.Schemas) > 0 && !slices.Contains(tree.Schemas, schema) {
+				continue
+			}
+			if bySchema[schema] == nil {
+				bySchema[schema] = make(map[string][]string)
+			}
+			bySchema[schema][group.section] = append(bySchema[schema][group.section], qualified[separator+1:])
+		}
+	}
+
+	for _, schema := range slices.Sorted(maps.Keys(bySchema)) {
+		schemaNode := tree.findTreeChild(node, schema)
+		if schemaNode == nil {
+			schemaNode = tview.NewTreeNode(schema)
+			schemaNode.SetExpanded(false)
+			schemaNode.SetReference(schema)
+			schemaNode.SetColor(app.Styles.PrimaryTextColor)
+			node.AddChild(schemaNode)
+		}
+		for _, group := range groups {
+			tree.addSchemaProgrammingItems(schemaNode, database, schema, group.section, bySchema[schema][group.section])
+		}
+	}
+}
+
+func (tree *Tree) findTreeChild(node *tview.TreeNode, text string) *tview.TreeNode {
+	for _, child := range node.GetChildren() {
+		if child.GetText() == text {
+			return child
+		}
+	}
+	return nil
 }
 
 func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures map[string][]string, views map[string][]string, node *tview.TreeNode) {
@@ -1092,6 +1156,28 @@ func (tree *Tree) ExpandAll() {
 }
 
 func (tree *Tree) InitializeNodes(dbName string) {
+	generation := tree.beginLoad()
+	tree.initializeNodes(dbName, generation)
+}
+
+func (tree *Tree) beginLoad() uint64 {
+	tree.loadMu.Lock()
+	defer tree.loadMu.Unlock()
+	tree.loadGeneration++
+	return tree.loadGeneration
+}
+
+func (tree *Tree) isCurrentLoad(generation uint64) bool {
+	tree.loadMu.Lock()
+	defer tree.loadMu.Unlock()
+	return tree.loadGeneration == generation
+}
+
+// initializeNodes renders database nodes immediately, then loads each
+// database independently. Tables are applied as soon as their shared schema
+// request completes; programming objects are fetched only after that first
+// paint and enrich the existing table subtree afterward.
+func (tree *Tree) initializeNodes(dbName string, generation uint64) {
 	rootNode := tree.GetRoot()
 	if rootNode == nil {
 		panic("Internal Error: No tree root")
@@ -1121,65 +1207,140 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		childNode.SetColor(app.Styles.PrimaryTextColor)
 		rootNode.AddChild(childNode)
 
-		go func(database string, node *tview.TreeNode) {
-			var tables map[string][]string
-			var err error
-			if tree.schemaLoader != nil {
-				tables, err = tree.schemaLoader.loadTables(database)
-			} else {
-				tables, err = tree.DBDriver.GetTables(database)
-			}
-			if err != nil {
-				logger.Error(err.Error(), nil)
-				return
-			}
-
-			supportsProgramming := tree.DBDriver.SupportsProgramming()
-			useSchemas := tree.DBDriver.UseSchemas()
-
-			var functions, procedures, views map[string][]string
-			if supportsProgramming {
-				functions, err = tree.DBDriver.GetFunctions(database)
-				if err != nil {
-					logger.Error(err.Error(), nil)
-					return
-				}
-
-				procedures, err = tree.DBDriver.GetProcedures(database)
-				if err != nil {
-					logger.Error(err.Error(), nil)
-					return
-				}
-
-				views, err = tree.DBDriver.GetViews(database)
-				if err != nil {
-					logger.Error(err.Error(), nil)
-					return
-				}
-			}
-
-			if useSchemas {
-				tree.buildSchemaTree(database, node, tables, functions, procedures, views)
-			} else {
-				tree.databasesToNodes(tables, node, true)
-				if supportsProgramming {
-					tree.addProgrammingNodes(functions, procedures, views, node)
-				}
-			}
-
-			App.Draw()
-		}(database, childNode)
+		go tree.loadDatabaseNodes(generation, database, childNode)
 	}
+}
+
+func (tree *Tree) loadDatabaseNodes(generation uint64, database string, node *tview.TreeNode) {
+	var tables map[string][]string
+	var err error
+	if tree.schemaLoader != nil {
+		tables, err = tree.schemaLoader.loadTables(database)
+	} else {
+		tables, err = tree.DBDriver.GetTables(database)
+	}
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	if !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	// Render the primary table catalog before asking for any programming
+	// objects. This is the progressive tree's first useful paint.
+	tree.renderLoadUpdate(generation, func() {
+		tree.addTableNodes(database, node, tables)
+	})
+
+	if !tree.DBDriver.SupportsProgramming() || !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	functions, err := tree.DBDriver.GetFunctions(database)
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	procedures, err := tree.DBDriver.GetProcedures(database)
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	views, err := tree.DBDriver.GetViews(database)
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	if !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	tree.renderLoadUpdate(generation, func() {
+		tree.enrichProgrammingNodes(database, node, functions, procedures, views)
+	})
+}
+
+func (tree *Tree) renderLoadUpdate(generation uint64, update func()) {
+	if !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	if tree.queueUpdateDraw != nil {
+		tree.queueUpdateDraw(func() {
+			if tree.isCurrentLoad(generation) {
+				update()
+			}
+		})
+		return
+	}
+
+	// Minimal trees in unit tests do not have an application event loop. Keep
+	// that seam synchronous while production trees serialize node mutations on
+	// tview's UI loop through queueUpdateDraw above.
+	if tree.isCurrentLoad(generation) {
+		update()
+	}
+	if App != nil {
+		App.Draw()
+	}
+}
+
+func (tree *Tree) addTableNodes(database string, node *tview.TreeNode, tables map[string][]string) {
+	if tree.DBDriver.UseSchemas() {
+		tree.buildSchemaTree(database, node, tables, nil, nil, nil)
+		return
+	}
+	tree.databasesToNodes(tables, node, true)
+}
+
+func (tree *Tree) enrichProgrammingNodes(database string, node *tview.TreeNode, functions, procedures, views map[string][]string) {
+	if tree.DBDriver.UseSchemas() {
+		tree.addSchemaProgrammingNodes(node, database, functions, procedures, views)
+		return
+	}
+	tree.addProgrammingNodes(functions, procedures, views, node)
 }
 
 func (tree *Tree) Refresh(dbName string) {
 	if tree.schemaLoader != nil {
-		tree.schemaLoader.invalidateTables(dbName)
+		tree.schemaLoader.invalidateAll()
 	}
+	tree.refreshNodes(dbName)
+}
+
+// RefreshAsync is used by background SQL completion paths. The visible tree
+// mutation is queued on tview's UI loop, while catalog work remains in the
+// per-database goroutines started by refreshNodes.
+func (tree *Tree) RefreshAsync(dbName string) {
+	if tree.queueUpdateDraw == nil {
+		go tree.Refresh(dbName)
+		return
+	}
+	go tree.queueUpdateDraw(func() {
+		tree.Refresh(dbName)
+	})
+}
+
+func (tree *Tree) refreshNodes(dbName string) {
+	generation := tree.beginLoad()
 	rootNode := tree.GetRoot()
-	rootNode.ClearChildren()
-	// re-add nodes
-	tree.InitializeNodes(dbName)
+	if dbName != "" {
+		// A connection without a fixed database shows several database nodes.
+		// Refresh only the selected database so DDL does not make unrelated
+		// visible databases disappear.
+		sanitizedName := sanitizeDBName(dbName)
+		for _, child := range rootNode.GetChildren() {
+			if reference, ok := child.GetReference().(string); ok && reference == sanitizedName {
+				rootNode.RemoveChild(child)
+				break
+			}
+		}
+	} else {
+		rootNode.ClearChildren()
+	}
+	// Re-add the requested scope. Per-database work remains asynchronous.
+	tree.initializeNodes(dbName, generation)
 }
 
 func (tree *Tree) ClearSearch() {

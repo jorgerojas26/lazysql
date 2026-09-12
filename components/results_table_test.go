@@ -728,6 +728,31 @@ func runEditorQuery(t *testing.T, readOnly bool, query string) []string {
 	return driver.queries()
 }
 
+func TestSchemaMutatingQueryClassification(t *testing.T) {
+	for _, query := range []string{
+		"CREATE TABLE users (id INTEGER)",
+		"-- alter a table\nALTER TABLE users ADD COLUMN name TEXT",
+		"/* drop is intentional */ DROP VIEW users_view",
+		"TRUNCATE TABLE users",
+	} {
+		if !isSchemaMutatingQuery(query) {
+			t.Errorf("isSchemaMutatingQuery(%q) = false, want true", query)
+		}
+	}
+
+	for _, query := range []string{
+		"INSERT INTO users (id) VALUES (1)",
+		"UPDATE users SET name = 'new'",
+		"DELETE FROM users WHERE id = 1",
+		"WITH changed AS (SELECT 1) UPDATE users SET id = 1",
+		"SELECT * FROM users",
+	} {
+		if isSchemaMutatingQuery(query) {
+			t.Errorf("isSchemaMutatingQuery(%q) = true, want false", query)
+		}
+	}
+}
+
 // TestReadOnlyBlocksMultiLineCTEMutation covers the routing bug: a mutation
 // wrapped in a CTE starts with "with", so the prefix check classified it as a
 // SELECT and it executed without ever reaching the read-only validator.

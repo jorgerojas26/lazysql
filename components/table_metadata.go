@@ -184,6 +184,27 @@ func (cache *metadataCache) invalidate(key metadataKey) {
 	}
 }
 
+// invalidateAll drops every schema and table-metadata entry for a connection.
+// In-flight waiters are released and their results are ignored by request's
+// entry-identity check, allowing a replacement tree/schema load to start
+// immediately after a successful DDL statement.
+func (cache *metadataCache) invalidateAll() {
+	if cache == nil {
+		return
+	}
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	for key, entry := range cache.entries {
+		delete(cache.entries, key)
+		if !entry.doneClosed {
+			close(entry.done)
+			entry.doneClosed = true
+		}
+	}
+}
+
 func (cache *metadataCache) result(key metadataKey) (MetadataState, any, error) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()

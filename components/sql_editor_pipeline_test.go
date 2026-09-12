@@ -66,6 +66,32 @@ type truncatedEditorStreamDriver struct {
 	maxRows chan int
 }
 
+type editorDMLNoRefreshDriver struct {
+	schemaProgrammingMock
+	dmlDone chan struct{}
+	dmlErr  error
+	mu      sync.Mutex
+	pages   int
+}
+
+func (driver *editorDMLNoRefreshDriver) ExecuteDMLStatement(string) (string, error) {
+	close(driver.dmlDone)
+	return "updated", driver.dmlErr
+}
+
+func (driver *editorDMLNoRefreshDriver) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
+	driver.mu.Lock()
+	driver.pages++
+	driver.mu.Unlock()
+	return drivers.PageResult{Rows: [][]string{{"id"}, {"unexpected"}}}, nil
+}
+
+func (driver *editorDMLNoRefreshDriver) pageCalls() int {
+	driver.mu.Lock()
+	defer driver.mu.Unlock()
+	return driver.pages
+}
+
 func (driver *errorEditorStreamDriver) StreamQuery(_ context.Context, _ string, _ int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
 	close(driver.called)
 	result := drivers.QueryStreamResult{Columns: []string{"id"}, Rows: 1}
@@ -140,6 +166,103 @@ func stopEditorPipeline(t *testing.T, appDone chan struct{}) {
 	case <-appDone:
 	case <-time.After(3 * time.Second):
 		t.Fatal("application did not stop")
+	}
+}
+
+func TestSuccessfulEditorDDLInvalidatesSchemaCache(t *testing.T) {
+	driver := &editorDMLNoRefreshDriver{dmlDone: make(chan struct{})}
+	table, editor, pages := newEditorPipelineTable(driver)
+	cache := newMetadataCache()
+	cache.store(newMetadataKey("database", "orders", MetadataColumns), [][]string{{"column_name"}}, nil)
+	table.metadataCache = cache
+	table.SetDatabaseName("database")
+	table.SetTableName("orders")
+	table.ResultsInfo = tview.NewTextView()
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+		DBDriver: driver,
+		queueUpdateDraw: func(update func()) {
+			update()
+		},
+	}
+	root := tview.NewTreeNode("-")
+	root.SetReference("-")
+	tree.SetRoot(root)
+	table.Home = &Home{Tree: tree, metadataCache: cache}
+
+	appDone := startEditorPipeline(t, table, editor, pages)
+	defer stopEditorPipeline(t, appDone)
+
+	editor.Publish(eventSQLEditorQuery, "CREATE TABLE audit (id INTEGER)")
+	select {
+	case <-driver.dmlDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("DDL did not execute")
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if status, _, _ := cache.result(newMetadataKey("database", "orders", MetadataColumns)); status == MetadataUnloaded {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if status, _, _ := cache.result(newMetadataKey("database", "orders", MetadataColumns)); status != MetadataUnloaded {
+		t.Fatal("successful DDL left schema metadata cached")
+	}
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && len(root.GetChildren()) == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	if len(root.GetChildren()) == 0 {
+		t.Fatal("successful DDL did not start a background tree rebuild")
+	}
+}
+
+func TestFailedEditorDDLKeepsSchemaCache(t *testing.T) {
+	driver := &editorDMLNoRefreshDriver{dmlDone: make(chan struct{}), dmlErr: errors.New("DDL failed")}
+	table, editor, pages := newEditorPipelineTable(driver)
+	cache := newMetadataCache()
+	key := newMetadataKey("database", "orders", MetadataColumns)
+	cache.store(key, [][]string{{"column_name"}}, nil)
+	table.metadataCache = cache
+	table.SetDatabaseName("database")
+	table.SetTableName("orders")
+	table.ResultsInfo = tview.NewTextView()
+
+	appDone := startEditorPipeline(t, table, editor, pages)
+	defer stopEditorPipeline(t, appDone)
+
+	editor.Publish(eventSQLEditorQuery, "ALTER TABLE orders ADD COLUMN audit_id INTEGER")
+	select {
+	case <-driver.dmlDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("failed DDL did not execute")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if status, _, _ := cache.result(key); status != MetadataReady {
+		t.Fatalf("failed DDL cache status = %v, want ready", status)
+	}
+}
+
+func TestEditorDMLDoesNotRefreshSelectedTable(t *testing.T) {
+	driver := &editorDMLNoRefreshDriver{dmlDone: make(chan struct{})}
+	table, editor, pages := newEditorPipelineTable(driver)
+	table.SetDatabaseName("database")
+	table.SetTableName("orders")
+	table.ResultsInfo = tview.NewTextView()
+	appDone := startEditorPipeline(t, table, editor, pages)
+	defer stopEditorPipeline(t, appDone)
+
+	editor.Publish(eventSQLEditorQuery, "UPDATE orders SET id = 2")
+	select {
+	case <-driver.dmlDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("editor DML did not execute")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := driver.pageCalls(); got != 0 {
+		t.Fatalf("arbitrary editor DML triggered %d Records page calls, want 0", got)
 	}
 }
 

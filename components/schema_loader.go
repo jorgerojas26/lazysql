@@ -76,6 +76,13 @@ func (loader *schemaLoader) invalidateTables(database string) {
 	loader.cache.invalidate(newMetadataKey(database, "", MetadataTables))
 }
 
+func (loader *schemaLoader) invalidateAll() {
+	if loader == nil || loader.cache == nil {
+		return
+	}
+	loader.cache.invalidateAll()
+}
+
 func copySchemaTables(tables map[string][]string) map[string][]string {
 	copy := make(map[string][]string, len(tables))
 	for schema, names := range tables {

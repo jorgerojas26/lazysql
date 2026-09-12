@@ -194,6 +194,34 @@ func newRefreshCallTable(driver drivers.Driver) *ResultsTable {
 	return table
 }
 
+func TestRefreshKnownRecordTablesTargetsOnlyChangedTables(t *testing.T) {
+	driver := newRefreshCallDriver()
+	table := newRefreshCallTable(driver)
+	home := &Home{TabbedPane: NewTabbedPane(), metadataCache: newMetadataCache()}
+	table.Home = home
+	table.Page = tview.NewPages()
+	table.Page.AddPage(pageNameTable, table.Table, true, true)
+	home.TabbedPane.AppendTab("orders", table, "database.orders")
+
+	stopApp := startRefreshApplication(t, table)
+	defer stopApp()
+
+	home.refreshKnownRecordTables([]models.DBDMLChange{
+		{Database: "database", Table: "orders", Type: models.DMLUpdateType},
+		{Database: "database", Table: "orders", Type: models.DMLDeleteType},
+		{Database: "database", Table: "other", Type: models.DMLInsertType},
+	})
+	waitForRefreshCount(t, driver, MetadataPrimaryKeys, 1)
+
+	pageCalls, _, _, _, _ := driver.pageArgs()
+	if pageCalls != 1 {
+		t.Fatalf("known-table DML caused %d Records page calls, want 1", pageCalls)
+	}
+	if len(table.GetColumns()) != 2 || len(table.GetForeignKeys()) != 2 || len(table.GetIndexes()) != 2 {
+		t.Fatal("known-table Records refresh discarded structural metadata")
+	}
+}
+
 func primeRefreshMetadata(t *testing.T, table *ResultsTable) {
 	t.Helper()
 	for _, kind := range metadataKinds {

@@ -202,6 +202,49 @@ func (home *Home) subscribeToTreeChanges() {
 	}
 }
 
+// refreshSchemaAfterDDL invalidates the connection-scoped schema cache and
+// starts a tree rebuild without putting catalog work on the SQL completion
+// path. The tree's own loader applies tables before programming objects.
+func (home *Home) refreshSchemaAfterDDL(database string) {
+	if home == nil {
+		return
+	}
+
+	home.metadataCacheForConnection().invalidateAll()
+	if home.Tree != nil {
+		home.Tree.RefreshAsync(database)
+	}
+}
+
+// refreshKnownRecordTables refreshes only Records tabs that are named by a
+// committed Records-originated change. Arbitrary editor SQL has no reliable
+// table identity and never calls this helper.
+func (home *Home) refreshKnownRecordTables(changes []models.DBDMLChange) {
+	if home == nil || home.TabbedPane == nil {
+		return
+	}
+
+	seen := make(map[string]struct{}, len(changes))
+	for _, change := range changes {
+		if change.Database == "" || change.Table == "" {
+			continue
+		}
+		reference := fmt.Sprintf("%s.%s", change.Database, change.Table)
+		if _, ok := seen[reference]; ok {
+			continue
+		}
+		seen[reference] = struct{}{}
+
+		tab := home.TabbedPane.GetTabByReference(reference)
+		if tab == nil {
+			continue
+		}
+		if table, ok := tab.Content.(*ResultsTable); ok {
+			table.RefreshRecords()
+		}
+	}
+}
+
 func (home *Home) showTable(databaseName, tableName string) {
 	if tableName == "" {
 		return
@@ -568,7 +611,8 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 		if (len(home.ListOfDBChanges) > 0) && !table.GetIsEditing() {
 			queryPreviewModal := NewQueryPreviewModal(&home.ListOfDBChanges, home.DBDriver, func() {
-				for _, change := range home.ListOfDBChanges {
+				changes := append([]models.DBDMLChange(nil), home.ListOfDBChanges...)
+				for _, change := range changes {
 					queryString, err := home.DBDriver.DMLChangeToQueryString(change)
 					if err != nil {
 						logger.Error("Failed to convert DML change to query string", map[string]any{"error": err})
@@ -580,7 +624,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 					}
 				}
 				home.ListOfDBChanges = []models.DBDMLChange{}
-				table.RefreshRecords()
+				home.refreshKnownRecordTables(changes)
 				home.Tree.ForceRemoveHighlight()
 			})
 

@@ -1,7 +1,7 @@
 ---
 # lazysql-gw9j
 title: '[10] Make the database tree progressive and keep schema freshness correct'
-status: todo
+status: completed
 type: task
 priority: normal
 tags:
@@ -14,7 +14,7 @@ tags:
     - ticket-key-progressive-tree-schema-freshness
     - tree
 created_at: 2026-09-12T03:19:45Z
-updated_at: 2026-09-12T03:19:46Z
+updated_at: 2026-09-12T17:51:18Z
 parent: lazysql-a9lf
 blocked_by:
     - lazysql-mdze
@@ -32,14 +32,21 @@ Known DML originating from Records should still refresh the exact table's Record
 
 ## Acceptance criteria
 
-- [ ] Database nodes can render without waiting for every database's complete object metadata.
-- [ ] Table nodes can render without waiting for functions, procedures, and views.
-- [ ] Functions/procedures/views enrich the tree after primary table information is available.
-- [ ] Tree loading reuses the shared connection-scoped schema loader/cache.
-- [ ] Existing schema filters apply consistently to tree and schema loading.
-- [ ] Successful arbitrary DDL invalidates the connection's schema metadata cache.
-- [ ] After DDL invalidation, the visible tree rebuilds progressively in background without delaying SQL completion feedback.
-- [ ] Arbitrary SQL-editor DML does not automatically refresh whichever table happened to be selected/opened.
-- [ ] DML originating from Records refreshes the known affected table's Records and row-count state.
-- [ ] Known Records DML preserves valid structural metadata cache.
-- [ ] Tests cover progressive tree order, cache reuse, DDL invalidation/rebuild, removal of speculative editor-DML refresh, and known-table DML refresh.
+- [x] Database nodes can render without waiting for every database's complete object metadata.
+- [x] Table nodes can render without waiting for functions, procedures, and views.
+- [x] Functions/procedures/views enrich the tree after primary table information is available.
+- [x] Tree loading reuses the shared connection-scoped schema loader/cache.
+- [x] Existing schema filters apply consistently to tree and schema loading.
+- [x] Successful arbitrary DDL invalidates the connection's schema metadata cache.
+- [x] After DDL invalidation, the visible tree rebuilds progressively in background without delaying SQL completion feedback.
+- [x] Arbitrary SQL-editor DML does not automatically refresh whichever table happened to be selected/opened.
+- [x] DML originating from Records refreshes the known affected table's Records and row-count state.
+- [x] Known Records DML preserves valid structural metadata cache.
+- [x] Tests cover progressive tree order, cache reuse, DDL invalidation/rebuild, removal of speculative editor-DML refresh, and known-table DML refresh.
+
+## Summary of Changes
+
+- Made tree loading database/table-first with generation-safe, UI-serialized programming-object enrichment and shared schema-cache reuse.
+- Added whole-connection schema-cache invalidation and asynchronous progressive tree rebuilds after successful DDL.
+- Removed speculative SQL-editor DML Records refreshes; committed Records changes now refresh only exact affected table tabs while preserving structural metadata.
+- Added focused progressive-tree, cache invalidation, DDL, editor-DML, and known-table refresh tests.

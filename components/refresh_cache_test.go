@@ -6,6 +6,33 @@ import (
 	"time"
 )
 
+func TestMetadataCacheInvalidateAllReleasesAndDropsEveryEntry(t *testing.T) {
+	cache := newMetadataCache()
+	readyKey := newMetadataKey("database", "orders", MetadataColumns)
+	loadingKey := newMetadataKey("database", "", MetadataTables)
+	cache.store(readyKey, [][]string{{"column_name"}}, nil)
+	release := make(chan struct{})
+	loadingDone := cache.request(loadingKey, func() (any, error) {
+		<-release
+		return map[string][]string{"database": {"orders"}}, nil
+	})
+
+	cache.invalidateAll()
+	select {
+	case <-loadingDone:
+	case <-time.After(time.Second):
+		t.Fatal("invalidateAll left an in-flight schema request blocked")
+	}
+
+	if status, _, _ := cache.result(readyKey); status != MetadataUnloaded {
+		t.Fatalf("ready metadata status after invalidateAll = %v, want unloaded", status)
+	}
+	if status, _, _ := cache.result(loadingKey); status != MetadataUnloaded {
+		t.Fatalf("loading schema status after invalidateAll = %v, want unloaded", status)
+	}
+	close(release)
+}
+
 func TestMetadataCacheInvalidationReleasesObsoleteRequest(t *testing.T) {
 	cache := newMetadataCache()
 	key := newMetadataKey("database", "orders", MetadataForeignKeys)

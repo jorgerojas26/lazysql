@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rivo/tview"
 
@@ -428,6 +429,32 @@ func TestExpandAncestors_FourLevelTree(t *testing.T) {
 
 var _ drivers.Driver = (*schemaProgrammingMock)(nil)
 
+type progressiveTreeDriver struct {
+	schemaProgrammingMock
+	tablesStarted      chan struct{}
+	programmingStart   chan struct{}
+	releaseProgramming chan struct{}
+}
+
+func (driver *progressiveTreeDriver) GetTables(string) (map[string][]string, error) {
+	close(driver.tablesStarted)
+	return map[string][]string{"public": {"users"}}, nil
+}
+
+func (driver *progressiveTreeDriver) GetFunctions(string) (map[string][]string, error) {
+	close(driver.programmingStart)
+	<-driver.releaseProgramming
+	return map[string][]string{"mydb": {"public.add_user"}}, nil
+}
+
+func (driver *progressiveTreeDriver) GetProcedures(string) (map[string][]string, error) {
+	return map[string][]string{"mydb": {"public.cleanup"}}, nil
+}
+
+func (driver *progressiveTreeDriver) GetViews(string) (map[string][]string, error) {
+	return map[string][]string{"mydb": {"public.user_view"}}, nil
+}
+
 type schemaProgrammingMock struct{}
 
 func (m *schemaProgrammingMock) Connect(string) error                               { return nil }
@@ -489,6 +516,153 @@ func (m *schemaProgrammingMock) DMLChangeToQueryString(models.DBDMLChange) (stri
 func (m *schemaProgrammingMock) SetProvider(string) {}
 
 // ── buildSchemaTree tests ───────────────────────────────────────────────────────
+
+func TestInitializeNodesRendersTablesBeforeProgrammingMetadata(t *testing.T) {
+	driver := &progressiveTreeDriver{
+		tablesStarted:      make(chan struct{}),
+		programmingStart:   make(chan struct{}),
+		releaseProgramming: make(chan struct{}),
+	}
+	root := tview.NewTreeNode("-")
+	enrichmentDone := make(chan struct{})
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+		DBDriver: driver,
+		queueUpdateDraw: func(update func()) {
+			update()
+			children := root.GetChildren()
+			if len(children) == 1 && len(children[0].GetChildren()) == 1 && len(children[0].GetChildren()[0].GetChildren()) == 4 {
+				close(enrichmentDone)
+			}
+		},
+	}
+	root.SetReference("-")
+	tree.SetRoot(root)
+
+	tree.InitializeNodes("mydb")
+	select {
+	case <-driver.programmingStart:
+	case <-time.After(time.Second):
+		t.Fatal("programming metadata did not start")
+	}
+
+	children := root.GetChildren()
+	if len(children) != 1 || len(children[0].GetChildren()) != 1 || children[0].GetChildren()[0].GetText() != "public" {
+		t.Fatalf("tree before programming metadata = %v, want database/public table subtree", treeNodeTexts(children))
+	}
+	if tables := children[0].GetChildren()[0].GetChildren(); len(tables) != 1 || tables[0].GetText() != "tables" {
+		t.Fatalf("table subtree before programming metadata = %v, want tables", treeNodeTexts(tables))
+	}
+
+	close(driver.releaseProgramming)
+	select {
+	case <-enrichmentDone:
+	case <-time.After(time.Second):
+		t.Fatal("programming enrichment did not render")
+	}
+	if got := len(children[0].GetChildren()[0].GetChildren()); got != 4 {
+		t.Fatalf("programming enrichment children = %d, want 4", got)
+	}
+}
+
+func TestTreeRefreshKeepsOtherDatabaseNodesVisible(t *testing.T) {
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+		DBDriver: &schemaProgrammingMock{},
+		queueUpdateDraw: func(update func()) {
+			update()
+		},
+	}
+	root := tview.NewTreeNode("-")
+	root.SetReference("-")
+	for _, database := range []string{"db1", "db2"} {
+		node := tview.NewTreeNode(database)
+		node.SetReference(database)
+		root.AddChild(node)
+	}
+	tree.SetRoot(root)
+
+	tree.Refresh("db1")
+	children := root.GetChildren()
+	if len(children) != 2 {
+		t.Fatalf("refreshed databases = %v, want db1 and db2", treeNodeTexts(children))
+	}
+	seen := map[string]bool{}
+	for _, child := range children {
+		seen[child.GetText()] = true
+	}
+	if !seen["db1"] || !seen["db2"] {
+		t.Fatalf("refreshed databases = %v, lost an unrelated database", treeNodeTexts(children))
+	}
+}
+
+func TestProgressiveTreeAddsTablesBeforeProgrammingObjects(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tree.addTableNodes("mydb", dbNode, map[string][]string{"public": {"users"}})
+	if children := dbNode.GetChildren(); len(children) != 1 || children[0].GetText() != "public" {
+		t.Fatalf("table-first tree children = %v, want only public schema", treeNodeTexts(dbNode.GetChildren()))
+	}
+	if got := dbNode.GetChildren()[0].GetChildren()[0].GetText(); got != "tables" {
+		t.Fatalf("table-first schema child = %q, want tables", got)
+	}
+
+	tree.enrichProgrammingNodes(
+		"mydb",
+		dbNode,
+		map[string][]string{"mydb": {"public.add_user"}},
+		map[string][]string{"mydb": {"public.cleanup"}},
+		map[string][]string{"mydb": {"public.user_view"}},
+	)
+
+	schemaChildren := dbNode.GetChildren()[0].GetChildren()
+	if len(schemaChildren) != 4 {
+		t.Fatalf("enriched schema children = %v, want tables/functions/procedures/views", treeNodeTexts(schemaChildren))
+	}
+	for i, want := range []string{"tables", "functions", "procedures", "views"} {
+		if got := schemaChildren[i].GetText(); got != want {
+			t.Errorf("enriched child %d = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestProgressiveTreeProgrammingObjectsRespectSchemaFilter(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}, Schemas: []string{"public"}}
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tree.addTableNodes("mydb", dbNode, map[string][]string{"public": {"users"}})
+	tree.enrichProgrammingNodes(
+		"mydb",
+		dbNode,
+		map[string][]string{"mydb": {"private.hidden_fn", "public.visible_fn"}},
+		nil,
+		nil,
+	)
+
+	if len(dbNode.GetChildren()) != 1 || dbNode.GetChildren()[0].GetText() != "public" {
+		t.Fatalf("filtered schemas = %v, want only public", treeNodeTexts(dbNode.GetChildren()))
+	}
+	sections := dbNode.GetChildren()[0].GetChildren()
+	if len(sections) != 2 || sections[1].GetText() != "functions" {
+		t.Fatalf("filtered programming sections = %v, want tables/functions", treeNodeTexts(sections))
+	}
+	if got := sections[1].GetChildren()[0].GetText(); got != "visible_fn" {
+		t.Fatalf("filtered function = %q, want visible_fn", got)
+	}
+}
+
+func treeNodeTexts(nodes []*tview.TreeNode) []string {
+	texts := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		texts = append(texts, node.GetText())
+	}
+	return texts
+}
 
 func TestBuildSchemaTree_BasicStructure(t *testing.T) {
 	tree := &Tree{DBDriver: &schemaProgrammingMock{}}

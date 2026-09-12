@@ -1108,6 +1108,29 @@ func isResultProducingQuery(query string) bool {
 	return false
 }
 
+// isSchemaMutatingQuery identifies statements whose successful execution may
+// change the visible database tree. It intentionally classifies only the
+// leading statement verb: DDL invalidation is connection-wide and does not
+// attempt to infer the affected object from arbitrary SQL.
+func isSchemaMutatingQuery(query string) bool {
+	tokens, ok := tokenizeReplayQuery(query)
+	if !ok {
+		return false
+	}
+	for _, token := range tokens {
+		if token.kind != replayTokenWord {
+			continue
+		}
+		switch token.text {
+		case "ALTER", "COMMENT", "CREATE", "DROP", "GRANT", "RENAME", "REVOKE", "TRUNCATE":
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
 func (table *ResultsTable) beginEditorQuery(generation uint64) *editorQueryRun {
 	run := &editorQueryRun{generation: generation}
 	table.state.loadingMu.Lock()
@@ -1411,6 +1434,19 @@ func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, generation uin
 
 	table.addEditorQueryToHistory(query)
 	result, err := table.DBDriver.ExecuteDMLStatement(query)
+	ddl := isSchemaMutatingQuery(query)
+	if err == nil && ddl {
+		if table.Home != nil {
+			database := table.GetDatabaseName()
+			home := table.Home
+			home.refreshSchemaAfterDDL(database)
+		} else {
+			// Standalone ResultsTable instances used by integrations still need
+			// their connection-scoped metadata cache invalidated even though no
+			// visible Home/tree is available to rebuild.
+			table.metadataCacheForTable().invalidateAll()
+		}
+	}
 	if ctx.Err() != nil {
 		return
 	}
@@ -1441,11 +1477,10 @@ func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, generation uin
 		table.EditorPages.SwitchToPage(pageNameTableEditorTable)
 		App.SetFocus(table)
 
-		// Refresh the records so the table reflects the mutation when the editor
-		// tab has a table context.
-		if table.GetDatabaseName() != "" && table.GetTableName() != "" {
-			table.FetchRecords(nil, nil)
-		}
+		// Arbitrary editor DML has no reliable table identity, so it must not
+		// refresh whichever Records table happens to be open. Successful DDL
+		// already started its cache invalidation/tree rebuild immediately after
+		// the driver committed it, independent of this load generation.
 	})
 }
 
