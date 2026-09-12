@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -332,14 +333,13 @@ func TestPostgres_GetRecords(t *testing.T) {
 		AddRow(1, "Alice").
 		AddRow(2, "Bob")
 
-	mock.ExpectQuery(fmt.Sprintf(`SELECT \* FROM "%s"."%s" LIMIT \$1 OFFSET \$2`, schemaPostgres, tableNamePostgres)).WithArgs(DefaultRowLimit, 0).WillReturnRows(rows)
+	mock.ExpectQuery(fmt.Sprintf(`SELECT \* FROM "%s"."%s" LIMIT \$1 OFFSET \$2`, schemaPostgres, tableNamePostgres)).WithArgs(DefaultRowLimit+1, 0).WillReturnRows(rows)
 
-	mock.ExpectQuery(fmt.Sprintf(`SELECT COUNT\(\*\) FROM "%s"."%s"`, schemaPostgres, tableNamePostgres)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
-
-	records, total, _, err := pg.GetRecords(DBNamePostgres, schemaAndTablePostgres, "", "", 0, DefaultRowLimit)
+	page, err := pg.GetRecords(context.Background(), DBNamePostgres, schemaAndTablePostgres, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
+	records := page.Rows
 
 	expected := [][]string{
 		{"id", "name"},
@@ -351,8 +351,8 @@ func TestPostgres_GetRecords(t *testing.T) {
 		t.Fatalf("Expected %v, got %v", expected, records)
 	}
 
-	if total != 2 {
-		t.Fatalf("Expected total 2, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

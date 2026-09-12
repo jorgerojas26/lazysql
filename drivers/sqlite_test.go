@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -267,16 +268,14 @@ func TestSQLite_GetRecords(t *testing.T) {
 		AddRow(2, "Bob")
 
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", sqlite.formatTableName(testDBTableNameSQLite))).
-		WithArgs(0, DefaultRowLimit).
+		WithArgs(0, DefaultRowLimit+1).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM %s", sqlite.formatTableName(testDBTableNameSQLite))).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
-
-	records, total, _, err := sqlite.GetRecords(testDBNameSQLite, testDBTableNameSQLite, "", "", 0, DefaultRowLimit)
+	page, err := sqlite.GetRecords(context.Background(), testDBNameSQLite, testDBTableNameSQLite, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
+	records := page.Rows
 
 	expected := [][]string{
 		{"id", "name"},
@@ -288,8 +287,64 @@ func TestSQLite_GetRecords(t *testing.T) {
 		t.Fatalf("Expected %v, got %v", expected, records)
 	}
 
-	if total != 2 {
-		t.Fatalf("Expected total 2, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestSQLite_GetRecordsUsesLookahead(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	sqlite := &SQLite{Connection: db}
+	rows := sqlmock.NewRows([]string{"id"}).
+		AddRow(1).
+		AddRow(2).
+		AddRow(3)
+
+	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", sqlite.formatTableName(testDBTableNameSQLite))).
+		WithArgs(4, 3).
+		WillReturnRows(rows)
+
+	page, err := sqlite.GetRecords(context.Background(), testDBNameSQLite, testDBTableNameSQLite, "", "", 4, 2)
+	if err != nil {
+		t.Fatalf("GetRecords failed: %v", err)
+	}
+
+	wantRows := [][]string{{"id"}, {"1"}, {"2"}}
+	if !reflect.DeepEqual(page.Rows, wantRows) {
+		t.Fatalf("expected visible rows %v, got %v", wantRows, page.Rows)
+	}
+	if !page.HasNextPage {
+		t.Fatal("expected lookahead row to set HasNextPage")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestSQLite_GetRecordsHonorsCanceledContext(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	sqlite := &SQLite{Connection: db}
+	_, err = sqlite.GetRecords(ctx, testDBNameSQLite, testDBTableNameSQLite, "", "", 0, 2)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

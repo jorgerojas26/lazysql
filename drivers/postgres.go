@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -425,28 +426,29 @@ func (db *Postgres) GetIndexes(database, table string) ([][]string, error) {
 	return indexes, nil
 }
 
-func (db *Postgres) GetRecords(database, table, where, sort string, offset, limit int) (records [][]string, totalRecords int, queryString string, err error) {
+func (db *Postgres) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
 	if database == "" {
-		return nil, 0, "", errors.New("database name is required")
+		return PageResult{}, errors.New("database name is required")
 	}
 	if table == "" {
-		return nil, 0, "", errors.New("table name is required")
+		return PageResult{}, errors.New("table name is required")
 	}
 
 	formattedTableName, err := db.formatTableName(table)
 	if err != nil {
-		return nil, 0, "", err
+		return PageResult{}, err
 	}
 
 	conn, needsClose, err := db.connectionFor(database)
 	if err != nil {
-		return nil, 0, "", err
+		return PageResult{}, err
 	}
 	if needsClose {
 		defer conn.Close()
 	}
 
-	queryString = "SELECT * FROM "
+	pageSize, fetchLimit := pageSizeAndFetchLimit(limit)
+	queryString := "SELECT * FROM "
 	queryString += formattedTableName
 
 	if where != "" {
@@ -459,22 +461,18 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 
 	queryString += " LIMIT $1 OFFSET $2"
 
-	if limit == 0 {
-		limit = DefaultRowLimit
-	}
-
-	paginatedRows, err := conn.Query(queryString, limit, offset)
+	paginatedRows, err := conn.QueryContext(ctx, queryString, fetchLimit, offset)
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	defer paginatedRows.Close()
 
 	columns, columnsError := paginatedRows.Columns()
 	if columnsError != nil {
-		return nil, 0, queryString, columnsError
+		return PageResult{Query: queryString}, columnsError
 	}
 
-	records = [][]string{columns}
+	records := [][]string{columns}
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
 
@@ -484,7 +482,7 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		}
 
 		if err := paginatedRows.Scan(rowValues...); err != nil {
-			return nil, 0, queryString, err
+			return PageResult{Query: queryString}, err
 		}
 
 		var row []string
@@ -504,31 +502,18 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	}
 
 	if err := paginatedRows.Err(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	countQuery := "SELECT COUNT(*) FROM "
-	countQuery += formattedTableName
-
-	if where != "" {
-		countQuery += fmt.Sprintf(" %s", where)
-	}
-
-	countRow := conn.QueryRow(countQuery)
-
-	if err := countRow.Scan(&totalRecords); err != nil {
-		return records, 0, queryString, err
-	}
-
-	// Replace the limit and offset with actual values in the query string
-	queryString = strings.Replace(queryString, "$1", strconv.Itoa(limit), 1)
+	// Replace the limit and offset with actual values in the query string.
+	queryString = strings.Replace(queryString, "$1", strconv.Itoa(fetchLimit), 1)
 	queryString = strings.Replace(queryString, "$2", strconv.Itoa(offset), 1)
 
-	return records, totalRecords, queryString, nil
+	return newPageResult(records, queryString, pageSize), nil
 }
 
 func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {

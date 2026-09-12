@@ -1,8 +1,17 @@
 package drivers
 
 import (
+	"context"
+
 	"github.com/jorgerojas26/lazysql/models"
 )
+
+// PageResult is one visible Records page and its lookahead state.
+type PageResult struct {
+	Rows        [][]string
+	Query       string
+	HasNextPage bool
+}
 
 type Driver interface {
 	Connect(urlstr string) error
@@ -13,7 +22,7 @@ type Driver interface {
 	GetConstraints(database, table string) ([][]string, error)
 	GetForeignKeys(database, table string) ([][]string, error)
 	GetIndexes(database, table string) ([][]string, error)
-	GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, string, error)
+	GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error)
 	UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
 	DeleteRecord(database, table string, primaryKeyColumnName, primaryKeyValue string) error
 	ExecuteDMLStatement(query string) (string, error)

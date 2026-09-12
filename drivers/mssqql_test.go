@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -482,16 +483,14 @@ func TestMSSQL_GetRecords(t *testing.T) {
 		AddRow(2, "Bob")
 
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM \\[%s\\] ORDER BY \\(SELECT NULL\\) OFFSET \\@p1 ROWS FETCH NEXT \\@p2 ROWS ONLY", tableNameMSSQL)).
-		WithArgs(0, DefaultRowLimit).
+		WithArgs(0, DefaultRowLimit+1).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM \\[%s\\]", tableNameMSSQL)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
-
-	records, total, _, err := pg.GetRecords(DBNameMSSQL, tableNameMSSQL, "", "", 0, DefaultRowLimit)
+	page, err := pg.GetRecords(context.Background(), DBNameMSSQL, tableNameMSSQL, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
+	records := page.Rows
 
 	expected := [][]string{
 		{"id", "name"},
@@ -503,8 +502,8 @@ func TestMSSQL_GetRecords(t *testing.T) {
 		t.Fatalf("Expected %v, got %v", expected, records)
 	}
 
-	if total != 2 {
-		t.Fatalf("Expected total 2, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -635,17 +634,11 @@ func TestMSSQL_GetRecordsAzureSQLDoesNotUseUSE(t *testing.T) {
 	mock.ExpectQuery(
 		"SELECT * FROM [test_table] ORDER BY (SELECT NULL) OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY",
 	).
-		WithArgs(0, DefaultRowLimit).
+		WithArgs(0, DefaultRowLimit+1).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery(
-		"SELECT COUNT(*) FROM [test_table]",
-	).
-		WillReturnRows(
-			sqlmock.NewRows([]string{"count"}).AddRow(1),
-		)
-
-	_, total, _, err := db.GetRecords(
+	page, err := db.GetRecords(
+		context.Background(),
 		DBNameMSSQL,
 		tableNameMSSQL,
 		"",
@@ -657,8 +650,8 @@ func TestMSSQL_GetRecordsAzureSQLDoesNotUseUSE(t *testing.T) {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
 
-	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -23,7 +24,7 @@ func (m *mockDriver) GetTableColumns(string, string) ([][]string, error) { panic
 func (m *mockDriver) GetConstraints(string, string) ([][]string, error)  { panic("not used") }
 func (m *mockDriver) GetForeignKeys(string, string) ([][]string, error)  { panic("not used") }
 func (m *mockDriver) GetIndexes(string, string) ([][]string, error)      { panic("not used") }
-func (m *mockDriver) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
+func (m *mockDriver) GetRecords(context.Context, string, string, string, string, int, int) (PageResult, error) {
 	panic("not used")
 }
 
@@ -48,6 +49,40 @@ func (m *mockDriver) GetProcedureDefinition(string, string) (string, error)     
 func (m *mockDriver) GetViewDefinition(string, string) (string, error)          { panic("not used") }
 func (m *mockDriver) DMLChangeToQueryString(models.DBDMLChange) (string, error) { panic("not used") }
 func (m *mockDriver) SetProvider(string)                                        {}
+
+func TestPageSizeAndFetchLimit(t *testing.T) {
+	pageSize, fetchLimit := pageSizeAndFetchLimit(2)
+	if pageSize != 2 || fetchLimit != 3 {
+		t.Fatalf("expected page size 2 and fetch limit 3, got %d and %d", pageSize, fetchLimit)
+	}
+
+	pageSize, fetchLimit = pageSizeAndFetchLimit(0)
+	if pageSize != DefaultRowLimit || fetchLimit != DefaultRowLimit+1 {
+		t.Fatalf("expected default page size and lookahead, got %d and %d", pageSize, fetchLimit)
+	}
+}
+
+func TestNewPageResultTrimsLookahead(t *testing.T) {
+	rows := [][]string{
+		{"id"},
+		{"1"},
+		{"2"},
+		{"3"},
+	}
+
+	page := newPageResult(rows, "SELECT ... LIMIT 3", 2)
+	wantRows := [][]string{{"id"}, {"1"}, {"2"}}
+
+	if !reflect.DeepEqual(page.Rows, wantRows) {
+		t.Fatalf("expected visible rows %v, got %v", wantRows, page.Rows)
+	}
+	if !page.HasNextPage {
+		t.Fatal("expected lookahead row to set HasNextPage")
+	}
+	if page.Query != "SELECT ... LIMIT 3" {
+		t.Fatalf("expected query to be preserved, got %q", page.Query)
+	}
+}
 
 func (m *mockDriver) FormatArg(arg any, _ models.CellValueType) any {
 	return arg

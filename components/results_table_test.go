@@ -1,6 +1,8 @@
 package components
 
 import (
+	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -179,6 +181,75 @@ func TestSetLoadingIsSynchronous(t *testing.T) {
 	}
 }
 
+func TestStartingRecordsLoadCancelsPreviousContext(t *testing.T) {
+	table := &ResultsTable{
+		Table:      tview.NewTable(),
+		state:      &ResultsTableState{},
+		Pagination: NewPagination(),
+	}
+
+	firstContext, firstGeneration := table.startLoad()
+	secondContext, secondGeneration := table.startLoad()
+	defer table.CancelLoading()
+
+	select {
+	case <-firstContext.Done():
+	default:
+		t.Fatal("starting a newer load did not cancel the previous context")
+	}
+
+	if table.isCurrentLoad(firstContext, firstGeneration) {
+		t.Fatal("cancelled load is still considered current")
+	}
+	if !table.isCurrentLoad(secondContext, secondGeneration) {
+		t.Fatal("newer load is not considered current")
+	}
+}
+
+func TestPaginationUsesLookaheadForNavigation(t *testing.T) {
+	pagination := NewPagination()
+	pagination.SetLimit(2)
+	pagination.SetPageInfo(2, true)
+
+	if !pagination.GetIsFirstPage() {
+		t.Fatal("expected offset zero to be the first page")
+	}
+	if pagination.GetIsLastPage() {
+		t.Fatal("expected lookahead row to enable the next page")
+	}
+	if !pagination.GetHasNextPage() {
+		t.Fatal("expected HasNextPage to be exposed")
+	}
+
+	pagination.SetOffset(2)
+	pagination.SetPageInfo(1, false)
+
+	if pagination.GetIsFirstPage() {
+		t.Fatal("expected non-zero offset not to be the first page")
+	}
+	if !pagination.GetIsLastPage() {
+		t.Fatal("expected missing lookahead row to mark the last page")
+	}
+	if pagination.GetTotalRecords() != 3 {
+		t.Fatalf("expected inferred total 3, got %d", pagination.GetTotalRecords())
+	}
+}
+
+func TestTrimRecordsToPage(t *testing.T) {
+	rows := [][]string{{"id"}, {"1"}, {"2"}, {"3"}}
+	got := trimRecordsToPage(rows, 2)
+	want := [][]string{{"id"}, {"1"}, {"2"}}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d rows, got %d", len(want), len(got))
+	}
+	for i := range want {
+		if len(got[i]) != len(want[i]) || got[i][0] != want[i][0] {
+			t.Fatalf("expected rows %v, got %v", want, got)
+		}
+	}
+}
+
 func TestRebuildForeignKeyJumpMetadataPostgresSkipsComposite(t *testing.T) {
 	changes := []models.DBDMLChange{}
 
@@ -334,6 +405,174 @@ func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *te
 	if target.ReferencedTable != "auth.users" {
 		t.Fatalf("expected referenced table auth.users, got %q", target.ReferencedTable)
 	}
+}
+
+// ── Records loading ────────────────────────────────────────────────────────────
+
+type recordsFirstPaintMock struct {
+	schemaProgrammingMock
+
+	mu            sync.Mutex
+	pageCalls     int
+	metadataCalls int
+}
+
+func (m *recordsFirstPaintMock) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
+	m.mu.Lock()
+	m.pageCalls++
+	m.mu.Unlock()
+
+	return drivers.PageResult{
+		Rows: [][]string{{"id"}, {"1"}, {"2"}},
+	}, nil
+}
+
+func (m *recordsFirstPaintMock) GetTableColumns(string, string) ([][]string, error) {
+	m.mu.Lock()
+	m.metadataCalls++
+	m.mu.Unlock()
+	return nil, errors.New("metadata intentionally deferred")
+}
+
+func (m *recordsFirstPaintMock) counts() (pageCalls, metadataCalls int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pageCalls, m.metadataCalls
+}
+
+func newRecordsFetchTestTable(driver drivers.Driver) *ResultsTable {
+	changes := []models.DBDMLChange{}
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			records:               [][]string{},
+			columns:               [][]string{},
+			constraints:           [][]string{},
+			foreignKeys:           [][]string{},
+			indexes:               [][]string{},
+			foreignKeyColumns:     map[string]bool{},
+			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
+			fkRawCellValues:       map[string]string{},
+			markedRows:            map[int]bool{},
+			listOfDBChanges:       &changes,
+		},
+		Pagination: NewPagination(),
+		DBDriver:   driver,
+	}
+	table.SetDatabaseName("database")
+	table.SetTableName("table")
+	return table
+}
+
+func TestFetchRecordsRendersBeforeMetadata(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init simulation screen: %v", err)
+	}
+	App.SetScreen(screen)
+
+	driver := &recordsFirstPaintMock{}
+	table := newRecordsFetchTestTable(driver)
+	root := tview.NewPages()
+	root.AddPage(pageNameTable, table, true, true)
+	appDone := make(chan struct{})
+	go func() {
+		defer close(appDone)
+		_ = App.Run(root, "")
+	}()
+	App.QueueUpdate(func() {})
+
+	rendered := make(chan struct{})
+	table.FetchRecords(nil, func() {
+		pageCalls, metadataCalls := driver.counts()
+		if pageCalls != 1 {
+			t.Errorf("expected one page fetch before first paint, got %d", pageCalls)
+		}
+		if metadataCalls != 0 {
+			t.Errorf("metadata ran before first paint: %d calls", metadataCalls)
+		}
+		close(rendered)
+	})
+	<-rendered
+
+	table.CancelLoading()
+	App.Application.Stop()
+	<-appDone
+}
+
+type staleRecordsLoadMock struct {
+	schemaProgrammingMock
+
+	firstStarted  chan struct{}
+	firstCanceled chan struct{}
+	mu            sync.Mutex
+	calls         int
+}
+
+func newStaleRecordsLoadMock() *staleRecordsLoadMock {
+	return &staleRecordsLoadMock{
+		firstStarted:  make(chan struct{}),
+		firstCanceled: make(chan struct{}),
+	}
+}
+
+func (m *staleRecordsLoadMock) GetRecords(ctx context.Context, _ string, _ string, _ string, _ string, _ int, _ int) (drivers.PageResult, error) {
+	m.mu.Lock()
+	m.calls++
+	call := m.calls
+	m.mu.Unlock()
+
+	if call == 1 {
+		close(m.firstStarted)
+		<-ctx.Done()
+		close(m.firstCanceled)
+		return drivers.PageResult{}, ctx.Err()
+	}
+
+	return drivers.PageResult{Rows: [][]string{{"id"}, {"new"}}}, nil
+}
+
+func (m *staleRecordsLoadMock) GetTableColumns(string, string) ([][]string, error) {
+	return nil, errors.New("metadata intentionally deferred")
+}
+
+func TestStaleRecordsLoadCannotOverwriteNewerPage(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init simulation screen: %v", err)
+	}
+	App.SetScreen(screen)
+
+	driver := newStaleRecordsLoadMock()
+	table := newRecordsFetchTestTable(driver)
+	root := tview.NewPages()
+	root.AddPage(pageNameTable, table, true, true)
+	appDone := make(chan struct{})
+	go func() {
+		defer close(appDone)
+		_ = App.Run(root, "")
+	}()
+	App.QueueUpdate(func() {})
+
+	table.FetchRecords(nil, nil)
+	<-driver.firstStarted
+
+	newerRendered := make(chan struct{})
+	table.FetchRecords(nil, func() {
+		close(newerRendered)
+	})
+
+	<-driver.firstCanceled
+	<-newerRendered
+
+	records := table.GetRecords()
+	if len(records) != 2 || records[1][0] != "new" {
+		t.Fatalf("stale page overwrote newer page: %v", records)
+	}
+
+	table.CancelLoading()
+	App.Application.Stop()
+	<-appDone
 }
 
 // ── read-only routing ──────────────────────────────────────────────────────────

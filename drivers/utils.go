@@ -10,6 +10,39 @@ import (
 	"github.com/jorgerojas26/lazysql/models"
 )
 
+func pageSizeAndFetchLimit(limit int) (pageSize, fetchLimit int) {
+	pageSize = limit
+	if pageSize <= 0 {
+		pageSize = DefaultRowLimit
+	}
+	return pageSize, pageSize + 1
+}
+
+func newPageResult(rows [][]string, query string, pageSize int) PageResult {
+	if pageSize <= 0 {
+		pageSize = DefaultRowLimit
+	}
+	if len(rows) <= 1 {
+		return PageResult{Rows: rows, Query: query}
+	}
+
+	dataRows := rows[1:]
+	hasNextPage := len(dataRows) > pageSize
+	if !hasNextPage {
+		return PageResult{Rows: rows, Query: query}
+	}
+
+	visibleRows := make([][]string, 0, pageSize+1)
+	visibleRows = append(visibleRows, rows[0])
+	visibleRows = append(visibleRows, dataRows[:pageSize]...)
+
+	return PageResult{
+		Rows:        visibleRows,
+		Query:       query,
+		HasNextPage: true,
+	}
+}
+
 func queriesInTransaction(db *sql.DB, queries []models.Query) (err error) {
 	trx, err := db.Begin()
 	if err != nil {

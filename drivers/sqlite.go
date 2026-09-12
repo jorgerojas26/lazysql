@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -286,16 +287,13 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 	return results, nil
 }
 
-func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, queryString string, err error) {
+func (db *SQLite) GetRecords(ctx context.Context, _, table, where, sort string, offset, limit int) (PageResult, error) {
 	if table == "" {
-		return nil, 0, "", errors.New("table name is required")
+		return PageResult{}, errors.New("table name is required")
 	}
 
-	if limit == 0 {
-		limit = DefaultRowLimit
-	}
-
-	queryString = "SELECT * FROM "
+	pageSize, fetchLimit := pageSizeAndFetchLimit(limit)
+	queryString := "SELECT * FROM "
 	queryString += db.formatTableName(table)
 
 	if where != "" {
@@ -308,18 +306,18 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 
 	queryString += " LIMIT ?, ?"
 
-	paginatedRows, err := db.Connection.Query(queryString, offset, limit)
+	paginatedRows, err := db.Connection.QueryContext(ctx, queryString, offset, fetchLimit)
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	defer paginatedRows.Close()
 
 	columns, err := paginatedRows.Columns()
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	paginatedResults = append(paginatedResults, columns)
+	paginatedResults := [][]string{columns}
 
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
@@ -332,7 +330,7 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 
 		err = paginatedRows.Scan(rowValues...)
 		if err != nil {
-			return nil, 0, queryString, err
+			return PageResult{Query: queryString}, err
 		}
 
 		var row []string
@@ -351,27 +349,17 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 		paginatedResults = append(paginatedResults, row)
 	}
 	if err := paginatedRows.Err(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	countQuery := "SELECT COUNT(*) FROM "
-	countQuery += db.formatTableName(table)
-	if where != "" { // Add WHERE clause to count query as well if it exists
-		countQuery += fmt.Sprintf(" %s", where)
-	}
-	countRow := db.Connection.QueryRow(countQuery)
-	if err := countRow.Scan(&totalRecords); err != nil {
-		return paginatedResults, 0, queryString, err
-	}
+	// Replace the limit and offset with actual values in the query string.
+	queryString = strings.Replace(queryString, "?, ?", fmt.Sprintf("%d, %d", offset, fetchLimit), 1)
 
-	// Replace the limit and offset with actual values in the query string
-	queryString = strings.Replace(queryString, "?, ?", fmt.Sprintf("%d, %d", offset, limit), 1)
-
-	return paginatedResults, totalRecords, queryString, nil
+	return newPageResult(paginatedResults, queryString, pageSize), nil
 }
 
 func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {

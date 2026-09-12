@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -800,20 +801,20 @@ func TestMySQL_GetRecords_Error(t *testing.T) {
 		{
 			name: "GetRecords error",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit).WillReturnError(errors.New("query error"))
+				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit+1).WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, _, _, err := db.GetRecords("test_db", "test_table", "", "", 0, DefaultRowLimit)
+				_, err := db.GetRecords(context.Background(), "test_db", "test_table", "", "", 0, DefaultRowLimit)
 				return err
 			},
 		},
 		{
 			name: "GetRecords with where error",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s WHERE id = 1 LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit).WillReturnError(errors.New("query error"))
+				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s WHERE id = 1 LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit+1).WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, _, _, err := db.GetRecords("test_db", "test_table", "WHERE id = 1", "", 0, DefaultRowLimit)
+				_, err := db.GetRecords(context.Background(), "test_db", "test_table", "WHERE id = 1", "", 0, DefaultRowLimit)
 				return err
 			},
 		},
@@ -1391,19 +1392,17 @@ func TestMySQL_GetRecords(t *testing.T) {
 		AddRow(2, "test2", 200)
 
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
-		WithArgs(0, DefaultRowLimit).
+		WithArgs(0, DefaultRowLimit+1).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
-
-	records, total, _, err := mysql.GetRecords(testDBNameMySQL, testDBTableNameMySQL, "", "", 0, DefaultRowLimit)
+	page, err := mysql.GetRecords(context.Background(), testDBNameMySQL, testDBTableNameMySQL, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
+	records := page.Rows
 
-	if total != 2 {
-		t.Fatalf("Expected total 2, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
 	}
 
 	expectedRecords := [][]string{

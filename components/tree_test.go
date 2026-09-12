@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -437,8 +438,8 @@ func (m *schemaProgrammingMock) GetTableColumns(string, string) ([][]string, err
 func (m *schemaProgrammingMock) GetConstraints(string, string) ([][]string, error)  { return nil, nil }
 func (m *schemaProgrammingMock) GetForeignKeys(string, string) ([][]string, error)  { return nil, nil }
 func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error)      { return nil, nil }
-func (m *schemaProgrammingMock) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
-	return nil, 0, "", nil
+func (m *schemaProgrammingMock) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
+	return drivers.PageResult{}, nil
 }
 func (m *schemaProgrammingMock) UpdateRecord(string, string, string, string, string, string) error {
 	return nil

@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
@@ -45,6 +46,8 @@ type ResultsTableState struct {
 	isLoading             bool
 	showSidebar           bool
 	loadingCancel         context.CancelFunc
+	loadingMu             sync.Mutex
+	loadGeneration        uint64
 }
 
 type foreignKeyJumpTarget struct {
@@ -1030,9 +1033,14 @@ func (table *ResultsTable) GetColumnNameByIndex(index int) string {
 	columns := table.GetColumns()
 
 	for i, col := range columns {
-		if i > 0 && i == index+1 {
+		if i > 0 && i == index+1 && len(col) > 0 {
 			return col[0]
 		}
+	}
+
+	records := table.GetRecords()
+	if len(records) > 0 && index >= 0 && index < len(records[0]) {
+		return records[0][index]
 	}
 
 	return ""
@@ -1040,16 +1048,23 @@ func (table *ResultsTable) GetColumnNameByIndex(index int) string {
 
 func (table *ResultsTable) GetColumnIndexByName(columnName string) int {
 	cols := table.GetColumns()
-	index := -1
 
 	for i, col := range cols {
-		if i > 0 && col[0] == columnName {
-			index = i - 1 // Because the first column is the column names
-			break
+		if i > 0 && len(col) > 0 && col[0] == columnName {
+			return i - 1 // Because the first column is the column names
 		}
 	}
 
-	return index
+	records := table.GetRecords()
+	if len(records) > 0 {
+		for i, name := range records[0] {
+			if name == columnName {
+				return i
+			}
+		}
+	}
+
+	return -1
 }
 
 func (table *ResultsTable) GetIsLoading() bool {
@@ -1148,18 +1163,48 @@ func (table *ResultsTable) SetLoading(show bool) {
 }
 
 func (table *ResultsTable) CancelLoading() {
-	if table.state.loadingCancel != nil {
-		table.state.loadingCancel()
-		table.state.loadingCancel = nil
+	table.state.loadingMu.Lock()
+	cancel := table.state.loadingCancel
+	table.state.loadingCancel = nil
+	table.state.loadGeneration++
+	table.state.loadingMu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 }
 
-func (table *ResultsTable) StartLoad() context.Context {
-	table.CancelLoading()
+func (table *ResultsTable) startLoad() (context.Context, uint64) {
 	ctx, cancel := context.WithCancel(app.App.Context())
+
+	table.state.loadingMu.Lock()
+	previousCancel := table.state.loadingCancel
 	table.state.loadingCancel = cancel
+	table.state.loadGeneration++
+	generation := table.state.loadGeneration
+	table.state.loadingMu.Unlock()
+
+	if previousCancel != nil {
+		previousCancel()
+	}
+
 	table.SetLoading(true)
+	return ctx, generation
+}
+
+func (table *ResultsTable) StartLoad() context.Context {
+	ctx, _ := table.startLoad()
 	return ctx
+}
+
+func (table *ResultsTable) isCurrentLoad(ctx context.Context, generation uint64) bool {
+	if ctx == nil || ctx.Err() != nil {
+		return false
+	}
+
+	table.state.loadingMu.Lock()
+	defer table.state.loadingMu.Unlock()
+	return table.state.loadGeneration == generation && table.state.loadingCancel != nil
 }
 
 func (table *ResultsTable) SetIsEditing(editing bool) {
@@ -1176,70 +1221,17 @@ func (table *ResultsTable) SetCurrentSort(sort string) {
 
 func (table *ResultsTable) SetSortedBy(column string, direction string) {
 	sort := fmt.Sprintf("%s %s", column, direction)
-
-	if table.GetCurrentSort() != sort {
-		ctx := table.StartLoad()
-
-		go func() {
-			if ctx.Err() != nil {
-				return
-			}
-
-			where := ""
-			if table.Filter != nil {
-				where = table.Filter.GetCurrentFilter()
-			}
-
-			records, _, _, err := table.DBDriver.GetRecords(table.GetDatabaseName(), table.GetTableName(), where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
-
-			if ctx.Err() != nil {
-				return
-			}
-
-			App.QueueUpdateDraw(func() {
-				if ctx.Err() != nil {
-					return
-				}
-
-				if err != nil {
-					table.SetLoading(false)
-					table.SetError(err.Error(), nil)
-					return
-				}
-
-				previousRow, previousColumn := table.GetSelection()
-				table.SetRecords(records)
-				table.Select(previousRow, previousColumn)
-				table.SetCurrentSort(sort)
-
-				columns := table.GetColumns()
-				iconDirection := "▲"
-
-				if direction == "DESC" {
-					iconDirection = "▼"
-				}
-
-				for i, col := range columns {
-					if i > 0 {
-						tableCell := tview.NewTableCell(col[0])
-						tableCell.SetSelectable(false)
-						tableCell.SetExpansion(1)
-						tableCell.SetTextColor(app.Styles.PrimaryTextColor)
-
-						if col[0] == column {
-							tableCell.SetText(fmt.Sprintf("%s %s", col[0], iconDirection))
-							table.SetCell(0, i-1, tableCell)
-						} else {
-							table.SetCell(0, i-1, tableCell)
-						}
-					}
-				}
-
-				table.SetLoading(false)
-				App.ForceDraw()
-			})
-		}()
+	if table.GetCurrentSort() == sort {
+		return
 	}
+
+	previousRow, previousColumn := table.GetSelection()
+	table.fetchRecords(sort, nil, func() {
+		table.SetCurrentSort(sort)
+		table.Select(previousRow, previousColumn)
+		table.updateSortHeader(column, direction)
+		App.ForceDraw()
+	})
 }
 
 func (table *ResultsTable) SetPrimaryKeyColumnNames(primaryKeyColumnNames []string) {
@@ -1247,85 +1239,200 @@ func (table *ResultsTable) SetPrimaryKeyColumnNames(primaryKeyColumnNames []stri
 }
 
 func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
+	table.fetchRecords(table.GetCurrentSort(), onError, onSuccess)
+}
+
+func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess func()) {
 	databaseName := table.GetDatabaseName()
 	tableName := table.GetTableName()
-
-	ctx := table.StartLoad()
+	where := ""
+	if table.Filter != nil {
+		where = table.Filter.GetCurrentFilter()
+	}
+	offset := table.Pagination.GetOffset()
+	pageSize := table.Pagination.GetLimit()
+	ctx, generation := table.startLoad()
 
 	go func() {
-		if ctx.Err() != nil {
+		if !table.isCurrentLoad(ctx, generation) {
 			return
 		}
 
-		where := ""
-		if table.Filter != nil {
-			where = table.Filter.GetCurrentFilter()
-		}
-		sort := table.GetCurrentSort()
-
-		records, totalRecords, executedQuery, err := table.DBDriver.GetRecords(databaseName, tableName, where, sort, table.Pagination.GetOffset(), table.Pagination.GetLimit())
-
-		if ctx.Err() != nil {
+		page, err := table.DBDriver.GetRecords(ctx, databaseName, tableName, where, sort, offset, pageSize)
+		if !table.isCurrentLoad(ctx, generation) {
 			return
 		}
 
-		if err == nil {
-			var columns, constraints, foreignKeys, indexes [][]string
-			var primaryKeyColumnNames []string
-
-			columns, _ = table.DBDriver.GetTableColumns(databaseName, tableName)
-			constraints, _ = table.DBDriver.GetConstraints(databaseName, tableName)
-			foreignKeys, _ = table.DBDriver.GetForeignKeys(databaseName, tableName)
-			indexes, _ = table.DBDriver.GetIndexes(databaseName, tableName)
-			primaryKeyColumnNames, _ = table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
-
-			if ctx.Err() != nil {
-				return
-			}
-
+		if err != nil {
 			App.QueueUpdateDraw(func() {
-				if ctx.Err() != nil {
-					return
-				}
-
-				if where != "" && executedQuery != "" {
-					if err := history.AddQueryToHistory(table.connectionIdentifier, executedQuery); err != nil {
-						logger.Error("Failed to add filter query to history", map[string]any{"error": err, "query": executedQuery, "connection": table.connectionIdentifier})
-					}
-				}
-
-				table.SetColumns(columns)
-				table.SetConstraints(constraints)
-				table.SetForeignKeys(foreignKeys)
-				table.SetIndexes(indexes)
-				table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
-
-				if len(records) > 0 {
-					table.SetRecords(records)
-				}
-				table.Select(1, 0)
-				table.Pagination.SetTotalRecords(totalRecords)
-				table.SetLoading(false)
-
-				if len(primaryKeyColumnNames) == 0 {
-					currentText := table.Pagination.textView.GetText(false)
-					table.Pagination.textView.SetText(currentText + " ⚠ No Primary Key")
-				}
-
-				if onSuccess != nil {
-					onSuccess()
-				}
-			})
-		} else {
-			App.QueueUpdateDraw(func() {
-				if ctx.Err() != nil {
+				if !table.isCurrentLoad(ctx, generation) {
 					return
 				}
 				table.SetError(err.Error(), onError)
 				table.SetLoading(false)
 			})
+			return
 		}
+
+		visibleRows := trimRecordsToPage(page.Rows, pageSize)
+		App.QueueUpdateDraw(func() {
+			if !table.isCurrentLoad(ctx, generation) {
+				return
+			}
+
+			if where != "" && page.Query != "" {
+				if err := history.AddQueryToHistory(table.connectionIdentifier, page.Query); err != nil {
+					logger.Error("Failed to add filter query to history", map[string]any{"error": err, "query": page.Query, "connection": table.connectionIdentifier})
+				}
+			}
+
+			table.SetRecords(visibleRows)
+			table.Select(1, 0)
+			table.Pagination.SetPageInfo(max(len(visibleRows)-1, 0), page.HasNextPage)
+			table.SetLoading(false)
+
+			if onSuccess != nil {
+				onSuccess()
+			}
+		})
+
+		// QueueUpdateDraw returns only after the page has been rendered, so
+		// structural metadata cannot delay the first useful Records paint.
+		go table.loadRecordsMetadata(ctx, generation, databaseName, tableName)
 	}()
+}
+
+func trimRecordsToPage(rows [][]string, pageSize int) [][]string {
+	if pageSize <= 0 {
+		pageSize = drivers.DefaultRowLimit
+	}
+	if len(rows) <= 1 || len(rows)-1 <= pageSize {
+		return rows
+	}
+
+	visibleRows := make([][]string, 0, pageSize+1)
+	visibleRows = append(visibleRows, rows[0])
+	visibleRows = append(visibleRows, rows[1:pageSize+1]...)
+	return visibleRows
+}
+
+func (table *ResultsTable) updateSortHeader(column, direction string) {
+	var columnNames []string
+	columns := table.GetColumns()
+	for i := 1; i < len(columns); i++ {
+		if len(columns[i]) > 0 {
+			columnNames = append(columnNames, columns[i][0])
+		}
+	}
+
+	if len(columnNames) == 0 {
+		records := table.GetRecords()
+		if len(records) > 0 {
+			columnNames = records[0]
+		}
+	}
+
+	iconDirection := "▲"
+	if direction == "DESC" {
+		iconDirection = "▼"
+	}
+
+	for i, columnName := range columnNames {
+		tableCell := tview.NewTableCell(columnName)
+		tableCell.SetSelectable(false)
+		tableCell.SetExpansion(1)
+		tableCell.SetTextColor(app.Styles.PrimaryTextColor)
+		if columnName == column {
+			tableCell.SetText(fmt.Sprintf("%s %s", columnName, iconDirection))
+		}
+		table.SetCell(0, i, tableCell)
+	}
+}
+
+func (table *ResultsTable) loadRecordsMetadata(ctx context.Context, generation uint64, databaseName, tableName string) {
+	if !table.isCurrentLoad(ctx, generation) {
+		return
+	}
+
+	columns, err := table.DBDriver.GetTableColumns(databaseName, tableName)
+	if !table.isCurrentLoad(ctx, generation) {
+		return
+	}
+	if err == nil {
+		table.queueMetadataUpdate(ctx, generation, func() {
+			table.SetColumns(columns)
+			table.updateMetadataRows(2, columns)
+		})
+	}
+
+	constraints, err := table.DBDriver.GetConstraints(databaseName, tableName)
+	if !table.isCurrentLoad(ctx, generation) {
+		return
+	}
+	if err == nil {
+		table.queueMetadataUpdate(ctx, generation, func() {
+			table.SetConstraints(constraints)
+			table.updateMetadataRows(3, constraints)
+		})
+	}
+
+	foreignKeys, err := table.DBDriver.GetForeignKeys(databaseName, tableName)
+	if !table.isCurrentLoad(ctx, generation) {
+		return
+	}
+	if err == nil {
+		table.queueMetadataUpdate(ctx, generation, func() {
+			table.SetForeignKeys(foreignKeys)
+			if table.Menu != nil && table.Menu.GetSelectedOption() == 4 {
+				table.UpdateRows(foreignKeys)
+			} else {
+				table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
+			}
+			App.ForceDraw()
+		})
+	}
+
+	indexes, err := table.DBDriver.GetIndexes(databaseName, tableName)
+	if !table.isCurrentLoad(ctx, generation) {
+		return
+	}
+	if err == nil {
+		table.queueMetadataUpdate(ctx, generation, func() {
+			table.SetIndexes(indexes)
+			table.updateMetadataRows(5, indexes)
+		})
+	}
+
+	primaryKeyColumnNames, err := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+	if !table.isCurrentLoad(ctx, generation) {
+		return
+	}
+	if err == nil {
+		table.queueMetadataUpdate(ctx, generation, func() {
+			table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
+			if len(primaryKeyColumnNames) == 0 {
+				currentText := table.Pagination.textView.GetText(false)
+				if !strings.Contains(currentText, "⚠ No Primary Key") {
+					table.Pagination.textView.SetText(currentText + " ⚠ No Primary Key")
+				}
+			}
+		})
+	}
+}
+
+func (table *ResultsTable) updateMetadataRows(menuOption int, rows [][]string) {
+	if table.Menu != nil && table.Menu.GetSelectedOption() == menuOption {
+		table.UpdateRows(rows)
+	}
+}
+
+func (table *ResultsTable) queueMetadataUpdate(ctx context.Context, generation uint64, update func()) {
+	App.QueueUpdateDraw(func() {
+		if !table.isCurrentLoad(ctx, generation) {
+			return
+		}
+		update()
+	})
 }
 
 func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newValue string, row, col int)) {
@@ -2309,7 +2416,7 @@ func (table *ResultsTable) showCSVExportModal() {
 					}
 				}
 				exportedRowCount, exportErr = table.exportAllRecordsInBatches(
-					filePath, databaseName, tableName, where, sort, batchSize,
+					ctx, filePath, databaseName, tableName, where, sort, batchSize,
 				)
 			}
 
@@ -2359,6 +2466,7 @@ func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
 // exportAllRecordsInBatches exports all records using batch fetching to avoid timeouts.
 // Returns the number of rows written (excluding header) and any error.
 func (table *ResultsTable) exportAllRecordsInBatches(
+	ctx context.Context,
 	filePath, databaseName, tableName, where, sort string,
 	batchSize int,
 ) (int, error) {
@@ -2369,21 +2477,24 @@ func (table *ResultsTable) exportAllRecordsInBatches(
 	defer writer.Abort()
 
 	for offset := 0; ; offset += batchSize {
-		records, _, _, err := table.DBDriver.GetRecords(
-			databaseName, tableName, where, sort, offset, batchSize,
+		page, err := table.DBDriver.GetRecords(
+			ctx, databaseName, tableName, where, sort, offset, batchSize,
 		)
 		if err != nil {
 			return writer.RowCount(), err
 		}
 
-		// Header row only = no more data
-		if len(records) <= 1 && offset > 0 {
+		// Header row only = no more data.
+		if len(page.Rows) <= 1 && offset > 0 {
 			break
 		}
 
 		includeHeader := (offset == 0)
-		if err := writer.WriteRecords(records, includeHeader); err != nil {
+		if err := writer.WriteRecords(page.Rows, includeHeader); err != nil {
 			return writer.RowCount(), err
+		}
+		if !page.HasNextPage {
+			break
 		}
 	}
 

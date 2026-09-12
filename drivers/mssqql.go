@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -314,21 +315,16 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
 	return db.getTableInformation(query, database, table, currentSchema)
 }
 
-func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) (results [][]string, totalRecords int, displayQueryString string, err error) {
+func (db *MSSQL) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
 	if database == "" {
-		return nil, 0, "", errors.New("database name is required")
+		return PageResult{}, errors.New("database name is required")
 	}
 
 	if table == "" {
-		return nil, 0, "", errors.New("table name is required")
+		return PageResult{}, errors.New("table name is required")
 	}
 
-	if limit == 0 {
-		limit = DefaultRowLimit
-	}
-
-	results = make([][]string, 0)
-
+	pageSize, fetchLimit := pageSizeAndFetchLimit(limit)
 	baseQuery := db.databasePrefix(database) + "SELECT * FROM " + db.FormatReference(table)
 
 	if where != "" {
@@ -345,27 +341,27 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		sort,
 	)
 
-	displayQueryString = fmt.Sprintf(
+	displayQueryString := fmt.Sprintf(
 		"%s ORDER BY %s OFFSET %s ROWS FETCH NEXT %s ROWS ONLY",
 		baseQuery,
 		sort,
 		db.FormatArg(offset, models.String),
-		db.FormatArg(limit, models.String),
+		db.FormatArg(fetchLimit, models.String),
 	)
 
-	rows, err := db.Connection.Query(executableQuery, offset, limit)
+	rows, err := db.Connection.QueryContext(ctx, executableQuery, offset, fetchLimit)
 	if err != nil {
-		return nil, 0, displayQueryString, err
+		return PageResult{Query: displayQueryString}, err
 	}
 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, 0, displayQueryString, err
+		return PageResult{Query: displayQueryString}, err
 	}
 
-	results = append(results, columns)
+	results := [][]string{columns}
 
 	for rows.Next() {
 		rowValues := make([]any, len(columns))
@@ -375,16 +371,16 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		}
 
 		if errScan := rows.Scan(rowValues...); errScan != nil {
-			return nil, 0, displayQueryString, errScan
+			return PageResult{Query: displayQueryString}, errScan
 		}
 
 		columnTypes, err := rows.ColumnTypes()
 		if err != nil {
-			return nil, 0, displayQueryString, err
+			return PageResult{Query: displayQueryString}, err
 		}
 
 		if len(columnTypes) != len(rowValues) {
-			return nil, 0, displayQueryString, errors.New("unexpected number of column")
+			return PageResult{Query: displayQueryString}, errors.New("unexpected number of column")
 		}
 
 		var row []string
@@ -397,7 +393,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 			rawBytes, ok := col.(*sql.RawBytes)
 			if !ok {
-				return nil, 0, displayQueryString, errors.New("unexpected type in column value")
+				return PageResult{Query: displayQueryString}, errors.New("unexpected type in column value")
 			}
 
 			columnType := columnTypes[i]
@@ -435,22 +431,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, 0, displayQueryString, err
-	}
-
-	countQuery := db.databasePrefix(database) +
-		"SELECT COUNT(*) FROM " +
-		db.FormatReference(table)
-
-	if where != "" {
-		countQuery += fmt.Sprintf(" %s", where)
-	}
-
-	totalRecords = 0
-
-	countRow := db.Connection.QueryRow(countQuery)
-	if err := countRow.Scan(&totalRecords); err != nil {
-		return results, 0, displayQueryString, err
+		return PageResult{Query: displayQueryString}, err
 	}
 
 	displayQueryString = fmt.Sprintf(
@@ -458,10 +439,10 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		baseQuery,
 		sort,
 		offset,
-		limit,
+		fetchLimit,
 	)
 
-	return results, totalRecords, displayQueryString, nil
+	return newPageResult(results, displayQueryString, pageSize), nil
 }
 
 func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {

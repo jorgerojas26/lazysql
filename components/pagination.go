@@ -10,9 +10,11 @@ import (
 )
 
 type PaginationState struct {
-	Offset       int
-	Limit        int
-	TotalRecords int
+	Offset        int
+	Limit         int
+	TotalRecords  int
+	HasNextPage   bool
+	pageInfoKnown bool
 }
 
 type Pagination struct {
@@ -59,30 +61,78 @@ func (pagination *Pagination) GetIsFirstPage() bool {
 	return pagination.state.Offset == 0
 }
 
+func (pagination *Pagination) GetHasNextPage() bool {
+	return pagination.state.pageInfoKnown && pagination.state.HasNextPage
+}
+
 func (pagination *Pagination) GetIsLastPage() bool {
+	if pagination.state.pageInfoKnown {
+		return !pagination.state.HasNextPage
+	}
+
 	return pagination.state.Offset >= pagination.state.TotalRecords-1 || pagination.state.Offset+pagination.state.Limit >= pagination.state.TotalRecords
+}
+
+func (pagination *Pagination) SetPageInfo(visibleRows int, hasNextPage bool) {
+	if visibleRows < 0 {
+		visibleRows = 0
+	}
+
+	pagination.state.pageInfoKnown = true
+	pagination.state.HasNextPage = hasNextPage
+	if hasNextPage {
+		pagination.state.TotalRecords = 0
+	} else {
+		pagination.state.TotalRecords = pagination.state.Offset + visibleRows
+	}
+
+	start := pagination.state.Offset + 1
+	end := pagination.state.Offset + visibleRows
+	if visibleRows == 0 {
+		start = 0
+		end = 0
+	}
+
+	if hasNextPage {
+		pagination.textView.SetText(fmt.Sprintf("%d-%d+ rows", start, end))
+		return
+	}
+
+	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", start, end, pagination.state.TotalRecords))
 }
 
 func (pagination *Pagination) SetTotalRecords(total int) {
 	pagination.state.TotalRecords = total
-
-	offset := pagination.GetOffset()
-	limit := pagination.GetLimit() + offset
-
-	if offset < total {
-		offset++
-	}
-	if limit > total {
-		limit = total
-	}
-
-	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset, limit, total))
+	pagination.state.pageInfoKnown = false
+	pagination.state.HasNextPage = false
+	pagination.updateTextWithTotal()
 }
 
 func (pagination *Pagination) SetLimit(limit int) {
 	pagination.state.Limit = limit
 
+	if pagination.state.pageInfoKnown {
+		pagination.updatePageText()
+		return
+	}
+
+	pagination.updateTextWithTotal()
+}
+
+func (pagination *Pagination) SetOffset(offset int) {
+	pagination.state.Offset = offset
+
+	if pagination.state.pageInfoKnown {
+		pagination.updatePageText()
+		return
+	}
+
+	pagination.updateTextWithTotal()
+}
+
+func (pagination *Pagination) updateTextWithTotal() {
 	offset := pagination.GetOffset()
+	limit := pagination.GetLimit() + offset
 	total := pagination.GetTotalRecords()
 
 	if offset < total {
@@ -95,20 +145,23 @@ func (pagination *Pagination) SetLimit(limit int) {
 	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset, limit, total))
 }
 
-func (pagination *Pagination) SetOffset(offset int) {
-	pagination.state.Offset = offset
-
-	limit := pagination.GetLimit() + offset
-	total := pagination.GetTotalRecords()
-
-	if offset < total {
-		offset++
-	}
-	if limit > total {
-		limit = total
+func (pagination *Pagination) updatePageText() {
+	start := pagination.state.Offset + 1
+	end := pagination.state.Offset + pagination.state.Limit
+	if pagination.state.HasNextPage {
+		pagination.textView.SetText(fmt.Sprintf("%d-%d+ rows", start, end))
+		return
 	}
 
-	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", offset, limit, total))
+	if pagination.state.TotalRecords == 0 {
+		pagination.textView.SetText("0-0 of 0 rows")
+		return
+	}
+
+	if end > pagination.state.TotalRecords {
+		end = pagination.state.TotalRecords
+	}
+	pagination.textView.SetText(fmt.Sprintf("%d-%d of %d rows", start, end, pagination.state.TotalRecords))
 }
 
 func (pagination *Pagination) SetLoading(loading bool) {
