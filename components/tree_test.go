@@ -441,6 +441,12 @@ func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error)  
 func (m *schemaProgrammingMock) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
 	return drivers.PageResult{}, nil
 }
+func (m *schemaProgrammingMock) GetEstimatedRowCount(context.Context, string, string) (*int64, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetExactRowCount(context.Context, string, string, string) (int64, error) {
+	return 0, nil
+}
 func (m *schemaProgrammingMock) UpdateRecord(string, string, string, string, string, string) error {
 	return nil
 }

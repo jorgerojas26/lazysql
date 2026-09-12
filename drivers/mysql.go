@@ -376,6 +376,53 @@ func (db *MySQL) GetRecords(ctx context.Context, database, table, where, sort st
 	return newPageResult(paginatedResults, queryString, pageSize), nil
 }
 
+func (db *MySQL) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	var estimate sql.NullInt64
+	err := db.Connection.QueryRowContext(ctx, `
+		SELECT TABLE_ROWS
+		FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+	`, database, table).Scan(&estimate)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !estimate.Valid || estimate.Int64 < 0 {
+		return nil, nil
+	}
+
+	return &estimate.Int64, nil
+}
+
+func (db *MySQL) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	if database == "" {
+		return 0, errors.New("database name is required")
+	}
+	if table == "" {
+		return 0, errors.New("table name is required")
+	}
+
+	query := "SELECT COUNT(*) FROM " + db.formatTableName(database, table)
+	if where != "" {
+		query += " " + where
+	}
+
+	var count int64
+	if err := db.Connection.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {

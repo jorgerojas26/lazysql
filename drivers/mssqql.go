@@ -451,6 +451,52 @@ func (db *MSSQL) GetRecords(ctx context.Context, database, table, where, sort st
 	return newPageResult(results, displayQueryString, pageSize), nil
 }
 
+func (db *MSSQL) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	var estimate sql.NullInt64
+	query := db.databasePrefix(database) + `
+		SELECT SUM(row_count)
+		FROM sys.dm_db_partition_stats
+		WHERE object_id = OBJECT_ID(@p1) AND index_id IN (0, 1)
+	`
+	if err := db.Connection.QueryRowContext(ctx, query, table).Scan(&estimate); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !estimate.Valid || estimate.Int64 < 0 {
+		return nil, nil
+	}
+	return &estimate.Int64, nil
+}
+
+func (db *MSSQL) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	if database == "" {
+		return 0, errors.New("database name is required")
+	}
+	if table == "" {
+		return 0, errors.New("table name is required")
+	}
+
+	query := db.databasePrefix(database) + "SELECT COUNT(*) FROM " + db.FormatReference(table)
+	if where != "" {
+		query += " " + where
+	}
+
+	var count int64
+	if err := db.Connection.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
 	if database == "" {
 		return errors.New("database name is required")

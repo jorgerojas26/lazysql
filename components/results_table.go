@@ -81,6 +81,13 @@ type ResultsTable struct {
 	ReadOnly             bool
 	metadataCache        *metadataCache
 	metadataCacheMu      sync.Mutex
+	countMu              sync.Mutex
+	countCancel          context.CancelFunc
+	countGeneration      uint64
+	countKey             rowCountKey
+	countKeySet          bool
+	countAttempted       bool
+	countManual          bool
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -515,7 +522,14 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.UpdateRows(table.GetIndexes())
 		case commands.Refresh:
 			table.Menu.SetSelectedOption(1)
-			table.FetchRecords(nil, nil)
+			table.RefreshRecords()
+		}
+	}
+
+	if command == commands.ExactCount {
+		if table.Menu != nil && table.Menu.GetSelectedOption() == 1 {
+			table.ToggleExactCount()
+			return nil
 		}
 	}
 
@@ -843,7 +857,7 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 					}
 				})
 			} else {
-				App.QueueUpdateDraw(func() {
+				table.FetchRecords(nil, func() {
 					table.SetIsFiltering(false)
 					table.SetInputCapture(table.tableInputCapture)
 					App.SetFocus(table)
@@ -1132,11 +1146,19 @@ func (table *ResultsTable) SetIndexes(indexes [][]string) {
 }
 
 func (table *ResultsTable) SetDatabaseName(databaseName string) {
+	if table.state.databaseName == databaseName {
+		return
+	}
 	table.state.databaseName = databaseName
+	table.invalidateRowCount()
 }
 
 func (table *ResultsTable) SetTableName(tableName string) {
+	if table.state.tableName == tableName {
+		return
+	}
 	table.state.tableName = tableName
+	table.invalidateRowCount()
 }
 
 func (table *ResultsTable) SetError(err string, done func()) {
@@ -1175,6 +1197,8 @@ func (table *ResultsTable) SetLoading(show bool) {
 }
 
 func (table *ResultsTable) CancelLoading() {
+	table.CancelExactCount()
+
 	table.state.loadingMu.Lock()
 	cancel := table.state.loadingCancel
 	table.state.loadingCancel = nil
@@ -1261,6 +1285,8 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 	if table.Filter != nil {
 		where = table.Filter.GetCurrentFilter()
 	}
+	countKey := rowCountKey{database: databaseName, table: tableName, where: where}
+	table.prepareRowCountIdentity(countKey)
 	offset := table.Pagination.GetOffset()
 	pageSize := table.Pagination.GetLimit()
 	ctx, generation := table.startLoad()
@@ -1309,7 +1335,11 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 		})
 
 		// QueueUpdateDraw returns only after the page has been rendered, so
-		// structural metadata cannot delay the first useful Records paint.
+		// structural metadata and row counts cannot delay the first useful
+		// Records paint.
+		if table.Menu != nil {
+			go table.startAutomaticRowCount(countKey)
+		}
 		go table.loadRecordsMetadata(ctx, generation, databaseName, tableName)
 	}()
 }

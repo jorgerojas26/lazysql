@@ -364,6 +364,29 @@ func (db *SQLite) GetRecords(ctx context.Context, _, table, where, sort string, 
 	return newPageResult(paginatedResults, queryString, pageSize), nil
 }
 
+// SQLite does not maintain a portable, cheap row-count statistic. Returning
+// nil keeps that absence distinct from an estimate query failure.
+func (db *SQLite) GetEstimatedRowCount(_ context.Context, _, _ string) (*int64, error) {
+	return nil, nil
+}
+
+func (db *SQLite) GetExactRowCount(ctx context.Context, _, table, where string) (int64, error) {
+	if table == "" {
+		return 0, errors.New("table name is required")
+	}
+
+	query := "SELECT COUNT(*) FROM " + db.formatTableName(table)
+	if where != "" {
+		query += " " + where
+	}
+
+	var count int64
+	if err := db.Connection.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {

@@ -575,7 +575,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 					}
 				}
 				home.ListOfDBChanges = []models.DBDMLChange{}
-				table.FetchRecords(nil, nil)
+				table.RefreshRecords()
 				home.Tree.ForceRemoveHighlight()
 			})
 

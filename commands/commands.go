@@ -47,6 +47,7 @@ const (
 
 	// Operations
 	Refresh
+	ExactCount
 	UnfocusEditor
 	Copy
 	RowSelect
@@ -194,6 +195,8 @@ func (c Command) String() string {
 		return "DeleteConnection"
 	case Refresh:
 		return "Refresh"
+	case ExactCount:
+		return "ExactCount"
 	case UnfocusEditor:
 		return "UnfocusEditor"
 	case RecordsMenu:

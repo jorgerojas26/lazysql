@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	DefaultMaxOpenConnections = 8
-	DefaultMaxIdleConnections = 8
+	DefaultMaxOpenConnections  = 8
+	DefaultMaxIdleConnections  = 8
+	DefaultExactCountThreshold = 50000
+	DefaultExactCountTimeoutMS = 200
 )
 
 type AppConfig struct {
@@ -23,6 +25,8 @@ type AppConfig struct {
 	ConfirmOnQuit                bool
 	MaxOpenConnections           int `toml:"max_open_connections"`
 	MaxIdleConnections           int `toml:"max_idle_connections"`
+	ExactCountThreshold          int `toml:"exact_count_threshold"`
+	ExactCountTimeoutMS          int `toml:"exact_count_timeout_ms"`
 }
 
 type ConnectionPoolConfig struct {

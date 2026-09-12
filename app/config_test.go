@@ -17,6 +17,12 @@ func TestConnectionPoolDefaultsAndOverrides(t *testing.T) {
 	if config.MaxIdleConnections != models.DefaultMaxIdleConnections {
 		t.Fatalf("MaxIdleConnections = %d, want %d", config.MaxIdleConnections, models.DefaultMaxIdleConnections)
 	}
+	if config.ExactCountThreshold != models.DefaultExactCountThreshold {
+		t.Fatalf("ExactCountThreshold = %d, want %d", config.ExactCountThreshold, models.DefaultExactCountThreshold)
+	}
+	if config.ExactCountTimeoutMS != models.DefaultExactCountTimeoutMS {
+		t.Fatalf("ExactCountTimeoutMS = %d, want %d", config.ExactCountTimeoutMS, models.DefaultExactCountTimeoutMS)
+	}
 
 	pool, err := config.EffectiveConnectionPool(models.Connection{})
 	if err != nil {

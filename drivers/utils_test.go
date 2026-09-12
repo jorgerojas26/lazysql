@@ -27,6 +27,12 @@ func (m *mockDriver) GetIndexes(string, string) ([][]string, error)      { panic
 func (m *mockDriver) GetRecords(context.Context, string, string, string, string, int, int) (PageResult, error) {
 	panic("not used")
 }
+func (m *mockDriver) GetEstimatedRowCount(context.Context, string, string) (*int64, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetExactRowCount(context.Context, string, string, string) (int64, error) {
+	panic("not used")
+}
 
 func (m *mockDriver) UpdateRecord(string, string, string, string, string, string) error {
 	panic("not used")

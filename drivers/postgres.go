@@ -522,6 +522,80 @@ func (db *Postgres) GetRecords(ctx context.Context, database, table, where, sort
 	return newPageResult(records, queryString, pageSize), nil
 }
 
+func (db *Postgres) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	parts := strings.SplitN(table, ".", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var estimate sql.NullInt64
+	err = conn.QueryRowContext(ctx, `
+		SELECT c.reltuples::bigint
+		FROM pg_catalog.pg_class c
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = $1 AND c.relname = $2
+	`, parts[0], parts[1]).Scan(&estimate)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !estimate.Valid || estimate.Int64 < 0 {
+		return nil, nil
+	}
+
+	return &estimate.Int64, nil
+}
+
+func (db *Postgres) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	if database == "" {
+		return 0, errors.New("database name is required")
+	}
+	if table == "" {
+		return 0, errors.New("table name is required")
+	}
+
+	formattedTableName, err := db.formatTableName(table)
+	if err != nil {
+		return 0, err
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return 0, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	query := "SELECT COUNT(*) FROM " + formattedTableName
+	if where != "" {
+		query += " " + where
+	}
+
+	var count int64
+	if err := conn.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
 	if database == "" {
 		return errors.New("database name is required")

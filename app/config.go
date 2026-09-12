@@ -33,6 +33,8 @@ func defaultConfig() *Config {
 			ConfirmOnQuit:                true,
 			MaxOpenConnections:           models.DefaultMaxOpenConnections,
 			MaxIdleConnections:           models.DefaultMaxIdleConnections,
+			ExactCountThreshold:          models.DefaultExactCountThreshold,
+			ExactCountTimeoutMS:          models.DefaultExactCountTimeoutMS,
 		},
 	}
 }
