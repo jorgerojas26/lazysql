@@ -38,6 +38,7 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li><a href="#manual-database-test-environment">Manual database test environment</a></li>
     <li><a href="#result-and-network-semantics">Result and network semantics</a></li>
     <li><a href="#commands">Commands</a></li>
     <li><a href="#environment-variables">Environment variables</a></li>
@@ -248,6 +249,67 @@ With this local config, `DefaultPageSize` overrides the global value, and only t
 Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config.
 
 Note: When a local `.lazysql.toml` is found, the full config is saved to the local file when you modify connections from the UI.
+
+### Manual database test environment
+
+This repository includes a plug-and-play, development-only fixture for every
+database provider currently supported by LazySQL: MySQL, PostgreSQL, MSSQL,
+and SQLite. The fixture is intended for manual testing of records, pagination,
+filtering, sorting, metadata, Foreign Key Jump, SQL editor results, and CSV
+exports.
+
+Prerequisites are Docker and Docker Compose v2. The stack does not require any
+host-installed database client.
+
+From the repository root:
+
+```bash
+./scripts/manual-databases.sh validate
+./scripts/manual-databases.sh up
+lazysql
+```
+
+When LazySQL is started from the repository root, the checked-in
+`.lazysql.toml` is discovered automatically and contains four
+ready-to-use connections:
+
+| Connection | Provider | Host port | Fixture database |
+| ---------- | -------- | --------- | ---------------- |
+| Docker MySQL | `mysql` | `3307` | `lazysql_test` |
+| Docker PostgreSQL | `postgres` | `5433` | `lazysql_test` |
+| Docker MSSQL | `sqlserver` | `14331` | `lazysql_test` |
+| Docker SQLite | `sqlite3` | file | `testdata/sqlite/lazysql.sqlite3` |
+
+Use the helper script for the lifecycle:
+
+```bash
+./scripts/manual-databases.sh status  # health and seed status
+./scripts/manual-databases.sh down    # stop, preserve data
+./scripts/manual-databases.sh reset   # destroy and reseed everything
+```
+
+`up` builds the small SQLite helper image, initializes the server fixtures, and
+waits until all databases contain their seed tables. MySQL and PostgreSQL use
+their official image initialization hooks and named volumes; those scripts run
+when the volume is empty. MSSQL seeds through a second container and keeps a
+seed marker so restarting the stack does not overwrite manual changes. SQLite
+is a local file seeded by the helper container and is safe to initialize more
+than once. Use `reset` when a clean fixture is needed.
+
+The fixture uses 1,200 customers, 300 products, 3,000 orders, 9,000 order
+items, and 2,400 customer notes. It includes primary/foreign keys, unique
+constraints, indexes, nullable columns, dates, numeric and boolean values,
+JSON/text values, a view, and provider-specific catalog objects. See
+[`testdata/README.md`](testdata/README.md) for the model and
+[`docker-compose.yml`](docker-compose.yml) for ports and credentials.
+
+The MSSQL image is x86-64-only and the service is explicitly run as
+`linux/amd64`. Docker may emulate it on Apple Silicon; Microsoft does not
+support that emulation path, so use a native x86 host or a remote SQL Server if
+it fails. If a host port is already in use, change the port in both
+`docker-compose.yml` and `.lazysql.toml` before starting the stack. The SQLite
+URL is relative to the process working directory, so launch LazySQL from the
+repository root for that connection.
 
 
 ## Usage
