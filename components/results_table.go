@@ -48,6 +48,9 @@ type ResultsTableState struct {
 	loadingCancel         context.CancelFunc
 	loadingMu             sync.Mutex
 	loadGeneration        uint64
+	metadataStates        map[MetadataKind]MetadataState
+	metadataErrors        map[MetadataKind]error
+	metadataMu            sync.RWMutex
 }
 
 type foreignKeyJumpTarget struct {
@@ -76,6 +79,8 @@ type ResultsTable struct {
 	connectionIdentifier string
 	ConnectionURL        string
 	ReadOnly             bool
+	metadataCache        *metadataCache
+	metadataCacheMu      sync.Mutex
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -89,6 +94,8 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
 		fkRawCellValues:       map[string]string{},
 		markedRows:            map[int]bool{},
+		metadataStates:        newMetadataStates(),
+		metadataErrors:        map[MetadataKind]error{},
 		isEditing:             false,
 		isLoading:             false,
 		listOfDBChanges:       listOfDBChanges,
@@ -131,6 +138,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		connectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connectionURL,
 		ReadOnly:             readOnly,
+		metadataCache:        metadataCacheForHome(home),
 	}
 
 	table.jsonViewer = NewJSONViewer(pages)
@@ -283,11 +291,15 @@ func (table *ResultsTable) loadEditorSchema() {
 	// Load columns for each table, using the qualified name for the driver call
 	// but storing under the bare table name for autocomplete lookup ("table.col").
 	for _, nt := range tableList {
-		cols, err := table.DBDriver.GetTableColumns(dbName, nt.qualifiedName)
-		if err != nil {
-			_ = err
+		key, done := table.requestMetadata(dbName, nt.qualifiedName, MetadataColumns)
+		if done != nil {
+			<-done
+		}
+		status, value, err := table.metadataCacheForTable().result(key)
+		if err != nil || status != MetadataReady {
 			continue
 		}
+		cols, _ := value.([][]string)
 		if len(cols) < 2 {
 			continue
 		}
@@ -1354,69 +1366,11 @@ func (table *ResultsTable) loadRecordsMetadata(ctx context.Context, generation u
 		return
 	}
 
-	columns, err := table.DBDriver.GetTableColumns(databaseName, tableName)
-	if !table.isCurrentLoad(ctx, generation) {
-		return
-	}
-	if err == nil {
-		table.queueMetadataUpdate(ctx, generation, func() {
-			table.SetColumns(columns)
-			table.updateMetadataRows(2, columns)
-		})
-	}
-
-	constraints, err := table.DBDriver.GetConstraints(databaseName, tableName)
-	if !table.isCurrentLoad(ctx, generation) {
-		return
-	}
-	if err == nil {
-		table.queueMetadataUpdate(ctx, generation, func() {
-			table.SetConstraints(constraints)
-			table.updateMetadataRows(3, constraints)
-		})
-	}
-
-	foreignKeys, err := table.DBDriver.GetForeignKeys(databaseName, tableName)
-	if !table.isCurrentLoad(ctx, generation) {
-		return
-	}
-	if err == nil {
-		table.queueMetadataUpdate(ctx, generation, func() {
-			table.SetForeignKeys(foreignKeys)
-			if table.Menu != nil && table.Menu.GetSelectedOption() == 4 {
-				table.UpdateRows(foreignKeys)
-			} else {
-				table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
-			}
-			App.ForceDraw()
-		})
-	}
-
-	indexes, err := table.DBDriver.GetIndexes(databaseName, tableName)
-	if !table.isCurrentLoad(ctx, generation) {
-		return
-	}
-	if err == nil {
-		table.queueMetadataUpdate(ctx, generation, func() {
-			table.SetIndexes(indexes)
-			table.updateMetadataRows(5, indexes)
-		})
-	}
-
-	primaryKeyColumnNames, err := table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
-	if !table.isCurrentLoad(ctx, generation) {
-		return
-	}
-	if err == nil {
-		table.queueMetadataUpdate(ctx, generation, func() {
-			table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
-			if len(primaryKeyColumnNames) == 0 {
-				currentText := table.Pagination.textView.GetText(false)
-				if !strings.Contains(currentText, "⚠ No Primary Key") {
-					table.Pagination.textView.SetText(currentText + " ⚠ No Primary Key")
-				}
-			}
-		})
+	// Each metadata kind has its own cache entry and worker. Starting all of
+	// them without waiting preserves Records as the only operation on the
+	// critical path and allows independent metadata calls to overlap.
+	for _, kind := range metadataKinds {
+		table.loadMetadataKind(ctx, generation, databaseName, tableName, kind)
 	}
 }
 
@@ -1424,15 +1378,6 @@ func (table *ResultsTable) updateMetadataRows(menuOption int, rows [][]string) {
 	if table.Menu != nil && table.Menu.GetSelectedOption() == menuOption {
 		table.UpdateRows(rows)
 	}
-}
-
-func (table *ResultsTable) queueMetadataUpdate(ctx context.Context, generation uint64, update func()) {
-	App.QueueUpdateDraw(func() {
-		if !table.isCurrentLoad(ctx, generation) {
-			return
-		}
-		update()
-	})
 }
 
 func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newValue string, row, col int)) {

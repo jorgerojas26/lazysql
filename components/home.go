@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -35,6 +36,8 @@ type Home struct {
 	ConnectionIdentifier string
 	ConnectionURL        string
 	ReadOnly             bool
+	metadataCache        *metadataCache
+	metadataCacheMu      sync.Mutex
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
@@ -71,6 +74,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		ConnectionIdentifier: connectionIdentifier,
 		ConnectionURL:        connection.URL,
 		ReadOnly:             connection.ReadOnly,
+		metadataCache:        newMetadataCache(),
 	}
 
 	tabbedPane := NewTabbedPane()
