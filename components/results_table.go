@@ -494,7 +494,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
 
-	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu, commands.Refresh}
+	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu}
 
 	if helpers.ContainsCommand(menuCommands, command) {
 		table.Select(1, 0)
@@ -510,19 +510,18 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 		case commands.ColumnsMenu:
 			table.Menu.SetSelectedOption(2)
-			table.UpdateRows(table.GetColumns())
+			table.showMetadataSurface(MetadataColumns)
 		case commands.ConstraintsMenu:
 			table.Menu.SetSelectedOption(3)
-			table.UpdateRows(table.GetConstraints())
+			table.showMetadataSurface(MetadataConstraints)
 		case commands.ForeignKeysMenu:
 			table.Menu.SetSelectedOption(4)
-			table.UpdateRows(table.GetForeignKeys())
+			table.showMetadataSurface(MetadataForeignKeys)
 		case commands.IndexesMenu:
 			table.Menu.SetSelectedOption(5)
-			table.UpdateRows(table.GetIndexes())
+			table.showMetadataSurface(MetadataIndexes)
 		case commands.Refresh:
-			table.Menu.SetSelectedOption(1)
-			table.RefreshRecords()
+			table.RefreshActiveSurface()
 		}
 	}
 
@@ -1278,7 +1277,7 @@ func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 	table.fetchRecords(table.GetCurrentSort(), onError, onSuccess)
 }
 
-func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess func()) {
+func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess func(), metadataToLoad ...MetadataKind) {
 	databaseName := table.GetDatabaseName()
 	tableName := table.GetTableName()
 	where := ""
@@ -1340,7 +1339,7 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 		if table.Menu != nil {
 			go table.startAutomaticRowCount(countKey)
 		}
-		go table.loadRecordsMetadata(ctx, generation, databaseName, tableName)
+		go table.loadRecordsMetadata(ctx, generation, databaseName, tableName, metadataToLoad...)
 	}()
 }
 
@@ -1391,15 +1390,24 @@ func (table *ResultsTable) updateSortHeader(column, direction string) {
 	}
 }
 
-func (table *ResultsTable) loadRecordsMetadata(ctx context.Context, generation uint64, databaseName, tableName string) {
+func (table *ResultsTable) loadRecordsMetadata(ctx context.Context, generation uint64, databaseName, tableName string, kinds ...MetadataKind) {
 	if !table.isCurrentLoad(ctx, generation) {
 		return
 	}
+	if len(kinds) == 0 {
+		kinds = metadataKinds
+	}
 
-	// Each metadata kind has its own cache entry and worker. Starting all of
+	// Records refreshes pass only PrimaryKeys here. A valid local PK result is
+	// already sufficient, while an unloaded/failed result may be retried.
+	if len(kinds) == 1 && kinds[0] == MetadataPrimaryKeys && table.GetMetadataState(MetadataPrimaryKeys) == MetadataReady {
+		return
+	}
+
+	// Each requested metadata kind has its own cache entry and worker. Starting
 	// them without waiting preserves Records as the only operation on the
 	// critical path and allows independent metadata calls to overlap.
-	for _, kind := range metadataKinds {
+	for _, kind := range kinds {
 		table.loadMetadataKind(ctx, generation, databaseName, tableName, kind)
 	}
 }

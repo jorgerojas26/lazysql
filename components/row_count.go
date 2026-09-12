@@ -14,10 +14,26 @@ type rowCountKey struct {
 }
 
 // RefreshRecords invalidates the reusable row-count state before fetching the
-// current page again. Structural metadata remains cached by ResultsTable.
+// current page again. Structural metadata remains cached by ResultsTable. The
+// primary-key metadata request is intentionally limited to missing/failed
+// cache entries; other structural metadata is not part of Records refresh.
 func (table *ResultsTable) RefreshRecords() {
 	table.invalidateRowCount()
-	table.FetchRecords(nil, nil)
+	table.fetchRecords(table.GetCurrentSort(), nil, nil, MetadataPrimaryKeys)
+}
+
+// RefreshActiveSurface applies R to the surface currently selected in the
+// results menu. Records refreshes the page/count state; each metadata tab
+// invalidates and reloads only its own cache entry.
+func (table *ResultsTable) RefreshActiveSurface() {
+	if table.Menu == nil || table.Menu.GetSelectedOption() == 1 {
+		table.RefreshRecords()
+		return
+	}
+
+	if kind, ok := metadataKindForMenuOption(table.Menu.GetSelectedOption()); ok {
+		table.RefreshMetadata(kind)
+	}
 }
 
 func (table *ResultsTable) currentRowCountKey() rowCountKey {

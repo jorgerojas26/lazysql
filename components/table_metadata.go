@@ -9,6 +9,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 )
 
 // MetadataKind identifies one independently loaded piece of table metadata.
@@ -87,10 +88,11 @@ func splitMetadataTableName(table string) (schema, tableName string) {
 }
 
 type metadataCacheEntry struct {
-	status MetadataState
-	value  any
-	err    error
-	done   chan struct{}
+	status     MetadataState
+	value      any
+	err        error
+	done       chan struct{}
+	doneClosed bool
 }
 
 // metadataCache is scoped to one connected Home/database connection. Entries
@@ -133,9 +135,14 @@ func (cache *metadataCache) request(key metadataKey, load func() (any, error)) <
 		cache.mu.Lock()
 		defer cache.mu.Unlock()
 
-		// The entry can only be replaced after a request has finished, but keep
-		// this guard so a future invalidation cannot close the wrong request.
+		// A refresh can replace an in-flight entry. Its result must not replace
+		// the newer request, but any waiters on the old request still need to be
+		// released.
 		if current, ok := cache.entries[key]; !ok || current != entry {
+			if !entry.doneClosed {
+				close(entry.done)
+				entry.doneClosed = true
+			}
 			return
 		}
 
@@ -146,10 +153,32 @@ func (cache *metadataCache) request(key metadataKey, load func() (any, error)) <
 		} else {
 			entry.status = MetadataReady
 		}
-		close(entry.done)
+		if !entry.doneClosed {
+			close(entry.done)
+			entry.doneClosed = true
+		}
 	}()
 
 	return entry.done
+}
+
+// invalidate removes one metadata entry so the next request performs a fresh
+// database lookup. In-flight requests cannot be canceled because the driver
+// metadata API has no context, so their completion is released and ignored by
+// the cache if a replacement request wins the race.
+func (cache *metadataCache) invalidate(key metadataKey) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	entry, ok := cache.entries[key]
+	if !ok {
+		return
+	}
+	delete(cache.entries, key)
+	if !entry.doneClosed {
+		close(entry.done)
+		entry.doneClosed = true
+	}
 }
 
 func (cache *metadataCache) result(key metadataKey) (MetadataState, any, error) {
@@ -259,12 +288,109 @@ func (table *ResultsTable) setMetadataState(kind MetadataKind, status MetadataSt
 	}
 }
 
-func (table *ResultsTable) loadMetadataKind(ctx context.Context, generation uint64, databaseName, tableName string, kind MetadataKind) {
+func (table *ResultsTable) loadMetadataKind(ctx context.Context, generation uint64, databaseName, tableName string, kind MetadataKind) <-chan struct{} {
 	key, done := table.requestMetadata(databaseName, tableName, kind)
 	if done != nil {
 		table.setMetadataState(kind, MetadataLoading, nil)
 	}
 	table.queueMetadataResult(ctx, generation, databaseName, tableName, kind, key, done)
+	return done
+}
+
+// RefreshMetadata invalidates and reloads exactly one structural metadata kind.
+// It deliberately leaves the previous value in ResultsTableState until a new
+// result arrives, so a failed refresh cannot destroy usable data.
+func (table *ResultsTable) RefreshMetadata(kind MetadataKind) {
+	if !isRefreshableMetadataKind(kind) || table.DBDriver == nil {
+		return
+	}
+
+	databaseName := table.GetDatabaseName()
+	tableName := table.GetTableName()
+	if databaseName == "" || tableName == "" {
+		return
+	}
+
+	ctx, generation := table.startLoad()
+	key := newMetadataKey(databaseName, tableName, kind)
+	cache := table.metadataCacheForTable()
+	cache.invalidate(key)
+	table.setMetadataState(kind, MetadataUnloaded, nil)
+	done := table.loadMetadataKind(ctx, generation, databaseName, tableName, kind)
+
+	go func() {
+		if done != nil {
+			<-done
+		}
+		App.QueueUpdateDraw(func() {
+			if table.isCurrentLoad(ctx, generation) {
+				table.SetLoading(false)
+			}
+		})
+	}()
+}
+
+func isRefreshableMetadataKind(kind MetadataKind) bool {
+	switch kind {
+	case MetadataColumns, MetadataForeignKeys, MetadataConstraints, MetadataIndexes:
+		return true
+	default:
+		return false
+	}
+}
+
+func metadataKindForMenuOption(option int) (MetadataKind, bool) {
+	switch option {
+	case 2:
+		return MetadataColumns, true
+	case 3:
+		return MetadataConstraints, true
+	case 4:
+		return MetadataForeignKeys, true
+	case 5:
+		return MetadataIndexes, true
+	default:
+		return "", false
+	}
+}
+
+func metadataDisplayName(kind MetadataKind) string {
+	switch kind {
+	case MetadataColumns:
+		return menuColumns
+	case MetadataForeignKeys:
+		return menuForeignKeys
+	case MetadataConstraints:
+		return menuConstraints
+	case MetadataIndexes:
+		return menuIndexes
+	case MetadataPrimaryKeys:
+		return "Primary Keys"
+	default:
+		return "Metadata"
+	}
+}
+
+// showMetadataSurface keeps failed metadata local to its own tab. The backing
+// metadata value remains untouched, while the user gets an explicit retry hint.
+func (table *ResultsTable) showMetadataSurface(kind MetadataKind) {
+	if table.GetMetadataState(kind) == MetadataFailed {
+		table.UpdateRows([][]string{{fmt.Sprintf("%s unavailable — press R to retry", metadataDisplayName(kind))}})
+		return
+	}
+
+	var rows [][]string
+	switch kind {
+	case MetadataColumns:
+		rows = table.GetColumns()
+	case MetadataForeignKeys:
+		rows = table.GetForeignKeys()
+	case MetadataConstraints:
+		rows = table.GetConstraints()
+	case MetadataIndexes:
+		rows = table.GetIndexes()
+	}
+	table.UpdateRows(rows)
 }
 
 func (table *ResultsTable) queueMetadataResult(ctx context.Context, generation uint64, databaseName, tableName string, kind MetadataKind, key metadataKey, done <-chan struct{}) {
@@ -305,6 +431,20 @@ func (table *ResultsTable) applyMetadataResult(ctx context.Context, generation u
 	}
 
 	table.setMetadataState(kind, status, err)
+	if status == MetadataFailed {
+		logger.Error("Failed to load table metadata", map[string]any{
+			"database": databaseName,
+			"table":    tableName,
+			"kind":     kind,
+			"error":    err,
+		})
+		if table.Menu != nil {
+			if selectedKind, ok := metadataKindForMenuOption(table.Menu.GetSelectedOption()); ok && selectedKind == kind {
+				table.showMetadataSurface(kind)
+			}
+		}
+		return true
+	}
 	if status != MetadataReady {
 		return true
 	}
