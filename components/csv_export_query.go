@@ -38,6 +38,10 @@ func isReplaySafeQuery(query string) bool {
 		return false
 	}
 
+	if replayContainsUnsafeSyntax(tokens) {
+		return false
+	}
+
 	for i, token := range tokens {
 		if token.kind == replayTokenWord {
 			if replayUnsafeWord[token.text] {
@@ -184,6 +188,51 @@ var replaySafeFunction = map[string]bool{
 func replayFunctionCall(tokens []replayToken, index int) bool {
 	return index+1 < len(tokens) &&
 		tokens[index+1].kind == replayTokenPunctuation && tokens[index+1].text == "("
+}
+
+// replayContainsUnsafeSyntax catches result-producing expressions whose side
+// effects are expressed by SQL grammar rather than a function call. These
+// forms must not be replayed automatically even when their leading statement
+// is SELECT or WITH.
+func replayContainsUnsafeSyntax(tokens []replayToken) bool {
+	for i := range tokens {
+		if replayWordSequence(tokens, i, "NEXT", "VALUE", "FOR") ||
+			replayWordSequence(tokens, i, "FOR", "UPDATE") ||
+			replayWordSequence(tokens, i, "FOR", "NO", "KEY", "UPDATE") ||
+			replayWordSequence(tokens, i, "FOR", "SHARE") ||
+			replayWordSequence(tokens, i, "FOR", "KEY", "SHARE") {
+			// SQL Server sequence expressions advance the sequence, while the
+			// locking clauses can change server state when replayed.
+			return true
+		}
+	}
+
+	// MySQL user-variable assignment is an expression, not a function call.
+	// The tokenizer keeps := as two punctuation tokens so whitespace and
+	// comments cannot bypass this check.
+	for i := 0; i+3 < len(tokens); i++ {
+		if tokens[i].kind != replayTokenPunctuation || tokens[i].text != "@" ||
+			tokens[i+1].kind != replayTokenWord ||
+			tokens[i+2].kind != replayTokenPunctuation || tokens[i+2].text != ":" ||
+			tokens[i+3].kind != replayTokenPunctuation || tokens[i+3].text != "=" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func replayWordSequence(tokens []replayToken, start int, words ...string) bool {
+	if start+len(words) > len(tokens) {
+		return false
+	}
+	for offset, word := range words {
+		token := tokens[start+offset]
+		if token.kind != replayTokenWord || token.text != word {
+			return false
+		}
+	}
+	return true
 }
 
 func tokenizeReplayQuery(query string) ([]replayToken, bool) {

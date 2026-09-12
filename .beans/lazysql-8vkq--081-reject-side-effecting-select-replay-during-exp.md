@@ -1,7 +1,7 @@
 ---
 # lazysql-8vkq
 title: '[08.1] Reject side-effecting SELECT replay during export'
-status: todo
+status: completed
 type: bug
 priority: high
 tags:
@@ -10,7 +10,7 @@ tags:
     - review-finding
     - review-cycle-0002
 created_at: 2026-09-12T20:42:44Z
-updated_at: 2026-09-12T20:42:44Z
+updated_at: 2026-09-12T21:09:46Z
 parent: lazysql-a9lf
 ---
 
@@ -36,12 +36,19 @@ Make Export All eligibility conservative for result-producing SQL constructs tha
 
 ## Acceptance criteria
 
-- [ ] `SELECT NEXT VALUE FOR ...` and equivalent sequence-advancing MSSQL forms are refused for Export All and remain eligible for Export Visible Results.
-- [ ] Regression coverage proves the reviewed classifier's false positive and the corrected behavior.
-- [ ] Add representative coverage for other supported-dialect result-producing constructs that mutate state without ordinary function-call syntax.
-- [ ] Existing safe SELECT/CTE/show-style exports continue to be available, while unknown constructs fail closed.
-- [ ] No export correction weakens streaming, cancellation, cap bypass, or atomic-file guarantees from `lazysql-xq1u`.
+- [x] `SELECT NEXT VALUE FOR ...` and equivalent sequence-advancing MSSQL forms are refused for Export All and remain eligible for Export Visible Results.
+- [x] Regression coverage proves the reviewed classifier's false positive and the corrected behavior.
+- [x] Add representative coverage for other supported-dialect result-producing constructs that mutate state without ordinary function-call syntax.
+- [x] Existing safe SELECT/CTE/show-style exports continue to be available, while unknown constructs fail closed.
+- [x] No export correction weakens streaming, cancellation, cap bypass, or atomic-file guarantees from `lazysql-xq1u`.
 
 ## Blocked by
 
 None. No implementation prerequisite is required.
+
+## Summary of Changes
+
+- Hardened replay eligibility against SQL Server `NEXT VALUE FOR` sequence expressions and locking clauses.
+- Rejected MySQL user-variable assignment expressions that mutate session state without function-call syntax.
+- Added regression coverage for sequence replay false positives, visible-only export eligibility, locking clauses, and user-variable assignment while preserving safe SELECT/CTE/show cases.
+- Verified focused and full `components` tests plus `go vet ./components`.

@@ -160,6 +160,13 @@ func TestReplaySafeQueryClassification(t *testing.T) {
 		{query: "SELECT * FROM users", safe: true},
 		{query: "SELECT COUNT(*) FROM users", safe: true},
 		{query: "SELECT dangerous_user_function(id) FROM users", safe: false},
+		{query: "SELECT NEXT VALUE FOR dbo.sequence_name", safe: false},
+		{query: "SELECT NEXT VALUE FOR [dbo].[sequence_name] OVER (ORDER BY id)", safe: false},
+		{query: "SELECT @counter := @counter + 1", safe: false},
+		{query: "SELECT * FROM users FOR UPDATE", safe: false},
+		{query: "SELECT * FROM users FOR NO KEY UPDATE", safe: false},
+		{query: "SELECT * FROM users FOR SHARE", safe: false},
+		{query: "SELECT * FROM users FOR KEY SHARE", safe: false},
 		{query: "-- DELETE is only a comment\nSELECT 'UPDATE' FROM users;", safe: true},
 		{query: "WITH recent AS (SELECT * FROM users) SELECT * FROM recent", safe: true},
 		{query: "SHOW TABLES", safe: true},
@@ -207,7 +214,10 @@ func TestCSVExportModalScopes(t *testing.T) {
 		t.Fatalf("second query button = %q", got)
 	}
 
-	unsafeModal := NewCSVExportModal(CSVExportOptions{IsQueryResult: true}, nil)
+	unsafeModal := NewCSVExportModal(CSVExportOptions{
+		IsQueryResult: true,
+		CanExportAll:  isReplaySafeQuery("SELECT NEXT VALUE FOR dbo.sequence_name"),
+	}, nil)
 	if got := unsafeModal.form.GetButtonCount(); got != 1 {
 		t.Fatalf("unsafe query button count = %d, want 1", got)
 	}
@@ -442,6 +452,12 @@ func TestCanExportAllQueryResultsRequiresShownSafeResultAndStreamingDriver(t *te
 	table.state.editorResultAvailable = true
 	if !table.canExportAllQueryResults() {
 		t.Fatal("safe shown query was not offered Export All")
+	}
+
+	table.state.lastEditorQuery = "SELECT NEXT VALUE FOR dbo.sequence_name"
+	table.state.lastEditorQueryReplaySafe = true // stale state must not bypass the classifier.
+	if table.canExportAllQueryResults() {
+		t.Fatal("side-effecting sequence query was offered Export All")
 	}
 
 	nonStreaming := newCSVExportTestTable(&schemaProgrammingMock{})
