@@ -173,7 +173,13 @@ func (table *ResultsTable) startAutomaticRowCount(key rowCountKey) {
 		var estimate *int64
 		var estimateErr error
 		if key.where == "" {
+			estimateStarted := time.Now()
 			estimate, estimateErr = table.DBDriver.GetEstimatedRowCount(ctx, key.database, key.table)
+			logDatabaseOperation("get_estimated_row_count", estimateStarted, ctx, map[string]any{
+				"database":  key.database,
+				"table":     key.table,
+				"automatic": true,
+			}, estimateErr)
 			if ctx.Err() != nil {
 				table.finishCount(key, generation)
 				return
@@ -197,7 +203,17 @@ func (table *ResultsTable) startAutomaticRowCount(key rowCountKey) {
 			return
 		}
 
+		exactStarted := time.Now()
 		count, err := table.DBDriver.GetExactRowCount(ctx, key.database, key.table, key.where)
+		exactFields := map[string]any{
+			"database":  key.database,
+			"table":     key.table,
+			"automatic": true,
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			exactFields["cancellation_reason"] = "automatic_timeout"
+		}
+		logDatabaseOperation("get_exact_row_count", exactStarted, ctx, exactFields, err)
 		if err != nil || ctx.Err() != nil {
 			// Automatic failures are deliberately silent. The page remains usable
 			// and keeps either its estimate or the unknown-more display.
@@ -260,7 +276,13 @@ func (table *ResultsTable) ToggleExactCount() {
 	table.Pagination.SetCounting(true)
 
 	go func() {
+		started := time.Now()
 		count, err := table.DBDriver.GetExactRowCount(ctx, key.database, key.table, key.where)
+		logDatabaseOperation("get_exact_row_count", started, ctx, map[string]any{
+			"database": key.database,
+			"table":    key.table,
+			"manual":   true,
+		}, err)
 		if ctx.Err() != nil {
 			table.finishCount(key, generation)
 			return

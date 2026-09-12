@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
@@ -40,8 +41,21 @@ func (loader *schemaLoader) requestTables(ctx context.Context, database string) 
 	}
 
 	done := loader.cache.request(key, func() (any, error) {
-		return loader.driver.GetTables(ctx, database)
+		started := time.Now()
+		tables, err := loader.driver.GetTables(ctx, database)
+		logDatabaseOperation("get_tables", started, ctx, map[string]any{
+			"database":  database,
+			"cache_hit": false,
+		}, err)
+		return tables, err
 	})
+	if done == nil {
+		logger.DebugOperation("get_tables", time.Now(), map[string]any{
+			"database":    database,
+			"cache_hit":   true,
+			"cache_scope": "connection",
+		})
+	}
 	return key, done
 }
 
@@ -140,8 +154,23 @@ func (loader *schemaLoader) requestColumns(ctx context.Context, database, table 
 	}
 
 	done := loader.cache.request(key, func() (any, error) {
-		return loader.driver.GetTableColumns(ctx, database, table)
+		started := time.Now()
+		columns, err := loader.driver.GetTableColumns(ctx, database, table)
+		logDatabaseOperation("get_table_columns", started, ctx, map[string]any{
+			"database":  database,
+			"table":     table,
+			"cache_hit": false,
+		}, err)
+		return columns, err
 	})
+	if done == nil {
+		logger.DebugOperation("get_table_columns", time.Now(), map[string]any{
+			"database":    database,
+			"table":       table,
+			"cache_hit":   true,
+			"cache_scope": "connection",
+		})
+	}
 	return key, done
 }
 
@@ -196,7 +225,12 @@ func (loader *schemaLoader) preloadEditorColumns(ctx context.Context, database s
 	for _, table := range pending {
 		names = append(names, table.qualifiedName)
 	}
+	started := time.Now()
 	bulkResults, err := bulkLoader.GetTableColumnsBulk(ctx, database, names)
+	logDatabaseOperation("get_table_columns_bulk", started, ctx, map[string]any{
+		"database": database,
+		"tables":   len(names),
+	}, err)
 	if err != nil {
 		logger.Error("Failed to bulk load table columns for editor autocomplete", map[string]any{
 			"database": database,

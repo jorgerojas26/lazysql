@@ -38,6 +38,7 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li><a href="#result-and-network-semantics">Result and network semantics</a></li>
     <li><a href="#commands">Commands</a></li>
     <li><a href="#environment-variables">Environment variables</a></li>
     <li><a href="#keybindings">Keybindings</a></li>
@@ -170,11 +171,16 @@ SidebarOverlay = false
 JSONViewerWordWrap = false
 EnterOpensJSONViewer = false
 schema_bulk_load_threshold = 200
+exact_count_threshold = 50000
+exact_count_timeout_ms = 200
+max_query_rows = 1000
+max_open_connections = 8
+max_idle_connections = 8
 ```
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
-Database entries may override the connection pool with `max_open_connections` and `max_idle_connections`. Omitted values inherit the application settings; an explicit `0` uses LazySQL's default of `8`. SQLite always uses one open and one idle connection to preserve in-memory database behavior.
+Database entries may override the connection pool with `max_open_connections` and `max_idle_connections`. Omitted values inherit the application settings; an explicit `0` uses LazySQL's default of `8`. Invalid combinations (for example, idle connections greater than open connections) are rejected. SQLite always uses one open and one idle connection (`1/1`) to preserve in-memory database behavior, ignoring the general pool settings.
 
 The `DBName` field (optional) controls how the sidebar tree is populated when a connection is opened:
 
@@ -199,10 +205,17 @@ The `[application]` section is used to define some app settings. Not all setting
 | SidebarOverlay | false | Show sidebar as overlay instead of side panel |
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+| exact_count_threshold | 50000 | Automatically run an exact count when an unfiltered estimate is at or below this value (0 = never auto-count an estimate) |
+| exact_count_timeout_ms | 200 | Budget for automatic exact counts in milliseconds (0 = disable automatic exact counts; manual `#` remains available) |
 | max_query_rows | 1000 | Maximum rows shown by an interactive SQL-editor result (0 = unlimited) |
 | schema_bulk_load_threshold | 200 | Maximum visible tables whose columns are eagerly loaded in bulk (0 = always lazy) |
-| max_open_connections | 8 | Maximum open connections for MySQL, PostgreSQL, and MSSQL |
-| max_idle_connections | 8 | Maximum idle connections for MySQL, PostgreSQL, and MSSQL |
+| max_open_connections | 8 | Maximum open connections for MySQL, PostgreSQL, and MSSQL (0 = use default 8) |
+| max_idle_connections | 8 | Maximum idle connections for MySQL, PostgreSQL, and MSSQL (0 = use default 8) |
+
+`schema_bulk_load_threshold` limits eager autocomplete column loading to small
+visible schemas. `0` keeps all columns lazy; larger schemas still expose table
+names immediately and fetch a requested table on demand. Cached or in-flight
+columns are reused regardless of the threshold.
 
 ### Local Configuration
 
@@ -290,6 +303,68 @@ You can update the tree by pressing `R`, so you can see your newly created table
 > After executing a `SELECT`-query a table will be displayed under the SQL-Editor
 > with the query-result. \
 > To switch focus back to SQL-Editor press `/`
+
+### Result and network semantics
+
+Records pages are fetched with one page of rows plus a lookahead row. The
+lookahead makes navigation work without an exact count, so the pagination label
+has three intentional forms:
+
+- `843 rows` / `1-843 of 843 rows`: **exact**; the database count or an
+  end-of-page inference proved the total.
+- `~4.3M rows`: **estimated**; the database supplied a useful estimate, but it
+  is not a guarantee.
+- `300+ rows`: **unknown-more**; the current page has more rows available and
+  no exact total is known yet.
+
+#### Exact Records count
+
+Press `#` (`ExactCount`) in the Records surface to start an exact count. Press
+`#` again while it is running to cancel it; a failed count stays local to the
+pagination bar and can be retried with `#`. Automatic counting never blocks the
+first Records page: LazySQL first uses a driver estimate where available and
+runs an exact count only when the estimate is at or below
+`exact_count_threshold` (default `50000`), or when an estimate is unavailable.
+A threshold of `0` disables estimate-driven automatic exact counts; filtered
+counts and unavailable estimates still obey the timeout. The automatic count is
+bounded by `exact_count_timeout_ms` (default `200`). Set
+that timeout to `0` to disable automatic exact counts; estimates still render
+and a manual `#` count remains available. Filtered Records counts are also
+bounded by the automatic timeout.
+
+#### SQL results and cancellation
+
+Interactive SQL results stream progressively and default to
+`max_query_rows = 1000`. A positive cap renders at most that many rows and
+performs one lookahead read so the UI can say `result truncated`; `0` means
+unlimited. The cap applies only to interactive results, not full exports.
+While a SQL-editor result query is active, press `Esc` to cancel its context and
+keep any partial rows already rendered. When no result query is active, `Esc`
+keeps the editor's normal unfocus/editing behavior.
+
+#### CSV export
+
+- **Export Visible Results** writes the rows already shown and never
+  reexecutes the SQL statement.
+- **Export All Results** streams the complete table/query result independently
+  of `max_query_rows`. For SQL results it reexecutes only a conservative,
+  replay-safe read-only statement; mutating or unknown statements offer the
+  visible-results option only.
+
+Both scopes write through a temporary file. Cancellation, query failure, or a
+write/rename failure removes the temporary file and leaves an existing
+destination unchanged.
+
+#### Performance diagnostics
+
+For local JSONL timings, start LazySQL with `--loglevel debug --logfile /path/to/lazysql.jsonl`. Logs include operation duration, database identity,
+cache/fallback outcome, cancellation/failure, and
+`event=first_useful_result` for Records and SQL-editor results. SQL text,
+arguments, row values, credentials, and connection URLs are redacted; no
+telemetry is sent.
+
+For the implementation matrix and the no-credentials RTT benchmark harness,
+see [`docs/performance.md`](docs/performance.md).
 
 ### Open/view a table
 
@@ -544,6 +619,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | O | DuplicateRow | Duplicate row |
 | J | SortDesc | Sort descending |
 | R | Refresh | Refresh the current table |
+| # | ExactCount | Calculate or cancel the exact Records count |
 | K | SortAsc | Sort ascending |
 | C | SetValue | Toggle value menu (NULL, EMPTY, DEFAULT) |
 | [ | TabPrev | Switch to previous tab |

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rivo/tview"
 
@@ -289,20 +290,30 @@ func (table *ResultsTable) requestMetadataWithContext(ctx context.Context, datab
 	key := newMetadataKey(databaseName, tableName, kind)
 	cache := table.metadataCacheForTable()
 	done := cache.request(key, func() (any, error) {
+		started := time.Now()
+		var value any
+		var err error
 		switch kind {
 		case MetadataColumns:
-			return table.DBDriver.GetTableColumns(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetTableColumns(ctx, databaseName, tableName)
 		case MetadataPrimaryKeys:
-			return table.DBDriver.GetPrimaryKeyColumnNames(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetPrimaryKeyColumnNames(ctx, databaseName, tableName)
 		case MetadataForeignKeys:
-			return table.DBDriver.GetForeignKeys(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetForeignKeys(ctx, databaseName, tableName)
 		case MetadataConstraints:
-			return table.DBDriver.GetConstraints(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetConstraints(ctx, databaseName, tableName)
 		case MetadataIndexes:
-			return table.DBDriver.GetIndexes(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetIndexes(ctx, databaseName, tableName)
 		default:
-			return nil, fmt.Errorf("unknown metadata kind %q", kind)
+			err = fmt.Errorf("unknown metadata kind %q", kind)
 		}
+		logDatabaseOperation("get_"+string(kind), started, ctx, map[string]any{
+			"database":  databaseName,
+			"table":     tableName,
+			"kind":      kind,
+			"cache_hit": false,
+		}, err)
+		return value, err
 	})
 	return key, done
 }
@@ -390,6 +401,21 @@ func (table *ResultsTable) loadMetadataKind(ctx context.Context, generation uint
 	// identity change makes a pending result stale.
 	identityGeneration := table.metadataIdentityGenerationValue()
 	key, done := table.requestMetadataWithContext(ctx, databaseName, tableName, kind)
+	if done == nil {
+		logger.DebugOperation("metadata_cache_lookup", time.Now(), map[string]any{
+			"database":  databaseName,
+			"table":     tableName,
+			"kind":      kind,
+			"cache_hit": true,
+		})
+	} else {
+		logger.DebugOperation("metadata_cache_lookup", time.Now(), map[string]any{
+			"database":   databaseName,
+			"table":      tableName,
+			"kind":       kind,
+			"cache_wait": true,
+		})
+	}
 	if done != nil {
 		table.metadataApplyMu.Lock()
 		if table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
@@ -517,7 +543,7 @@ func (table *ResultsTable) queueMetadataResultForIdentity(identityGeneration uin
 		}
 
 		cache := table.metadataCacheForTable()
-		App.QueueUpdateDraw(func() {
+		table.queueMetadataUpdate(func() {
 			if !table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
 				return
 			}
@@ -525,6 +551,14 @@ func (table *ResultsTable) queueMetadataResultForIdentity(identityGeneration uin
 			table.applyMetadataResultForIdentity(identityGeneration, databaseName, tableName, kind, status, value, err)
 		})
 	}()
+}
+
+func (table *ResultsTable) queueMetadataUpdate(update func()) {
+	if app.App == nil || app.App.Application == nil {
+		update()
+		return
+	}
+	app.App.QueueUpdateDraw(update)
 }
 
 func (table *ResultsTable) updatePrimaryKeyIndicator(primaryKeyColumnNames []string) {

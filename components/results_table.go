@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
@@ -64,9 +65,11 @@ type foreignKeyJumpTarget struct {
 }
 
 type editorQueryRun struct {
-	generation      uint64
-	cancel          context.CancelFunc
-	cancelRequested bool
+	generation            uint64
+	cancel                context.CancelFunc
+	cancelRequested       bool
+	started               time.Time
+	firstUsefulResultOnce sync.Once
 }
 
 type csvExportRun struct {
@@ -1133,7 +1136,7 @@ func isSchemaMutatingQuery(query string) bool {
 }
 
 func (table *ResultsTable) beginEditorQuery(generation uint64) *editorQueryRun {
-	run := &editorQueryRun{generation: generation}
+	run := &editorQueryRun{generation: generation, started: time.Now()}
 	table.state.loadingMu.Lock()
 	if table.state.loadGeneration == generation {
 		run.cancel = table.state.loadingCancel
@@ -1317,6 +1320,12 @@ func (table *ResultsTable) renderEditorQueryBatch(ctx context.Context, run *edit
 		table.Pagination.SetPageInfo(table.editorQueryRowCount(), true)
 		if firstPaint {
 			table.showEditorQueryResults()
+			run.firstUsefulResultOnce.Do(func() {
+				logFirstUsefulResult("query_editor", run.started, map[string]any{
+					"connection":          table.connectionIdentifier,
+					"rows_in_first_batch": len(batch.Rows),
+				})
+			})
 		}
 		applied = true
 	})
@@ -1327,12 +1336,20 @@ func (table *ResultsTable) renderEditorQueryBatch(ctx context.Context, run *edit
 }
 
 func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQueryRun, query string) (drivers.QueryStreamResult, error) {
+	started := time.Now()
 	onBatch := func(batch drivers.QueryBatch) error {
 		return table.renderEditorQueryBatch(ctx, run, batch)
 	}
 
 	if streamer, ok := table.DBDriver.(drivers.QueryStreamer); ok {
-		return streamer.StreamQuery(ctx, query, table.maxInteractiveQueryRows(), onBatch)
+		result, err := streamer.StreamQuery(ctx, query, table.maxInteractiveQueryRows(), onBatch)
+		logDatabaseOperation("stream_query", started, ctx, map[string]any{
+			"connection": table.connectionIdentifier,
+			"rows":       result.Rows,
+			"truncated":  result.Truncated,
+			"streaming":  true,
+		}, err)
+		return result, err
 	}
 
 	// Drivers without the optional streaming capability still use the final
@@ -1340,6 +1357,11 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 	rows, count, err := table.DBDriver.ExecuteQuery(ctx, query)
 	result := drivers.QueryStreamResult{Rows: count}
 	if err != nil {
+		logDatabaseOperation("execute_query", started, ctx, map[string]any{
+			"connection": table.connectionIdentifier,
+			"rows":       result.Rows,
+			"streaming":  false,
+		}, err)
 		return result, err
 	}
 	if len(rows) > 0 {
@@ -1352,9 +1374,21 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 		}
 		result.Rows = len(data)
 		if err := onBatch(drivers.QueryBatch{Columns: result.Columns, Rows: data}); err != nil {
+			logDatabaseOperation("execute_query", started, ctx, map[string]any{
+				"connection": table.connectionIdentifier,
+				"rows":       result.Rows,
+				"truncated":  result.Truncated,
+				"streaming":  false,
+			}, err)
 			return result, err
 		}
 	}
+	logDatabaseOperation("execute_query", started, ctx, map[string]any{
+		"connection": table.connectionIdentifier,
+		"rows":       result.Rows,
+		"truncated":  result.Truncated,
+		"streaming":  false,
+	}, nil)
 	return result, nil
 }
 
@@ -1383,6 +1417,12 @@ func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editor
 		if len(table.GetRecords()) == 0 && len(result.Columns) > 0 {
 			table.appendEditorQueryBatch(drivers.QueryBatch{Columns: result.Columns})
 			table.state.editorResultAvailable = true
+			run.firstUsefulResultOnce.Do(func() {
+				logFirstUsefulResult("query_editor", run.started, map[string]any{
+					"connection":          table.connectionIdentifier,
+					"rows_in_first_batch": 0,
+				})
+			})
 		}
 
 		rowCount := table.editorQueryRowCount()
@@ -1939,6 +1979,7 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 	offset := table.Pagination.GetOffset()
 	pageSize := table.Pagination.GetLimit()
 	ctx, generation := table.startLoad()
+	started := time.Now()
 
 	go func() {
 		if !table.isCurrentLoad(ctx, generation) {
@@ -1946,6 +1987,13 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 		}
 
 		page, err := table.DBDriver.GetRecords(ctx, databaseName, tableName, where, sort, offset, pageSize)
+		logDatabaseOperation("fetch_records", started, ctx, map[string]any{
+			"database": databaseName,
+			"table":    tableName,
+			"offset":   offset,
+			"limit":    pageSize,
+			"rows":     max(len(page.Rows)-1, 0),
+		}, err)
 		if !table.isCurrentLoad(ctx, generation) {
 			return
 		}
@@ -1977,6 +2025,11 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 			table.Select(1, 0)
 			table.Pagination.SetPageInfo(max(len(visibleRows)-1, 0), page.HasNextPage)
 			table.SetLoading(false)
+			logFirstUsefulResult("records", started, map[string]any{
+				"database": databaseName,
+				"table":    tableName,
+				"rows":     max(len(visibleRows)-1, 0),
+			})
 
 			if onSuccess != nil {
 				onSuccess()
@@ -3124,7 +3177,15 @@ func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
 	return table.exportCurrentPageWithContext(context.Background(), filePath, nil)
 }
 
-func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, filePath string, onProgress func(int)) (int, error) {
+func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, filePath string, onProgress func(int)) (rows int, err error) {
+	started := time.Now()
+	defer func() {
+		logDatabaseOperation("export_visible_results", started, ctx, map[string]any{
+			"connection": table.connectionIdentifier,
+			"rows":       rows,
+		}, err)
+	}()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -3171,7 +3232,16 @@ func (table *ResultsTable) exportAllRecordsInBatchesWithProgress(
 	filePath, databaseName, tableName, where, sort string,
 	batchSize int,
 	onProgress func(int),
-) (int, error) {
+) (rows int, err error) {
+	started := time.Now()
+	defer func() {
+		logDatabaseOperation("export_all_records", started, ctx, map[string]any{
+			"database": databaseName,
+			"table":    tableName,
+			"rows":     rows,
+		}, err)
+	}()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -3232,7 +3302,15 @@ func (table *ResultsTable) exportAllQueryResults(
 	ctx context.Context,
 	filePath, query string,
 	onProgress func(int),
-) (int, error) {
+) (rows int, err error) {
+	started := time.Now()
+	defer func() {
+		logDatabaseOperation("export_all_query_results", started, ctx, map[string]any{
+			"connection": table.connectionIdentifier,
+			"rows":       rows,
+		}, err)
+	}()
+
 	if !isReplaySafeQuery(query) {
 		return 0, errors.New("query is not classified as replay-safe for Export All Results")
 	}

@@ -268,6 +268,14 @@ func (db *MySQL) GetForeignKeys(ctx context.Context, database, table string) (re
 		if err != nil {
 			data["error"] = err.Error()
 		}
+		if ctxErr := ctx.Err(); ctxErr != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			data["cancelled"] = true
+			if errors.Is(ctxErr, context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+				data["cancellation_reason"] = "deadline"
+			} else {
+				data["cancellation_reason"] = "cancelled"
+			}
+		}
 		logger.Debug("Loaded MySQL foreign-key metadata", data)
 	}()
 

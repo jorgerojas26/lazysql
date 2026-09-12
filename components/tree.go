@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/lithammer/fuzzysearch/fuzzy"
@@ -1198,7 +1199,9 @@ func (tree *Tree) initializeNodes(ctx context.Context, dbName string, generation
 	var databases []string
 
 	if dbName == "" {
+		started := time.Now()
 		dbs, err := tree.DBDriver.GetDatabases(ctx)
+		logDatabaseOperation("get_databases", started, ctx, nil, err)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -1229,7 +1232,12 @@ func (tree *Tree) loadDatabaseNodes(ctx context.Context, generation uint64, data
 	if tree.schemaLoader != nil {
 		tables, err = tree.schemaLoader.loadTables(ctx, database)
 	} else {
+		started := time.Now()
 		tables, err = tree.DBDriver.GetTables(ctx, database)
+		logDatabaseOperation("get_tables", started, ctx, map[string]any{
+			"database":  database,
+			"cache_hit": false,
+		}, err)
 	}
 	if err != nil {
 		logger.Error(err.Error(), nil)
@@ -1249,17 +1257,29 @@ func (tree *Tree) loadDatabaseNodes(ctx context.Context, generation uint64, data
 		return
 	}
 
+	functionsStarted := time.Now()
 	functions, err := tree.DBDriver.GetFunctions(ctx, database)
+	logDatabaseOperation("get_functions", functionsStarted, ctx, map[string]any{
+		"database": database,
+	}, err)
 	if err != nil {
 		logger.Error(err.Error(), nil)
 		return
 	}
+	proceduresStarted := time.Now()
 	procedures, err := tree.DBDriver.GetProcedures(ctx, database)
+	logDatabaseOperation("get_procedures", proceduresStarted, ctx, map[string]any{
+		"database": database,
+	}, err)
 	if err != nil {
 		logger.Error(err.Error(), nil)
 		return
 	}
+	viewsStarted := time.Now()
 	views, err := tree.DBDriver.GetViews(ctx, database)
+	logDatabaseOperation("get_views", viewsStarted, ctx, map[string]any{
+		"database": database,
+	}, err)
 	if err != nil {
 		logger.Error(err.Error(), nil)
 		return
