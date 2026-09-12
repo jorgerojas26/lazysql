@@ -1,7 +1,7 @@
 ---
 # lazysql-7m6h
 title: '[12.1] Make RTT benchmarks exercise production paths'
-status: todo
+status: completed
 type: bug
 priority: high
 tags:
@@ -10,7 +10,7 @@ tags:
     - review-finding
     - review-cycle-0002
 created_at: 2026-09-12T20:42:44Z
-updated_at: 2026-09-12T20:42:44Z
+updated_at: 2026-09-12T22:12:53Z
 parent: lazysql-a9lf
 ---
 
@@ -36,13 +36,21 @@ Make the credential-free RTT matrix measure observable work produced by the real
 
 ## Acceptance criteria
 
-- [ ] RTT delay and operation measurements are injected at production database/driver boundaries used by the reviewed feature paths, not represented solely by hard-coded scenario counters.
-- [ ] Records, pagination/filtering, autocomplete threshold cases, SQL cap/slow rows, full export, and MySQL #340 scenarios exercise the relevant production orchestration or driver logic.
-- [ ] Reported blocking round trips, total operations, rows, bytes, TTFUR, and background completion are derived from observed scenario execution.
-- [ ] Regression coverage demonstrates that an extra blocking call or equivalent contract break changes/fails the matrix instead of remaining green.
-- [ ] The matrix remains deterministic, credential-free, and supports 0 ms, 50 ms, and 100 ms artificial RTT without fragile wall-clock pass/fail thresholds.
-- [ ] Preserve the existing benchmark CLI/output contract and deterministic CI performance-contract tests.
+- [x] RTT delay and operation measurements are injected at production database/driver boundaries used by the reviewed feature paths, not represented solely by hard-coded scenario counters.
+- [x] Records, pagination/filtering, autocomplete threshold cases, SQL cap/slow rows, full export, and MySQL #340 scenarios exercise the relevant production orchestration or driver logic.
+- [x] Reported blocking round trips, total operations, rows, bytes, TTFUR, and background completion are derived from observed scenario execution.
+- [x] Regression coverage demonstrates that an extra blocking call or equivalent contract break changes/fails the matrix instead of remaining green.
+- [x] The matrix remains deterministic, credential-free, and supports 0 ms, 50 ms, and 100 ms artificial RTT without fragile wall-clock pass/fail thresholds.
+- [x] Preserve the existing benchmark CLI/output contract and deterministic CI performance-contract tests.
 
 ## Blocked by
 
 None. No implementation prerequisite is required.
+
+## Summary of Changes
+
+- Replaced scenario-authored benchmark counters with a deterministic `database/sql` connector that injects RTT at `QueryContext`/`Rows.Next` and observes real operations, rows, and bytes.
+- Routed Records, pagination/filtering/sorting, autocomplete threshold loading, SQL streaming/caps, MySQL #340 metadata, and full CSV export through production driver/component seams.
+- Added regression coverage proving an extra blocking production call changes observed metrics, while preserving the CLI JSON/table contract and documenting the instrumented harness.
+
+Tests: `go test ./...`

@@ -1,8 +1,6 @@
 // Package benchmarks contains a deterministic performance-contract harness.
-// It models the database boundaries exercised by the progressive loading
-// implementation and adds a configurable delay before each simulated round
-// trip. It intentionally does not connect to a real database, so the matrix
-// can run in CI without credentials or a service dependency.
+// It runs the real driver, schema-loader, streaming, and CSV-export paths
+// against an instrumented credential-free database connector.
 package benchmarks
 
 import (
@@ -11,10 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jorgerojas26/lazysql/components"
+	"github.com/jorgerojas26/lazysql/drivers"
 )
 
 // Scenario identifies one workload in the network-performance matrix.
@@ -125,7 +128,11 @@ func RunScenario(ctx context.Context, rtt time.Duration, scenario Scenario) (Res
 	if err := validateOptions(options); err != nil {
 		return Result{}, err
 	}
-	run := newScenarioRun(ctx, options, scenario)
+	run, err := newScenarioRun(ctx, options, scenario)
+	if err != nil {
+		return Result{}, fmt.Errorf("%s: %w", scenario, err)
+	}
+	defer run.close()
 	if err := run.execute(); err != nil {
 		return Result{}, fmt.Errorf("%s: %w", scenario, err)
 	}
@@ -133,7 +140,8 @@ func RunScenario(ctx context.Context, rtt time.Duration, scenario Scenario) (Res
 }
 
 // RunWithOptions executes all scenarios without requiring a database service.
-// It is the seam used by deterministic CI tests.
+// Every scenario uses an instrumented database/sql connector while invoking
+// the production MySQL driver and component seams.
 func RunWithOptions(ctx context.Context, options Options) ([]Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -150,11 +158,21 @@ func RunWithOptions(ctx context.Context, options Options) ([]Result, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		run := newScenarioRun(ctx, options, scenario)
-		if err := run.execute(); err != nil {
+
+		run, err := newScenarioRun(ctx, options, scenario)
+		if err != nil {
 			return nil, fmt.Errorf("%s: %w", scenario, err)
 		}
-		results = append(results, run.result())
+		executeErr := run.execute()
+		result := run.result()
+		closeErr := run.close()
+		if executeErr != nil {
+			return nil, fmt.Errorf("%s: %w", scenario, executeErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("%s: %w", scenario, closeErr)
+		}
+		results = append(results, result)
 	}
 	return results, nil
 }
@@ -202,69 +220,93 @@ func containsScenario(want Scenario) bool {
 }
 
 type scenarioRun struct {
-	ctx        context.Context
-	options    Options
-	scenario   Scenario
+	ctx      context.Context
+	options  Options
+	scenario Scenario
+	driver   *drivers.MySQL
+	metrics  *observedMetrics
+
 	started    time.Time
 	usefulAt   time.Time
 	background time.Duration
 
-	mu                 sync.Mutex
-	blockingRoundTrips int
-	totalOperations    int
-	rowsConsumed       int
-	rowsRendered       int
-	bytesConsumed      int64
+	mu           sync.Mutex
+	rowsRendered int
 }
 
-func newScenarioRun(ctx context.Context, options Options, scenario Scenario) *scenarioRun {
+func newScenarioRun(ctx context.Context, options Options, scenario Scenario) (*scenarioRun, error) {
+	metrics := &observedMetrics{}
+	driver, err := newFixtureDriver(ctx, options, scenario, metrics)
+	if err != nil {
+		return nil, err
+	}
 	return &scenarioRun{
 		ctx:      ctx,
 		options:  options,
 		scenario: scenario,
+		driver:   driver,
+		metrics:  metrics,
 		started:  time.Now(),
+	}, nil
+}
+
+func (run *scenarioRun) close() error {
+	if run == nil || run.driver == nil || run.driver.Connection == nil {
+		return nil
 	}
+	return run.driver.Connection.Close()
 }
 
 func (run *scenarioRun) execute() error {
 	switch run.scenario {
 	case ScenarioSmallTable:
-		return run.recordsWithBackground(func() error {
+		return run.recordsWithBackground("", "", func() error {
 			return run.parallelBackground(
-				func() error { return run.operation("get_table_columns", false, 0, 0, 0) },
-				func() error { return run.operation("get_primary_keys", false, 0, 0, 0) },
-				func() error { return run.operation("get_foreign_keys", false, 0, 0, 0) },
-				func() error { return run.operation("get_constraints", false, 0, 0, 0) },
-				func() error { return run.operation("get_indexes", false, 0, 0, 0) },
+				func() error {
+					_, err := run.driver.GetTableColumns(run.ctx, benchmarkDatabase, benchmarkRecords)
+					return err
+				},
+				func() error {
+					_, err := run.driver.GetPrimaryKeyColumnNames(run.ctx, benchmarkDatabase, benchmarkRecords)
+					return err
+				},
+				func() error {
+					_, err := run.driver.GetForeignKeys(run.ctx, benchmarkDatabase, benchmarkRecords)
+					return err
+				},
+				func() error {
+					_, err := run.driver.GetConstraints(run.ctx, benchmarkDatabase, benchmarkRecords)
+					return err
+				},
+				func() error {
+					_, err := run.driver.GetIndexes(run.ctx, benchmarkDatabase, benchmarkRecords)
+					return err
+				},
 			)
 		})
 	case ScenarioLargeSlowCount:
-		return run.recordsWithBackground(func() error {
-			if err := run.operation("get_estimated_row_count", false, 0, 0, 0); err != nil {
+		return run.recordsWithBackground("", "", func() error {
+			if _, err := run.driver.GetEstimatedRowCount(run.ctx, benchmarkDatabase, benchmarkRecords); err != nil {
 				return err
 			}
-			return run.operation("get_exact_row_count", false, 0, 0, run.options.SlowCountDelay)
+			_, err := run.driver.GetExactRowCount(run.ctx, benchmarkDatabase, benchmarkRecords, "")
+			return err
 		})
 	case ScenarioMySQLCatalog:
-		return run.recordsWithBackground(func() error {
-			// The optimized issue-#340 path is one catalog operation. A
-			// fallback is represented by the separate operation name below
-			// when a caller builds a fallback-specific run in the future.
-			return run.operation("get_foreign_keys_mysql_fast_path", false, 7249, 7249*64, 0)
+		return run.recordsWithBackground("", "", func() error {
+			_, err := run.driver.GetForeignKeys(run.ctx, benchmarkDatabase, benchmarkRecords)
+			return err
 		})
 	case ScenarioPagination:
-		if err := run.fetchPage(run.options.PageSize, true); err != nil {
+		if err := run.fetchPage(0, "", ""); err != nil {
 			return err
 		}
-		run.render(run.options.PageSize)
 		run.markUseful()
-		if err := run.fetchPage(run.options.PageSize, true); err != nil {
-			return err
-		}
-		run.render(run.options.PageSize)
-		return nil
-	case ScenarioFilteredRecords, ScenarioSorting:
-		return run.recordsWithBackground(nil)
+		return run.fetchPage(run.options.PageSize, "", "")
+	case ScenarioFilteredRecords:
+		return run.recordsWithBackground("WHERE category = 'even'", "", nil)
+	case ScenarioSorting:
+		return run.recordsWithBackground("", "name DESC", nil)
 	case ScenarioAutocomplete100:
 		return run.autocomplete(100)
 	case ScenarioAutocomplete500:
@@ -274,30 +316,18 @@ func (run *scenarioRun) execute() error {
 	case ScenarioSQLRowCap:
 		return run.sqlResults(1500, run.options.MaxQueryRows)
 	case ScenarioSlowRows:
-		if err := run.operation("stream_query", true, 1, 64, run.options.SlowRowDelay); err != nil {
-			return err
-		}
-		run.render(1)
-		run.markUseful()
-		return nil
+		return run.sqlResults(1, 0)
 	case ScenarioFullExport:
-		const exportRows = 10_000
-		if err := run.operation("export_all_query_results", true, exportRows, exportRows*64, 0); err != nil {
-			return err
-		}
-		run.render(exportRows)
-		run.markUseful()
-		return nil
+		return run.fullExport()
 	default:
 		return fmt.Errorf("unknown benchmark scenario %q", run.scenario)
 	}
 }
 
-func (run *scenarioRun) recordsWithBackground(background func() error) error {
-	if err := run.fetchPage(run.options.PageSize, true); err != nil {
+func (run *scenarioRun) recordsWithBackground(where, sort string, background func() error) error {
+	if err := run.fetchPage(0, where, sort); err != nil {
 		return err
 	}
-	run.render(run.options.PageSize)
 	run.markUseful()
 	if background == nil {
 		return nil
@@ -306,56 +336,107 @@ func (run *scenarioRun) recordsWithBackground(background func() error) error {
 	if err := background(); err != nil {
 		return err
 	}
+	run.mu.Lock()
 	run.background = time.Since(started)
+	run.mu.Unlock()
 	return nil
 }
 
-func (run *scenarioRun) fetchPage(rows int, blocking bool) error {
-	// Page fetches consume a page plus one lookahead row; only the page rows
-	// are rendered.
-	return run.operation("fetch_records", blocking, rows+1, int64(rows+1)*64, 0)
+func (run *scenarioRun) fetchPage(offset int, where, sort string) error {
+	_, visibleRows, err := components.FetchRecordsPage(
+		run.ctx,
+		run.driver,
+		benchmarkDatabase,
+		benchmarkRecords,
+		where,
+		sort,
+		offset,
+		run.options.PageSize,
+	)
+	if err != nil {
+		return err
+	}
+	run.render(max(len(visibleRows)-1, 0))
+	return nil
 }
 
 func (run *scenarioRun) autocomplete(tableCount int) error {
-	if err := run.operation("get_tables", true, tableCount, int64(tableCount)*48, 0); err != nil {
+	var backgroundStarted time.Time
+	result, err := components.LoadEditorSchema(
+		run.ctx,
+		run.driver,
+		benchmarkDatabase,
+		run.options.SchemaBulkLoadThreshold,
+		func(tableCount int) {
+			run.render(tableCount)
+			run.markUseful()
+			backgroundStarted = time.Now()
+		},
+	)
+	if err != nil {
 		return err
 	}
-	run.render(tableCount)
-	run.markUseful()
-
-	if run.options.SchemaBulkLoadThreshold > 0 && tableCount <= run.options.SchemaBulkLoadThreshold {
-		started := time.Now()
-		if err := run.operation("get_table_columns_bulk", false, tableCount, int64(tableCount)*96, 0); err != nil {
-			return err
-		}
-		run.background = time.Since(started)
-		return nil
+	if len(result.TableNames) != tableCount {
+		return fmt.Errorf("autocomplete loaded %d tables, want %d", len(result.TableNames), tableCount)
 	}
-
-	started := time.Now()
-	if err := run.operation("get_table_columns", false, 1, 96, 0); err != nil {
-		return err
+	if !backgroundStarted.IsZero() {
+		run.mu.Lock()
+		run.background = time.Since(backgroundStarted)
+		run.mu.Unlock()
 	}
-	run.background = time.Since(started)
 	return nil
 }
 
 func (run *scenarioRun) sqlResults(sourceRows, maxRows int) error {
-	consumed, rendered := sourceRows, sourceRows
-	if maxRows > 0 {
-		consumed = maxRows + 1
-		if consumed > sourceRows {
-			consumed = sourceRows
+	query := fmt.Sprintf(
+		"SELECT id, owner_id, category, name FROM `%s`.`%s` ORDER BY id LIMIT %d",
+		benchmarkDatabase,
+		benchmarkRecords,
+		sourceRows,
+	)
+	_, err := run.driver.StreamQuery(run.ctx, query, maxRows, func(batch drivers.QueryBatch) error {
+		run.render(len(batch.Rows))
+		if len(batch.Rows) > 0 {
+			run.markUseful()
 		}
-		rendered = maxRows
-		if rendered > sourceRows {
-			rendered = sourceRows
-		}
-	}
-	if err := run.operation("stream_query", true, consumed, int64(consumed)*64, 0); err != nil {
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	run.render(rendered)
+	run.markUseful()
+	return nil
+}
+
+func (run *scenarioRun) fullExport() error {
+	directory, err := os.MkdirTemp("", "lazysql-benchmark-export-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(directory)
+
+	path := filepath.Join(directory, "results.csv")
+	query := fmt.Sprintf(
+		"SELECT id, owner_id, category, name FROM `%s`.`%s` ORDER BY id",
+		benchmarkDatabase,
+		benchmarkRecords,
+	)
+	lastRows := 0
+	rows, err := components.ExportAllQueryResults(run.ctx, run.driver, path, query, func(rows int) {
+		if delta := rows - lastRows; delta > 0 {
+			run.render(delta)
+		}
+		lastRows = rows
+		if rows > 0 {
+			run.markUseful()
+		}
+	})
+	if err != nil {
+		return err
+	}
+	if rows > lastRows {
+		run.render(rows - lastRows)
+	}
 	run.markUseful()
 	return nil
 }
@@ -380,38 +461,6 @@ func (run *scenarioRun) parallelBackground(tasks ...func() error) error {
 	return nil
 }
 
-func (run *scenarioRun) operation(_ string, blocking bool, rows int, bytes int64, extra time.Duration) error {
-	if err := run.ctx.Err(); err != nil {
-		return err
-	}
-
-	run.mu.Lock()
-	run.totalOperations++
-	if blocking {
-		run.blockingRoundTrips++
-	}
-	run.rowsConsumed += rows
-	run.bytesConsumed += bytes
-	run.mu.Unlock()
-
-	delay := run.options.RTT + extra
-	if delay > 0 {
-		timer := time.NewTimer(delay)
-		select {
-		case <-timer.C:
-		case <-run.ctx.Done():
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			return run.ctx.Err()
-		}
-	}
-	return run.ctx.Err()
-}
-
 func (run *scenarioRun) render(rows int) {
 	run.mu.Lock()
 	run.rowsRendered += rows
@@ -428,22 +477,24 @@ func (run *scenarioRun) markUseful() {
 
 func (run *scenarioRun) result() Result {
 	run.mu.Lock()
-	defer run.mu.Unlock()
-
 	usefulAt := run.usefulAt
+	background := run.background
+	rendered := run.rowsRendered
+	run.mu.Unlock()
 	if usefulAt.IsZero() {
 		usefulAt = time.Now()
 	}
+	blocking, total, rows, bytes := run.metrics.snapshot()
 	return Result{
 		Scenario:               run.scenario,
 		RTTMS:                  run.options.RTT.Milliseconds(),
 		TTFURMS:                usefulAt.Sub(run.started).Milliseconds(),
-		BlockingRoundTrips:     run.blockingRoundTrips,
-		TotalDBOperations:      run.totalOperations,
-		BackgroundCompletionMS: run.background.Milliseconds(),
-		RowsConsumed:           run.rowsConsumed,
-		RowsRendered:           run.rowsRendered,
-		BytesConsumed:          run.bytesConsumed,
+		BlockingRoundTrips:     blocking,
+		TotalDBOperations:      total,
+		BackgroundCompletionMS: background.Milliseconds(),
+		RowsConsumed:           rows,
+		RowsRendered:           rendered,
+		BytesConsumed:          bytes,
 	}
 }
 

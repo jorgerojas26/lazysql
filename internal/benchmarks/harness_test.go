@@ -134,6 +134,35 @@ func TestHarnessCancellationIsContextAware(t *testing.T) {
 	}
 }
 
+func TestObservedExtraBlockingCallChangesScenarioMetrics(t *testing.T) {
+	run, err := newScenarioRun(context.Background(), fastOptions(), ScenarioFilteredRecords)
+	if err != nil {
+		t.Fatalf("newScenarioRun() error = %v", err)
+	}
+	defer run.close()
+
+	if err := run.execute(); err != nil {
+		t.Fatalf("scenario execution error = %v", err)
+	}
+	before := run.result()
+
+	if _, err := run.driver.GetRecords(
+		context.Background(), benchmarkDatabase, benchmarkRecords, "WHERE category = 'even'", "", 0, fastOptions().PageSize,
+	); err != nil {
+		t.Fatalf("extra production page fetch error = %v", err)
+	}
+	after := run.result()
+	if after.TotalDBOperations != before.TotalDBOperations+1 {
+		t.Fatalf("observed operations = %d after extra call, want %d", after.TotalDBOperations, before.TotalDBOperations+1)
+	}
+	if after.BlockingRoundTrips != before.BlockingRoundTrips+1 {
+		t.Fatalf("observed blocking round trips = %d after extra call, want %d", after.BlockingRoundTrips, before.BlockingRoundTrips+1)
+	}
+	if after.RowsConsumed <= before.RowsConsumed || after.BytesConsumed <= before.BytesConsumed {
+		t.Fatalf("extra production call was not reflected in rows/bytes: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestBenchmarkOutputContainsContractMetrics(t *testing.T) {
 	results, err := RunWithOptions(context.Background(), fastOptions())
 	if err != nil {

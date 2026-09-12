@@ -1977,6 +1977,29 @@ func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 	table.fetchRecords(table.GetCurrentSort(), onError, onSuccess)
 }
 
+// FetchRecordsPage runs the production Records page orchestration without
+// requiring a ResultsTable UI. It preserves the driver's lookahead contract
+// while returning only the rows that belong on the visible page.
+func FetchRecordsPage(
+	ctx context.Context,
+	driver drivers.Driver,
+	database, table, where, sort string,
+	offset, limit int,
+) (drivers.PageResult, [][]string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if driver == nil {
+		return drivers.PageResult{}, nil, errors.New("database driver is nil")
+	}
+
+	page, err := driver.GetRecords(ctx, database, table, where, sort, offset, limit)
+	if err != nil {
+		return page, nil, err
+	}
+	return page, trimRecordsToPage(page.Rows, limit), nil
+}
+
 func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess func(), metadataToLoad ...MetadataKind) {
 	databaseName := table.GetDatabaseName()
 	tableName := table.GetTableName()
@@ -1996,7 +2019,7 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 			return
 		}
 
-		page, err := table.DBDriver.GetRecords(ctx, databaseName, tableName, where, sort, offset, pageSize)
+		page, visibleRows, err := FetchRecordsPage(ctx, table.DBDriver, databaseName, tableName, where, sort, offset, pageSize)
 		logDatabaseOperation("fetch_records", started, ctx, map[string]any{
 			"database": databaseName,
 			"table":    tableName,
@@ -2019,7 +2042,6 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 			return
 		}
 
-		visibleRows := trimRecordsToPage(page.Rows, pageSize)
 		App.QueueUpdateDraw(func() {
 			if !table.isCurrentLoad(ctx, generation) {
 				return
@@ -3305,26 +3327,20 @@ func (table *ResultsTable) exportAllRecordsInBatchesWithProgress(
 	return writer.RowCount(), nil
 }
 
-// exportAllQueryResults reexecutes one replay-safe editor statement and writes
+// ExportAllQueryResults reexecutes one replay-safe editor statement and writes
 // every streamed row. maxRows is deliberately zero: interactive result caps
-// must never limit a full export.
-func (table *ResultsTable) exportAllQueryResults(
+// must never limit a full export. It is also the production-neutral seam used
+// by the credential-free performance harness.
+func ExportAllQueryResults(
 	ctx context.Context,
+	driver drivers.Driver,
 	filePath, query string,
 	onProgress func(int),
 ) (rows int, err error) {
-	started := time.Now()
-	defer func() {
-		logDatabaseOperation("export_all_query_results", started, ctx, map[string]any{
-			"connection": table.connectionIdentifier,
-			"rows":       rows,
-		}, err)
-	}()
-
 	if !isReplaySafeQuery(query) {
 		return 0, errors.New("query is not classified as replay-safe for Export All Results")
 	}
-	streamer, ok := table.DBDriver.(drivers.QueryStreamer)
+	streamer, ok := driver.(drivers.QueryStreamer)
 	if !ok {
 		return 0, errors.New("driver does not support streaming Export All Results")
 	}
@@ -3388,6 +3404,24 @@ func (table *ResultsTable) exportAllQueryResults(
 		return writer.RowCount(), err
 	}
 	return writer.RowCount(), nil
+}
+
+// exportAllQueryResults is the UI/logging wrapper around the production export
+// seam above.
+func (table *ResultsTable) exportAllQueryResults(
+	ctx context.Context,
+	filePath, query string,
+	onProgress func(int),
+) (rows int, err error) {
+	started := time.Now()
+	defer func() {
+		logDatabaseOperation("export_all_query_results", started, ctx, map[string]any{
+			"connection": table.connectionIdentifier,
+			"rows":       rows,
+		}, err)
+	}()
+
+	return ExportAllQueryResults(ctx, table.DBDriver, filePath, query, onProgress)
 }
 
 func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int) {

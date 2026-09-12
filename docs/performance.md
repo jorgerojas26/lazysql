@@ -4,7 +4,8 @@ LazySQL measures the network-performance behavior as a contract, not as a
 subjective "feels faster" claim. The contract has two layers:
 
 1. deterministic tests assert database-operation and rendering invariants;
-2. a local synthetic harness records wall-clock observations at controlled RTTs.
+2. a local instrumented harness runs production paths against a credential-free
+   database connector and records wall-clock observations at controlled RTTs.
 
 ## Run the benchmark matrix
 
@@ -32,10 +33,12 @@ Each record reports:
 | `background_completion_ms` | Time for background enrichment after first paint |
 | `rows_consumed` | Rows read, including page/cap lookahead where applicable |
 | `rows_rendered` | Rows made visible to the user |
-| `bytes_consumed` | Approximate transferred bytes in the synthetic workload |
+| `bytes_consumed` | Approximate bytes observed at the instrumented database boundary |
 
-The harness records timings for comparison. CI gates the deterministic counts,
-not a fragile millisecond threshold.
+The harness injects RTT at the database/sql boundary and derives operation,
+row, and byte metrics from executed production driver calls. It records timings
+for comparison. CI gates deterministic counts, not a fragile millisecond
+threshold.
 
 ### Scenarios
 

@@ -34,6 +34,80 @@ func newSchemaLoader(driver drivers.Driver, cache *metadataCache) *schemaLoader 
 	return &schemaLoader{driver: driver, cache: cache}
 }
 
+// EditorSchemaLoadResult contains the observable results of loading the SQL
+// editor's table and column catalog.
+type EditorSchemaLoadResult struct {
+	TableNames  []string
+	ColumnNames map[string][]string
+}
+
+// LoadEditorSchema runs the production schema-loader path without requiring a
+// ResultsTable or a UI event loop. The table callback runs after the table list
+// is ready and before column enrichment starts, which lets callers measure the
+// progressive first useful result separately from background completion.
+//
+// Small schemas use the same bulk-column preload as the editor. Larger schemas
+// model the first on-demand column completion so the threshold remains an
+// observable production behavior rather than a scenario-only counter.
+func LoadEditorSchema(
+	ctx context.Context,
+	driver drivers.Driver,
+	database string,
+	threshold int,
+	onTablesReady func(int),
+) (EditorSchemaLoadResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if driver == nil {
+		return EditorSchemaLoadResult{}, errors.New("schema loader driver is nil")
+	}
+	if database == "" {
+		return EditorSchemaLoadResult{}, errors.New("database name is required")
+	}
+
+	loader := newSchemaLoader(driver, newMetadataCache())
+	tablesMap, err := loader.loadTables(ctx, database)
+	if err != nil {
+		return EditorSchemaLoadResult{}, err
+	}
+
+	tableList := loader.visibleTables(database, tablesMap, nil)
+	result := EditorSchemaLoadResult{
+		TableNames:  editorTableNames(tableList),
+		ColumnNames: make(map[string][]string),
+	}
+	if onTablesReady != nil {
+		onTablesReady(len(result.TableNames))
+	}
+
+	publish := func(table editorSchemaTable, columns []string) {
+		result.ColumnNames[table.qualifiedName] = append([]string(nil), columns...)
+	}
+	loader.preloadEditorColumns(ctx, database, tableList, threshold, publish)
+
+	if len(tableList) == 0 || (threshold > 0 && len(tableList) <= threshold) {
+		return result, nil
+	}
+
+	// A large schema is lazy in the normal editor. Request one table exactly as
+	// the first table.column completion would, so the benchmark observes that
+	// production request without recreating the N+1 preload path.
+	key, done := loader.requestColumns(ctx, database, tableList[0].qualifiedName)
+	if done != nil {
+		<-done
+	}
+	status, value, err := loader.cache.result(key)
+	if err != nil {
+		return EditorSchemaLoadResult{}, err
+	}
+	if status != MetadataReady {
+		return EditorSchemaLoadResult{}, errors.New("schema column result is not ready")
+	}
+	result.ColumnNames[tableList[0].qualifiedName] = editorColumnNames(value)
+	return result, nil
+}
+
 func (loader *schemaLoader) requestTables(ctx context.Context, database string) (metadataKey, <-chan struct{}) {
 	key := newMetadataKey(database, "", MetadataTables)
 	if loader == nil || loader.driver == nil {
