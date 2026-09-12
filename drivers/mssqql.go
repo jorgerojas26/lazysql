@@ -574,6 +574,12 @@ func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
+// StreamQuery incrementally emits interactive SQL results and honors context
+// cancellation through database/sql.
+func (db *MSSQL) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
+}
+
 func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
 	if query == "" {
 		return nil, 0, errors.New("query can not be empty")

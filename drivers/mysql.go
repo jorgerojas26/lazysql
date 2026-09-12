@@ -506,6 +506,12 @@ func (db *MySQL) GetExactRowCount(ctx context.Context, database, table, where st
 	return count, nil
 }
 
+// StreamQuery incrementally emits interactive SQL results and honors context
+// cancellation through database/sql.
+func (db *MySQL) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
+}
+
 func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {

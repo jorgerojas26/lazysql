@@ -12,6 +12,7 @@ const (
 	DefaultMaxIdleConnections  = 8
 	DefaultExactCountThreshold = 50000
 	DefaultExactCountTimeoutMS = 200
+	DefaultMaxQueryRows        = 1000
 )
 
 type AppConfig struct {
@@ -27,6 +28,7 @@ type AppConfig struct {
 	MaxIdleConnections           int `toml:"max_idle_connections"`
 	ExactCountThreshold          int `toml:"exact_count_threshold"`
 	ExactCountTimeoutMS          int `toml:"exact_count_timeout_ms"`
+	MaxQueryRows                 int `toml:"max_query_rows"`
 }
 
 type ConnectionPoolConfig struct {

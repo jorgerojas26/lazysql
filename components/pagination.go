@@ -31,6 +31,7 @@ type PaginationState struct {
 	EstimatedTotal *int64
 	countState     CountState
 	countError     string
+	resultStatus   string
 	loading        bool
 }
 
@@ -226,6 +227,22 @@ func (pagination *Pagination) GetCountError() string {
 	return pagination.state.countError
 }
 
+// SetResultStatus adds a status for an interactive result query without
+// changing the pagination count state.
+func (pagination *Pagination) SetResultStatus(status string) {
+	pagination.state.resultStatus = status
+	pagination.render()
+}
+
+func (pagination *Pagination) GetResultStatus() string {
+	return pagination.state.resultStatus
+}
+
+func (pagination *Pagination) ClearResultStatus() {
+	pagination.state.resultStatus = ""
+	pagination.render()
+}
+
 func (pagination *Pagination) GetText() string {
 	return pagination.textView.GetText(false)
 }
@@ -268,6 +285,9 @@ func (pagination *Pagination) render() {
 
 	if pagination.state.loading {
 		text += " [Loading...]"
+	}
+	if pagination.state.resultStatus != "" {
+		text += " " + pagination.state.resultStatus
 	}
 
 	color := app.Styles.PrimaryTextColor

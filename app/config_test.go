@@ -689,6 +689,9 @@ DefaultPageSize = 500
 	if App.config.AppConfig.MaxQueryHistoryPerConnection != 100 {
 		t.Errorf("MaxQueryHistoryPerConnection = %d, want 100 (default)", App.config.AppConfig.MaxQueryHistoryPerConnection)
 	}
+	if App.config.AppConfig.MaxQueryRows != models.DefaultMaxQueryRows {
+		t.Errorf("MaxQueryRows = %d, want %d (default)", App.config.AppConfig.MaxQueryRows, models.DefaultMaxQueryRows)
+	}
 	if App.config.AppConfig.MaxOpenConnections != models.DefaultMaxOpenConnections {
 		t.Errorf("MaxOpenConnections = %d, want %d (default)", App.config.AppConfig.MaxOpenConnections, models.DefaultMaxOpenConnections)
 	}

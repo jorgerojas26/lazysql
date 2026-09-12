@@ -107,6 +107,7 @@ type SQLEditor struct {
 	state         *SQLEditorState
 	subscribers   []chan models.StateChange
 	ConnectionURL string
+	cancelQuery   func() bool
 }
 
 // NewSQLEditor creates a new SQL editor.
@@ -227,6 +228,13 @@ func (e *SQLEditor) SetColumns(table string, columns []string) {
 	e.completer.SetColumns(table, columns)
 }
 
+// SetQueryCancelFunc installs the contextual Escape action used while an
+// interactive result query is active. Returning true consumes Escape; false
+// preserves the editor's normal vim/focus behavior.
+func (e *SQLEditor) SetQueryCancelFunc(cancel func() bool) {
+	e.cancelQuery = cancel
+}
+
 // ---------------------------------------------------------------------------
 // Input handling
 // ---------------------------------------------------------------------------
@@ -236,6 +244,9 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 	return func(event *tcell.EventKey, _ func(p tview.Primitive)) {
 		// --- 1. Always handle open-in-external-editor (Ctrl+Space) ---
 		cmd := app.Keymaps.Group(app.EditorGroup).Resolve(event)
+		if (event.Key() == tcell.KeyEscape || cmd == commands.CancelQuery) && e.cancelQuery != nil && e.cancelQuery() {
+			return
+		}
 		if cmd == commands.OpenInExternalEditor {
 			if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 				var newText string

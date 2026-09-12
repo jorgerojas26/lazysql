@@ -57,6 +57,7 @@ const (
 	Save
 	Delete
 	Search
+	CancelQuery
 	SearchGlobal
 	Quit
 	Execute
@@ -165,6 +166,8 @@ func (c Command) String() string {
 		return "Delete"
 	case Search:
 		return "Search"
+	case CancelQuery:
+		return "CancelQuery"
 	case SearchGlobal:
 		return "SearchGlobal"
 	case Quit:

@@ -198,6 +198,7 @@ The `[application]` section is used to define some app settings. Not all setting
 | SidebarOverlay | false | Show sidebar as overlay instead of side panel |
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+| max_query_rows | 1000 | Maximum rows shown by an interactive SQL-editor result (0 = unlimited) |
 | max_open_connections | 8 | Maximum open connections for MySQL, PostgreSQL, and MSSQL |
 | max_idle_connections | 8 | Maximum idle connections for MySQL, PostgreSQL, and MSSQL |
 
@@ -563,7 +564,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | Default Key | Command | Description |
 | --- | --- | --- |
 | Ctrl-R | Execute | Execute query |
-| Esc | UnfocusEditor | Unfocus editor |
+| Esc | CancelQuery | Cancel the active query; otherwise preserve normal editor Escape behavior |
 | Ctrl-Space | OpenInExternalEditor | Open in external editor |
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.

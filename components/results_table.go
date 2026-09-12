@@ -3,6 +3,7 @@ package components
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -40,6 +41,7 @@ type ResultsTableState struct {
 	foreignKeyColumns     map[string]bool
 	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
 	fkRawCellValues       map[string]string
+	queryStatus           string
 	markedRows            map[int]bool
 	isEditing             bool
 	isFiltering           bool
@@ -56,6 +58,12 @@ type ResultsTableState struct {
 type foreignKeyJumpTarget struct {
 	ReferencedTable  string
 	ReferencedColumn string
+}
+
+type editorQueryRun struct {
+	generation      uint64
+	cancel          context.CancelFunc
+	cancelRequested bool
 }
 
 type ResultsTable struct {
@@ -93,6 +101,8 @@ type ResultsTable struct {
 	countKeySet     bool
 	countAttempted  bool
 	countManual     bool
+	queryMu         sync.Mutex
+	activeQuery     *editorQueryRun
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -225,6 +235,7 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 	})
 
 	table.Editor = editor
+	editor.SetQueryCancelFunc(table.CancelActiveQuery)
 
 	table.Wrapper.Clear()
 
@@ -491,6 +502,10 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 }
 
 func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyEscape && table.CancelActiveQuery() {
+		return nil
+	}
+
 	selectedRowIndex, selectedColumnIndex := table.GetSelection()
 	colCount := table.GetColumnCount()
 	rowCount := table.GetRowCount()
@@ -498,6 +513,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	eventKey := event.Rune()
 
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
+	if command == commands.CancelQuery && table.CancelActiveQuery() {
+		return nil
+	}
 
 	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu}
 
@@ -880,132 +898,52 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 		switch stateChange.Key {
 		case eventSQLEditorQuery:
 			query := stateChange.Value.(string)
-			if query != "" {
-				queryLower := strings.ToLower(query)
-				queryTrimmed := strings.TrimSpace(queryLower)
+			if strings.TrimSpace(query) == "" {
+				continue
+			}
 
-				isSelect := strings.HasPrefix(queryTrimmed, "select") ||
-					strings.HasPrefix(queryTrimmed, "with") ||
-					strings.HasPrefix(queryTrimmed, "explain") ||
-					strings.HasPrefix(queryTrimmed, "show") ||
-					strings.HasPrefix(queryTrimmed, "describe") ||
-					strings.HasPrefix(queryTrimmed, "desc")
-
-				// Clear existing records immediately for SQL editor queries and
-				// start a cancellable loading cycle on the UI goroutine.
-				var ctx context.Context
-				App.QueueUpdateDraw(func() {
-					table.SetRecords([][]string{})
-					ctx = table.StartLoad()
-				})
-
-				// Validate before routing: a CTE such as "WITH ... INSERT" starts
-				// with "with" and would otherwise take the SELECT branch unchecked.
-				if table.ReadOnly {
-					if err := drivers.ValidateQueryForReadOnly(query); err != nil {
-						App.QueueUpdateDraw(func() {
-							table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
-							table.SetLoading(false)
-						})
-						continue
-					}
-				}
-
-				if isSelect {
-					go func() {
-						if ctx.Err() != nil {
-							return
-						}
-
-						rows, records, err := table.DBDriver.ExecuteQuery(query)
-
-						if ctx.Err() != nil {
-							return
-						}
-
-						App.QueueUpdateDraw(func() {
-							if ctx.Err() != nil {
-								return
-							}
-
-							if err != nil {
-								table.SetLoading(false)
-								table.SetError(err.Error(), nil)
-								return
-							}
-
-							table.Pagination.SetTotalRecords(records)
-							table.Pagination.SetLimit(records)
-							table.SetRecords(rows)
-							table.SetLoading(false)
-							// Clear filtering state before closing the quit confirmation:
-							// closing it can synchronously trigger Home.focusTab, which
-							// re-focuses the editor while filtering is still active.
-							table.SetIsFiltering(false)
-							closeQuitConfirmation()
-							table.HighlightTable()
-							table.Editor.SetBlur()
-							table.SetInputCapture(table.tableInputCapture)
-							table.EditorPages.SwitchToPage(pageNameTableEditorTable)
-							App.SetFocus(table)
-
-							if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
-								logger.Error("Failed to add SELECT query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
-							}
-						})
-					}()
-				} else {
-					go func() {
-						if ctx.Err() != nil {
-							return
-						}
-
-						result, err := table.DBDriver.ExecuteDMLStatement(query)
-
-						if ctx.Err() != nil {
-							return
-						}
-
-						App.QueueUpdateDraw(func() {
-							if ctx.Err() != nil {
-								return
-							}
-
-							if err != nil {
-								table.SetLoading(false)
-								table.SetError(err.Error(), nil)
-								return
-							}
-
-							table.SetResultsInfo(result)
-							table.SetLoading(false)
-							// Clear filtering state before closing the quit confirmation:
-							// closing it can synchronously trigger Home.focusTab, which
-							// re-focuses the editor while filtering is still active.
-							table.SetIsFiltering(false)
-							closeQuitConfirmation()
-							// Return focus to the table, mirroring the SELECT branch,
-							// instead of leaving it on the SQL editor.
-							table.HighlightTable()
-							table.Editor.SetBlur()
-							table.SetInputCapture(table.tableInputCapture)
-							table.EditorPages.SwitchToPage(pageNameTableEditorTable)
-							App.SetFocus(table)
-
-							// Refresh the records so the table reflects the mutation
-							// when the editor tab has a table context.
-							if table.GetDatabaseName() != "" && table.GetTableName() != "" {
-								table.FetchRecords(nil, nil)
-							}
-
-							if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
-								logger.Error("Failed to add DML query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
-							}
-						})
-					}()
+			// Validate before starting a load or recording history. A CTE such as
+			// "WITH ... INSERT" starts with "with" and must still be rejected on
+			// a read-only connection before it reaches the driver.
+			if table.ReadOnly {
+				if err := drivers.ValidateQueryForReadOnly(query); err != nil {
+					App.QueueUpdateDraw(func() {
+						table.SetError("Cannot execute mutation query: Connection is in read-only mode", nil)
+						table.SetLoading(false)
+					})
+					continue
 				}
 			}
+
+			isSelect := isResultProducingQuery(query)
+
+			// Clear existing records immediately for SQL editor queries and start
+			// a cancellable loading cycle on the UI goroutine. The active query is
+			// registered in the same update so Escape cannot observe a gap between
+			// loading and query state.
+			var ctx context.Context
+			var generation uint64
+			var run *editorQueryRun
+			App.QueueUpdateDraw(func() {
+				ctx, generation = table.startLoad()
+				table.SetRecords([][]string{})
+				table.Pagination.SetOffset(0)
+				table.Pagination.ClearCount()
+				table.Pagination.SetPageInfo(0, true)
+				table.SetQueryStatus("Running query… [Esc cancel]")
+				run = table.beginEditorQuery(generation)
+			})
+
+			if isSelect {
+				go table.runEditorStreamQuery(ctx, run, query)
+			} else {
+				go table.runEditorDMLQuery(ctx, generation, query)
+			}
+
 		case eventSQLEditorEscape:
+			// The editor invokes CancelActiveQuery directly for an active query.
+			// This event remains the normal focus/unfocus path when no query is
+			// active.
 			App.QueueUpdateDraw(func() {
 				table.SetIsFiltering(false)
 				App.SetFocus(table)
@@ -1015,6 +953,353 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 			})
 		}
 	}
+}
+
+func isResultProducingQuery(query string) bool {
+	queryTrimmed := strings.TrimSpace(strings.ToLower(query))
+	return strings.HasPrefix(queryTrimmed, "select") ||
+		strings.HasPrefix(queryTrimmed, "with") ||
+		strings.HasPrefix(queryTrimmed, "explain") ||
+		strings.HasPrefix(queryTrimmed, "show") ||
+		strings.HasPrefix(queryTrimmed, "describe") ||
+		strings.HasPrefix(queryTrimmed, "desc")
+}
+
+func (table *ResultsTable) beginEditorQuery(generation uint64) *editorQueryRun {
+	run := &editorQueryRun{generation: generation}
+	table.state.loadingMu.Lock()
+	if table.state.loadGeneration == generation {
+		run.cancel = table.state.loadingCancel
+	}
+	table.state.loadingMu.Unlock()
+
+	table.queryMu.Lock()
+	table.activeQuery = run
+	table.queryMu.Unlock()
+	return run
+}
+
+func (table *ResultsTable) invalidateEditorQuery() {
+	table.queryMu.Lock()
+	table.activeQuery = nil
+	table.queryMu.Unlock()
+}
+
+func (table *ResultsTable) isCurrentEditorQuery(run *editorQueryRun) bool {
+	if run == nil {
+		return false
+	}
+	table.queryMu.Lock()
+	defer table.queryMu.Unlock()
+	return table.activeQuery == run
+}
+
+func (table *ResultsTable) finishEditorQuery(run *editorQueryRun) bool {
+	if run == nil {
+		return false
+	}
+	table.queryMu.Lock()
+	if table.activeQuery != run {
+		table.queryMu.Unlock()
+		return false
+	}
+	table.activeQuery = nil
+	table.queryMu.Unlock()
+
+	table.state.loadingMu.Lock()
+	if table.state.loadGeneration == run.generation {
+		table.state.loadingCancel = nil
+	}
+	table.state.loadingMu.Unlock()
+	return true
+}
+
+// IsQueryActive reports whether an interactive SQL result query is currently
+// running. It is intentionally separate from the generic table loading state.
+func (table *ResultsTable) IsQueryActive() bool {
+	table.queryMu.Lock()
+	defer table.queryMu.Unlock()
+	return table.activeQuery != nil
+}
+
+// CancelActiveQuery cancels only an active SQL-editor result query. It returns
+// false when Escape should retain its normal editor/table behavior.
+func (table *ResultsTable) CancelActiveQuery() bool {
+	table.queryMu.Lock()
+	run := table.activeQuery
+	if run == nil {
+		table.queryMu.Unlock()
+		return false
+	}
+	if run.cancelRequested {
+		table.queryMu.Unlock()
+		return true
+	}
+	run.cancelRequested = true
+	// Stop accepting batches immediately. The stream's context is still
+	// cancelled below, while already rendered rows remain in the table.
+	table.activeQuery = nil
+	table.queryMu.Unlock()
+
+	table.CancelExactCount()
+	table.state.loadingMu.Lock()
+	var cancel context.CancelFunc
+	if table.state.loadGeneration == run.generation {
+		cancel = table.state.loadingCancel
+		table.state.loadingCancel = nil
+		table.state.loadGeneration++
+	}
+	table.state.loadingMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	// The captured cancel is idempotent and protects against a load transition
+	// racing with this cancellation request.
+	if run.cancel != nil {
+		run.cancel()
+	}
+	table.SetLoading(false)
+	count := table.editorQueryRowCount()
+	if count == 0 {
+		table.SetQueryStatus("Query cancelled")
+	} else {
+		table.SetQueryStatus(fmt.Sprintf("%d rows — partial result: query cancelled", count))
+	}
+	return true
+}
+
+// CancelQuery is an alias for callers that use the shorter command-oriented
+// name.
+func (table *ResultsTable) CancelQuery() bool {
+	return table.CancelActiveQuery()
+}
+
+func (table *ResultsTable) editorQueryRowCount() int {
+	records := table.GetRecords()
+	if len(records) == 0 {
+		return 0
+	}
+	return len(records) - 1
+}
+
+func (table *ResultsTable) SetQueryStatus(status string) {
+	table.state.queryStatus = status
+	if table.Pagination != nil {
+		table.Pagination.SetResultStatus(status)
+	}
+}
+
+func (table *ResultsTable) GetQueryStatus() string {
+	return table.state.queryStatus
+}
+
+func (table *ResultsTable) appendEditorQueryBatch(batch drivers.QueryBatch) {
+	records := table.GetRecords()
+	if len(records) == 0 && len(batch.Columns) > 0 {
+		columns := append([]string(nil), batch.Columns...)
+		records = append(records, columns)
+	}
+	if len(batch.Rows) > 0 {
+		records = append(records, batch.Rows...)
+	}
+	if len(records) > 0 {
+		table.SetRecords(records)
+	}
+}
+
+func (table *ResultsTable) showEditorQueryResults() {
+	table.SetIsFiltering(false)
+	closeQuitConfirmation()
+	table.HighlightTable()
+	if table.Editor != nil {
+		table.Editor.SetBlur()
+	}
+	table.SetInputCapture(table.tableInputCapture)
+	if table.EditorPages != nil {
+		table.EditorPages.SwitchToPage(pageNameTableEditorTable)
+	}
+	App.SetFocus(table)
+}
+
+func (table *ResultsTable) maxInteractiveQueryRows() int {
+	config := App.Config()
+	if config == nil {
+		return models.DefaultMaxQueryRows
+	}
+	if config.MaxQueryRows < 0 {
+		return models.DefaultMaxQueryRows
+	}
+	return config.MaxQueryRows
+}
+
+func (table *ResultsTable) renderEditorQueryBatch(ctx context.Context, run *editorQueryRun, batch drivers.QueryBatch) error {
+	if ctx == nil || ctx.Err() != nil || !table.isCurrentEditorQuery(run) {
+		return context.Canceled
+	}
+
+	applied := false
+	App.QueueUpdateDraw(func() {
+		if ctx.Err() != nil || !table.isCurrentEditorQuery(run) {
+			return
+		}
+		firstPaint := len(table.GetRecords()) == 0
+		table.appendEditorQueryBatch(batch)
+		table.Pagination.SetPageInfo(table.editorQueryRowCount(), true)
+		if firstPaint {
+			table.showEditorQueryResults()
+		}
+		applied = true
+	})
+	if !applied {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQueryRun, query string) (drivers.QueryStreamResult, error) {
+	onBatch := func(batch drivers.QueryBatch) error {
+		return table.renderEditorQueryBatch(ctx, run, batch)
+	}
+
+	if streamer, ok := table.DBDriver.(drivers.QueryStreamer); ok {
+		return streamer.StreamQuery(ctx, query, table.maxInteractiveQueryRows(), onBatch)
+	}
+
+	// Keep older third-party Driver implementations usable. Built-in drivers
+	// implement QueryStreamer, so this compatibility path is not used for
+	// normal connections and cannot affect their bounded database consumption.
+	rows, count, err := table.DBDriver.ExecuteQuery(query)
+	result := drivers.QueryStreamResult{Rows: count}
+	if err != nil {
+		return result, err
+	}
+	if len(rows) > 0 {
+		result.Columns = append([]string(nil), rows[0]...)
+		data := rows[1:]
+		maxRows := table.maxInteractiveQueryRows()
+		if maxRows > 0 && len(data) > maxRows {
+			result.Truncated = true
+			data = data[:maxRows]
+		}
+		result.Rows = len(data)
+		if err := onBatch(drivers.QueryBatch{Columns: result.Columns, Rows: data}); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func (table *ResultsTable) addEditorQueryToHistory(query string) {
+	if err := history.AddQueryToHistory(table.connectionIdentifier, query); err != nil {
+		logger.Error("Failed to add dispatched SQL-editor query to history", map[string]any{"error": err, "query": query, "connection": table.connectionIdentifier})
+	}
+}
+
+func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editorQueryRun, query string) {
+	if ctx == nil || ctx.Err() != nil || !table.isCurrentEditorQuery(run) {
+		return
+	}
+
+	// The invocation below is the dispatch boundary. Recording immediately
+	// before it captures completed, truncated, cancelled, and post-dispatch
+	// failed queries while validation failures never reach history.
+	table.addEditorQueryToHistory(query)
+	result, err := table.streamEditorQuery(ctx, run, query)
+	App.QueueUpdateDraw(func() {
+		if !table.isCurrentEditorQuery(run) {
+			return
+		}
+
+		table.finishEditorQuery(run)
+		if len(table.GetRecords()) == 0 && len(result.Columns) > 0 {
+			table.appendEditorQueryBatch(drivers.QueryBatch{Columns: result.Columns})
+		}
+
+		rowCount := table.editorQueryRowCount()
+		cancelled := errors.Is(err, context.Canceled) || ctx.Err() != nil
+		if cancelled {
+			table.Pagination.SetPageInfo(rowCount, true)
+			table.SetLoading(false)
+			if rowCount == 0 {
+				table.SetQueryStatus("Query cancelled")
+			} else {
+				table.SetQueryStatus(fmt.Sprintf("%d rows — partial result: query cancelled", rowCount))
+			}
+			if rowCount > 0 || len(result.Columns) > 0 {
+				table.showEditorQueryResults()
+			}
+			return
+		}
+
+		if err != nil {
+			table.SetLoading(false)
+			if rowCount == 0 {
+				table.SetQueryStatus(fmt.Sprintf("Query failed: %s", err.Error()))
+				table.SetError(err.Error(), nil)
+				return
+			}
+			table.Pagination.SetPageInfo(rowCount, true)
+			table.SetQueryStatus(fmt.Sprintf("%d rows — partial result: %s", rowCount, err.Error()))
+			table.showEditorQueryResults()
+			return
+		}
+
+		table.Pagination.SetLimit(rowCount)
+		if result.Truncated {
+			table.Pagination.SetPageInfo(rowCount, true)
+			table.SetQueryStatus(fmt.Sprintf("%d rows shown — result truncated (maximum %d)", rowCount, table.maxInteractiveQueryRows()))
+		} else {
+			table.Pagination.SetPageInfo(rowCount, false)
+			table.SetQueryStatus("")
+		}
+		table.SetLoading(false)
+		table.showEditorQueryResults()
+	})
+}
+
+func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, generation uint64, query string) {
+	if ctx == nil || ctx.Err() != nil || !table.isCurrentLoad(ctx, generation) {
+		return
+	}
+
+	table.addEditorQueryToHistory(query)
+	result, err := table.DBDriver.ExecuteDMLStatement(query)
+	if ctx.Err() != nil {
+		return
+	}
+
+	App.QueueUpdateDraw(func() {
+		if !table.isCurrentLoad(ctx, generation) {
+			return
+		}
+
+		if err != nil {
+			table.SetLoading(false)
+			table.SetQueryStatus(fmt.Sprintf("Query failed: %s", err.Error()))
+			table.SetError(err.Error(), nil)
+			return
+		}
+
+		table.SetResultsInfo(result)
+		table.SetQueryStatus("")
+		table.SetLoading(false)
+		// Clear filtering state before closing the quit confirmation: closing it
+		// can synchronously trigger Home.focusTab, which re-focuses the editor
+		// while filtering is still active.
+		table.SetIsFiltering(false)
+		closeQuitConfirmation()
+		table.HighlightTable()
+		table.Editor.SetBlur()
+		table.SetInputCapture(table.tableInputCapture)
+		table.EditorPages.SwitchToPage(pageNameTableEditorTable)
+		App.SetFocus(table)
+
+		// Refresh the records so the table reflects the mutation when the editor
+		// tab has a table context.
+		if table.GetDatabaseName() != "" && table.GetTableName() != "" {
+			table.FetchRecords(nil, nil)
+		}
+	})
 }
 
 // Getters
@@ -1233,6 +1518,11 @@ func (table *ResultsTable) CancelLoading() {
 }
 
 func (table *ResultsTable) startLoad() (context.Context, uint64) {
+	// Any new operation supersedes an interactive result stream. Clearing the
+	// consumer before cancelling the old context prevents late batches from
+	// touching the new table state.
+	table.invalidateEditorQuery()
+
 	ctx, cancel := context.WithCancel(app.App.Context())
 
 	table.state.loadingMu.Lock()
@@ -1247,6 +1537,7 @@ func (table *ResultsTable) startLoad() (context.Context, uint64) {
 	}
 
 	table.SetLoading(true)
+	table.SetQueryStatus("")
 	return ctx, generation
 }
 

@@ -685,6 +685,12 @@ func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error)
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
+// StreamQuery incrementally emits interactive SQL results and honors context
+// cancellation through database/sql.
+func (db *Postgres) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
+}
+
 func (db *Postgres) ExecuteQuery(query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {

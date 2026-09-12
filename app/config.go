@@ -35,6 +35,7 @@ func defaultConfig() *Config {
 			MaxIdleConnections:           models.DefaultMaxIdleConnections,
 			ExactCountThreshold:          models.DefaultExactCountThreshold,
 			ExactCountTimeoutMS:          models.DefaultExactCountTimeoutMS,
+			MaxQueryRows:                 models.DefaultMaxQueryRows,
 		},
 	}
 }
@@ -183,6 +184,10 @@ func LoadConfig(configFile string) error {
 
 	if err := toml.Unmarshal(mergedBytes, App.config); err != nil {
 		return err
+	}
+
+	if App.config.AppConfig.MaxQueryRows < 0 {
+		return fmt.Errorf("invalid application max_query_rows: must be non-negative")
 	}
 
 	poolConfig, err := App.config.AppConfig.EffectiveConnectionPool(models.Connection{})
