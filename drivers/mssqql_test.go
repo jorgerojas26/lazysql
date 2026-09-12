@@ -174,7 +174,7 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
           AND DB_NAME(DB_ID(@p1)) = @p1
     `).WithArgs(DBNameMSSQL, tableNameMSSQL).WillReturnRows(rows)
 
-	constraints, err := pg.GetForeignKeys(DBNameMSSQL, tableNameMSSQL)
+	constraints, err := pg.GetForeignKeys(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}

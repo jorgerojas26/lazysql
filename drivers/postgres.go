@@ -268,7 +268,7 @@ func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
 	return constraints, nil
 }
 
-func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
+func (db *Postgres) GetForeignKeys(ctx context.Context, database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -292,7 +292,7 @@ func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
-	rows, err := conn.Query(fmt.Sprintf(`
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
         SELECT
             con.conname AS constraint_name,
             src_att.attname AS column_name,

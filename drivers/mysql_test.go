@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -749,9 +750,17 @@ func TestMySQL_GetForeignKeys_Error(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	mock.ExpectQuery("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = \\? AND REFERENCED_TABLE_NAME = \\?").WithArgs(testDBNameMySQL, testDBTableNameMySQL).WillReturnError(errors.New("query error"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("legacy fast path query error"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("modern fast path query error"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFallbackQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("fallback query error"))
 
-	_, err = mysql.GetForeignKeys(testDBNameMySQL, testDBTableNameMySQL)
+	_, err = mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -1303,7 +1312,6 @@ func TestMySQL_GetForeignKeys(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	// Set up mock expectations
 	rows := sqlmock.NewRows([]string{
 		"TABLE_NAME",
 		"COLUMN_NAME",
@@ -1312,14 +1320,11 @@ func TestMySQL_GetForeignKeys(t *testing.T) {
 		"REFERENCED_TABLE_NAME",
 	}).AddRow("orders", "user_id", "fk_user", "id", "users")
 
-	mock.ExpectQuery(
-		"SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME "+
-			"FROM information_schema.KEY_COLUMN_USAGE "+
-			"WHERE REFERENCED_TABLE_SCHEMA = \\? AND REFERENCED_TABLE_NAME = \\?").
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
 		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
 		WillReturnRows(rows)
 
-	foreignKeys, err := mysql.GetForeignKeys(testDBNameMySQL, testDBTableNameMySQL)
+	foreignKeys, err := mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}
@@ -1335,6 +1340,106 @@ func TestMySQL_GetForeignKeys(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_GetForeignKeys_UsesModernInnoDBFastPath(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	mysql := &MySQL{Connection: db}
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("legacy metadata unavailable"))
+
+	rows := sqlmock.NewRows([]string{
+		"TABLE_NAME",
+		"COLUMN_NAME",
+		"CONSTRAINT_NAME",
+		"REFERENCED_COLUMN_NAME",
+		"REFERENCED_TABLE_NAME",
+	}).AddRow("orders", "user_id", "fk_user", "id", "users")
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnRows(rows)
+
+	foreignKeys, err := mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
+	if err != nil {
+		t.Fatalf("GetForeignKeys modern fast path failed: %v", err)
+	}
+	if len(foreignKeys) != 2 || foreignKeys[1][0] != "orders" {
+		t.Fatalf("unexpected foreign keys: %v", foreignKeys)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_GetForeignKeys_FallsBackToKeyColumnUsage(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	mysql := &MySQL{Connection: db}
+
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("legacy INNODB metadata unavailable"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("modern INNODB metadata unavailable"))
+
+	rows := sqlmock.NewRows([]string{
+		"TABLE_NAME",
+		"COLUMN_NAME",
+		"CONSTRAINT_NAME",
+		"REFERENCED_COLUMN_NAME",
+		"REFERENCED_TABLE_NAME",
+	}).AddRow("orders", "user_id", "fk_user", "id", "users")
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFallbackQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnRows(rows)
+
+	foreignKeys, err := mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
+	if err != nil {
+		t.Fatalf("GetForeignKeys fallback failed: %v", err)
+	}
+
+	expected := [][]string{
+		{"TABLE_NAME", "COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_COLUMN_NAME", "REFERENCED_TABLE_NAME"},
+		{"orders", "user_id", "fk_user", "id", "users"},
+	}
+	if !reflect.DeepEqual(foreignKeys, expected) {
+		t.Fatalf("Expected:\n%v\nGot:\n%v", expected, foreignKeys)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_GetForeignKeysHonorsCanceledContext(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	mysql := &MySQL{Connection: db}
+	_, err = mysql.GetForeignKeys(ctx, testDBNameMySQL, testDBTableNameMySQL)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unexpected database query after cancellation: %s", err)
 	}
 }
 

@@ -52,7 +52,7 @@ func (driver *refreshCallDriver) GetPrimaryKeyColumnNames(string, string) ([]str
 	return []string{"id"}, nil
 }
 
-func (driver *refreshCallDriver) GetForeignKeys(string, string) ([][]string, error) {
+func (driver *refreshCallDriver) GetForeignKeys(context.Context, string, string) ([][]string, error) {
 	driver.record(MetadataForeignKeys)
 	return [][]string{{"constraint_name"}, {"orders_user_fk"}}, nil
 }
@@ -63,7 +63,7 @@ type retryForeignKeyDriver struct {
 	fail bool
 }
 
-func (driver *retryForeignKeyDriver) GetForeignKeys(string, string) ([][]string, error) {
+func (driver *retryForeignKeyDriver) GetForeignKeys(context.Context, string, string) ([][]string, error) {
 	driver.record(MetadataForeignKeys)
 	driver.mu.Lock()
 	fail := driver.fail
@@ -100,7 +100,7 @@ func (driver *pendingForeignKeyDriver) GetProvider() string {
 	return drivers.DriverPostgres
 }
 
-func (driver *pendingForeignKeyDriver) GetForeignKeys(string, string) ([][]string, error) {
+func (driver *pendingForeignKeyDriver) GetForeignKeys(context.Context, string, string) ([][]string, error) {
 	driver.record(MetadataForeignKeys)
 	close(driver.started)
 	<-driver.released
@@ -132,7 +132,7 @@ func (driver *blockingProviderDriver) GetProvider() string {
 	return drivers.DriverPostgres
 }
 
-func (driver *blockingProviderDriver) GetForeignKeys(string, string) ([][]string, error) {
+func (driver *blockingProviderDriver) GetForeignKeys(context.Context, string, string) ([][]string, error) {
 	return [][]string{
 		{"constraint_name", "column_name", "foreign_table_name", "foreign_column_name"},
 		{"orders_user_fk", "user_id", "users", "id"},

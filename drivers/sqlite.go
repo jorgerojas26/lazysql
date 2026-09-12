@@ -192,14 +192,14 @@ func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error
 	return results, nil
 }
 
-func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error) {
+func (db *SQLite) GetForeignKeys(ctx context.Context, _, table string) (results [][]string, err error) {
 	if table == "" {
 		return nil, errors.New("table name is required")
 	}
 
 	formattedTableName := db.formatTableName(table)
 
-	rows, err := db.Connection.Query("PRAGMA foreign_key_list(" + formattedTableName + ")")
+	rows, err := db.Connection.QueryContext(ctx, "PRAGMA foreign_key_list("+formattedTableName+")")
 	if err != nil {
 		return nil, err
 	}

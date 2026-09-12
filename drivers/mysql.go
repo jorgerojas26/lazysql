@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/xo/dburl"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -198,7 +200,74 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 	return results, nil
 }
 
-func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err error) {
+// MySQL 5.6/5.7 expose the InnoDB dictionary with the INNODB_SYS_* names;
+// MySQL 8 uses the corresponding INNODB_* tables. Both avoid the
+// instance-wide KEY_COLUMN_USAGE lookup for the common InnoDB case.
+const (
+	mysqlForeignKeysLegacyFastPathQuery = `
+SELECT
+    SUBSTRING_INDEX(f.FOR_NAME, '/', -1) AS TABLE_NAME,
+    fc.FOR_COL_NAME AS COLUMN_NAME,
+    SUBSTRING_INDEX(f.ID, '/', -1) AS CONSTRAINT_NAME,
+    fc.REF_COL_NAME AS REFERENCED_COLUMN_NAME,
+    SUBSTRING_INDEX(f.REF_NAME, '/', -1) AS REFERENCED_TABLE_NAME
+FROM information_schema.INNODB_SYS_FOREIGN AS f
+INNER JOIN information_schema.INNODB_SYS_FOREIGN_COLS AS fc
+    ON f.ID = fc.ID
+WHERE f.REF_NAME = CONCAT(?, '/', ?)
+ORDER BY f.ID, fc.POS`
+	mysqlForeignKeysFastPathQuery = `
+SELECT
+    SUBSTRING_INDEX(f.FOR_NAME, '/', -1) AS TABLE_NAME,
+    fc.FOR_COL_NAME AS COLUMN_NAME,
+    SUBSTRING_INDEX(f.ID, '/', -1) AS CONSTRAINT_NAME,
+    fc.REF_COL_NAME AS REFERENCED_COLUMN_NAME,
+    SUBSTRING_INDEX(f.REF_NAME, '/', -1) AS REFERENCED_TABLE_NAME
+FROM information_schema.INNODB_FOREIGN AS f
+INNER JOIN information_schema.INNODB_FOREIGN_COLS AS fc
+    ON f.ID = fc.ID
+WHERE f.REF_NAME = CONCAT(?, '/', ?)
+ORDER BY f.ID, fc.POS`
+	mysqlForeignKeysFallbackQuery = "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
+)
+
+var mysqlForeignKeysFastPathQueries = []struct {
+	name  string
+	query string
+}{
+	{name: "innodb_sys_foreign", query: mysqlForeignKeysLegacyFastPathQuery},
+	{name: "innodb_foreign", query: mysqlForeignKeysFastPathQuery},
+}
+
+func (db *MySQL) GetForeignKeys(ctx context.Context, database, table string) (results [][]string, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	started := time.Now()
+	fallback := "none"
+	fastPath := "none"
+	var fastPathErrors []string
+	defer func() {
+		data := map[string]any{
+			"operation":     "get_foreign_keys",
+			"driver":        DriverMySQL,
+			"database":      database,
+			"table":         table,
+			"duration":      time.Since(started).String(),
+			"fast_path":     fastPath,
+			"fallback":      fallback,
+			"fallback_used": fallback != "none",
+		}
+		if len(fastPathErrors) > 0 {
+			data["fast_path_error"] = strings.Join(fastPathErrors, "; ")
+		}
+		if err != nil {
+			data["error"] = err.Error()
+		}
+		logger.Debug("Loaded MySQL foreign-key metadata", data)
+	}()
+
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -207,9 +276,24 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	query := "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
+	for _, fastPathQuery := range mysqlForeignKeysFastPathQueries {
+		results, err = db.queryForeignKeys(ctx, fastPathQuery.query, database, table)
+		if err == nil {
+			fastPath = fastPathQuery.name
+			return results, nil
+		}
+		fastPathErrors = append(fastPathErrors, fastPathQuery.name+": "+err.Error())
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
 
-	rows, err := db.Connection.Query(query, database, table)
+	fallback = "key_column_usage"
+	return db.queryForeignKeys(ctx, mysqlForeignKeysFallbackQuery, database, table)
+}
+
+func (db *MySQL) queryForeignKeys(ctx context.Context, query string, args ...any) (results [][]string, err error) {
+	rows, err := db.Connection.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -228,12 +312,11 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		err = rows.Scan(rowValues...)
-		if err != nil {
+		if err := rows.Scan(rowValues...); err != nil {
 			return nil, err
 		}
 
-		var row []string
+		row := make([]string, 0, len(rowValues))
 		for _, col := range rowValues {
 			row = append(row, string(*col.(*sql.RawBytes)))
 		}

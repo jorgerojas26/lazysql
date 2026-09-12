@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -282,7 +283,7 @@ func (m *concurrentMetadataMock) GetConstraints(string, string) ([][]string, err
 	return result.([][]string), err
 }
 
-func (m *concurrentMetadataMock) GetForeignKeys(string, string) ([][]string, error) {
+func (m *concurrentMetadataMock) GetForeignKeys(context.Context, string, string) ([][]string, error) {
 	value := [][]string{{"constraint_name"}, {"orders_fk"}}
 	result, err := m.load(MetadataForeignKeys, value)
 	return result.([][]string), err

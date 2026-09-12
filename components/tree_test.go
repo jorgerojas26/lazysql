@@ -436,8 +436,10 @@ func (m *schemaProgrammingMock) GetDatabases() ([]string, error)                
 func (m *schemaProgrammingMock) GetTables(string) (map[string][]string, error)      { return nil, nil }
 func (m *schemaProgrammingMock) GetTableColumns(string, string) ([][]string, error) { return nil, nil }
 func (m *schemaProgrammingMock) GetConstraints(string, string) ([][]string, error)  { return nil, nil }
-func (m *schemaProgrammingMock) GetForeignKeys(string, string) ([][]string, error)  { return nil, nil }
-func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error)      { return nil, nil }
+func (m *schemaProgrammingMock) GetForeignKeys(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error) { return nil, nil }
 func (m *schemaProgrammingMock) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
 	return drivers.PageResult{}, nil
 }

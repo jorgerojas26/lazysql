@@ -367,7 +367,7 @@ func TestSQLite_GetForeignKeys(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("PRAGMA foreign_key_list\\(%s\\)", sqlite.formatTableName(testDBTableNameSQLite))).
 		WillReturnRows(rows)
 
-	constraints, err := sqlite.GetForeignKeys(testDBNameSQLite, testDBTableNameSQLite)
+	constraints, err := sqlite.GetForeignKeys(context.Background(), testDBNameSQLite, testDBTableNameSQLite)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}

@@ -237,7 +237,7 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
 	return db.getTableInformation(query, currentSchema, table, "")
 }
 
-func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
+func (db *MSSQL) GetForeignKeys(ctx context.Context, database, table string) ([][]string, error) {
 	query := db.databasePrefix(database) + `
         SELECT
             fk.name AS constraint_name,
@@ -265,7 +265,7 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
           AND DB_NAME(DB_ID(@p1)) = @p1
     `
 
-	return db.getTableInformation(query, database, table, "")
+	return db.getTableInformationContext(ctx, query, database, table, "")
 }
 
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
@@ -730,6 +730,10 @@ func (db *MSSQL) GetProvider() string {
 //   - database name, used for filtering table_catalog
 //   - table name, used for filtering table_name
 func (db *MSSQL) getTableInformation(query, database, table, schema string) ([][]string, error) {
+	return db.getTableInformationContext(context.Background(), query, database, table, schema)
+}
+
+func (db *MSSQL) getTableInformationContext(ctx context.Context, query, database, table, schema string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -750,7 +754,7 @@ func (db *MSSQL) getTableInformation(query, database, table, schema string) ([][
 		args = append(args, schema)
 	}
 
-	rows, err := db.Connection.Query(query, args...)
+	rows, err := db.Connection.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

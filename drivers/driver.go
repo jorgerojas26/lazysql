@@ -20,7 +20,7 @@ type Driver interface {
 	GetTables(database string) (map[string][]string, error)
 	GetTableColumns(database, table string) ([][]string, error)
 	GetConstraints(database, table string) ([][]string, error)
-	GetForeignKeys(database, table string) ([][]string, error)
+	GetForeignKeys(ctx context.Context, database, table string) ([][]string, error)
 	GetIndexes(database, table string) ([][]string, error)
 	GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error)
 	GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error)

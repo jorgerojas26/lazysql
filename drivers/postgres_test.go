@@ -400,7 +400,7 @@ func TestPostgres_GetForeignKeys(t *testing.T) {
         ORDER BY con.conname, src_att.attnum
   `, schemaPostgres, tableNamePostgres)).WillReturnRows(rows)
 
-	constraints, err := pg.GetForeignKeys(DBNamePostgres, schemaAndTablePostgres)
+	constraints, err := pg.GetForeignKeys(context.Background(), DBNamePostgres, schemaAndTablePostgres)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}

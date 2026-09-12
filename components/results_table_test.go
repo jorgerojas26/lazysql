@@ -500,6 +500,66 @@ func TestFetchRecordsRendersBeforeMetadata(t *testing.T) {
 	<-appDone
 }
 
+type slowForeignKeyFirstPaintMock struct {
+	recordsFirstPaintMock
+	started chan struct{}
+	once    sync.Once
+}
+
+func (m *slowForeignKeyFirstPaintMock) GetForeignKeys(ctx context.Context, _, _ string) ([][]string, error) {
+	m.once.Do(func() { close(m.started) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestFetchRecordsRendersBeforeSlowForeignKeys(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init simulation screen: %v", err)
+	}
+	App.SetScreen(screen)
+
+	driver := &slowForeignKeyFirstPaintMock{started: make(chan struct{})}
+	table := newRecordsFetchTestTable(driver)
+	root := tview.NewPages()
+	root.AddPage(pageNameTable, table, true, true)
+	appDone := make(chan struct{})
+	go func() {
+		defer close(appDone)
+		_ = App.Run(root, "")
+	}()
+	App.QueueUpdate(func() {})
+
+	rendered := make(chan struct{})
+	table.FetchRecords(nil, func() {
+		pageCalls, _ := driver.counts()
+		if pageCalls != 1 {
+			t.Errorf("expected one page fetch before first paint, got %d", pageCalls)
+		}
+		select {
+		case <-driver.started:
+			t.Errorf("slow Foreign Keys lookup started before Records first paint")
+		default:
+		}
+		close(rendered)
+	})
+
+	select {
+	case <-rendered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Records first paint was blocked by Foreign Keys metadata")
+	}
+	select {
+	case <-driver.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Foreign Keys metadata lookup did not start in the background")
+	}
+
+	table.CancelLoading()
+	App.Application.Stop()
+	<-appDone
+}
+
 type staleRecordsLoadMock struct {
 	schemaProgrammingMock
 

@@ -1,7 +1,7 @@
 ---
 # lazysql-532r
 title: '[06] Eliminate the MySQL #340 foreign-key metadata hotspot'
-status: todo
+status: completed
 type: bug
 priority: high
 tags:
@@ -14,7 +14,7 @@ tags:
     - ready-for-agent
     - ticket-key-mysql-foreign-key-hotspot
 created_at: 2026-09-12T03:19:44Z
-updated_at: 2026-09-12T03:19:45Z
+updated_at: 2026-09-12T09:46:15Z
 parent: lazysql-a9lf
 blocked_by:
     - lazysql-846w
@@ -30,12 +30,18 @@ The operation must remain cancelable and preserve existing LazySQL FK metadata s
 
 ## Acceptance criteria
 
-- [ ] MySQL FK metadata loading has a fast path based on compatible InnoDB metadata where available.
-- [ ] The fast path returns the FK information LazySQL needs with existing observable semantics preserved.
-- [ ] Permission or compatibility failure falls back to the existing compatible metadata mechanism rather than breaking FK functionality.
-- [ ] Servers where the fast path is unavailable remain supported through fallback.
-- [ ] FK metadata loading uses the caller context and can be cancelled at the database layer.
-- [ ] Fast-path and fallback behavior are covered by tests without requiring a privileged production server.
-- [ ] A regression/performance scenario representative of issue #340 proves that Records first paint is not blocked by FK metadata.
-- [ ] Background FK lookup no longer relies solely on the known pathological query path.
-- [ ] Debug logging can identify FK lookup duration and whether fallback was used.
+- [x] MySQL FK metadata loading has a fast path based on compatible InnoDB metadata where available.
+- [x] The fast path returns the FK information LazySQL needs with existing observable semantics preserved.
+- [x] Permission or compatibility failure falls back to the existing compatible metadata mechanism rather than breaking FK functionality.
+- [x] Servers where the fast path is unavailable remain supported through fallback.
+- [x] FK metadata loading uses the caller context and can be cancelled at the database layer.
+- [x] Fast-path and fallback behavior are covered by tests without requiring a privileged production server.
+- [x] A regression/performance scenario representative of issue #340 proves that Records first paint is not blocked by FK metadata.
+- [x] Background FK lookup no longer relies solely on the known pathological query path.
+- [x] Debug logging can identify FK lookup duration and whether fallback was used.
+
+## Summary of Changes
+
+- Added MySQL 5.6/5.7 and 8.x InnoDB foreign-key dictionary fast paths with KEY_COLUMN_USAGE fallback.
+- Propagated cancellable contexts through FK metadata loading and all driver implementations.
+- Added fast-path, fallback, cancellation, and Records-first-paint regression coverage with structured debug timing logs.

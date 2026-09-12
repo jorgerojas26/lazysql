@@ -163,9 +163,9 @@ func (cache *metadataCache) request(key metadataKey, load func() (any, error)) <
 }
 
 // invalidate removes one metadata entry so the next request performs a fresh
-// database lookup. In-flight requests cannot be canceled because the driver
-// metadata API has no context, so their completion is released and ignored by
-// the cache if a replacement request wins the race.
+// database lookup. The cache releases an in-flight completion and ignores its
+// result if a replacement request wins the race; context-aware loaders may also
+// stop their database work when their caller cancels the operation.
 func (cache *metadataCache) invalidate(key metadataKey) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -209,6 +209,10 @@ func (home *Home) metadataCacheForConnection() *metadataCache {
 }
 
 func (table *ResultsTable) requestMetadata(databaseName, tableName string, kind MetadataKind) (metadataKey, <-chan struct{}) {
+	return table.requestMetadataWithContext(context.Background(), databaseName, tableName, kind)
+}
+
+func (table *ResultsTable) requestMetadataWithContext(ctx context.Context, databaseName, tableName string, kind MetadataKind) (metadataKey, <-chan struct{}) {
 	key := newMetadataKey(databaseName, tableName, kind)
 	cache := table.metadataCacheForTable()
 	done := cache.request(key, func() (any, error) {
@@ -218,7 +222,7 @@ func (table *ResultsTable) requestMetadata(databaseName, tableName string, kind 
 		case MetadataPrimaryKeys:
 			return table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
 		case MetadataForeignKeys:
-			return table.DBDriver.GetForeignKeys(databaseName, tableName)
+			return table.DBDriver.GetForeignKeys(ctx, databaseName, tableName)
 		case MetadataConstraints:
 			return table.DBDriver.GetConstraints(databaseName, tableName)
 		case MetadataIndexes:
@@ -310,7 +314,7 @@ func (table *ResultsTable) loadMetadataKind(ctx context.Context, generation uint
 	// Metadata consumers outlive Records and surface loads. Only a table
 	// identity change makes a pending result stale.
 	identityGeneration := table.metadataIdentityGenerationValue()
-	key, done := table.requestMetadata(databaseName, tableName, kind)
+	key, done := table.requestMetadataWithContext(ctx, databaseName, tableName, kind)
 	if done != nil {
 		table.metadataApplyMu.Lock()
 		if table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
