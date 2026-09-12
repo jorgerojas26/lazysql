@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"strings"
@@ -32,24 +33,24 @@ func newSchemaLoader(driver drivers.Driver, cache *metadataCache) *schemaLoader 
 	return &schemaLoader{driver: driver, cache: cache}
 }
 
-func (loader *schemaLoader) requestTables(database string) (metadataKey, <-chan struct{}) {
+func (loader *schemaLoader) requestTables(ctx context.Context, database string) (metadataKey, <-chan struct{}) {
 	key := newMetadataKey(database, "", MetadataTables)
 	if loader == nil || loader.driver == nil {
 		return key, nil
 	}
 
 	done := loader.cache.request(key, func() (any, error) {
-		return loader.driver.GetTables(database)
+		return loader.driver.GetTables(ctx, database)
 	})
 	return key, done
 }
 
-func (loader *schemaLoader) loadTables(database string) (map[string][]string, error) {
+func (loader *schemaLoader) loadTables(ctx context.Context, database string) (map[string][]string, error) {
 	if loader == nil || loader.driver == nil {
 		return nil, errors.New("schema loader driver is nil")
 	}
 
-	key, done := loader.requestTables(database)
+	key, done := loader.requestTables(ctx, database)
 	if done != nil {
 		<-done
 	}
@@ -132,14 +133,14 @@ func (loader *schemaLoader) visibleTables(database string, tables map[string][]s
 	return visible
 }
 
-func (loader *schemaLoader) requestColumns(database, table string) (metadataKey, <-chan struct{}) {
+func (loader *schemaLoader) requestColumns(ctx context.Context, database, table string) (metadataKey, <-chan struct{}) {
 	key := newMetadataKey(database, table, MetadataColumns)
 	if loader == nil || loader.driver == nil {
 		return key, nil
 	}
 
 	done := loader.cache.request(key, func() (any, error) {
-		return loader.driver.GetTableColumns(database, table)
+		return loader.driver.GetTableColumns(ctx, database, table)
 	})
 	return key, done
 }
@@ -147,7 +148,7 @@ func (loader *schemaLoader) requestColumns(database, table string) (metadataKey,
 // preloadEditorColumns eagerly loads only small visible schemas. A driver
 // bulk capability is optional; without it the shared loader leaves columns
 // lazy rather than recreating a per-table N+1 query pattern.
-func (loader *schemaLoader) preloadEditorColumns(database string, tables []editorSchemaTable, threshold int, publish func(editorSchemaTable, []string)) {
+func (loader *schemaLoader) preloadEditorColumns(ctx context.Context, database string, tables []editorSchemaTable, threshold int, publish func(editorSchemaTable, []string)) {
 	if loader == nil || loader.driver == nil || len(tables) == 0 {
 		return
 	}
@@ -195,7 +196,7 @@ func (loader *schemaLoader) preloadEditorColumns(database string, tables []edito
 	for _, table := range pending {
 		names = append(names, table.qualifiedName)
 	}
-	bulkResults, err := bulkLoader.GetTableColumnsBulk(database, names)
+	bulkResults, err := bulkLoader.GetTableColumnsBulk(ctx, database, names)
 	if err != nil {
 		logger.Error("Failed to bulk load table columns for editor autocomplete", map[string]any{
 			"database": database,

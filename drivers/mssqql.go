@@ -57,11 +57,12 @@ func mssqlGUIDToUUID(dbBytes []byte) (uuid.UUID, error) {
 	return uuid.FromBytes(b)
 }
 
-func (db *MSSQL) TestConnection(urlstr string) error {
-	return db.Connect(urlstr)
+func (db *MSSQL) TestConnection(ctx context.Context, urlstr string) error {
+	return db.Connect(ctx, urlstr)
 }
 
-func (db *MSSQL) Connect(urlstr string) error {
+func (db *MSSQL) Connect(ctx context.Context, urlstr string) error {
+	ctx = contextOrBackground(ctx)
 	if urlstr == "" {
 		return errors.New("url string can not be empty")
 	}
@@ -80,12 +81,13 @@ func (db *MSSQL) Connect(urlstr string) error {
 		return err
 	}
 
-	if err := db.Connection.Ping(); err != nil {
+	if err := db.Connection.PingContext(ctx); err != nil {
 		return err
 	}
 
 	var engineEdition int
-	if err := db.Connection.QueryRow(
+	if err := db.Connection.QueryRowContext(
+		ctx,
 		`SELECT CAST(SERVERPROPERTY('EngineEdition') AS INT)`,
 	).Scan(&engineEdition); err != nil {
 		return err
@@ -110,11 +112,12 @@ func (db *MSSQL) databasePrefix(database string) string {
 	return "USE " + quoteMSSQLIdentifier(database) + "; "
 }
 
-func (db *MSSQL) GetDatabases() ([]string, error) {
+func (db *MSSQL) GetDatabases(ctx context.Context) ([]string, error) {
+	ctx = contextOrBackground(ctx)
 	if db.isAzureSQL {
 		var database string
 
-		if err := db.Connection.QueryRow("SELECT DB_NAME()").Scan(&database); err != nil {
+		if err := db.Connection.QueryRowContext(ctx, "SELECT DB_NAME()").Scan(&database); err != nil {
 			return nil, err
 		}
 
@@ -130,7 +133,7 @@ func (db *MSSQL) GetDatabases() ([]string, error) {
 			sys.databases
 	`
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +156,8 @@ func (db *MSSQL) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
+func (db *MSSQL) GetTables(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -162,7 +166,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	query := "SELECT name FROM " + quoteMSSQLIdentifier(database) + ".sys.tables"
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +189,8 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
+func (db *MSSQL) GetTableColumns(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
 	query := db.databasePrefix(database) + `
         SELECT
             c.name AS column_name,
@@ -204,11 +209,12 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
         ORDER BY c.column_id;
     `
 
-	return db.getTableInformation(query, database, table, "")
+	return db.getTableInformation(ctx, query, database, table, "")
 }
 
-func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+func (db *MSSQL) GetConstraints(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
+	currentSchema, err := db.getCurrentSchema(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -234,10 +240,11 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
           AND kc.type IN ('PK', 'UQ')
     `
 
-	return db.getTableInformation(query, currentSchema, table, "")
+	return db.getTableInformation(ctx, query, currentSchema, table, "")
 }
 
 func (db *MSSQL) GetForeignKeys(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
 	query := db.databasePrefix(database) + `
         SELECT
             fk.name AS constraint_name,
@@ -265,11 +272,12 @@ func (db *MSSQL) GetForeignKeys(ctx context.Context, database, table string) ([]
           AND DB_NAME(DB_ID(@p1)) = @p1
     `
 
-	return db.getTableInformationContext(ctx, query, database, table, "")
+	return db.getTableInformation(ctx, query, database, table, "")
 }
 
-func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+func (db *MSSQL) GetIndexes(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
+	currentSchema, err := db.getCurrentSchema(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -318,10 +326,11 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
         ORDER BY i.type_desc
     `, databaseJoin, databaseFilter)
 
-	return db.getTableInformation(query, database, table, currentSchema)
+	return db.getTableInformation(ctx, query, database, table, currentSchema)
 }
 
 func (db *MSSQL) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return PageResult{}, errors.New("database name is required")
 	}
@@ -452,6 +461,7 @@ func (db *MSSQL) GetRecords(ctx context.Context, database, table, where, sort st
 }
 
 func (db *MSSQL) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -478,6 +488,7 @@ func (db *MSSQL) GetEstimatedRowCount(ctx context.Context, database, table strin
 }
 
 func (db *MSSQL) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return 0, errors.New("database name is required")
 	}
@@ -497,7 +508,8 @@ func (db *MSSQL) GetExactRowCount(ctx context.Context, database, table, where st
 	return count, nil
 }
 
-func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MSSQL) UpdateRecord(ctx context.Context, database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return errors.New("database name is required")
 	}
@@ -524,12 +536,13 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 		" = @p1 WHERE " + db.FormatReference(primaryKeyColumnName) +
 		" = @p2"
 
-	_, err := db.Connection.Exec(query, value, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, value, primaryKeyValue)
 
 	return err
 }
 
-func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MSSQL) DeleteRecord(ctx context.Context, database, table, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return errors.New("database name is required")
 	}
@@ -551,17 +564,18 @@ func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 		" WHERE " + db.FormatReference(primaryKeyColumnName) +
 		" = @p1"
 
-	_, err := db.Connection.Exec(query, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, primaryKeyValue)
 
 	return err
 }
 
-func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
+func (db *MSSQL) ExecuteDMLStatement(ctx context.Context, query string) (string, error) {
+	ctx = contextOrBackground(ctx)
 	if query == "" {
 		return "", errors.New("query is required")
 	}
 
-	res, err := db.Connection.Exec(query)
+	res, err := db.Connection.ExecContext(ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -580,12 +594,13 @@ func (db *MSSQL) StreamQuery(ctx context.Context, query string, maxRows int, onB
 	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
 }
 
-func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
+func (db *MSSQL) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+	ctx = contextOrBackground(ctx)
 	if query == "" {
 		return nil, 0, errors.New("query can not be empty")
 	}
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -627,7 +642,8 @@ func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
 	return results, len(records), nil
 }
 
-func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *MSSQL) ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error {
+	ctx = contextOrBackground(ctx)
 	var queries []models.Query
 
 	for _, change := range changes {
@@ -647,10 +663,11 @@ func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 
 	logger.Info("queries", map[string]any{"queries": queries})
 
-	return queriesInTransaction(db.Connection, queries)
+	return queriesInTransaction(ctx, db.Connection, queries)
 }
 
-func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, error) {
+func (db *MSSQL) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) ([]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -659,7 +676,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	currentSchema, err := db.getCurrentSchema()
+	currentSchema, err := db.getCurrentSchema(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -692,7 +709,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		ORDER BY ic.key_ordinal
 	`
 
-	rows, err := db.Connection.Query(query, "PK", currentSchema, table)
+	rows, err := db.Connection.QueryContext(ctx, query, "PK", currentSchema, table)
 	if err != nil {
 		return nil, err
 	}
@@ -735,11 +752,8 @@ func (db *MSSQL) GetProvider() string {
 //
 //   - database name, used for filtering table_catalog
 //   - table name, used for filtering table_name
-func (db *MSSQL) getTableInformation(query, database, table, schema string) ([][]string, error) {
-	return db.getTableInformationContext(context.Background(), query, database, table, schema)
-}
-
-func (db *MSSQL) getTableInformationContext(ctx context.Context, query, database, table, schema string) ([][]string, error) {
+func (db *MSSQL) getTableInformation(ctx context.Context, query, database, table, schema string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -891,9 +905,10 @@ func (db *MSSQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 	return queryStr, nil
 }
 
-func (db *MSSQL) getCurrentSchema() (string, error) {
+func (db *MSSQL) getCurrentSchema(ctx context.Context) (string, error) {
+	ctx = contextOrBackground(ctx)
 	query := "SELECT SCHEMA_NAME() AS CurrentSchema"
-	row := db.Connection.QueryRow(query)
+	row := db.Connection.QueryRowContext(ctx, query)
 
 	var currentSchema string
 	err := row.Scan(&currentSchema)
@@ -904,7 +919,8 @@ func (db *MSSQL) getCurrentSchema() (string, error) {
 	return currentSchema, nil
 }
 
-func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
+func (db *MSSQL) GetFunctions(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -918,7 +934,7 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION')
 	`
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -942,7 +958,8 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 	return functions, nil
 }
 
-func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
+func (db *MSSQL) GetProcedures(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -956,7 +973,7 @@ func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
 		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')
 	`
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -988,7 +1005,8 @@ func (db *MSSQL) UseSchemas() bool {
 	return false
 }
 
-func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
+func (db *MSSQL) GetViews(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -1002,7 +1020,7 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 		WHERE o.type_desc IN ('VIEW')
 	`
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -1026,7 +1044,8 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 	return views, nil
 }
 
-func (db *MSSQL) GetObjectDefinition(database string, name string) (string, error) {
+func (db *MSSQL) GetObjectDefinition(ctx context.Context, database string, name string) (string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return "", errors.New("database name is required")
 	}
@@ -1045,7 +1064,7 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
     select @proc_source as result;
 	`
 
-	row := db.Connection.QueryRow(query, sql.Named("name", name))
+	row := db.Connection.QueryRowContext(ctx, query, sql.Named("name", name))
 
 	if err := row.Scan(&result); err != nil {
 		return result, err
@@ -1054,14 +1073,14 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
 	return result, nil
 }
 
-func (db *MSSQL) GetFunctionDefinition(database string, name string) (string, error) {
-	return db.GetObjectDefinition(database, name)
+func (db *MSSQL) GetFunctionDefinition(ctx context.Context, database string, name string) (string, error) {
+	return db.GetObjectDefinition(ctx, database, name)
 }
 
-func (db *MSSQL) GetProcedureDefinition(database string, name string) (string, error) {
-	return db.GetObjectDefinition(database, name)
+func (db *MSSQL) GetProcedureDefinition(ctx context.Context, database string, name string) (string, error) {
+	return db.GetObjectDefinition(ctx, database, name)
 }
 
-func (db *MSSQL) GetViewDefinition(database string, name string) (string, error) {
-	return db.GetObjectDefinition(database, name)
+func (db *MSSQL) GetViewDefinition(ctx context.Context, database string, name string) (string, error) {
+	return db.GetObjectDefinition(ctx, database, name)
 }

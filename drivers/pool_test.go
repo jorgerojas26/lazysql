@@ -85,7 +85,7 @@ func TestApplyConnectionPoolConfigUsesDefaultsForZero(t *testing.T) {
 
 func TestApplySQLitePoolConfigKeepsInMemoryDatabaseOnOneConnection(t *testing.T) {
 	db := &SQLite{}
-	if err := db.Connect(":memory:"); err != nil {
+	if err := db.Connect(context.Background(), ":memory:"); err != nil {
 		t.Fatalf("SQLite.Connect() error = %v", err)
 	}
 	defer db.Connection.Close()

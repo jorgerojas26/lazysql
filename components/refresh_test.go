@@ -42,12 +42,12 @@ func (driver *refreshCallDriver) count(kind MetadataKind) int {
 	return driver.calls[kind]
 }
 
-func (driver *refreshCallDriver) GetTableColumns(string, string) ([][]string, error) {
+func (driver *refreshCallDriver) GetTableColumns(context.Context, string, string) ([][]string, error) {
 	driver.record(MetadataColumns)
 	return [][]string{{"column_name"}, {"id"}}, nil
 }
 
-func (driver *refreshCallDriver) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
+func (driver *refreshCallDriver) GetPrimaryKeyColumnNames(context.Context, string, string) ([]string, error) {
 	driver.record(MetadataPrimaryKeys)
 	return []string{"id"}, nil
 }
@@ -139,12 +139,12 @@ func (driver *blockingProviderDriver) GetForeignKeys(context.Context, string, st
 	}, nil
 }
 
-func (driver *refreshCallDriver) GetConstraints(string, string) ([][]string, error) {
+func (driver *refreshCallDriver) GetConstraints(context.Context, string, string) ([][]string, error) {
 	driver.record(MetadataConstraints)
 	return [][]string{{"constraint_name"}, {"orders_pk"}}, nil
 }
 
-func (driver *refreshCallDriver) GetIndexes(string, string) ([][]string, error) {
+func (driver *refreshCallDriver) GetIndexes(context.Context, string, string) ([][]string, error) {
 	driver.record(MetadataIndexes)
 	return [][]string{{"index_name"}, {"orders_id"}}, nil
 }

@@ -202,7 +202,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		db = &drivers.MSSQL{PoolConfig: poolConfig}
 	}
 
-	err = db.TestConnection(connectionString)
+	err = db.TestConnection(app.App.Context(), connectionString)
 
 	if err != nil {
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))

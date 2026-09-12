@@ -160,7 +160,7 @@ func (home *Home) subscribeToTreeChanges() {
 				table := currentTab.Content.(*ResultsTable)
 				databaseName := home.Tree.GetSelectedDatabase()
 				functionName := stateChange.Value.(string)
-				functionDefinition, err := home.Tree.DBDriver.GetFunctionDefinition(databaseName, functionName)
+				functionDefinition, err := home.Tree.DBDriver.GetFunctionDefinition(app.App.Context(), databaseName, functionName)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					continue
@@ -175,7 +175,7 @@ func (home *Home) subscribeToTreeChanges() {
 				table := currentTab.Content.(*ResultsTable)
 				databaseName := home.Tree.GetSelectedDatabase()
 				procedureName := stateChange.Value.(string)
-				procedureDefinition, err := home.Tree.DBDriver.GetProcedureDefinition(databaseName, procedureName)
+				procedureDefinition, err := home.Tree.DBDriver.GetProcedureDefinition(app.App.Context(), databaseName, procedureName)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					continue
@@ -190,7 +190,7 @@ func (home *Home) subscribeToTreeChanges() {
 				table := currentTab.Content.(*ResultsTable)
 				databaseName := home.Tree.GetSelectedDatabase()
 				viewName := stateChange.Value.(string)
-				viewDefinition, err := home.Tree.DBDriver.GetViewDefinition(databaseName, viewName)
+				viewDefinition, err := home.Tree.DBDriver.GetViewDefinition(app.App.Context(), databaseName, viewName)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					continue

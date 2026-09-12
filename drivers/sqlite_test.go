@@ -202,7 +202,7 @@ func TestSQLite_ErrorScenarios(t *testing.T) {
 					WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *SQLite) error {
-				_, err := db.GetTables(testDBNameSQLite)
+				_, err := db.GetTables(context.Background(), testDBNameSQLite)
 				return err
 			},
 		},
@@ -242,7 +242,7 @@ func TestSQLite_GetTableColumns_Error(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("PRAGMA table_info\\(%s\\)", sqlite.formatTableName(testDBTableNameSQLite))).
 		WillReturnError(errors.New("query error"))
 
-	_, err = sqlite.GetTableColumns(testDBNameSQLite, testDBTableNameSQLite)
+	_, err = sqlite.GetTableColumns(context.Background(), testDBNameSQLite, testDBTableNameSQLite)
 	if err == nil {
 		t.Fatal("Expected error but got nil")
 	}
@@ -405,7 +405,7 @@ func TestSQLite_GetIndexes(t *testing.T) {
 	// 	WillReturnRows(sqlmock.NewRows([]string{"seqno", "cid", "name"}).
 	// 		AddRow(0, 1, "name"))
 
-	indexes, err := sqlite.GetIndexes(testDBNameSQLite, testDBTableNameSQLite)
+	indexes, err := sqlite.GetIndexes(context.Background(), testDBNameSQLite, testDBTableNameSQLite)
 	if err != nil {
 		t.Fatalf("GetIndexes failed: %v", err)
 	}
@@ -488,7 +488,7 @@ func TestSQLite_ExecutePendingChanges(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err = sqlite.ExecutePendingChanges(changes)
+	err = sqlite.ExecutePendingChanges(context.Background(), changes)
 	if err != nil {
 		t.Fatalf("ExecutePendingChanges failed: %v", err)
 	}
@@ -514,7 +514,7 @@ func TestSQLite_GetPrimaryKeyColumnNames(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("PRAGMA table_info\\(%s\\)", sqlite.formatTableName(testDBTableNameSQLite))).
 		WillReturnRows(rows)
 
-	keys, err := sqlite.GetPrimaryKeyColumnNames(testDBNameSQLite, testDBTableNameSQLite)
+	keys, err := sqlite.GetPrimaryKeyColumnNames(context.Background(), testDBNameSQLite, testDBTableNameSQLite)
 	if err != nil {
 		t.Fatalf("GetPrimaryKeyColumnNames failed: %v", err)
 	}

@@ -291,15 +291,15 @@ func (table *ResultsTable) requestMetadataWithContext(ctx context.Context, datab
 	done := cache.request(key, func() (any, error) {
 		switch kind {
 		case MetadataColumns:
-			return table.DBDriver.GetTableColumns(databaseName, tableName)
+			return table.DBDriver.GetTableColumns(ctx, databaseName, tableName)
 		case MetadataPrimaryKeys:
-			return table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
+			return table.DBDriver.GetPrimaryKeyColumnNames(ctx, databaseName, tableName)
 		case MetadataForeignKeys:
 			return table.DBDriver.GetForeignKeys(ctx, databaseName, tableName)
 		case MetadataConstraints:
-			return table.DBDriver.GetConstraints(databaseName, tableName)
+			return table.DBDriver.GetConstraints(ctx, databaseName, tableName)
 		case MetadataIndexes:
-			return table.DBDriver.GetIndexes(databaseName, tableName)
+			return table.DBDriver.GetIndexes(ctx, databaseName, tableName)
 		default:
 			return nil, fmt.Errorf("unknown metadata kind %q", kind)
 		}

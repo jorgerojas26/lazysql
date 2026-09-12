@@ -436,37 +436,45 @@ type progressiveTreeDriver struct {
 	releaseProgramming chan struct{}
 }
 
-func (driver *progressiveTreeDriver) GetTables(string) (map[string][]string, error) {
+func (driver *progressiveTreeDriver) GetTables(context.Context, string) (map[string][]string, error) {
 	close(driver.tablesStarted)
 	return map[string][]string{"public": {"users"}}, nil
 }
 
-func (driver *progressiveTreeDriver) GetFunctions(string) (map[string][]string, error) {
+func (driver *progressiveTreeDriver) GetFunctions(context.Context, string) (map[string][]string, error) {
 	close(driver.programmingStart)
 	<-driver.releaseProgramming
 	return map[string][]string{"mydb": {"public.add_user"}}, nil
 }
 
-func (driver *progressiveTreeDriver) GetProcedures(string) (map[string][]string, error) {
+func (driver *progressiveTreeDriver) GetProcedures(context.Context, string) (map[string][]string, error) {
 	return map[string][]string{"mydb": {"public.cleanup"}}, nil
 }
 
-func (driver *progressiveTreeDriver) GetViews(string) (map[string][]string, error) {
+func (driver *progressiveTreeDriver) GetViews(context.Context, string) (map[string][]string, error) {
 	return map[string][]string{"mydb": {"public.user_view"}}, nil
 }
 
 type schemaProgrammingMock struct{}
 
-func (m *schemaProgrammingMock) Connect(string) error                               { return nil }
-func (m *schemaProgrammingMock) TestConnection(string) error                        { return nil }
-func (m *schemaProgrammingMock) GetDatabases() ([]string, error)                    { return nil, nil }
-func (m *schemaProgrammingMock) GetTables(string) (map[string][]string, error)      { return nil, nil }
-func (m *schemaProgrammingMock) GetTableColumns(string, string) ([][]string, error) { return nil, nil }
-func (m *schemaProgrammingMock) GetConstraints(string, string) ([][]string, error)  { return nil, nil }
+func (m *schemaProgrammingMock) Connect(context.Context, string) error          { return nil }
+func (m *schemaProgrammingMock) TestConnection(context.Context, string) error   { return nil }
+func (m *schemaProgrammingMock) GetDatabases(context.Context) ([]string, error) { return nil, nil }
+func (m *schemaProgrammingMock) GetTables(context.Context, string) (map[string][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetTableColumns(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetConstraints(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}
 func (m *schemaProgrammingMock) GetForeignKeys(context.Context, string, string) ([][]string, error) {
 	return nil, nil
 }
-func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error) { return nil, nil }
+func (m *schemaProgrammingMock) GetIndexes(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}
 func (m *schemaProgrammingMock) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
 	return drivers.PageResult{}, nil
 }
@@ -476,27 +484,45 @@ func (m *schemaProgrammingMock) GetEstimatedRowCount(context.Context, string, st
 func (m *schemaProgrammingMock) GetExactRowCount(context.Context, string, string, string) (int64, error) {
 	return 0, nil
 }
-func (m *schemaProgrammingMock) UpdateRecord(string, string, string, string, string, string) error {
+func (m *schemaProgrammingMock) UpdateRecord(context.Context, string, string, string, string, string, string) error {
 	return nil
 }
-func (m *schemaProgrammingMock) DeleteRecord(string, string, string, string) error { return nil }
-func (m *schemaProgrammingMock) ExecuteDMLStatement(string) (string, error)        { return "", nil }
-func (m *schemaProgrammingMock) ExecuteQuery(string) ([][]string, int, error)      { return nil, 0, nil }
-func (m *schemaProgrammingMock) ExecutePendingChanges([]models.DBDMLChange) error  { return nil }
-func (m *schemaProgrammingMock) GetProvider() string                               { return "mock" }
-func (m *schemaProgrammingMock) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
-	return nil, nil
+func (m *schemaProgrammingMock) DeleteRecord(context.Context, string, string, string, string) error {
+	return nil
 }
-func (m *schemaProgrammingMock) SupportsProgramming() bool                            { return true }
-func (m *schemaProgrammingMock) UseSchemas() bool                                     { return true }
-func (m *schemaProgrammingMock) GetFunctions(string) (map[string][]string, error)     { return nil, nil }
-func (m *schemaProgrammingMock) GetProcedures(string) (map[string][]string, error)    { return nil, nil }
-func (m *schemaProgrammingMock) GetViews(string) (map[string][]string, error)         { return nil, nil }
-func (m *schemaProgrammingMock) GetFunctionDefinition(string, string) (string, error) { return "", nil }
-func (m *schemaProgrammingMock) GetProcedureDefinition(string, string) (string, error) {
+func (m *schemaProgrammingMock) ExecuteDMLStatement(context.Context, string) (string, error) {
 	return "", nil
 }
-func (m *schemaProgrammingMock) GetViewDefinition(string, string) (string, error) { return "", nil }
+func (m *schemaProgrammingMock) ExecuteQuery(context.Context, string) ([][]string, int, error) {
+	return nil, 0, nil
+}
+func (m *schemaProgrammingMock) ExecutePendingChanges(context.Context, []models.DBDMLChange) error {
+	return nil
+}
+func (m *schemaProgrammingMock) GetProvider() string { return "mock" }
+func (m *schemaProgrammingMock) GetPrimaryKeyColumnNames(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) SupportsProgramming() bool { return true }
+func (m *schemaProgrammingMock) UseSchemas() bool          { return true }
+func (m *schemaProgrammingMock) GetFunctions(context.Context, string) (map[string][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetProcedures(context.Context, string) (map[string][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetViews(context.Context, string) (map[string][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetFunctionDefinition(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (m *schemaProgrammingMock) GetProcedureDefinition(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (m *schemaProgrammingMock) GetViewDefinition(context.Context, string, string) (string, error) {
+	return "", nil
+}
 
 func (m *schemaProgrammingMock) FormatArg(arg any, _ models.CellValueType) any {
 	return arg

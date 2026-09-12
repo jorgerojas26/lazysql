@@ -271,13 +271,13 @@ func (m *concurrentMetadataMock) load(kind MetadataKind, value any) (any, error)
 	return value, nil
 }
 
-func (m *concurrentMetadataMock) GetTableColumns(string, string) ([][]string, error) {
+func (m *concurrentMetadataMock) GetTableColumns(context.Context, string, string) ([][]string, error) {
 	value := [][]string{{"column_name"}, {"id"}}
 	result, err := m.load(MetadataColumns, value)
 	return result.([][]string), err
 }
 
-func (m *concurrentMetadataMock) GetConstraints(string, string) ([][]string, error) {
+func (m *concurrentMetadataMock) GetConstraints(context.Context, string, string) ([][]string, error) {
 	value := [][]string{{"constraint_name"}, {"orders_pk"}}
 	result, err := m.load(MetadataConstraints, value)
 	return result.([][]string), err
@@ -289,13 +289,13 @@ func (m *concurrentMetadataMock) GetForeignKeys(context.Context, string, string)
 	return result.([][]string), err
 }
 
-func (m *concurrentMetadataMock) GetIndexes(string, string) ([][]string, error) {
+func (m *concurrentMetadataMock) GetIndexes(context.Context, string, string) ([][]string, error) {
 	value := [][]string{{"index_name"}, {"orders_id"}}
 	result, err := m.load(MetadataIndexes, value)
 	return result.([][]string), err
 }
 
-func (m *concurrentMetadataMock) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
+func (m *concurrentMetadataMock) GetPrimaryKeyColumnNames(context.Context, string, string) ([]string, error) {
 	result, err := m.load(MetadataPrimaryKeys, []string{"id"})
 	return result.([]string), err
 }

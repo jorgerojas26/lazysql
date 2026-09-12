@@ -15,11 +15,12 @@ type SQLite struct {
 	Provider   string
 }
 
-func (db *SQLite) TestConnection(urlstr string) (err error) {
-	return db.Connect(urlstr)
+func (db *SQLite) TestConnection(ctx context.Context, urlstr string) (err error) {
+	return db.Connect(ctx, urlstr)
 }
 
-func (db *SQLite) Connect(urlstr string) (err error) {
+func (db *SQLite) Connect(ctx context.Context, urlstr string) (err error) {
+	ctx = contextOrBackground(ctx)
 	db.SetProvider(DriverSqlite)
 
 	db.Connection, err = sql.Open("sqlite", urlstr)
@@ -29,7 +30,7 @@ func (db *SQLite) Connect(urlstr string) (err error) {
 
 	applySQLitePoolConfig(db.Connection)
 
-	err = db.Connection.Ping()
+	err = db.Connection.PingContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -37,10 +38,11 @@ func (db *SQLite) Connect(urlstr string) (err error) {
 	return nil
 }
 
-func (db *SQLite) GetDatabases() ([]string, error) {
+func (db *SQLite) GetDatabases(ctx context.Context) ([]string, error) {
+	ctx = contextOrBackground(ctx)
 	var databases []string
 
-	rows, err := db.Connection.Query("SELECT file FROM pragma_database_list WHERE name='main'")
+	rows, err := db.Connection.QueryContext(ctx, "SELECT file FROM pragma_database_list WHERE name='main'")
 	if err != nil {
 		return nil, err
 	}
@@ -65,12 +67,13 @@ func (db *SQLite) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *SQLite) GetTables(database string) (map[string][]string, error) {
+func (db *SQLite) GetTables(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	rows, err := db.Connection.Query("SELECT name FROM sqlite_master WHERE type='table'")
+	rows, err := db.Connection.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table'")
 	if err != nil {
 		return nil, err
 	}
@@ -94,12 +97,13 @@ func (db *SQLite) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err error) {
+func (db *SQLite) GetTableColumns(ctx context.Context, _, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query(fmt.Sprintf("PRAGMA table_info(%s)", db.formatTableName(table)))
+	rows, err := db.Connection.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", db.formatTableName(table)))
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +146,8 @@ func (db *SQLite) GetTableColumns(_, table string) (results [][]string, err erro
 	return results, nil
 }
 
-func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error) {
+func (db *SQLite) GetConstraints(ctx context.Context, _, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return nil, errors.New("table name is required")
 	}
@@ -150,7 +155,7 @@ func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error
 	query := "SELECT sql FROM sqlite_master "
 	query += "WHERE type='table' AND name = ?"
 
-	rows, err := db.Connection.Query(query, table)
+	rows, err := db.Connection.QueryContext(ctx, query, table)
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +198,7 @@ func (db *SQLite) GetConstraints(_, table string) (results [][]string, err error
 }
 
 func (db *SQLite) GetForeignKeys(ctx context.Context, _, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return nil, errors.New("table name is required")
 	}
@@ -241,13 +247,14 @@ func (db *SQLite) GetForeignKeys(ctx context.Context, _, table string) (results 
 	return results, nil
 }
 
-func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
+func (db *SQLite) GetIndexes(ctx context.Context, _, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return nil, errors.New("table name is required")
 	}
 
 	formattedTableName := db.formatTableName(table)
-	rows, err := db.Connection.Query("PRAGMA index_list(" + formattedTableName + ")")
+	rows, err := db.Connection.QueryContext(ctx, "PRAGMA index_list("+formattedTableName+")")
 	if err != nil {
 		return nil, err
 	}
@@ -290,6 +297,7 @@ func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 }
 
 func (db *SQLite) GetRecords(ctx context.Context, _, table, where, sort string, offset, limit int) (PageResult, error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return PageResult{}, errors.New("table name is required")
 	}
@@ -371,6 +379,7 @@ func (db *SQLite) GetEstimatedRowCount(_ context.Context, _, _ string) (*int64, 
 }
 
 func (db *SQLite) GetExactRowCount(ctx context.Context, _, table, where string) (int64, error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return 0, errors.New("table name is required")
 	}
@@ -393,8 +402,9 @@ func (db *SQLite) StreamQuery(ctx context.Context, query string, maxRows int, on
 	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
 }
 
-func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {
-	rows, err := db.Connection.Query(query)
+func (db *SQLite) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+	ctx = contextOrBackground(ctx)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -438,7 +448,8 @@ func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {
 	return results, len(records), nil
 }
 
-func (db *SQLite) UpdateRecord(_, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *SQLite) UpdateRecord(ctx context.Context, _, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return errors.New("table name is required")
 	}
@@ -463,12 +474,13 @@ func (db *SQLite) UpdateRecord(_, table, column, value, primaryKeyColumnName, pr
 	query += db.formatTableName(table)
 	query += fmt.Sprintf(" SET %s = ? WHERE %s = ?", column, primaryKeyColumnName)
 
-	_, err := db.Connection.Exec(query, value, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, value, primaryKeyValue)
 
 	return err
 }
 
-func (db *SQLite) DeleteRecord(_, table, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *SQLite) DeleteRecord(ctx context.Context, _, table, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return errors.New("table name is required")
 	}
@@ -485,13 +497,14 @@ func (db *SQLite) DeleteRecord(_, table, primaryKeyColumnName, primaryKeyValue s
 	query += db.formatTableName(table)
 	query += fmt.Sprintf(" WHERE %s = ?", primaryKeyColumnName)
 
-	_, err := db.Connection.Exec(query, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, primaryKeyValue)
 
 	return err
 }
 
-func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
-	res, err := db.Connection.Exec(query)
+func (db *SQLite) ExecuteDMLStatement(ctx context.Context, query string) (result string, err error) {
+	ctx = contextOrBackground(ctx)
+	res, err := db.Connection.ExecContext(ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -504,7 +517,8 @@ func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *SQLite) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *SQLite) ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error {
+	ctx = contextOrBackground(ctx)
 	var queries []models.Query
 
 	for _, change := range changes {
@@ -522,11 +536,12 @@ func (db *SQLite) ExecutePendingChanges(changes []models.DBDMLChange) error {
 		}
 	}
 
-	return queriesInTransaction(db.Connection, queries)
+	return queriesInTransaction(ctx, db.Connection, queries)
 }
 
-func (db *SQLite) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
-	columns, err := db.GetTableColumns(database, table)
+func (db *SQLite) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) (primaryKeyColumnName []string, err error) {
+	ctx = contextOrBackground(ctx)
+	columns, err := db.GetTableColumns(ctx, database, table)
 	if err != nil {
 		return nil, err
 	}
@@ -659,15 +674,15 @@ func (db *SQLite) DMLChangeToQueryString(change models.DBDMLChange) (string, err
 	return queryStr, nil
 }
 
-func (db *SQLite) GetFunctions(_ string) (map[string][]string, error) {
+func (db *SQLite) GetFunctions(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *SQLite) GetProcedures(_ string) (map[string][]string, error) {
+func (db *SQLite) GetProcedures(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *SQLite) GetViews(_ string) (map[string][]string, error) {
+func (db *SQLite) GetViews(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -679,14 +694,14 @@ func (db *SQLite) UseSchemas() bool {
 	return false
 }
 
-func (db *SQLite) GetFunctionDefinition(_ string, _ string) (string, error) {
+func (db *SQLite) GetFunctionDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *SQLite) GetProcedureDefinition(_ string, _ string) (string, error) {
+func (db *SQLite) GetProcedureDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *SQLite) GetViewDefinition(_ string, _ string) (string, error) {
+func (db *SQLite) GetViewDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }

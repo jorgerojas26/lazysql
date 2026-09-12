@@ -21,11 +21,12 @@ type MySQL struct {
 	PoolConfig models.ConnectionPoolConfig
 }
 
-func (db *MySQL) TestConnection(urlstr string) (err error) {
-	return db.Connect(urlstr)
+func (db *MySQL) TestConnection(ctx context.Context, urlstr string) (err error) {
+	return db.Connect(ctx, urlstr)
 }
 
-func (db *MySQL) Connect(urlstr string) (err error) {
+func (db *MySQL) Connect(ctx context.Context, urlstr string) (err error) {
+	ctx = contextOrBackground(ctx)
 	db.SetProvider(DriverMySQL)
 
 	db.Connection, err = dburl.Open(urlstr)
@@ -38,7 +39,7 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 		return err
 	}
 
-	err = db.Connection.Ping()
+	err = db.Connection.PingContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -46,10 +47,11 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 	return nil
 }
 
-func (db *MySQL) GetDatabases() ([]string, error) {
+func (db *MySQL) GetDatabases(ctx context.Context) ([]string, error) {
+	ctx = contextOrBackground(ctx)
 	var databases []string
 
-	rows, err := db.Connection.Query("SHOW DATABASES")
+	rows, err := db.Connection.QueryContext(ctx, "SHOW DATABASES")
 	if err != nil {
 		return nil, err
 	}
@@ -72,12 +74,13 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *MySQL) GetTables(database string) (map[string][]string, error) {
+func (db *MySQL) GetTables(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	rows, err := db.Connection.Query(fmt.Sprintf("SHOW TABLES FROM `%s`", database))
+	rows, err := db.Connection.QueryContext(ctx, fmt.Sprintf("SHOW TABLES FROM `%s`", database))
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +103,8 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *MySQL) GetTableColumns(database, table string) (results [][]string, err error) {
+func (db *MySQL) GetTableColumns(ctx context.Context, database, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -112,7 +116,7 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 	query := "SHOW FULL COLUMNS FROM "
 	query += db.formatTableName(database, table)
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +155,8 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 	return results, nil
 }
 
-func (db *MySQL) GetConstraints(database, table string) (results [][]string, err error) {
+func (db *MySQL) GetConstraints(ctx context.Context, database, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -162,7 +167,7 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 
 	query := "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
 
-	rows, err := db.Connection.Query(query, database, table)
+	rows, err := db.Connection.QueryContext(ctx, query, database, table)
 	if err != nil {
 		return nil, err
 	}
@@ -240,9 +245,7 @@ var mysqlForeignKeysFastPathQueries = []struct {
 }
 
 func (db *MySQL) GetForeignKeys(ctx context.Context, database, table string) (results [][]string, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx = contextOrBackground(ctx)
 
 	started := time.Now()
 	fallback := "none"
@@ -330,7 +333,8 @@ func (db *MySQL) queryForeignKeys(ctx context.Context, query string, args ...any
 	return results, nil
 }
 
-func (db *MySQL) GetIndexes(database, table string) (results [][]string, err error) {
+func (db *MySQL) GetIndexes(ctx context.Context, database, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -342,7 +346,7 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 	query := "SHOW INDEX FROM "
 	query += db.formatTableName(database, table)
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -381,6 +385,7 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 }
 
 func (db *MySQL) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
 		return PageResult{}, errors.New("table name is required")
 	}
@@ -460,6 +465,7 @@ func (db *MySQL) GetRecords(ctx context.Context, database, table, where, sort st
 }
 
 func (db *MySQL) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -487,6 +493,7 @@ func (db *MySQL) GetEstimatedRowCount(ctx context.Context, database, table strin
 }
 
 func (db *MySQL) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return 0, errors.New("database name is required")
 	}
@@ -512,8 +519,9 @@ func (db *MySQL) StreamQuery(ctx context.Context, query string, maxRows int, onB
 	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
 }
 
-func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
-	rows, err := db.Connection.Query(query)
+func (db *MySQL) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+	ctx = contextOrBackground(ctx)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -553,27 +561,30 @@ func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 	return results, len(records), nil
 }
 
-func (db *MySQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MySQL) UpdateRecord(ctx context.Context, database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	query := "UPDATE "
 	query += db.formatTableName(database, table)
 	query += fmt.Sprintf(" SET %s = ? WHERE %s = ?", column, primaryKeyColumnName)
 
-	_, err := db.Connection.Exec(query, value, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, value, primaryKeyValue)
 
 	return err
 }
 
-func (db *MySQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MySQL) DeleteRecord(ctx context.Context, database, table, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	query := "DELETE FROM "
 	query += db.formatTableName(database, table)
 	query += fmt.Sprintf(" WHERE %s = ?", primaryKeyColumnName)
-	_, err := db.Connection.Exec(query, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, primaryKeyValue)
 
 	return err
 }
 
-func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
-	res, err := db.Connection.Exec(query)
+func (db *MySQL) ExecuteDMLStatement(ctx context.Context, query string) (result string, err error) {
+	ctx = contextOrBackground(ctx)
+	res, err := db.Connection.ExecContext(ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -586,7 +597,8 @@ func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *MySQL) ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error {
+	ctx = contextOrBackground(ctx)
 	var queries []models.Query
 
 	for _, change := range changes {
@@ -604,10 +616,11 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 		}
 	}
 
-	return queriesInTransaction(db.Connection, queries)
+	return queriesInTransaction(ctx, db.Connection, queries)
 }
 
-func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+func (db *MySQL) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) (primaryKeyColumnName []string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -616,7 +629,7 @@ func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyCol
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query("SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = ? AND table_name = ? AND constraint_name = ?", database, table, "PRIMARY")
+	rows, err := db.Connection.QueryContext(ctx, "SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = ? AND table_name = ? AND constraint_name = ?", database, table, "PRIMARY")
 	if err != nil {
 		return nil, err
 	}
@@ -749,15 +762,15 @@ func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 	return queryStr, nil
 }
 
-func (db *MySQL) GetFunctions(_ string) (map[string][]string, error) {
+func (db *MySQL) GetFunctions(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *MySQL) GetProcedures(_ string) (map[string][]string, error) {
+func (db *MySQL) GetProcedures(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *MySQL) GetViews(_ string) (map[string][]string, error) {
+func (db *MySQL) GetViews(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -769,14 +782,14 @@ func (db *MySQL) UseSchemas() bool {
 	return false
 }
 
-func (db *MySQL) GetFunctionDefinition(_ string, _ string) (string, error) {
+func (db *MySQL) GetFunctionDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *MySQL) GetProcedureDefinition(_ string, _ string) (string, error) {
+func (db *MySQL) GetProcedureDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *MySQL) GetViewDefinition(_ string, _ string) (string, error) {
+func (db *MySQL) GetViewDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }

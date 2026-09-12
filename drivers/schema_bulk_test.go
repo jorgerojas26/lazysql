@@ -1,10 +1,13 @@
 package drivers
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestSQLiteGetTableColumnsBulkReturnsAllRequestedTables(t *testing.T) {
 	db := &SQLite{}
-	if err := db.Connect(":memory:"); err != nil {
+	if err := db.Connect(context.Background(), ":memory:"); err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
 	t.Cleanup(func() { _ = db.Connection.Close() })
@@ -13,7 +16,7 @@ func TestSQLiteGetTableColumnsBulkReturnsAllRequestedTables(t *testing.T) {
 		t.Fatalf("create tables error = %v", err)
 	}
 
-	columns, err := db.GetTableColumnsBulk("main", []string{"users", "orders"})
+	columns, err := db.GetTableColumnsBulk(context.Background(), "main", []string{"users", "orders"})
 	if err != nil {
 		t.Fatalf("GetTableColumnsBulk() error = %v", err)
 	}

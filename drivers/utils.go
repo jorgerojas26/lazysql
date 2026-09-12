@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -43,8 +44,9 @@ func newPageResult(rows [][]string, query string, pageSize int) PageResult {
 	}
 }
 
-func queriesInTransaction(db *sql.DB, queries []models.Query) (err error) {
-	trx, err := db.Begin()
+func queriesInTransaction(ctx context.Context, db *sql.DB, queries []models.Query) (err error) {
+	ctx = contextOrBackground(ctx)
+	trx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -57,7 +59,7 @@ func queriesInTransaction(db *sql.DB, queries []models.Query) (err error) {
 	}()
 
 	for _, query := range queries {
-		if _, err := trx.Exec(query.Query, query.Args...); err != nil {
+		if _, err := trx.ExecContext(ctx, query.Query, query.Args...); err != nil {
 			return err
 		}
 	}

@@ -208,7 +208,7 @@ func TestPostgres_ErrorScenarios(t *testing.T) {
 					WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *Postgres) error {
-				_, err := db.GetTables(schemaPostgres)
+				_, err := db.GetTables(context.Background(), schemaPostgres)
 				return err
 			},
 		},
@@ -277,7 +277,7 @@ func TestPostgres_GetTableColumns(t *testing.T) {
 		WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
 		WillReturnRows(rows)
 
-	columns, err := pg.GetTableColumns(DBNamePostgres, schemaAndTablePostgres)
+	columns, err := pg.GetTableColumns(context.Background(), DBNamePostgres, schemaAndTablePostgres)
 	if err != nil {
 		t.Fatalf("GetTableColumns failed: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestPostgres_GetTableColumns_Error(t *testing.T) {
 	mock.ExpectQuery("SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE\\(pd.description, ''\\) as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name AND pc.relnamespace = \\(SELECT oid FROM pg_namespace WHERE nspname = c.table_schema\\) LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = \\$1 AND c.table_schema = \\$2 AND c.table_name = \\$3 ORDER by c.ordinal_position").WithArgs(DBNamePostgres, schemaPostgres, tableNamePostgres).
 		WillReturnError(errors.New("query error"))
 
-	_, err = pg.GetTableColumns(DBNamePostgres, schemaAndTablePostgres)
+	_, err = pg.GetTableColumns(context.Background(), DBNamePostgres, schemaAndTablePostgres)
 	if err == nil {
 		t.Fatal("Expected error but got nil")
 	}
@@ -458,7 +458,7 @@ func TestPostgres_GetIndexes(t *testing.T) {
             i.relname
   `, schemaPostgres, tableNamePostgres)).WillReturnRows(rows)
 
-	indexes, err := pg.GetIndexes(DBNamePostgres, schemaAndTablePostgres)
+	indexes, err := pg.GetIndexes(context.Background(), DBNamePostgres, schemaAndTablePostgres)
 	if err != nil {
 		t.Fatalf("GetIndexes failed: %v", err)
 	}
@@ -539,7 +539,7 @@ func TestPostgres_ExecutePendingChanges(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err = pg.ExecutePendingChanges(changes)
+	err = pg.ExecutePendingChanges(context.Background(), changes)
 	if err != nil {
 		t.Fatalf("ExecutePendingChanges failed: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestPostgres_GetPrimaryKeyColumnNames(t *testing.T) {
 			relname = \$2 AND nspname = \$1 AND indisprimary
 	`).WithArgs(schemaPostgres, tableNamePostgres).WillReturnRows(rows)
 
-	keys, err := pg.GetPrimaryKeyColumnNames(DBNamePostgres, schemaAndTablePostgres)
+	keys, err := pg.GetPrimaryKeyColumnNames(context.Background(), DBNamePostgres, schemaAndTablePostgres)
 	if err != nil {
 		t.Fatalf("GetPrimaryKeyColumnNames failed: %v", err)
 	}

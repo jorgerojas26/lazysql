@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -39,6 +40,7 @@ type Tree struct {
 	schemaLoader        *schemaLoader
 	loadMu              sync.Mutex
 	loadGeneration      uint64
+	loadCancel          context.CancelFunc
 	queueUpdateDraw     func(func())
 }
 
@@ -1156,15 +1158,25 @@ func (tree *Tree) ExpandAll() {
 }
 
 func (tree *Tree) InitializeNodes(dbName string) {
-	generation := tree.beginLoad()
-	tree.initializeNodes(dbName, generation)
+	generation, ctx := tree.beginLoad()
+	tree.initializeNodes(ctx, dbName, generation)
 }
 
-func (tree *Tree) beginLoad() uint64 {
+func (tree *Tree) beginLoad() (uint64, context.Context) {
 	tree.loadMu.Lock()
 	defer tree.loadMu.Unlock()
+	if tree.loadCancel != nil {
+		tree.loadCancel()
+	}
+
+	parent := context.Background()
+	if app.App != nil {
+		parent = app.App.Context()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	tree.loadCancel = cancel
 	tree.loadGeneration++
-	return tree.loadGeneration
+	return tree.loadGeneration, ctx
 }
 
 func (tree *Tree) isCurrentLoad(generation uint64) bool {
@@ -1177,7 +1189,7 @@ func (tree *Tree) isCurrentLoad(generation uint64) bool {
 // database independently. Tables are applied as soon as their shared schema
 // request completes; programming objects are fetched only after that first
 // paint and enrich the existing table subtree afterward.
-func (tree *Tree) initializeNodes(dbName string, generation uint64) {
+func (tree *Tree) initializeNodes(ctx context.Context, dbName string, generation uint64) {
 	rootNode := tree.GetRoot()
 	if rootNode == nil {
 		panic("Internal Error: No tree root")
@@ -1186,7 +1198,7 @@ func (tree *Tree) initializeNodes(dbName string, generation uint64) {
 	var databases []string
 
 	if dbName == "" {
-		dbs, err := tree.DBDriver.GetDatabases()
+		dbs, err := tree.DBDriver.GetDatabases(ctx)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -1207,17 +1219,17 @@ func (tree *Tree) initializeNodes(dbName string, generation uint64) {
 		childNode.SetColor(app.Styles.PrimaryTextColor)
 		rootNode.AddChild(childNode)
 
-		go tree.loadDatabaseNodes(generation, database, childNode)
+		go tree.loadDatabaseNodes(ctx, generation, database, childNode)
 	}
 }
 
-func (tree *Tree) loadDatabaseNodes(generation uint64, database string, node *tview.TreeNode) {
+func (tree *Tree) loadDatabaseNodes(ctx context.Context, generation uint64, database string, node *tview.TreeNode) {
 	var tables map[string][]string
 	var err error
 	if tree.schemaLoader != nil {
-		tables, err = tree.schemaLoader.loadTables(database)
+		tables, err = tree.schemaLoader.loadTables(ctx, database)
 	} else {
-		tables, err = tree.DBDriver.GetTables(database)
+		tables, err = tree.DBDriver.GetTables(ctx, database)
 	}
 	if err != nil {
 		logger.Error(err.Error(), nil)
@@ -1237,17 +1249,17 @@ func (tree *Tree) loadDatabaseNodes(generation uint64, database string, node *tv
 		return
 	}
 
-	functions, err := tree.DBDriver.GetFunctions(database)
+	functions, err := tree.DBDriver.GetFunctions(ctx, database)
 	if err != nil {
 		logger.Error(err.Error(), nil)
 		return
 	}
-	procedures, err := tree.DBDriver.GetProcedures(database)
+	procedures, err := tree.DBDriver.GetProcedures(ctx, database)
 	if err != nil {
 		logger.Error(err.Error(), nil)
 		return
 	}
-	views, err := tree.DBDriver.GetViews(database)
+	views, err := tree.DBDriver.GetViews(ctx, database)
 	if err != nil {
 		logger.Error(err.Error(), nil)
 		return
@@ -1323,7 +1335,7 @@ func (tree *Tree) RefreshAsync(dbName string) {
 }
 
 func (tree *Tree) refreshNodes(dbName string) {
-	generation := tree.beginLoad()
+	generation, ctx := tree.beginLoad()
 	rootNode := tree.GetRoot()
 	if dbName != "" {
 		// A connection without a fixed database shows several database nodes.
@@ -1340,7 +1352,7 @@ func (tree *Tree) refreshNodes(dbName string) {
 		rootNode.ClearChildren()
 	}
 	// Re-add the requested scope. Per-database work remains asynchronous.
-	tree.initializeNodes(dbName, generation)
+	tree.initializeNodes(ctx, dbName, generation)
 }
 
 func (tree *Tree) ClearSearch() {

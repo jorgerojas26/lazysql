@@ -51,9 +51,7 @@ func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows 
 	if maxRows < 0 {
 		return QueryStreamResult{}, errors.New("query stream max rows cannot be negative")
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx = contextOrBackground(ctx)
 	if connection == nil {
 		return QueryStreamResult{}, errors.New("database connection is nil")
 	}

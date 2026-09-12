@@ -103,7 +103,7 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 		WithArgs("PK", schemaMSSQL, tableNameMSSQL). // Use schema, not database name
 		WillReturnRows(rows)
 
-	keys, err := pg.GetPrimaryKeyColumnNames(DBNameMSSQL, tableNameMSSQL)
+	keys, err := pg.GetPrimaryKeyColumnNames(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetPrimaryKeyColumnNames failed: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestMSSQL_GetIndexes(t *testing.T) {
 		WithArgs(DBNameMSSQL, tableNameMSSQL, schemaMSSQL).
 		WillReturnRows(rows)
 
-	indexes, err := pg.GetIndexes(DBNameMSSQL, tableNameMSSQL)
+	indexes, err := pg.GetIndexes(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetIndexes failed: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestMSSQL_ExecutePendingChanges(t *testing.T) {
 	)).WithArgs("New'; DROP TABLE Users;--", 1).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err = pg.ExecutePendingChanges(changes)
+	err = pg.ExecutePendingChanges(context.Background(), changes)
 	if err != nil {
 		t.Fatalf("ExecutePendingChanges failed: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestMSSQL_GetTableColumns(t *testing.T) {
 		WithArgs(DBNameMSSQL, tableNameMSSQL).
 		WillReturnRows(rows)
 
-	columns, err := pg.GetTableColumns(DBNameMSSQL, tableNameMSSQL)
+	columns, err := pg.GetTableColumns(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetTableColumns failed: %v", err)
 	}
@@ -564,7 +564,7 @@ func TestMSSQL_GetDatabasesAzureSQL(t *testing.T) {
 				AddRow("sql-db"),
 		)
 
-	databases, err := db.GetDatabases()
+	databases, err := db.GetDatabases(context.Background())
 	if err != nil {
 		t.Fatalf("GetDatabases failed: %v", err)
 	}
@@ -596,7 +596,7 @@ func TestMSSQL_GetTablesQuotesDatabaseName(t *testing.T) {
 				AddRow("users"),
 		)
 
-	tables, err := db.GetTables("sql-db")
+	tables, err := db.GetTables(context.Background(), "sql-db")
 	if err != nil {
 		t.Fatalf("GetTables failed: %v", err)
 	}

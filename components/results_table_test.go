@@ -427,7 +427,7 @@ func (m *recordsFirstPaintMock) GetRecords(context.Context, string, string, stri
 	}, nil
 }
 
-func (m *recordsFirstPaintMock) GetTableColumns(string, string) ([][]string, error) {
+func (m *recordsFirstPaintMock) GetTableColumns(context.Context, string, string) ([][]string, error) {
 	m.mu.Lock()
 	m.metadataCalls++
 	m.mu.Unlock()
@@ -592,7 +592,7 @@ func (m *staleRecordsLoadMock) GetRecords(ctx context.Context, _ string, _ strin
 	return drivers.PageResult{Rows: [][]string{{"id"}, {"new"}}}, nil
 }
 
-func (m *staleRecordsLoadMock) GetTableColumns(string, string) ([][]string, error) {
+func (m *staleRecordsLoadMock) GetTableColumns(context.Context, string, string) ([][]string, error) {
 	return nil, errors.New("metadata intentionally deferred")
 }
 
@@ -658,12 +658,12 @@ func (m *readOnlyRoutingMock) queries() []string {
 	return append([]string(nil), m.executed...)
 }
 
-func (m *readOnlyRoutingMock) ExecuteQuery(query string) ([][]string, int, error) {
+func (m *readOnlyRoutingMock) ExecuteQuery(_ context.Context, query string) ([][]string, int, error) {
 	m.record(query)
 	return [][]string{{"col"}}, 0, nil
 }
 
-func (m *readOnlyRoutingMock) ExecuteDMLStatement(query string) (string, error) {
+func (m *readOnlyRoutingMock) ExecuteDMLStatement(_ context.Context, query string) (string, error) {
 	m.record(query)
 	return "", nil
 }

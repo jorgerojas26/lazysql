@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,12 +25,12 @@ func (driver *autocompleteSchemaDriver) UseSchemas() bool {
 	return driver.useSchemas
 }
 
-func (driver *autocompleteSchemaDriver) GetTables(string) (map[string][]string, error) {
+func (driver *autocompleteSchemaDriver) GetTables(context.Context, string) (map[string][]string, error) {
 	driver.tableCalls.Add(1)
 	return copySchemaTables(driver.tables), nil
 }
 
-func (driver *autocompleteSchemaDriver) GetTableColumns(_, table string) ([][]string, error) {
+func (driver *autocompleteSchemaDriver) GetTableColumns(_ context.Context, _, table string) ([][]string, error) {
 	driver.columnCalls.Add(1)
 	if columns, ok := driver.columns[table]; ok {
 		return columns, nil
@@ -37,7 +38,7 @@ func (driver *autocompleteSchemaDriver) GetTableColumns(_, table string) ([][]st
 	return [][]string{{"column_name"}}, nil
 }
 
-func (driver *autocompleteSchemaDriver) GetTableColumnsBulk(_ string, tables []string) (map[string][][]string, error) {
+func (driver *autocompleteSchemaDriver) GetTableColumnsBulk(_ context.Context, _ string, tables []string) (map[string][][]string, error) {
 	driver.bulkCalls.Add(1)
 	driver.mu.Lock()
 	driver.bulkNames = append([]string(nil), tables...)
@@ -67,7 +68,7 @@ func TestSchemaLoaderSmallSchemaUsesOneBulkRequest(t *testing.T) {
 	tables := loader.visibleTables("db", driver.tables, nil)
 	published := make(map[string][]string)
 
-	loader.preloadEditorColumns("db", tables, 200, func(table editorSchemaTable, columns []string) {
+	loader.preloadEditorColumns(context.Background(), "db", tables, 200, func(table editorSchemaTable, columns []string) {
 		published[table.bareName] = columns
 	})
 
@@ -101,8 +102,8 @@ func TestSchemaLoaderLargeSchemaIsLazy(t *testing.T) {
 		tables[i] = editorSchemaTable{bareName: "table", qualifiedName: "table"}
 	}
 
-	loader.preloadEditorColumns("db", tables, 200, nil)
-	loader.preloadEditorColumns("db", tables[:1], 0, nil)
+	loader.preloadEditorColumns(context.Background(), "db", tables, 200, nil)
+	loader.preloadEditorColumns(context.Background(), "db", tables[:1], 0, nil)
 
 	if got := driver.bulkCalls.Load(); got != 0 {
 		t.Fatalf("bulk calls = %d, want 0 for large/zero thresholds", got)
@@ -129,7 +130,7 @@ func TestSchemaLoaderFiltersHiddenSchemasBeforeBulkLoad(t *testing.T) {
 		t.Fatalf("visible tables = %+v, want only public.users", visible)
 	}
 
-	loader.preloadEditorColumns("db", visible, 200, nil)
+	loader.preloadEditorColumns(context.Background(), "db", visible, 200, nil)
 	if got := driver.bulkCalls.Load(); got != 1 {
 		t.Fatalf("bulk calls = %d, want 1", got)
 	}
@@ -148,7 +149,7 @@ func TestSchemaLoaderReusesCachedColumnsWithoutBulkCall(t *testing.T) {
 	loader := newSchemaLoader(driver, cache)
 	published := make(chan []string, 1)
 
-	loader.preloadEditorColumns("db", []editorSchemaTable{{bareName: "users", qualifiedName: "users"}}, 200, func(_ editorSchemaTable, columns []string) {
+	loader.preloadEditorColumns(context.Background(), "db", []editorSchemaTable{{bareName: "users", qualifiedName: "users"}}, 200, func(_ editorSchemaTable, columns []string) {
 		published <- columns
 	})
 
@@ -174,7 +175,7 @@ func TestSchemaLoaderLoadsOneTableOnDemandAndReusesIt(t *testing.T) {
 	}
 	loader := newSchemaLoader(driver, newMetadataCache())
 
-	key, done := loader.requestColumns("db", "users")
+	key, done := loader.requestColumns(context.Background(), "db", "users")
 	if done == nil {
 		t.Fatal("first on-demand column request did not start")
 	}
@@ -187,7 +188,7 @@ func TestSchemaLoaderLoadsOneTableOnDemandAndReusesIt(t *testing.T) {
 		t.Fatalf("on-demand columns = %v", got)
 	}
 
-	if _, second := loader.requestColumns("db", "users"); second != nil {
+	if _, second := loader.requestColumns(context.Background(), "db", "users"); second != nil {
 		t.Fatal("cached on-demand columns started another request")
 	}
 	if got := driver.columnCalls.Load(); got != 1 {
@@ -199,10 +200,10 @@ func TestSchemaLoaderCachesTableListForTreeAndAutocomplete(t *testing.T) {
 	driver := &autocompleteSchemaDriver{tables: map[string][]string{"db": {"users"}}}
 	loader := newSchemaLoader(driver, newMetadataCache())
 
-	if _, err := loader.loadTables("db"); err != nil {
+	if _, err := loader.loadTables(context.Background(), "db"); err != nil {
 		t.Fatalf("first loadTables() error = %v", err)
 	}
-	if _, err := loader.loadTables("db"); err != nil {
+	if _, err := loader.loadTables(context.Background(), "db"); err != nil {
 		t.Fatalf("second loadTables() error = %v", err)
 	}
 	if got := driver.tableCalls.Load(); got != 1 {

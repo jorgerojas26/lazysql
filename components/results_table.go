@@ -320,13 +320,14 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 // loadEditorSchema publishes visible table names first, then lets the shared
 // schema loader progressively enrich autocomplete with columns.
 func (table *ResultsTable) loadEditorSchema() {
+	ctx := app.App.Context()
 	dbName := table.GetDatabaseName()
 	if dbName == "" || table.DBDriver == nil {
 		return
 	}
 
 	loader := table.schemaMetadataLoader()
-	tablesMap, err := loader.loadTables(dbName)
+	tablesMap, err := loader.loadTables(ctx, dbName)
 	if err != nil {
 		logger.Error("Failed to load tables for editor autocomplete", map[string]any{"error": err.Error()})
 		return
@@ -356,7 +357,7 @@ func (table *ResultsTable) loadEditorSchema() {
 		}
 	})
 
-	go loader.preloadEditorColumns(dbName, tableList, schemaBulkLoadThreshold(), func(schemaTable editorSchemaTable, columnNames []string) {
+	go loader.preloadEditorColumns(ctx, dbName, tableList, schemaBulkLoadThreshold(), func(schemaTable editorSchemaTable, columnNames []string) {
 		table.publishEditorColumns(dbName, generation, schemaTable, columnNames)
 	})
 }
@@ -430,7 +431,7 @@ func (table *ResultsTable) requestEditorColumns(hint string) {
 	}
 
 	loader := table.schemaMetadataLoader()
-	key, done := loader.requestColumns(database, schemaTable.qualifiedName)
+	key, done := loader.requestColumns(app.App.Context(), database, schemaTable.qualifiedName)
 	if done == nil {
 		status, value, err := loader.cache.result(key)
 		if err == nil && status == MetadataReady {
@@ -1334,10 +1335,9 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 		return streamer.StreamQuery(ctx, query, table.maxInteractiveQueryRows(), onBatch)
 	}
 
-	// Keep older third-party Driver implementations usable. Built-in drivers
-	// implement QueryStreamer, so this compatibility path is not used for
-	// normal connections and cannot affect their bounded database consumption.
-	rows, count, err := table.DBDriver.ExecuteQuery(query)
+	// Drivers without the optional streaming capability still use the final
+	// context-aware query contract as a cancellable fallback.
+	rows, count, err := table.DBDriver.ExecuteQuery(ctx, query)
 	result := drivers.QueryStreamResult{Rows: count}
 	if err != nil {
 		return result, err
@@ -1433,7 +1433,7 @@ func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, generation uin
 	}
 
 	table.addEditorQueryToHistory(query)
-	result, err := table.DBDriver.ExecuteDMLStatement(query)
+	result, err := table.DBDriver.ExecuteDMLStatement(ctx, query)
 	ddl := isSchemaMutatingQuery(query)
 	if err == nil && ddl {
 		if table.Home != nil {

@@ -74,7 +74,7 @@ type editorDMLNoRefreshDriver struct {
 	pages   int
 }
 
-func (driver *editorDMLNoRefreshDriver) ExecuteDMLStatement(string) (string, error) {
+func (driver *editorDMLNoRefreshDriver) ExecuteDMLStatement(context.Context, string) (string, error) {
 	close(driver.dmlDone)
 	return "updated", driver.dmlErr
 }

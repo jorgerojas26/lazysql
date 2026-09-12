@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -34,7 +35,8 @@ func bulkResultKey(results map[string][][]string, name string) string {
 // GetTableColumnsBulk loads MySQL column metadata for all requested tables in
 // one information_schema query. The result shape matches GetTableColumns so a
 // bulk result can be shared with the Records metadata surface unchanged.
-func (db *MySQL) GetTableColumnsBulk(database string, tables []string) (map[string][][]string, error) {
+func (db *MySQL) GetTableColumnsBulk(ctx context.Context, database string, tables []string) (map[string][][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -58,7 +60,7 @@ func (db *MySQL) GetTableColumnsBulk(database string, tables []string) (map[stri
 		FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (` + strings.Join(placeholders, ", ") + `)
 		ORDER BY TABLE_NAME, ORDINAL_POSITION`
-	rows, err := db.Connection.Query(query, args...)
+	rows, err := db.Connection.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +105,8 @@ func (db *MySQL) GetTableColumnsBulk(database string, tables []string) (map[stri
 // GetTableColumnsBulk loads PostgreSQL columns for the requested schema.table
 // names with one information_schema query. The schema-qualified result keys
 // preserve the key format required by the existing PostgreSQL driver API.
-func (db *Postgres) GetTableColumnsBulk(database string, tables []string) (map[string][][]string, error) {
+func (db *Postgres) GetTableColumnsBulk(ctx context.Context, database string, tables []string) (map[string][][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -139,14 +142,14 @@ func (db *Postgres) GetTableColumnsBulk(database string, tables []string) (map[s
 		WHERE c.table_catalog = $1 AND (` + strings.Join(filters, " OR ") + `)
 		ORDER BY c.table_schema, c.table_name, c.ordinal_position`
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, err
 	}
 	if needsClose {
 		defer conn.Close()
 	}
-	rows, err := conn.Query(query, args...)
+	rows, err := conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +185,8 @@ func (db *Postgres) GetTableColumnsBulk(database string, tables []string) (map[s
 // GetTableColumnsBulk loads MSSQL columns for all requested tables after
 // switching to the requested database. MSSQL's existing API uses the current
 // schema, so table names remain bare just like GetTableColumns.
-func (db *MSSQL) GetTableColumnsBulk(database string, tables []string) (map[string][][]string, error) {
+func (db *MSSQL) GetTableColumnsBulk(ctx context.Context, database string, tables []string) (map[string][][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -216,7 +220,7 @@ func (db *MSSQL) GetTableColumnsBulk(database string, tables []string) (map[stri
 			AND ty.name <> 'sysname'
 		ORDER BY t.name, c.column_id;
 	`
-	rows, err := db.Connection.Query(query, args...)
+	rows, err := db.Connection.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +256,8 @@ func (db *MSSQL) GetTableColumnsBulk(database string, tables []string) (map[stri
 // GetTableColumnsBulk uses SQLite's table-valued PRAGMA to fetch the requested
 // tables in one catalog query. Older SQLite builds that do not expose this
 // pragma simply remain eligible for the shared loader's lazy path.
-func (db *SQLite) GetTableColumnsBulk(_ string, tables []string) (map[string][][]string, error) {
+func (db *SQLite) GetTableColumnsBulk(ctx context.Context, _ string, tables []string) (map[string][][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if len(tables) == 0 {
 		return map[string][][]string{}, nil
 	}
@@ -270,7 +275,7 @@ func (db *SQLite) GetTableColumnsBulk(_ string, tables []string) (map[string][][
 		FROM sqlite_master AS m, pragma_table_info(m.name) AS p
 		WHERE m.type = 'table' AND m.name IN (` + strings.Join(placeholders, ", ") + `)
 		ORDER BY m.name, p.cid`
-	rows, err := db.Connection.Query(query, args...)
+	rows, err := db.Connection.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
