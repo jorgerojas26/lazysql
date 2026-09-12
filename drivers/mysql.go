@@ -16,6 +16,7 @@ import (
 type MySQL struct {
 	Connection *sql.DB
 	Provider   string
+	PoolConfig models.ConnectionPoolConfig
 }
 
 func (db *MySQL) TestConnection(urlstr string) (err error) {
@@ -27,6 +28,11 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 
 	db.Connection, err = dburl.Open(urlstr)
 	if err != nil {
+		return err
+	}
+
+	if err = applyConnectionPoolConfig(db.Connection, db.PoolConfig); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 

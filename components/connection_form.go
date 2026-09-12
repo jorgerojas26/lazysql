@@ -183,17 +183,23 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 
 	form.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 
+	poolConfig, err := app.App.Config().EffectiveConnectionPool(models.Connection{Provider: parsed.Driver})
+	if err != nil {
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return
+	}
+
 	var db drivers.Driver
 
 	switch parsed.Driver {
 	case drivers.DriverMySQL:
-		db = &drivers.MySQL{}
+		db = &drivers.MySQL{PoolConfig: poolConfig}
 	case drivers.DriverPostgres:
-		db = &drivers.Postgres{}
+		db = &drivers.Postgres{PoolConfig: poolConfig}
 	case drivers.DriverSqlite:
 		db = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
-		db = &drivers.MSSQL{}
+		db = &drivers.MSSQL{PoolConfig: poolConfig}
 	}
 
 	err = db.TestConnection(connectionString)

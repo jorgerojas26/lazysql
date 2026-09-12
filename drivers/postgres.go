@@ -22,6 +22,7 @@ type Postgres struct {
 	CurrentDatabase  string
 	PreviousDatabase string
 	Urlstr           string
+	PoolConfig       models.ConnectionPoolConfig
 }
 
 func (db *Postgres) TestConnection(urlstr string) error {
@@ -33,6 +34,11 @@ func (db *Postgres) Connect(urlstr string) error {
 
 	connection, err := dburl.Open(urlstr)
 	if err != nil {
+		return err
+	}
+
+	if err = applyConnectionPoolConfig(connection, db.PoolConfig); err != nil {
+		_ = connection.Close()
 		return err
 	}
 
@@ -779,7 +785,15 @@ func (db *Postgres) connectToDatabase(database string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dburl.Open(urlstr)
+	connection, err := dburl.Open(urlstr)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyConnectionPoolConfig(connection, db.PoolConfig); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	return connection, nil
 }
 
 // connectionFor returns a connection to the given database. If it matches

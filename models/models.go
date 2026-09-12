@@ -1,9 +1,15 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/rivo/tview"
+)
+
+const (
+	DefaultMaxOpenConnections = 8
+	DefaultMaxIdleConnections = 8
 )
 
 type AppConfig struct {
@@ -15,6 +21,37 @@ type AppConfig struct {
 	JSONViewerWordWrap           bool
 	EnterOpensJSONViewer         bool
 	ConfirmOnQuit                bool
+	MaxOpenConnections           int `toml:"max_open_connections"`
+	MaxIdleConnections           int `toml:"max_idle_connections"`
+}
+
+type ConnectionPoolConfig struct {
+	MaxOpenConnections int
+	MaxIdleConnections int
+}
+
+// Normalize applies LazySQL's safe defaults and validates the effective pool
+// limits before they are passed to database/sql.
+func (config ConnectionPoolConfig) Normalize() (ConnectionPoolConfig, error) {
+	if config.MaxOpenConnections < 0 {
+		return ConnectionPoolConfig{}, fmt.Errorf("max_open_connections cannot be negative")
+	}
+	if config.MaxIdleConnections < 0 {
+		return ConnectionPoolConfig{}, fmt.Errorf("max_idle_connections cannot be negative")
+	}
+
+	if config.MaxOpenConnections == 0 {
+		config.MaxOpenConnections = DefaultMaxOpenConnections
+	}
+	if config.MaxIdleConnections == 0 {
+		config.MaxIdleConnections = DefaultMaxIdleConnections
+	}
+
+	if config.MaxIdleConnections > config.MaxOpenConnections {
+		return ConnectionPoolConfig{}, fmt.Errorf("max_idle_connections (%d) cannot exceed max_open_connections (%d)", config.MaxIdleConnections, config.MaxOpenConnections)
+	}
+
+	return config, nil
 }
 
 type Connection struct {
@@ -34,11 +71,33 @@ type Connection struct {
 
 	ReadOnly bool `toml:",omitempty"`
 
+	// Pool limits are optional per-connection overrides. A nil value inherits
+	// the application setting; an explicit zero uses LazySQL's safe default.
+	MaxOpenConnections *int `toml:"max_open_connections,omitempty"`
+	MaxIdleConnections *int `toml:"max_idle_connections,omitempty"`
+
 	// Schemas filters the schemas shown in the tree (PostgreSQL/MSSQL only).
 	// If empty, all schemas are shown.
 	Schemas []string `toml:",omitempty"`
 
 	Commands []*Command `toml:",omitempty"`
+}
+
+// EffectiveConnectionPool resolves optional connection overrides against the
+// application settings and applies LazySQL's safe defaults.
+func (config *AppConfig) EffectiveConnectionPool(connection Connection) (ConnectionPoolConfig, error) {
+	pool := ConnectionPoolConfig{
+		MaxOpenConnections: config.MaxOpenConnections,
+		MaxIdleConnections: config.MaxIdleConnections,
+	}
+	if connection.MaxOpenConnections != nil {
+		pool.MaxOpenConnections = *connection.MaxOpenConnections
+	}
+	if connection.MaxIdleConnections != nil {
+		pool.MaxIdleConnections = *connection.MaxIdleConnections
+	}
+
+	return pool.Normalize()
 }
 
 type KeymapConfig map[string]map[string]string

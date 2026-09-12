@@ -27,6 +27,8 @@ func (db *SQLite) Connect(urlstr string) (err error) {
 		return err
 	}
 
+	applySQLitePoolConfig(db.Connection)
+
 	err = db.Connection.Ping()
 	if err != nil {
 		return err

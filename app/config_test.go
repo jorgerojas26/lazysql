@@ -4,7 +4,80 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/jorgerojas26/lazysql/models"
 )
+
+func TestConnectionPoolDefaultsAndOverrides(t *testing.T) {
+	config := defaultConfig().AppConfig
+
+	if config.MaxOpenConnections != models.DefaultMaxOpenConnections {
+		t.Fatalf("MaxOpenConnections = %d, want %d", config.MaxOpenConnections, models.DefaultMaxOpenConnections)
+	}
+	if config.MaxIdleConnections != models.DefaultMaxIdleConnections {
+		t.Fatalf("MaxIdleConnections = %d, want %d", config.MaxIdleConnections, models.DefaultMaxIdleConnections)
+	}
+
+	pool, err := config.EffectiveConnectionPool(models.Connection{})
+	if err != nil {
+		t.Fatalf("EffectiveConnectionPool() error = %v", err)
+	}
+	if pool.MaxOpenConnections != 8 || pool.MaxIdleConnections != 8 {
+		t.Fatalf("default pool = %+v, want 8 open and 8 idle", pool)
+	}
+
+	maxOpen, maxIdle := 3, 2
+	pool, err = config.EffectiveConnectionPool(models.Connection{
+		MaxOpenConnections: &maxOpen,
+		MaxIdleConnections: &maxIdle,
+	})
+	if err != nil {
+		t.Fatalf("EffectiveConnectionPool() with overrides error = %v", err)
+	}
+	if pool.MaxOpenConnections != maxOpen || pool.MaxIdleConnections != maxIdle {
+		t.Fatalf("override pool = %+v, want %d open and %d idle", pool, maxOpen, maxIdle)
+	}
+
+	config.MaxOpenConnections = 12
+	config.MaxIdleConnections = 10
+	pool, err = config.EffectiveConnectionPool(models.Connection{})
+	if err != nil {
+		t.Fatalf("EffectiveConnectionPool() with app values error = %v", err)
+	}
+	if pool.MaxOpenConnections != 12 || pool.MaxIdleConnections != 10 {
+		t.Fatalf("inherited pool = %+v, want 12 open and 10 idle", pool)
+	}
+
+	zero := 0
+	pool, err = config.EffectiveConnectionPool(models.Connection{
+		MaxOpenConnections: &zero,
+		MaxIdleConnections: &zero,
+	})
+	if err != nil {
+		t.Fatalf("EffectiveConnectionPool() with zero overrides error = %v", err)
+	}
+	if pool.MaxOpenConnections != models.DefaultMaxOpenConnections || pool.MaxIdleConnections != models.DefaultMaxIdleConnections {
+		t.Fatalf("zero override pool = %+v, want LazySQL defaults", pool)
+	}
+}
+
+func TestConnectionPoolRejectsIdleAboveOpen(t *testing.T) {
+	config := defaultConfig().AppConfig
+	config.MaxOpenConnections = 2
+	config.MaxIdleConnections = 3
+
+	if _, err := config.EffectiveConnectionPool(models.Connection{}); err == nil {
+		t.Fatal("EffectiveConnectionPool() error = nil, want max idle validation error")
+	}
+
+	maxOpen, maxIdle := 2, 3
+	if _, err := defaultConfig().AppConfig.EffectiveConnectionPool(models.Connection{
+		MaxOpenConnections: &maxOpen,
+		MaxIdleConnections: &maxIdle,
+	}); err == nil {
+		t.Fatal("EffectiveConnectionPool() override error = nil, want max idle validation error")
+	}
+}
 
 func TestExpandEnvVars(t *testing.T) {
 	tests := []struct {
@@ -263,6 +336,145 @@ func TestFindLocalConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfigConnectionPoolOverrides(t *testing.T) {
+	originalConfig := App.config
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		App.config = originalConfig
+		_ = os.Chdir(originalDir)
+	})
+
+	tmpDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tmpDir, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(tmpDir, "config.toml")
+	configText := `
+[application]
+max_open_connections = 12
+max_idle_connections = 10
+
+[[database]]
+name = "override"
+provider = "sqlite3"
+url = ":memory:"
+max_open_connections = 3
+max_idle_connections = 2
+
+[[database]]
+name = "inherit"
+provider = "sqlite3"
+url = ":memory:"
+
+[[database]]
+name = "zero"
+provider = "sqlite3"
+url = ":memory:"
+max_open_connections = 0
+max_idle_connections = 0
+`
+	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	App.config = defaultConfig()
+	if err := LoadConfig(configPath); err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	if App.config.AppConfig.MaxOpenConnections != 12 {
+		t.Errorf("MaxOpenConnections = %d, want 12", App.config.AppConfig.MaxOpenConnections)
+	}
+	if App.config.AppConfig.MaxIdleConnections != 10 {
+		t.Errorf("MaxIdleConnections = %d, want 10", App.config.AppConfig.MaxIdleConnections)
+	}
+
+	override, inherit, zero := App.config.Connections[0], App.config.Connections[1], App.config.Connections[2]
+	overridePool, err := App.config.AppConfig.EffectiveConnectionPool(override)
+	if err != nil {
+		t.Fatalf("override pool error = %v", err)
+	}
+	if overridePool.MaxOpenConnections != 3 || overridePool.MaxIdleConnections != 2 {
+		t.Errorf("override pool = %+v, want 3 open and 2 idle", overridePool)
+	}
+
+	inheritPool, err := App.config.AppConfig.EffectiveConnectionPool(inherit)
+	if err != nil {
+		t.Fatalf("inherited pool error = %v", err)
+	}
+	if inheritPool.MaxOpenConnections != 12 || inheritPool.MaxIdleConnections != 10 {
+		t.Errorf("inherited pool = %+v, want 12 open and 10 idle", inheritPool)
+	}
+
+	zeroPool, err := App.config.AppConfig.EffectiveConnectionPool(zero)
+	if err != nil {
+		t.Fatalf("zero pool error = %v", err)
+	}
+	if zeroPool.MaxOpenConnections != models.DefaultMaxOpenConnections || zeroPool.MaxIdleConnections != models.DefaultMaxIdleConnections {
+		t.Errorf("zero pool = %+v, want LazySQL defaults", zeroPool)
+	}
+}
+
+func TestLoadConfigRejectsInvalidConnectionPool(t *testing.T) {
+	originalConfig := App.config
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		App.config = originalConfig
+		_ = os.Chdir(originalDir)
+	})
+
+	tmpDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tmpDir, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(tmpDir, "config.toml")
+	configText := `
+[application]
+max_open_connections = 2
+max_idle_connections = 3
+`
+	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	App.config = defaultConfig()
+	if err := LoadConfig(configPath); err == nil {
+		t.Fatal("LoadConfig() error = nil, want invalid pool configuration error")
+	}
+
+	configText = `
+[application]
+max_open_connections = 8
+max_idle_connections = 8
+
+[[database]]
+name = "invalid-connection"
+provider = "sqlite3"
+url = ":memory:"
+max_open_connections = 2
+max_idle_connections = 3
+`
+	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	App.config = defaultConfig()
+	if err := LoadConfig(configPath); err == nil {
+		t.Fatal("LoadConfig() error = nil, want invalid per-connection pool configuration error")
+	}
+}
+
 func TestLoadConfigWithLocal(t *testing.T) {
 	// Save original directory
 	origDir, err := os.Getwd()
@@ -470,5 +682,11 @@ DefaultPageSize = 500
 	}
 	if App.config.AppConfig.MaxQueryHistoryPerConnection != 100 {
 		t.Errorf("MaxQueryHistoryPerConnection = %d, want 100 (default)", App.config.AppConfig.MaxQueryHistoryPerConnection)
+	}
+	if App.config.AppConfig.MaxOpenConnections != models.DefaultMaxOpenConnections {
+		t.Errorf("MaxOpenConnections = %d, want %d (default)", App.config.AppConfig.MaxOpenConnections, models.DefaultMaxOpenConnections)
+	}
+	if App.config.AppConfig.MaxIdleConnections != models.DefaultMaxIdleConnections {
+		t.Errorf("MaxIdleConnections = %d, want %d (default)", App.config.AppConfig.MaxIdleConnections, models.DefaultMaxIdleConnections)
 	}
 }

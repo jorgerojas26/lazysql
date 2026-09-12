@@ -231,24 +231,30 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 	cs.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 	App.Draw()
 
+	poolConfig, err := app.App.Config().EffectiveConnectionPool(connection)
+	if err != nil {
+		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return App.Draw()
+	}
+
 	var newDBDriver drivers.Driver
 
 	switch connection.Provider {
 	case drivers.DriverMySQL:
-		newDBDriver = &drivers.MySQL{}
+		newDBDriver = &drivers.MySQL{PoolConfig: poolConfig}
 	case drivers.DriverPostgres:
-		newDBDriver = &drivers.Postgres{}
+		newDBDriver = &drivers.Postgres{PoolConfig: poolConfig}
 	case drivers.DriverSqlite:
 		newDBDriver = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
-		newDBDriver = &drivers.MSSQL{}
+		newDBDriver = &drivers.MSSQL{PoolConfig: poolConfig}
 	default:
 		errorMsg := fmt.Sprintf("Unsupported database provider: '%s'. Valid providers are: mysql, postgres, sqlite3, sqlserver", connection.Provider)
 		cs.StatusText.SetText(errorMsg).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 		return App.Draw()
 	}
 
-	err := newDBDriver.Connect(connection.URL)
+	err = newDBDriver.Connect(connection.URL)
 	if err != nil {
 		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
 		return App.Draw()

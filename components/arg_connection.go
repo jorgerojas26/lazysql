@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/models"
@@ -28,16 +29,21 @@ func InitFromArg(connectionString string, readOnly bool) error {
 		ReadOnly: readOnly,
 	}
 
+	poolConfig, err := app.App.Config().EffectiveConnectionPool(connection)
+	if err != nil {
+		return fmt.Errorf("invalid connection pool configuration: %w", err)
+	}
+
 	var newDBDriver drivers.Driver
 	switch connection.Provider {
 	case drivers.DriverMySQL:
-		newDBDriver = &drivers.MySQL{}
+		newDBDriver = &drivers.MySQL{PoolConfig: poolConfig}
 	case drivers.DriverPostgres:
-		newDBDriver = &drivers.Postgres{}
+		newDBDriver = &drivers.Postgres{PoolConfig: poolConfig}
 	case drivers.DriverSqlite:
 		newDBDriver = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
-		newDBDriver = &drivers.MSSQL{}
+		newDBDriver = &drivers.MSSQL{PoolConfig: poolConfig}
 	default:
 		return fmt.Errorf("could not handle database driver %s", connection.Provider)
 	}

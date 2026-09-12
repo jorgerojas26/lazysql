@@ -24,6 +24,7 @@ import (
 type MSSQL struct {
 	Connection *sql.DB
 	Provider   string
+	PoolConfig models.ConnectionPoolConfig
 	isAzureSQL bool
 }
 
@@ -71,6 +72,11 @@ func (db *MSSQL) Connect(urlstr string) error {
 
 	db.Connection, err = dburl.Open(urlstr)
 	if err != nil {
+		return err
+	}
+
+	if err := applyConnectionPoolConfig(db.Connection, db.PoolConfig); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 

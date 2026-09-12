@@ -1,7 +1,7 @@
 ---
 # lazysql-l2t6
 title: '[02] Make database connection concurrency safe and configurable'
-status: todo
+status: completed
 type: task
 priority: normal
 tags:
@@ -13,7 +13,7 @@ tags:
     - pooling
     - ready-for-agent
 created_at: 2026-09-12T03:19:43Z
-updated_at: 2026-09-12T03:19:43Z
+updated_at: 2026-09-12T06:59:46Z
 parent: lazysql-a9lf
 ---
 
@@ -27,13 +27,21 @@ Zero values must use LazySQL defaults rather than Go's unlimited-open-connection
 
 ## Acceptance criteria
 
-- [ ] Application configuration exposes `max_open_connections` with default 8.
-- [ ] Application configuration exposes `max_idle_connections` with default 8.
-- [ ] Individual database connections may override both values.
-- [ ] Missing per-connection overrides inherit application-level values.
-- [ ] A configured value of 0 uses the LazySQL default and never means unlimited open connections.
-- [ ] Configuration rejects `max_idle_connections > max_open_connections` when both effective values are positive.
-- [ ] MySQL, PostgreSQL, and MSSQL apply the effective configured pool limits.
-- [ ] SQLite always uses one open and one idle connection regardless of server-driver defaults.
-- [ ] SQLite in-memory behavior remains correct under the pool configuration.
-- [ ] Configuration defaults and overrides have regression tests.
+- [x] Application configuration exposes `max_open_connections` with default 8.
+- [x] Application configuration exposes `max_idle_connections` with default 8.
+- [x] Individual database connections may override both values.
+- [x] Missing per-connection overrides inherit application-level values.
+- [x] A configured value of 0 uses the LazySQL default and never means unlimited open connections.
+- [x] Configuration rejects `max_idle_connections > max_open_connections` when both effective values are positive.
+- [x] MySQL, PostgreSQL, and MSSQL apply the effective configured pool limits.
+- [x] SQLite always uses one open and one idle connection regardless of server-driver defaults.
+- [x] SQLite in-memory behavior remains correct under the pool configuration.
+- [x] Configuration defaults and overrides have regression tests.
+
+
+## Summary of Changes
+
+- Added 8/8 application connection-pool defaults with optional per-connection overrides and effective-value validation.
+- Applied safe pool limits to MySQL, PostgreSQL, and MSSQL, including PostgreSQL database-switch connections.
+- Forced SQLite to one open/idle connection and added in-memory correctness coverage.
+- Added configuration, driver, and documentation regression coverage.

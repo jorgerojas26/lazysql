@@ -173,6 +173,8 @@ EnterOpensJSONViewer = false
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
+Database entries may override the connection pool with `max_open_connections` and `max_idle_connections`. Omitted values inherit the application settings; an explicit `0` uses LazySQL's default of `8`. SQLite always uses one open and one idle connection to preserve in-memory database behavior.
+
 The `DBName` field (optional) controls how the sidebar tree is populated when a connection is opened:
 
 - **`DBName` set** (e.g. `DBName = 'foo'`): the tree is pinned to that single database only. This is the default behavior when a connection is created/edited through the in-app connection form, since `DBName` is auto-filled from whatever database is embedded in the connection URL.
@@ -196,6 +198,8 @@ The `[application]` section is used to define some app settings. Not all setting
 | SidebarOverlay | false | Show sidebar as overlay instead of side panel |
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+| max_open_connections | 8 | Maximum open connections for MySQL, PostgreSQL, and MSSQL |
+| max_idle_connections | 8 | Maximum idle connections for MySQL, PostgreSQL, and MSSQL |
 
 ### Local Configuration
 
