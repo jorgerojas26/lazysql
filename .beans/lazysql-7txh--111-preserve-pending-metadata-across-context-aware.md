@@ -1,7 +1,7 @@
 ---
 # lazysql-7txh
 title: '[11.1] Preserve pending metadata across context-aware Refresh'
-status: todo
+status: completed
 type: bug
 priority: high
 tags:
@@ -10,7 +10,7 @@ tags:
     - review-finding
     - review-cycle-0002
 created_at: 2026-09-12T20:42:44Z
-updated_at: 2026-09-12T20:42:44Z
+updated_at: 2026-09-12T21:44:41Z
 parent: lazysql-a9lf
 ---
 
@@ -36,13 +36,22 @@ Give structural metadata work a lifetime that survives same-table Records and su
 
 ## Acceptance criteria
 
-- [ ] Reproduce both Records Refresh and metadata-surface Refresh with a context-observing pending metadata driver, and correct the cancellation regression.
-- [ ] Successful unrelated metadata reaches the unchanged table after Refresh, leaves Loading state, and enables PK capabilities or Foreign Key Jump as applicable.
-- [ ] Same-table Refresh does not duplicate the pending underlying metadata query and preserves cache in-flight deduplication.
-- [ ] A real table/connection identity change still cancels obsolete metadata database work and stale results cannot mutate the new table.
-- [ ] Preserve the context-aware-only Driver API and `lazysql-h36r`'s active-surface isolation and exact-call invariants.
-- [ ] Add regression coverage that fails on the reviewed implementation and passes after correction.
+- [x] Reproduce both Records Refresh and metadata-surface Refresh with a context-observing pending metadata driver, and correct the cancellation regression.
+- [x] Successful unrelated metadata reaches the unchanged table after Refresh, leaves Loading state, and enables PK capabilities or Foreign Key Jump as applicable.
+- [x] Same-table Refresh does not duplicate the pending underlying metadata query and preserves cache in-flight deduplication.
+- [x] A real table/connection identity change still cancels obsolete metadata database work and stale results cannot mutate the new table.
+- [x] Preserve the context-aware-only Driver API and `lazysql-h36r`'s active-surface isolation and exact-call invariants.
+- [x] Add regression coverage that fails on the reviewed implementation and passes after correction.
 
 ## Blocked by
 
 None. No implementation prerequisite is required.
+
+## Summary of Changes
+
+- Added identity-scoped structural metadata contexts so same-table Records and metadata-surface Refresh do not cancel pending Driver work.
+- Added per-entry cache cancellation and stale-entry replacement while preserving in-flight deduplication and active-surface isolation.
+- Cancelled metadata work on identity changes, tab disposal, explicit loading cancellation, cache invalidation, and application shutdown.
+- Added context-observing Records/metadata Refresh regressions plus stale-identity admission and cancellation coverage.
+
+Verification: `go vet ./...` and `go test ./... -count=1` pass.

@@ -82,9 +82,13 @@ func (driver *retryForeignKeyDriver) setFail(fail bool) {
 
 type pendingForeignKeyDriver struct {
 	*refreshCallDriver
-	started  chan struct{}
-	released chan struct{}
-	finished chan struct{}
+	started    chan struct{}
+	released   chan struct{}
+	finished   chan struct{}
+	canceled   chan struct{}
+	startOnce  sync.Once
+	finishOnce sync.Once
+	cancelOnce sync.Once
 }
 
 func newPendingForeignKeyDriver() *pendingForeignKeyDriver {
@@ -93,6 +97,7 @@ func newPendingForeignKeyDriver() *pendingForeignKeyDriver {
 		started:           make(chan struct{}),
 		released:          make(chan struct{}),
 		finished:          make(chan struct{}),
+		canceled:          make(chan struct{}),
 	}
 }
 
@@ -100,11 +105,17 @@ func (driver *pendingForeignKeyDriver) GetProvider() string {
 	return drivers.DriverPostgres
 }
 
-func (driver *pendingForeignKeyDriver) GetForeignKeys(context.Context, string, string) ([][]string, error) {
+func (driver *pendingForeignKeyDriver) GetForeignKeys(ctx context.Context, _, _ string) ([][]string, error) {
 	driver.record(MetadataForeignKeys)
-	close(driver.started)
-	<-driver.released
-	close(driver.finished)
+	driver.startOnce.Do(func() { close(driver.started) })
+	select {
+	case <-driver.released:
+	case <-ctx.Done():
+		driver.cancelOnce.Do(func() { close(driver.canceled) })
+		driver.finishOnce.Do(func() { close(driver.finished) })
+		return nil, ctx.Err()
+	}
+	driver.finishOnce.Do(func() { close(driver.finished) })
 	return [][]string{
 		{"constraint_name", "column_name", "foreign_table_name", "foreign_column_name"},
 		{"orders_user_fk", "user_id", "users", "id"},
@@ -361,11 +372,19 @@ func TestRefreshPreservesUnrelatedPendingMetadata(t *testing.T) {
 	if !table.isForeignKeyColumn("user_id") {
 		t.Fatal("pending Foreign Keys result did not enable Foreign Key Jump")
 	}
+	if table.GetIsLoading() {
+		t.Fatal("metadata Refresh left the table loading")
+	}
 	if target, ok := table.getForeignKeyJumpTarget("user_id"); !ok || target.ReferencedTable != "users" || target.ReferencedColumn != "id" {
 		t.Fatalf("Foreign Key Jump target = %#v, present = %v", target, ok)
 	}
 	if got := driver.count(MetadataForeignKeys); got != 1 {
 		t.Fatalf("Foreign Keys calls = %d, want exactly 1", got)
+	}
+	select {
+	case <-driver.canceled:
+		t.Fatal("same-table metadata Refresh canceled pending Foreign Keys metadata")
+	default:
 	}
 	if pageCalls, _, _, _, _ := driver.pageArgs(); pageCalls != 0 {
 		t.Fatalf("metadata refresh unexpectedly fetched %d Records pages", pageCalls)
@@ -430,11 +449,50 @@ func TestRecordsRefreshPreservesPendingNonPrimaryKeyMetadata(t *testing.T) {
 	if !table.isForeignKeyColumn("user_id") {
 		t.Fatal("pending Foreign Keys result did not enable Foreign Key Jump")
 	}
+	if table.GetIsLoading() {
+		t.Fatal("Records Refresh left the table loading")
+	}
 	if got := driver.count(MetadataForeignKeys); got != 1 {
 		t.Fatalf("Foreign Keys calls = %d, want exactly 1", got)
 	}
 	if pageCalls, _, _, _, _ := driver.pageArgs(); pageCalls != 1 {
 		t.Fatalf("Records refresh made %d page calls, want exactly 1", pageCalls)
+	}
+	select {
+	case <-driver.canceled:
+		t.Fatal("same-table Records refresh canceled pending Foreign Keys metadata")
+	default:
+	}
+}
+
+func TestIdentityChangeCancelsPendingMetadata(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		apply func(*ResultsTable)
+	}{
+		{name: "table", apply: func(table *ResultsTable) { table.SetTableName("customers") }},
+		{name: "database", apply: func(table *ResultsTable) { table.SetDatabaseName("other_database") }},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			driver := newPendingForeignKeyDriver()
+			table := newRefreshCallTable(driver)
+			table.SetForeignKeys([][]string{{"constraint_name"}, {"old_fk"}})
+			ctx, generation := table.startLoad()
+			table.loadMetadataKind(ctx, generation, "database", "orders", MetadataForeignKeys)
+			<-driver.started
+
+			testCase.apply(table)
+			select {
+			case <-driver.canceled:
+			case <-time.After(time.Second):
+				t.Fatal("identity change did not cancel pending metadata")
+			}
+			foreignKeys := table.GetForeignKeys()
+			if len(foreignKeys) != 2 || foreignKeys[1][0] != "old_fk" {
+				t.Fatalf("stale metadata changed the new identity: %v", foreignKeys)
+			}
+			table.CancelLoading()
+		})
 	}
 }
 

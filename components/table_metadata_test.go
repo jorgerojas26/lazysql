@@ -305,7 +305,7 @@ func TestRecordsMetadataStartsKindsConcurrently(t *testing.T) {
 	table := newRecordsFetchTestTable(driver)
 	ctx, generation := table.startLoad()
 
-	go table.loadRecordsMetadata(ctx, generation, "database", "orders")
+	go table.loadRecordsMetadata(ctx, generation, "database", "table")
 	seen := make(map[MetadataKind]bool, len(metadataKinds))
 	for range metadataKinds {
 		select {
@@ -322,6 +322,31 @@ func TestRecordsMetadataStartsKindsConcurrently(t *testing.T) {
 	table.CancelLoading()
 	close(driver.release)
 	driver.wait.Wait()
+}
+
+func TestMetadataAdmissionRejectsOldIdentityArguments(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		apply func(*ResultsTable)
+	}{
+		{name: "table", apply: func(table *ResultsTable) { table.SetTableName("customers") }},
+		{name: "database", apply: func(table *ResultsTable) { table.SetDatabaseName("other_database") }},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			driver := newRefreshCallDriver()
+			table := newRefreshCallTable(driver)
+			ctx, generation := table.startLoad()
+			testCase.apply(table)
+
+			if done := table.loadMetadataKind(ctx, generation, "database", "orders", MetadataForeignKeys); done != nil {
+				t.Fatal("stale metadata admission started a request")
+			}
+			if got := driver.count(MetadataForeignKeys); got != 0 {
+				t.Fatalf("stale metadata admission made %d driver calls", got)
+			}
+			table.CancelLoading()
+		})
+	}
 }
 
 func TestFailedMetadataDoesNotClearRecordsOrOtherMetadata(t *testing.T) {

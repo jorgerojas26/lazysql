@@ -97,6 +97,8 @@ type metadataCacheEntry struct {
 	err        error
 	done       chan struct{}
 	doneClosed bool
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 // metadataCache is scoped to one connected Home/database connection. Entries
@@ -114,25 +116,59 @@ func newMetadataCache() *metadataCache {
 // request returns a completion channel for a new or in-flight request. A nil
 // channel means the value is already ready in the cache.
 func (cache *metadataCache) request(key metadataKey, load func() (any, error)) <-chan struct{} {
+	return cache.requestWithContext(key, nil, nil, load)
+}
+
+// requestWithContext associates an optional cancellation context with the
+// underlying cache entry. The context belongs to the database work, not to a
+// particular Records/surface load generation, so invalidating one entry can
+// stop only that query while unrelated metadata continues in flight.
+func (cache *metadataCache) requestWithContext(key metadataKey, ctx context.Context, cancel context.CancelFunc, load func() (any, error)) <-chan struct{} {
+	var staleCancel context.CancelFunc
+
 	cache.mu.Lock()
 	if entry, ok := cache.entries[key]; ok {
 		switch entry.status {
 		case MetadataReady:
 			cache.mu.Unlock()
+			if cancel != nil {
+				cancel()
+			}
 			return nil
 		case MetadataLoading:
-			done := entry.done
-			cache.mu.Unlock()
-			return done
+			if entry.ctx == nil || entry.ctx.Err() == nil {
+				done := entry.done
+				cache.mu.Unlock()
+				if cancel != nil {
+					cancel()
+				}
+				return done
+			}
+
+			// An identity-scoped context can be canceled just before a table is
+			// revisited. Do not let the new consumer inherit that doomed request.
+			delete(cache.entries, key)
+			if !entry.doneClosed {
+				close(entry.done)
+				entry.doneClosed = true
+			}
+			staleCancel = entry.cancel
+			entry.cancel = nil
 		}
 	}
 
 	entry := &metadataCacheEntry{
 		status: MetadataLoading,
 		done:   make(chan struct{}),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 	cache.entries[key] = entry
 	cache.mu.Unlock()
+
+	if staleCancel != nil {
+		staleCancel()
+	}
 
 	go func() {
 		value, err := load()
@@ -157,6 +193,7 @@ func (cache *metadataCache) request(key metadataKey, load func() (any, error)) <
 		} else {
 			entry.status = MetadataReady
 		}
+		entry.cancel = nil
 		if !entry.doneClosed {
 			close(entry.done)
 			entry.doneClosed = true
@@ -167,21 +204,27 @@ func (cache *metadataCache) request(key metadataKey, load func() (any, error)) <
 }
 
 // invalidate removes one metadata entry so the next request performs a fresh
-// database lookup. The cache releases an in-flight completion and ignores its
-// result if a replacement request wins the race; context-aware loaders may also
-// stop their database work when their caller cancels the operation.
+// database lookup. The cache releases an in-flight completion, cancels only the
+// invalidated query, and ignores its result if a replacement request wins the
+// race.
 func (cache *metadataCache) invalidate(key metadataKey) {
 	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
 	entry, ok := cache.entries[key]
 	if !ok {
+		cache.mu.Unlock()
 		return
 	}
 	delete(cache.entries, key)
 	if !entry.doneClosed {
 		close(entry.done)
 		entry.doneClosed = true
+	}
+	cancel := entry.cancel
+	entry.cancel = nil
+	cache.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 }
 
@@ -195,14 +238,22 @@ func (cache *metadataCache) invalidateAll() {
 	}
 
 	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
+	cancels := make([]context.CancelFunc, 0, len(cache.entries))
 	for key, entry := range cache.entries {
 		delete(cache.entries, key)
 		if !entry.doneClosed {
 			close(entry.done)
 			entry.doneClosed = true
 		}
+		if entry.cancel != nil {
+			cancels = append(cancels, entry.cancel)
+			entry.cancel = nil
+		}
+	}
+	cache.mu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
 	}
 }
 
@@ -236,16 +287,19 @@ func (cache *metadataCache) completion(key metadataKey) <-chan struct{} {
 // entry identity before publishing, and its waiters are released here.
 func (cache *metadataCache) store(key metadataKey, value any, err error) {
 	cache.mu.Lock()
-	defer cache.mu.Unlock()
 
+	var cancel context.CancelFunc
 	if current, ok := cache.entries[key]; ok {
 		if current.status == MetadataReady {
+			cache.mu.Unlock()
 			return
 		}
 		if current.status == MetadataLoading && !current.doneClosed {
 			close(current.done)
 			current.doneClosed = true
 		}
+		cancel = current.cancel
+		current.cancel = nil
 	}
 
 	entry := &metadataCacheEntry{
@@ -260,6 +314,11 @@ func (cache *metadataCache) store(key metadataKey, value any, err error) {
 	close(entry.done)
 	entry.doneClosed = true
 	cache.entries[key] = entry
+	cache.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func metadataCacheForHome(home *Home) *metadataCache {
@@ -289,25 +348,29 @@ func (table *ResultsTable) requestMetadata(databaseName, tableName string, kind 
 func (table *ResultsTable) requestMetadataWithContext(ctx context.Context, databaseName, tableName string, kind MetadataKind) (metadataKey, <-chan struct{}) {
 	key := newMetadataKey(databaseName, tableName, kind)
 	cache := table.metadataCacheForTable()
-	done := cache.request(key, func() (any, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	metadataCtx, metadataCancel := context.WithCancel(ctx)
+	done := cache.requestWithContext(key, metadataCtx, metadataCancel, func() (any, error) {
 		started := time.Now()
 		var value any
 		var err error
 		switch kind {
 		case MetadataColumns:
-			value, err = table.DBDriver.GetTableColumns(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetTableColumns(metadataCtx, databaseName, tableName)
 		case MetadataPrimaryKeys:
-			value, err = table.DBDriver.GetPrimaryKeyColumnNames(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetPrimaryKeyColumnNames(metadataCtx, databaseName, tableName)
 		case MetadataForeignKeys:
-			value, err = table.DBDriver.GetForeignKeys(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetForeignKeys(metadataCtx, databaseName, tableName)
 		case MetadataConstraints:
-			value, err = table.DBDriver.GetConstraints(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetConstraints(metadataCtx, databaseName, tableName)
 		case MetadataIndexes:
-			value, err = table.DBDriver.GetIndexes(ctx, databaseName, tableName)
+			value, err = table.DBDriver.GetIndexes(metadataCtx, databaseName, tableName)
 		default:
 			err = fmt.Errorf("unknown metadata kind %q", kind)
 		}
-		logDatabaseOperation("get_"+string(kind), started, ctx, map[string]any{
+		logDatabaseOperation("get_"+string(kind), started, metadataCtx, map[string]any{
 			"database":  databaseName,
 			"table":     tableName,
 			"kind":      kind,
@@ -338,6 +401,40 @@ func (table *ResultsTable) metadataIdentityGenerationValue() uint64 {
 	table.metadataIdentityMu.RLock()
 	defer table.metadataIdentityMu.RUnlock()
 	return table.metadataIdentityGeneration
+}
+
+// metadataContextForIdentityLocked returns a context shared by structural
+// metadata requests for one table identity. The caller must hold
+// metadataApplyMu so identity transitions cannot race context selection.
+func (table *ResultsTable) metadataContextForIdentityLocked(identityGeneration uint64) context.Context {
+	if table.metadataContext != nil && table.metadataContextGeneration == identityGeneration {
+		return table.metadataContext
+	}
+
+	table.cancelMetadataContextLocked()
+	base := context.Background()
+	if app.App != nil {
+		base = app.App.Context()
+	}
+	ctx, cancel := context.WithCancel(base)
+	table.metadataContext = ctx
+	table.metadataContextCancel = cancel
+	table.metadataContextGeneration = identityGeneration
+	return ctx
+}
+
+func (table *ResultsTable) cancelMetadataContextLocked() {
+	if table.metadataContextCancel != nil {
+		table.metadataContextCancel()
+	}
+	table.metadataContext = nil
+	table.metadataContextCancel = nil
+}
+
+func (table *ResultsTable) cancelMetadataContext() {
+	table.metadataApplyMu.Lock()
+	table.cancelMetadataContextLocked()
+	table.metadataApplyMu.Unlock()
 }
 
 func (table *ResultsTable) isCurrentMetadataIdentity(generation uint64, databaseName, tableName string) bool {
@@ -393,14 +490,27 @@ func (table *ResultsTable) setMetadataState(kind MetadataKind, status MetadataSt
 }
 
 func (table *ResultsTable) loadMetadataKind(ctx context.Context, generation uint64, databaseName, tableName string, kind MetadataKind) <-chan struct{} {
+	identityGeneration := table.metadataIdentityGenerationValue()
 	if !table.isCurrentLoad(ctx, generation) {
 		return nil
 	}
 
 	// Metadata consumers outlive Records and surface loads. Only a table
-	// identity change makes a pending result stale.
-	identityGeneration := table.metadataIdentityGenerationValue()
-	key, done := table.requestMetadataWithContext(ctx, databaseName, tableName, kind)
+	// identity change makes a pending result stale. Keep request creation and
+	// identity-context selection under the same lock as identity transitions so
+	// an old request cannot start after its table became stale.
+	table.metadataApplyMu.Lock()
+	if !table.isCurrentLoad(ctx, generation) || !table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
+		table.metadataApplyMu.Unlock()
+		return nil
+	}
+	metadataCtx := table.metadataContextForIdentityLocked(identityGeneration)
+	key, done := table.requestMetadataWithContext(metadataCtx, databaseName, tableName, kind)
+	if done != nil {
+		table.setMetadataState(kind, MetadataLoading, nil)
+	}
+	table.metadataApplyMu.Unlock()
+
 	if done == nil {
 		logger.DebugOperation("metadata_cache_lookup", time.Now(), map[string]any{
 			"database":  databaseName,
@@ -415,13 +525,6 @@ func (table *ResultsTable) loadMetadataKind(ctx context.Context, generation uint
 			"kind":       kind,
 			"cache_wait": true,
 		})
-	}
-	if done != nil {
-		table.metadataApplyMu.Lock()
-		if table.isCurrentMetadataIdentity(identityGeneration, databaseName, tableName) {
-			table.setMetadataState(kind, MetadataLoading, nil)
-		}
-		table.metadataApplyMu.Unlock()
 	}
 	table.queueMetadataResultForIdentity(identityGeneration, databaseName, tableName, kind, key, done)
 	return done

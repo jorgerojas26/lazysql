@@ -143,6 +143,11 @@ type ResultsTable struct {
 	// Metadata consumers survive load generations but not table identity changes.
 	metadataIdentityMu         sync.RWMutex
 	metadataIdentityGeneration uint64
+	// Structural metadata has its own identity-scoped lifetime. Records and
+	// surface refreshes must not cancel it, while an identity transition does.
+	metadataContext           context.Context
+	metadataContextCancel     context.CancelFunc
+	metadataContextGeneration uint64
 	// Serialize identity transitions with metadata mutations after validation.
 	metadataApplyMu sync.Mutex
 	countMu         sync.Mutex
@@ -1675,6 +1680,7 @@ func (table *ResultsTable) SetDatabaseName(databaseName string) {
 	table.state.databaseName = databaseName
 	table.metadataIdentityGeneration++
 	table.metadataIdentityMu.Unlock()
+	table.cancelMetadataContextLocked()
 	table.metadataApplyMu.Unlock()
 	table.invalidateRowCount()
 }
@@ -1690,6 +1696,7 @@ func (table *ResultsTable) SetTableName(tableName string) {
 	table.state.tableName = tableName
 	table.metadataIdentityGeneration++
 	table.metadataIdentityMu.Unlock()
+	table.cancelMetadataContextLocked()
 	table.metadataApplyMu.Unlock()
 	table.invalidateRowCount()
 }
@@ -1874,6 +1881,7 @@ func (table *ResultsTable) CancelActiveExport() bool {
 
 func (table *ResultsTable) CancelLoading() bool {
 	if table.CancelExport() {
+		table.cancelMetadataContext()
 		return true
 	}
 
@@ -1887,6 +1895,7 @@ func (table *ResultsTable) CancelLoading() bool {
 
 	if cancel != nil {
 		cancel()
+		table.cancelMetadataContext()
 		table.SetLoading(false)
 		return true
 	}

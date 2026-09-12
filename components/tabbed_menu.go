@@ -149,6 +149,7 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 	if currentTab != nil {
 		if table, ok := currentTab.Content.(*ResultsTable); ok {
 			table.CancelExactCount()
+			table.cancelMetadataContext()
 		}
 
 		index := 0
