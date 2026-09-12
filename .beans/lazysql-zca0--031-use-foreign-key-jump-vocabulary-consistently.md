@@ -1,7 +1,7 @@
 ---
 # lazysql-zca0
 title: '[03.1] Use Foreign Key Jump vocabulary consistently'
-status: todo
+status: completed
 type: bug
 priority: normal
 tags:
@@ -10,7 +10,7 @@ tags:
     - review-finding
     - review-cycle-0002
 created_at: 2026-09-12T20:42:44Z
-updated_at: 2026-09-12T20:42:44Z
+updated_at: 2026-09-12T21:04:00Z
 parent: lazysql-a9lf
 ---
 
@@ -34,12 +34,18 @@ Normalize the reviewed initiative and Bean documentation to the exact **Foreign 
 
 ## Acceptance criteria
 
-- [ ] Replace “FK-jump” and alternate relation-navigation names in the reviewed initiative/Bean sources with the exact **Foreign Key Jump** term.
-- [ ] Preserve the substantive meaning of supported-provider behavior and the composite-key navigation non-goal.
-- [ ] Search the reviewed specification and Bean sources for remaining rejected synonyms and correct any references to this domain concept.
-- [ ] Add a lightweight vocabulary check or equivalent regression guard that fails for the reviewed drift and passes after correction.
-- [ ] Preserve `lazysql-846w`'s functional Foreign Key Jump acceptance criteria unchanged apart from terminology.
+- [x] Replace “FK-jump” and alternate relation-navigation names in the reviewed initiative/Bean sources with the exact **Foreign Key Jump** term.
+- [x] Preserve the substantive meaning of supported-provider behavior and the composite-key navigation non-goal.
+- [x] Search the reviewed specification and Bean sources for remaining rejected synonyms and correct any references to this domain concept.
+- [x] Add a lightweight vocabulary check or equivalent regression guard that fails for the reviewed drift and passes after correction.
+- [x] Preserve `lazysql-846w`'s functional Foreign Key Jump acceptance criteria unchanged apart from terminology.
 
 ## Blocked by
 
 None. No implementation prerequisite is required.
+
+## Summary of Changes
+
+- Replaced abbreviated and composite-key relation-navigation wording with the exact Foreign Key Jump glossary term in the initiative and Bean 03 specification.
+- Added `internal/vocabulary_test.go` to guard the reviewed specification sources against rejected Foreign Key Jump synonyms.
+- Preserved the supported-provider and composite-key non-goals and Bean 03 functional acceptance behavior.

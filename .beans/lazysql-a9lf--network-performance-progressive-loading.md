@@ -147,8 +147,8 @@ The following are intentionally out of scope:
 - calculating exact counts for arbitrary SQL-editor queries;
 - adding a global "refresh absolutely everything" action;
 - remote telemetry or analytics;
-- changing the behavior of unsupported FK-jump providers;
-- changing composite-FK navigation semantics;
+- changing Foreign Key Jump behavior for providers that do not support it;
+- changing Foreign Key Jump semantics for composite keys;
 - adding connection lifetime tuning such as `conn_max_lifetime`;
 - guaranteeing that every database engine can provide a cheap row estimate.
 
@@ -540,11 +540,11 @@ When PK information arrives:
 
 When FK information arrives:
 
-- supported FK-jump cells are enriched in-place;
-- navigable FK cells receive their underline styling;
-- `Enter` navigation becomes available.
+- supported Foreign Key Jump cells are enriched in-place;
+- Foreign Key Jump cells receive their underline styling;
+- Foreign Key Jump via `Enter` becomes available.
 
-Rows must not be refetched just to add FK styling.
+Rows must not be refetched just to add Foreign Key Jump styling.
 
 Each capability activates independently.
 
@@ -825,7 +825,7 @@ Fallback usage and duration should be debug-logged.
 
 Existing FK semantics must be preserved.
 
-This project does not require expanding FK-jump support to drivers where it is currently unsupported.
+This project does not require expanding Foreign Key Jump support to drivers where it is currently unsupported.
 
 ---
 
@@ -1732,7 +1732,7 @@ The initiative is complete only when all of the following are true:
 - Automatic counts are bounded and cancellable.
 - Manual exact count works through `#`.
 - Structural metadata loads progressively and is cached.
-- PK/FK behavior activates after metadata arrives without refetching Records.
+- PK-dependent behavior and Foreign Key Jump activate after metadata arrives without refetching Records.
 - Metadata requests are deduplicated.
 - Stale background results cannot corrupt another view.
 - All relevant driver I/O is context-aware.

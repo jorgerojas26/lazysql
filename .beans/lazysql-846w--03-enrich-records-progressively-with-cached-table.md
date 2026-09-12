@@ -26,7 +26,7 @@ After Records have rendered, load uncached Columns, Primary Keys, Foreign Keys, 
 
 Introduce connection-scoped metadata state/cache shared independently of individual ResultsTable instances. Deduplicate identical in-flight metadata requests and protect UI updates from stale results.
 
-PK/FK functionality must become available independently: FK cells should gain their underline/navigation behavior only after FK metadata arrives, without refetching Records.
+PK/FK functionality must become available independently: Foreign Key Jump cells should gain their underline/navigation behavior only after FK metadata arrives, without refetching Records.
 
 ## Acceptance criteria
 
@@ -40,7 +40,7 @@ PK/FK functionality must become available independently: FK cells should gain th
 - [x] Completion of metadata for an old table cannot mutate a newer visible table.
 - [x] Valid late results may populate the cache even when they no longer apply to the active view.
 - [x] PK-dependent capabilities become available when PK metadata arrives without waiting for other metadata.
-- [x] FK-jump cells gain underline/navigation behavior when FK metadata arrives without refetching Records.
+- [x] Foreign Key Jump cells gain underline/navigation behavior when FK metadata arrives without refetching Records.
 - [x] Failure of one metadata kind does not remove Records or unrelated successful metadata.
 - [x] Regression tests cover empty metadata, failed metadata, cache reuse, in-flight deduplication, and stale-result protection.
 
