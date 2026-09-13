@@ -12,3 +12,6 @@ testdata/sqlite/*.sqlite3-*
 # Local Pi runtime state
 .atl/
 .codegraph
+
+# AI QA run artifacts (screens, logs, binaries, and agent results)
+.qa-runs/

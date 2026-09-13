@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "name": "LazySQL AI smoke QA",
+  "description": "Human-like smoke coverage of the real LazySQL TUI against the existing manual database fixtures.",
+  "fixture": {
+    "reuse_existing": true,
+    "startup": "./scripts/manual-databases.sh up",
+    "config": ".lazysql.toml",
+    "read_only": true
+  },
+  "defaults": {
+    "page_size": 100,
+    "max_query_rows": 1000,
+    "herdr_start_timeout_ms": 30000,
+    "tui_start_timeout_ms": 30000,
+    "agent_start_timeout_ms": 60000,
+    "case_timeout_ms": 600000
+  },
+  "cases": [
+    {
+      "id": "records-pagination",
+      "title": "Records pagination uses the MySQL orders fixture",
+      "instruction": "qa/cases/smoke/records-pagination.md",
+      "connection": "Docker MySQL",
+      "provider": "mysql",
+      "table": "orders",
+      "oracles": [
+        "The seeded orders Records surface opens and shows a non-empty first page.",
+        "PageNext loads a different later page without an error.",
+        "PagePrev returns to the original first-page row."
+      ]
+    },
+    {
+      "id": "foreign-key-jump",
+      "title": "Foreign Key Jump follows a seeded PostgreSQL relationship",
+      "instruction": "qa/cases/smoke/foreign-key-jump.md",
+      "connection": "Docker PostgreSQL",
+      "provider": "postgres",
+      "table": "public.orders",
+      "oracles": [
+        "The customer_id foreign-key cell is visibly navigable after metadata arrives.",
+        "Enter opens public.customers filtered to the selected customer_id value.",
+        "The target row proves the relationship rather than merely opening an unrelated table."
+      ]
+    },
+    {
+      "id": "sql-editor-truncation",
+      "title": "SQL editor streams and caps order_items results",
+      "instruction": "qa/cases/smoke/sql-editor-truncation.md",
+      "connection": "Docker MySQL",
+      "provider": "mysql",
+      "table": "order_items",
+      "oracles": [
+        "The SQL editor renders a non-empty intermediate result while the SELECT is active.",
+        "The final result is from order_items and visibly reports 1,000 rows shown.",
+        "The final status reports result truncation with maximum 1,000."
+      ]
+    }
+  ]
+}
