@@ -336,6 +336,46 @@ func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *te
 	}
 }
 
+// ── result-set routing ─────────────────────────────────────────────────────────
+
+// TestQueryReturnsRows covers editor queries that produce rows but used to be
+// sent to ExecuteDMLStatement, which only shows "N rows affected".
+func TestQueryReturnsRows(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		expected bool
+	}{
+		{"select", "SELECT * FROM users", true},
+		{"cte", "WITH cte AS (SELECT 1) SELECT * FROM cte", true},
+		{"explain", "EXPLAIN SELECT 1", true},
+		{"show", "SHOW TABLES", true},
+		{"describe", "DESCRIBE users", true},
+		{"select after line comment", "-- list users\nSELECT * FROM users", true},
+		{"select after block comment", "/* all users */ SELECT * FROM users", true},
+		{"values", "VALUES (1, 'x'), (2, 'y')", true},
+		{"pragma", "PRAGMA table_info(users)", true},
+		{"insert returning", "INSERT INTO users(name) VALUES ('c') RETURNING id", true},
+		{"update returning", "UPDATE users SET name = 'd' WHERE id = 1\nRETURNING *", true},
+		{"delete returning", "delete from users where id = 1 returning id", true},
+
+		{"insert", "INSERT INTO users(name) VALUES ('c')", false},
+		{"update", "UPDATE users SET returning_at = NOW()", false},
+		{"delete", "DELETE FROM users WHERE id = 1", false},
+		{"create table", "CREATE TABLE t (id INT)", false},
+		{"insert after comment", "-- seed\nINSERT INTO users(name) VALUES ('c')", false},
+		{"returning only in a comment", "DELETE FROM users -- returning nothing", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := queryReturnsRows(tt.query); got != tt.expected {
+				t.Errorf("queryReturnsRows(%q) = %v, want %v", tt.query, got, tt.expected)
+			}
+		})
+	}
+}
+
 // ── read-only routing ──────────────────────────────────────────────────────────
 
 // readOnlyRoutingMock records every query the editor pipeline sends to the

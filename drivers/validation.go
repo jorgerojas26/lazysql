@@ -25,15 +25,18 @@ var readOnlyAllowedKeywords = []string{
 // optional modifiers that may sit between CREATE and the object keyword
 var createModifiersPattern = regexp.MustCompile(`^CREATE\s+(?:(?:OR\s+REPLACE|UNIQUE|MATERIALIZED)\s+)+`)
 
+// StripSQLComments removes -- line comments and /* block */ comments from a query
+func StripSQLComments(query string) string {
+	// remove single-line comments (-- comment)
+	query = regexp.MustCompile(`--[^\n]*`).ReplaceAllString(query, "")
+	// remove multi-line comments (/* comment */)
+	query = regexp.MustCompile(`/\*[\s\S]*?\*/`).ReplaceAllString(query, "")
+	return strings.TrimSpace(query)
+}
+
 // IsQueryMutation checks if a SQL query is a mutation operation
 func IsQueryMutation(query string) bool {
-	upperQuery := strings.TrimSpace(strings.ToUpper(query))
-
-	// remove single-line comments (-- comment)
-	upperQuery = regexp.MustCompile(`--[^\n]*`).ReplaceAllString(upperQuery, "")
-	// remove multi-line comments (/* comment */)
-	upperQuery = regexp.MustCompile(`/\*[\s\S]*?\*/`).ReplaceAllString(upperQuery, "")
-	upperQuery = strings.TrimSpace(upperQuery)
+	upperQuery := StripSQLComments(strings.ToUpper(query))
 
 	// normalize optional CREATE modifiers so the prefix checks below still
 	// match, for example "CREATE OR REPLACE VIEW" or "CREATE UNIQUE INDEX"
