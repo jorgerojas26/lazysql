@@ -1,10 +1,12 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -642,7 +644,7 @@ func TestMySQL_ErrorScenarios(t *testing.T) {
 				mock.ExpectQuery("SHOW DATABASES").WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, err := db.GetDatabases()
+				_, err := db.GetDatabases(context.Background())
 				return err
 			},
 		},
@@ -652,7 +654,7 @@ func TestMySQL_ErrorScenarios(t *testing.T) {
 				mock.ExpectQuery(fmt.Sprintf("SHOW TABLES FROM `%s`", testDBNameMySQL)).WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, err := db.GetTables("test_db")
+				_, err := db.GetTables(context.Background(), "test_db")
 				return err
 			},
 		},
@@ -662,7 +664,7 @@ func TestMySQL_ErrorScenarios(t *testing.T) {
 				// No expectations needed for this case
 			},
 			testFunc: func(db *MySQL) error {
-				_, err := db.GetTables("")
+				_, err := db.GetTables(context.Background(), "")
 				return err
 			},
 		},
@@ -703,7 +705,7 @@ func TestMySQL_GetTableColumns_Error(t *testing.T) {
 
 	mock.ExpectQuery(fmt.Sprintf("SHOW FULL COLUMNS FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnError(errors.New("query error"))
 
-	_, err = mysql.GetTableColumns(testDBNameMySQL, testDBTableNameMySQL)
+	_, err = mysql.GetTableColumns(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -726,7 +728,7 @@ func TestMySQL_GetConstraints_Error(t *testing.T) {
 
 	mock.ExpectQuery("SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = \\? AND TABLE_NAME = \\?").WithArgs(testDBNameMySQL, testDBTableNameMySQL).WillReturnError(errors.New("query error"))
 
-	_, err = mysql.GetConstraints(testDBNameMySQL, testDBTableNameMySQL)
+	_, err = mysql.GetConstraints(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 
 	log.Println("errrorrrrrr", err.Error())
 
@@ -748,9 +750,17 @@ func TestMySQL_GetForeignKeys_Error(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	mock.ExpectQuery("SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = \\? AND REFERENCED_TABLE_NAME = \\?").WithArgs(testDBNameMySQL, testDBTableNameMySQL).WillReturnError(errors.New("query error"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("legacy fast path query error"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("modern fast path query error"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFallbackQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("fallback query error"))
 
-	_, err = mysql.GetForeignKeys(testDBNameMySQL, testDBTableNameMySQL)
+	_, err = mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -772,7 +782,7 @@ func TestMySQL_GetIndexes_Error(t *testing.T) {
 
 	mock.ExpectQuery(fmt.Sprintf("SHOW INDEX FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnError(errors.New("query error"))
 
-	_, err = mysql.GetIndexes(testDBNameMySQL, testDBTableNameMySQL)
+	_, err = mysql.GetIndexes(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -800,20 +810,20 @@ func TestMySQL_GetRecords_Error(t *testing.T) {
 		{
 			name: "GetRecords error",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit).WillReturnError(errors.New("query error"))
+				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit+1).WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, _, _, err := db.GetRecords("test_db", "test_table", "", "", 0, DefaultRowLimit)
+				_, err := db.GetRecords(context.Background(), "test_db", "test_table", "", "", 0, DefaultRowLimit)
 				return err
 			},
 		},
 		{
 			name: "GetRecords with where error",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s WHERE id = 1 LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit).WillReturnError(errors.New("query error"))
+				mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s WHERE id = 1 LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs(0, DefaultRowLimit+1).WillReturnError(errors.New("query error"))
 			},
 			testFunc: func(db *MySQL) error {
-				_, _, _, err := db.GetRecords("test_db", "test_table", "WHERE id = 1", "", 0, DefaultRowLimit)
+				_, err := db.GetRecords(context.Background(), "test_db", "test_table", "WHERE id = 1", "", 0, DefaultRowLimit)
 				return err
 			},
 		},
@@ -844,7 +854,7 @@ func TestMySQL_ExecuteQuery_Error(t *testing.T) {
 
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnError(errors.New("query error"))
 
-	_, _, err = mysql.ExecuteQuery(fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
+	_, _, err = mysql.ExecuteQuery(context.Background(), fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -866,7 +876,7 @@ func TestMySQL_UpdateRecord_Error(t *testing.T) {
 
 	mock.ExpectExec(fmt.Sprintf("UPDATE %s SET name = \\? WHERE id = \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs("updated_test", "1").WillReturnError(errors.New("query error"))
 
-	err = mysql.UpdateRecord(testDBNameMySQL, testDBTableNameMySQL, "name", "updated_test", "id", "1")
+	err = mysql.UpdateRecord(context.Background(), testDBNameMySQL, testDBTableNameMySQL, "name", "updated_test", "id", "1")
 
 	log.Println(err.Error())
 
@@ -890,7 +900,7 @@ func TestMySQL_DeleteRecord_Error(t *testing.T) {
 
 	mock.ExpectExec(fmt.Sprintf("DELETE FROM %s WHERE id = ?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs("1").WillReturnError(errors.New("query error"))
 
-	err = mysql.DeleteRecord(testDBNameMySQL, testDBTableNameMySQL, "id", "1")
+	err = mysql.DeleteRecord(context.Background(), testDBNameMySQL, testDBTableNameMySQL, "id", "1")
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -912,7 +922,7 @@ func TestMySQL_ExecuteDMLStatement_Error(t *testing.T) {
 
 	mock.ExpectExec("UPDATE test_table SET value = 3 WHERE name = 'test1'").WillReturnError(errors.New("query error"))
 
-	_, err = mysql.ExecuteDMLStatement(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", testDBTableNameMySQL))
+	_, err = mysql.ExecuteDMLStatement(context.Background(), fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", testDBTableNameMySQL))
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -976,7 +986,7 @@ func TestMySQL_ExecutePendingChanges_PartialFailure(t *testing.T) {
 	mock.ExpectExec(fmt.Sprintf("UPDATE %s SET `value` = \\? WHERE `id` = \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs("4", "2").WillReturnError(errors.New("query error"))
 	mock.ExpectRollback()
 
-	err = mysql.ExecutePendingChanges(changes)
+	err = mysql.ExecutePendingChanges(context.Background(), changes)
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -1021,7 +1031,7 @@ func TestMySQL_ExecutePendingChanges_Error(t *testing.T) {
 	mock.ExpectExec(fmt.Sprintf("UPDATE %s SET `value` = \\? WHERE `id` = \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WithArgs("3", "1").WillReturnError(errors.New("query error"))
 	mock.ExpectRollback()
 
-	err = mysql.ExecutePendingChanges(changes)
+	err = mysql.ExecutePendingChanges(context.Background(), changes)
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -1043,7 +1053,7 @@ func TestMySQL_GetPrimaryKeyColumnNames_Error(t *testing.T) {
 
 	mock.ExpectQuery("SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = \\? AND table_name = \\? AND constraint_name = \\?").WithArgs(testDBNameMySQL, testDBTableNameMySQL, "PRIMARY").WillReturnError(errors.New("query error"))
 
-	_, err = mysql.GetPrimaryKeyColumnNames(testDBNameMySQL, testDBTableNameMySQL)
+	_, err = mysql.GetPrimaryKeyColumnNames(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 
 	log.Println(err.Error())
 
@@ -1124,7 +1134,7 @@ func TestMySQL_Transactions(t *testing.T) {
 // 	mysql := &MySQL{Connection: db}
 //
 // 	// Test multiple connections
-// 	err = mysql.Connect(testDBNameMySQL)
+// 	err = mysql.Connect(context.Background(), testDBNameMySQL)
 // 	if err != nil {
 // 		t.Fatalf("Failed to connect: %v", err)
 // 	}
@@ -1132,7 +1142,7 @@ func TestMySQL_Transactions(t *testing.T) {
 //
 // 	// Verify connection is reusable
 // 	for range 3 {
-// 		_, err := mysql.GetDatabases()
+// 		_, err := mysql.GetDatabases(context.Background())
 // 		if err != nil {
 // 			t.Fatalf("Failed to use connection: %v", err)
 // 		}
@@ -1150,7 +1160,7 @@ func TestMySQL_Transactions(t *testing.T) {
 //
 // 	mysql := &MySQL{Connection: db}
 //
-// 	err = mysql.Connect(testDBNameMySQL)
+// 	err = mysql.Connect(context.Background(), testDBNameMySQL)
 // 	if err != nil {
 // 		t.Fatalf("Connect failed: %v", err)
 // 	}
@@ -1172,7 +1182,7 @@ func TestMySQL_GetDatabases(t *testing.T) {
 
 	mock.ExpectQuery("SHOW DATABASES").WillReturnRows(rows)
 
-	databases, err := mysql.GetDatabases()
+	databases, err := mysql.GetDatabases(context.Background())
 	if err != nil {
 		t.Fatalf("GetDatabases failed: %v", err)
 	}
@@ -1203,7 +1213,7 @@ func TestMySQL_GetTables(t *testing.T) {
 
 	mock.ExpectQuery("SHOW TABLES FROM `test_db`").WillReturnRows(rows)
 
-	tables, err := mysql.GetTables("test_db")
+	tables, err := mysql.GetTables(context.Background(), "test_db")
 	if err != nil {
 		t.Fatalf("GetTables failed: %v", err)
 	}
@@ -1237,7 +1247,7 @@ func TestMySQL_GetTableColumns(t *testing.T) {
 
 	mock.ExpectQuery(fmt.Sprintf("SHOW FULL COLUMNS FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnRows(rows)
 
-	columns, err := mysql.GetTableColumns(testDBNameMySQL, testDBTableNameMySQL)
+	columns, err := mysql.GetTableColumns(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 	if err != nil {
 		t.Fatalf("GetTableColumns failed: %v", err)
 	}
@@ -1274,7 +1284,7 @@ func TestMySQL_GetConstraints(t *testing.T) {
 		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
 		WillReturnRows(rows)
 
-	constraints, err := mysql.GetConstraints(testDBNameMySQL, testDBTableNameMySQL)
+	constraints, err := mysql.GetConstraints(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 	if err != nil {
 		t.Fatalf("GetConstraints failed: %v", err)
 	}
@@ -1302,7 +1312,6 @@ func TestMySQL_GetForeignKeys(t *testing.T) {
 
 	mysql := &MySQL{Connection: db}
 
-	// Set up mock expectations
 	rows := sqlmock.NewRows([]string{
 		"TABLE_NAME",
 		"COLUMN_NAME",
@@ -1311,14 +1320,11 @@ func TestMySQL_GetForeignKeys(t *testing.T) {
 		"REFERENCED_TABLE_NAME",
 	}).AddRow("orders", "user_id", "fk_user", "id", "users")
 
-	mock.ExpectQuery(
-		"SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME "+
-			"FROM information_schema.KEY_COLUMN_USAGE "+
-			"WHERE REFERENCED_TABLE_SCHEMA = \\? AND REFERENCED_TABLE_NAME = \\?").
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
 		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
 		WillReturnRows(rows)
 
-	foreignKeys, err := mysql.GetForeignKeys(testDBNameMySQL, testDBTableNameMySQL)
+	foreignKeys, err := mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}
@@ -1334,6 +1340,106 @@ func TestMySQL_GetForeignKeys(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_GetForeignKeys_UsesModernInnoDBFastPath(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	mysql := &MySQL{Connection: db}
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("legacy metadata unavailable"))
+
+	rows := sqlmock.NewRows([]string{
+		"TABLE_NAME",
+		"COLUMN_NAME",
+		"CONSTRAINT_NAME",
+		"REFERENCED_COLUMN_NAME",
+		"REFERENCED_TABLE_NAME",
+	}).AddRow("orders", "user_id", "fk_user", "id", "users")
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnRows(rows)
+
+	foreignKeys, err := mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
+	if err != nil {
+		t.Fatalf("GetForeignKeys modern fast path failed: %v", err)
+	}
+	if len(foreignKeys) != 2 || foreignKeys[1][0] != "orders" {
+		t.Fatalf("unexpected foreign keys: %v", foreignKeys)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_GetForeignKeys_FallsBackToKeyColumnUsage(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	mysql := &MySQL{Connection: db}
+
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysLegacyFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("legacy INNODB metadata unavailable"))
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFastPathQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnError(errors.New("modern INNODB metadata unavailable"))
+
+	rows := sqlmock.NewRows([]string{
+		"TABLE_NAME",
+		"COLUMN_NAME",
+		"CONSTRAINT_NAME",
+		"REFERENCED_COLUMN_NAME",
+		"REFERENCED_TABLE_NAME",
+	}).AddRow("orders", "user_id", "fk_user", "id", "users")
+	mock.ExpectQuery(regexp.QuoteMeta(mysqlForeignKeysFallbackQuery)).
+		WithArgs(testDBNameMySQL, testDBTableNameMySQL).
+		WillReturnRows(rows)
+
+	foreignKeys, err := mysql.GetForeignKeys(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
+	if err != nil {
+		t.Fatalf("GetForeignKeys fallback failed: %v", err)
+	}
+
+	expected := [][]string{
+		{"TABLE_NAME", "COLUMN_NAME", "CONSTRAINT_NAME", "REFERENCED_COLUMN_NAME", "REFERENCED_TABLE_NAME"},
+		{"orders", "user_id", "fk_user", "id", "users"},
+	}
+	if !reflect.DeepEqual(foreignKeys, expected) {
+		t.Fatalf("Expected:\n%v\nGot:\n%v", expected, foreignKeys)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_GetForeignKeysHonorsCanceledContext(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	mysql := &MySQL{Connection: db}
+	_, err = mysql.GetForeignKeys(ctx, testDBNameMySQL, testDBTableNameMySQL)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unexpected database query after cancellation: %s", err)
 	}
 }
 
@@ -1355,7 +1461,7 @@ func TestMySQL_GetIndexes(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("SHOW INDEX FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
 		WillReturnRows(rows)
 
-	indexes, err := mysql.GetIndexes(testDBNameMySQL, testDBTableNameMySQL)
+	indexes, err := mysql.GetIndexes(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 	if err != nil {
 		t.Fatalf("GetIndexes failed: %v", err)
 	}
@@ -1391,19 +1497,17 @@ func TestMySQL_GetRecords(t *testing.T) {
 		AddRow(2, "test2", 200)
 
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s LIMIT \\?, \\?", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
-		WithArgs(0, DefaultRowLimit).
+		WithArgs(0, DefaultRowLimit+1).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
-
-	records, total, _, err := mysql.GetRecords(testDBNameMySQL, testDBTableNameMySQL, "", "", 0, DefaultRowLimit)
+	page, err := mysql.GetRecords(context.Background(), testDBNameMySQL, testDBTableNameMySQL, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
+	records := page.Rows
 
-	if total != 2 {
-		t.Fatalf("Expected total 2, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
 	}
 
 	expectedRecords := [][]string{
@@ -1439,7 +1543,7 @@ func TestMySQL_ExecuteQuery(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
 		WillReturnRows(rows)
 
-	results, _, err := mysql.ExecuteQuery(fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
+	results, _, err := mysql.ExecuteQuery(context.Background(), fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
 	if err != nil {
 		t.Fatalf("ExecuteQuery failed: %v", err)
 	}
@@ -1472,7 +1576,7 @@ func TestMySQL_UpdateRecord(t *testing.T) {
 		WithArgs("new_name", "1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	err = mysql.UpdateRecord(testDBNameMySQL, testDBTableNameMySQL, "name", "new_name", "id", "1")
+	err = mysql.UpdateRecord(context.Background(), testDBNameMySQL, testDBTableNameMySQL, "name", "new_name", "id", "1")
 	if err != nil {
 		t.Fatalf("UpdateRecord failed: %v", err)
 	}
@@ -1495,7 +1599,7 @@ func TestMySQL_DeleteRecord(t *testing.T) {
 		WithArgs("1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	err = mysql.DeleteRecord(testDBNameMySQL, testDBTableNameMySQL, "id", "1")
+	err = mysql.DeleteRecord(context.Background(), testDBNameMySQL, testDBTableNameMySQL, "id", "1")
 	if err != nil {
 		t.Fatalf("DeleteRecord failed: %v", err)
 	}
@@ -1518,7 +1622,7 @@ func TestMySQL_ExecuteDMLStatement(t *testing.T) {
 	mock.ExpectExec(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
-	result, err := mysql.ExecuteDMLStatement(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
+	result, err := mysql.ExecuteDMLStatement(context.Background(), fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
 	if err != nil {
 		t.Fatalf("ExecuteDMLStatement failed: %v", err)
 	}
@@ -1575,7 +1679,7 @@ func TestMySQL_ExecutePendingChanges(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err = mysql.ExecutePendingChanges(changes)
+	err = mysql.ExecutePendingChanges(context.Background(), changes)
 	if err != nil {
 		t.Fatalf("ExecutePendingChanges failed: %v", err)
 	}
@@ -1602,7 +1706,7 @@ func TestMySQL_GetPrimaryKeyColumnNames(t *testing.T) {
 		WithArgs(testDBNameMySQL, testDBTableNameMySQL, "PRIMARY").
 		WillReturnRows(rows)
 
-	keys, err := mysql.GetPrimaryKeyColumnNames(testDBNameMySQL, testDBTableNameMySQL)
+	keys, err := mysql.GetPrimaryKeyColumnNames(context.Background(), testDBNameMySQL, testDBTableNameMySQL)
 	if err != nil {
 		t.Fatalf("GetPrimaryKeyColumnNames failed: %v", err)
 	}

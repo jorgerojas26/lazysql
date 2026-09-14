@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -102,7 +103,7 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 		WithArgs("PK", schemaMSSQL, tableNameMSSQL). // Use schema, not database name
 		WillReturnRows(rows)
 
-	keys, err := pg.GetPrimaryKeyColumnNames(DBNameMSSQL, tableNameMSSQL)
+	keys, err := pg.GetPrimaryKeyColumnNames(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetPrimaryKeyColumnNames failed: %v", err)
 	}
@@ -173,7 +174,7 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
           AND DB_NAME(DB_ID(@p1)) = @p1
     `).WithArgs(DBNameMSSQL, tableNameMSSQL).WillReturnRows(rows)
 
-	constraints, err := pg.GetForeignKeys(DBNameMSSQL, tableNameMSSQL)
+	constraints, err := pg.GetForeignKeys(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}
@@ -326,7 +327,7 @@ func TestMSSQL_GetIndexes(t *testing.T) {
 		WithArgs(DBNameMSSQL, tableNameMSSQL, schemaMSSQL).
 		WillReturnRows(rows)
 
-	indexes, err := pg.GetIndexes(DBNameMSSQL, tableNameMSSQL)
+	indexes, err := pg.GetIndexes(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetIndexes failed: %v", err)
 	}
@@ -381,7 +382,7 @@ func TestMSSQL_ExecutePendingChanges(t *testing.T) {
 	)).WithArgs("New'; DROP TABLE Users;--", 1).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err = pg.ExecutePendingChanges(changes)
+	err = pg.ExecutePendingChanges(context.Background(), changes)
 	if err != nil {
 		t.Fatalf("ExecutePendingChanges failed: %v", err)
 	}
@@ -447,7 +448,7 @@ func TestMSSQL_GetTableColumns(t *testing.T) {
 		WithArgs(DBNameMSSQL, tableNameMSSQL).
 		WillReturnRows(rows)
 
-	columns, err := pg.GetTableColumns(DBNameMSSQL, tableNameMSSQL)
+	columns, err := pg.GetTableColumns(context.Background(), DBNameMSSQL, tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetTableColumns failed: %v", err)
 	}
@@ -482,16 +483,14 @@ func TestMSSQL_GetRecords(t *testing.T) {
 		AddRow(2, "Bob")
 
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM \\[%s\\] ORDER BY \\(SELECT NULL\\) OFFSET \\@p1 ROWS FETCH NEXT \\@p2 ROWS ONLY", tableNameMSSQL)).
-		WithArgs(0, DefaultRowLimit).
+		WithArgs(0, DefaultRowLimit+1).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery(fmt.Sprintf("SELECT COUNT\\(\\*\\) FROM \\[%s\\]", tableNameMSSQL)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
-
-	records, total, _, err := pg.GetRecords(DBNameMSSQL, tableNameMSSQL, "", "", 0, DefaultRowLimit)
+	page, err := pg.GetRecords(context.Background(), DBNameMSSQL, tableNameMSSQL, "", "", 0, DefaultRowLimit)
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
+	records := page.Rows
 
 	expected := [][]string{
 		{"id", "name"},
@@ -503,8 +502,8 @@ func TestMSSQL_GetRecords(t *testing.T) {
 		t.Fatalf("Expected %v, got %v", expected, records)
 	}
 
-	if total != 2 {
-		t.Fatalf("Expected total 2, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -565,7 +564,7 @@ func TestMSSQL_GetDatabasesAzureSQL(t *testing.T) {
 				AddRow("sql-db"),
 		)
 
-	databases, err := db.GetDatabases()
+	databases, err := db.GetDatabases(context.Background())
 	if err != nil {
 		t.Fatalf("GetDatabases failed: %v", err)
 	}
@@ -591,25 +590,103 @@ func TestMSSQL_GetTablesQuotesDatabaseName(t *testing.T) {
 
 	db := &MSSQL{Connection: sqlDB}
 
-	mock.ExpectQuery("SELECT name FROM [sql-db].sys.tables").
+	mock.ExpectQuery("SELECT s.name AS schema_name, t.name AS table_name FROM [sql-db].sys.tables AS t INNER JOIN [sql-db].sys.schemas AS s ON t.schema_id = s.schema_id ORDER BY s.name, t.name").
 		WillReturnRows(
-			sqlmock.NewRows([]string{"name"}).
-				AddRow("users"),
+			sqlmock.NewRows([]string{"schema_name", "table_name"}).
+				AddRow("dbo", "users"),
 		)
 
-	tables, err := db.GetTables("sql-db")
+	tables, err := db.GetTables(context.Background(), "sql-db")
 	if err != nil {
 		t.Fatalf("GetTables failed: %v", err)
 	}
 
 	expected := map[string][]string{
-		"sql-db": {"users"},
+		"dbo": {"users"},
 	}
 
 	if !reflect.DeepEqual(tables, expected) {
 		t.Fatalf("expected %v, got %v", expected, tables)
 	}
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_UsesSchemas(t *testing.T) {
+	db := &MSSQL{}
+	if !db.UseSchemas() {
+		t.Fatal("UseSchemas() = false, want true for schema-qualified MSSQL metadata")
+	}
+}
+
+func TestMSSQL_FormatReferenceQuotesQualifiedTable(t *testing.T) {
+	db := &MSSQL{}
+	if got := db.FormatReference("dbo.users"); got != "[dbo].[users]" {
+		t.Fatalf("FormatReference(dbo.users) = %q, want [dbo].[users]", got)
+	}
+}
+
+func TestMSSQL_GetTablesPreservesSchemaIdentity(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New(
+		sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual),
+	)
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer sqlDB.Close()
+
+	db := &MSSQL{Connection: sqlDB}
+	mock.ExpectQuery("SELECT s.name AS schema_name, t.name AS table_name FROM [test_db].sys.tables AS t INNER JOIN [test_db].sys.schemas AS s ON t.schema_id = s.schema_id ORDER BY s.name, t.name").
+		WillReturnRows(sqlmock.NewRows([]string{"schema_name", "table_name"}).
+			AddRow("audit", "users").
+			AddRow("dbo", "users"))
+
+	tables, err := db.GetTables(context.Background(), DBNameMSSQL)
+	if err != nil {
+		t.Fatalf("GetTables failed: %v", err)
+	}
+
+	expected := map[string][]string{
+		"audit": {"users"},
+		"dbo":   {"users"},
+	}
+	if !reflect.DeepEqual(tables, expected) {
+		t.Fatalf("tables = %v, want %v", tables, expected)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetTableColumnsBulkUsesSchemaQualifiedIdentity(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer sqlDB.Close()
+
+	db := &MSSQL{Connection: sqlDB}
+	mock.ExpectQuery(`(?s)USE \[test_db\];.*SELECT s\.name AS schema_name, t\.name AS table_name, c\.name AS column_name.*WHERE \(\(s\.name = @p1 AND t\.name = @p2\).*OR \(s\.name = @p3 AND t\.name = @p4\).*`).
+		WithArgs("audit", "users", "dbo", "users").
+		WillReturnRows(sqlmock.NewRows([]string{"schema_name", "table_name", "column_name", "data_type", "is_nullable", "column_default", "comment"}).
+			AddRow("audit", "users", "id", "int", "0", "", "audit id").
+			AddRow("dbo", "users", "id", "int", "0", "", "dbo id"))
+
+	columns, err := db.GetTableColumnsBulk(context.Background(), DBNameMSSQL, []string{"audit.users", "dbo.users"})
+	if err != nil {
+		t.Fatalf("GetTableColumnsBulk failed: %v", err)
+	}
+	if got := columns["audit.users"][1][4]; got != "audit id" {
+		t.Fatalf("audit.users columns = %v, want audit id comment", columns["audit.users"])
+	}
+	if got := columns["dbo.users"][1][4]; got != "dbo id" {
+		t.Fatalf("dbo.users columns = %v, want dbo id comment", columns["dbo.users"])
+	}
+	if _, ok := columns["users"]; ok {
+		t.Fatal("bulk results collapsed duplicate table names into bare users key")
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("Unfulfilled expectations: %s", err)
 	}
@@ -635,17 +712,11 @@ func TestMSSQL_GetRecordsAzureSQLDoesNotUseUSE(t *testing.T) {
 	mock.ExpectQuery(
 		"SELECT * FROM [test_table] ORDER BY (SELECT NULL) OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY",
 	).
-		WithArgs(0, DefaultRowLimit).
+		WithArgs(0, DefaultRowLimit+1).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery(
-		"SELECT COUNT(*) FROM [test_table]",
-	).
-		WillReturnRows(
-			sqlmock.NewRows([]string{"count"}).AddRow(1),
-		)
-
-	_, total, _, err := db.GetRecords(
+	page, err := db.GetRecords(
+		context.Background(),
 		DBNameMSSQL,
 		tableNameMSSQL,
 		"",
@@ -657,8 +728,8 @@ func TestMSSQL_GetRecordsAzureSQLDoesNotUseUSE(t *testing.T) {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
 
-	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+	if page.HasNextPage {
+		t.Fatal("expected no next page")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

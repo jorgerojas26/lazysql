@@ -38,6 +38,8 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li><a href="#manual-database-test-environment">Manual database test environment</a></li>
+    <li><a href="#result-and-network-semantics">Result and network semantics</a></li>
     <li><a href="#commands">Commands</a></li>
     <li><a href="#environment-variables">Environment variables</a></li>
     <li><a href="#keybindings">Keybindings</a></li>
@@ -169,9 +171,17 @@ DisableSidebar = false
 SidebarOverlay = false
 JSONViewerWordWrap = false
 EnterOpensJSONViewer = false
+schema_bulk_load_threshold = 200
+exact_count_threshold = 50000
+exact_count_timeout_ms = 200
+max_query_rows = 1000
+max_open_connections = 8
+max_idle_connections = 8
 ```
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
+
+Database entries may override the connection pool with `max_open_connections` and `max_idle_connections`. Omitted values inherit the application settings; an explicit `0` uses LazySQL's default of `8`. Invalid combinations (for example, idle connections greater than open connections) are rejected. SQLite always uses one open and one idle connection (`1/1`) to preserve in-memory database behavior, ignoring the general pool settings.
 
 The `DBName` field (optional) controls how the sidebar tree is populated when a connection is opened:
 
@@ -196,6 +206,17 @@ The `[application]` section is used to define some app settings. Not all setting
 | SidebarOverlay | false | Show sidebar as overlay instead of side panel |
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+| exact_count_threshold | 50000 | Automatically run an exact count when an unfiltered estimate is at or below this value (0 = never auto-count an estimate) |
+| exact_count_timeout_ms | 200 | Budget for automatic exact counts in milliseconds (0 = disable automatic exact counts; manual `#` remains available) |
+| max_query_rows | 1000 | Maximum rows shown by an interactive SQL-editor result (0 = unlimited) |
+| schema_bulk_load_threshold | 200 | Maximum visible tables whose columns are eagerly loaded in bulk (0 = always lazy) |
+| max_open_connections | 8 | Maximum open connections for MySQL, PostgreSQL, and MSSQL (0 = use default 8) |
+| max_idle_connections | 8 | Maximum idle connections for MySQL, PostgreSQL, and MSSQL (0 = use default 8) |
+
+`schema_bulk_load_threshold` limits eager autocomplete column loading to small
+visible schemas. `0` keeps all columns lazy; larger schemas still expose table
+names immediately and fetch a requested table on demand. Cached or in-flight
+columns are reused regardless of the threshold.
 
 ### Local Configuration
 
@@ -228,6 +249,67 @@ With this local config, `DefaultPageSize` overrides the global value, and only t
 Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config.
 
 Note: When a local `.lazysql.toml` is found, the full config is saved to the local file when you modify connections from the UI.
+
+### Manual database test environment
+
+This repository includes a plug-and-play, development-only fixture for every
+database provider currently supported by LazySQL: MySQL, PostgreSQL, MSSQL,
+and SQLite. The fixture is intended for manual testing of records, pagination,
+filtering, sorting, metadata, Foreign Key Jump, SQL editor results, and CSV
+exports.
+
+Prerequisites are Docker and Docker Compose v2. The stack does not require any
+host-installed database client.
+
+From the repository root:
+
+```bash
+./scripts/manual-databases.sh validate
+./scripts/manual-databases.sh up
+lazysql
+```
+
+When LazySQL is started from the repository root, the checked-in
+`.lazysql.toml` is discovered automatically and contains four
+ready-to-use connections:
+
+| Connection | Provider | Host port | Fixture database |
+| ---------- | -------- | --------- | ---------------- |
+| Docker MySQL | `mysql` | `3307` | `lazysql_test` |
+| Docker PostgreSQL | `postgres` | `5433` | `lazysql_test` |
+| Docker MSSQL | `sqlserver` | `14331` | `lazysql_test` |
+| Docker SQLite | `sqlite3` | file | `testdata/sqlite/lazysql.sqlite3` |
+
+Use the helper script for the lifecycle:
+
+```bash
+./scripts/manual-databases.sh status  # health and seed status
+./scripts/manual-databases.sh down    # stop, preserve data
+./scripts/manual-databases.sh reset   # destroy and reseed everything
+```
+
+`up` builds the small SQLite helper image, initializes the server fixtures, and
+waits until all databases contain their seed tables. MySQL and PostgreSQL use
+their official image initialization hooks and named volumes; those scripts run
+when the volume is empty. MSSQL seeds through a second container and keeps a
+seed marker so restarting the stack does not overwrite manual changes. SQLite
+is a local file seeded by the helper container and is safe to initialize more
+than once. Use `reset` when a clean fixture is needed.
+
+The fixture uses 1,200 customers, 300 products, 3,000 orders, 9,000 order
+items, and 2,400 customer notes. It includes primary/foreign keys, unique
+constraints, indexes, nullable columns, dates, numeric and boolean values,
+JSON/text values, a view, and provider-specific catalog objects. See
+[`testdata/README.md`](testdata/README.md) for the model and
+[`docker-compose.yml`](docker-compose.yml) for ports and credentials.
+
+The MSSQL image is x86-64-only and the service is explicitly run as
+`linux/amd64`. Docker may emulate it on Apple Silicon; Microsoft does not
+support that emulation path, so use a native x86 host or a remote SQL Server if
+it fails. If a host port is already in use, change the port in both
+`docker-compose.yml` and `.lazysql.toml` before starting the stack. The SQLite
+URL is relative to the process working directory, so launch LazySQL from the
+repository root for that connection.
 
 
 ## Usage
@@ -283,6 +365,68 @@ You can update the tree by pressing `R`, so you can see your newly created table
 > After executing a `SELECT`-query a table will be displayed under the SQL-Editor
 > with the query-result. \
 > To switch focus back to SQL-Editor press `/`
+
+### Result and network semantics
+
+Records pages are fetched with one page of rows plus a lookahead row. The
+lookahead makes navigation work without an exact count, so the pagination label
+has three intentional forms:
+
+- `843 rows` / `1-843 of 843 rows`: **exact**; the database count or an
+  end-of-page inference proved the total.
+- `~4.3M rows`: **estimated**; the database supplied a useful estimate, but it
+  is not a guarantee.
+- `300+ rows`: **unknown-more**; the current page has more rows available and
+  no exact total is known yet.
+
+#### Exact Records count
+
+Press `#` (`ExactCount`) in the Records surface to start an exact count. Press
+`#` again while it is running to cancel it; a failed count stays local to the
+pagination bar and can be retried with `#`. Automatic counting never blocks the
+first Records page: LazySQL first uses a driver estimate where available and
+runs an exact count only when the estimate is at or below
+`exact_count_threshold` (default `50000`), or when an estimate is unavailable.
+A threshold of `0` disables estimate-driven automatic exact counts; filtered
+counts and unavailable estimates still obey the timeout. The automatic count is
+bounded by `exact_count_timeout_ms` (default `200`). Set
+that timeout to `0` to disable automatic exact counts; estimates still render
+and a manual `#` count remains available. Filtered Records counts are also
+bounded by the automatic timeout.
+
+#### SQL results and cancellation
+
+Interactive SQL results stream progressively and default to
+`max_query_rows = 1000`. A positive cap renders at most that many rows and
+performs one lookahead read so the UI can say `result truncated`; `0` means
+unlimited. The cap applies only to interactive results, not full exports.
+While a SQL-editor result query is active, press `Esc` to cancel its context and
+keep any partial rows already rendered. When no result query is active, `Esc`
+keeps the editor's normal unfocus/editing behavior.
+
+#### CSV export
+
+- **Export Visible Results** writes the rows already shown and never
+  reexecutes the SQL statement.
+- **Export All Results** streams the complete table/query result independently
+  of `max_query_rows`. For SQL results it reexecutes only a conservative,
+  replay-safe read-only statement; mutating or unknown statements offer the
+  visible-results option only.
+
+Both scopes write through a temporary file. Cancellation, query failure, or a
+write/rename failure removes the temporary file and leaves an existing
+destination unchanged.
+
+#### Performance diagnostics
+
+For local JSONL timings, start LazySQL with `--loglevel debug --logfile /path/to/lazysql.jsonl`. Logs include operation duration, database identity,
+cache/fallback outcome, cancellation/failure, and
+`event=first_useful_result` for Records and SQL-editor results. SQL text,
+arguments, row values, credentials, and connection URLs are redacted; no
+telemetry is sent.
+
+For the implementation matrix and the no-credentials RTT benchmark harness,
+see [`docs/performance.md`](docs/performance.md).
 
 ### Open/view a table
 
@@ -351,7 +495,10 @@ You can update the tree by pressing `R`, so you can see your newly created table
 1. [Execute a SQL query](#execute-sql-queries)
 2. Press `E` to open the export dialog
 3. Optionally modify the file path
-4. Select **Export** to save all query results
+4. Select **Export Visible Results** to save the rows currently shown
+5. For replay-safe/read-only statements, select **Export All Results** to reexecute the query and stream every row
+
+> Export All Results may reexecute the query and may take significant time. Unknown or potentially mutating statements offer visible-results export only. Press `Esc` during an export to cancel it; a cancelled or failed export leaves the requested destination unchanged.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -534,6 +681,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | O | DuplicateRow | Duplicate row |
 | J | SortDesc | Sort descending |
 | R | Refresh | Refresh the current table |
+| # | ExactCount | Calculate or cancel the exact Records count |
 | K | SortAsc | Sort ascending |
 | C | SetValue | Toggle value menu (NULL, EMPTY, DEFAULT) |
 | [ | TabPrev | Switch to previous tab |
@@ -559,7 +707,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | Default Key | Command | Description |
 | --- | --- | --- |
 | Ctrl-R | Execute | Execute query |
-| Esc | UnfocusEditor | Unfocus editor |
+| Esc | CancelQuery | Cancel the active query; otherwise preserve normal editor Escape behavior |
 | Ctrl-Space | OpenInExternalEditor | Open in external editor |
 
 Specific editor for lazysql can be set by `$SQL_EDITOR`.

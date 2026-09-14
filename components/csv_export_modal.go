@@ -21,14 +21,19 @@ type CSVExportScope int
 const (
 	ExportCurrentPage CSVExportScope = iota
 	ExportAllRecords
+	ExportVisibleResults
+	ExportAllResults
 )
 
 // CSVExportOptions contains options for creating a CSV export modal.
 type CSVExportOptions struct {
-	DatabaseName  string // Database name for file naming
-	TableName     string // Table name for file naming
-	HasPagination bool   // Whether pagination exists (determines UI: 2 buttons vs 1)
-	RowCount      int    // Current row count for display (excluding header)
+	DatabaseName               string // Database name for file naming
+	TableName                  string // Table name for file naming
+	HasPagination              bool   // Whether pagination exists (determines table UI)
+	RowCount                   int    // Current row count for display (excluding header)
+	IsQueryResult              bool   // Whether the export is for SQL-editor results
+	CanExportAll               bool   // Whether replay-safe streaming export is available
+	ExportAllUnavailableReason string // Why query Export All is not offered
 }
 
 // getDefaultExportDir returns the default directory for CSV export.
@@ -83,11 +88,17 @@ func NewCSVExportModal(opts CSVExportOptions, onExport func(filePath string, sco
 			cem.export(ExportAllRecords)
 		})
 	} else {
-		// Query result: show single export button with row count
-		buttonLabel := fmt.Sprintf("Export (%d rows)", opts.RowCount)
-		cem.form.AddButton(buttonLabel, func() {
-			cem.export(ExportAllRecords)
+		// Query results always support exporting the rows already shown. Export
+		// All is separate because it may need to execute the original statement
+		// again and is offered only for replay-safe queries.
+		cem.form.AddButton("Export Visible Results", func() {
+			cem.export(ExportVisibleResults)
 		})
+		if opts.CanExportAll {
+			cem.form.AddButton("Export All Results", func() {
+				cem.export(ExportAllResults)
+			})
+		}
 	}
 
 	cem.form.SetFieldStyle(
@@ -112,19 +123,33 @@ func NewCSVExportModal(opts CSVExportOptions, onExport func(filePath string, sco
 
 	cem.form.SetBorder(false)
 
+	hintText := "Esc to cancel"
+	if opts.IsQueryResult && opts.CanExportAll {
+		hintText = "Export All Results may reexecute this query and may take significant time.\nEsc to cancel"
+	} else if opts.IsQueryResult {
+		reason := opts.ExportAllUnavailableReason
+		if reason == "" {
+			reason = "query is not classified as replay-safe"
+		}
+		hintText = fmt.Sprintf("Export All Results unavailable: %s.\nEsc to cancel", reason)
+	}
 	hint := tview.NewTextView().
-		SetText("Esc to cancel").
+		SetText(hintText).
 		SetTextAlign(tview.AlignCenter).
 		SetTextColor(app.Styles.TertiaryTextColor)
+	hintHeight := 1
+	if opts.IsQueryResult {
+		hintHeight = 2
+	}
 
 	formWithHint := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(cem.form, 0, 1, true).
-		AddItem(hint, 1, 0, false)
+		AddItem(hint, hintHeight, 0, false)
 	formWithHint.SetBorder(true).SetTitle(" Export to CSV ").SetTitleAlign(tview.AlignLeft)
 
 	grid := tview.NewGrid().
-		SetRows(0, 11, 0).
+		SetRows(0, 13, 0).
 		SetColumns(0, 80, 0).
 		AddItem(formWithHint, 1, 1, 1, 1, 0, 0, true)
 
