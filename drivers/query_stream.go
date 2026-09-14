@@ -44,7 +44,7 @@ var errNilQueryBatchHandler = errors.New("query stream batch handler is nil")
 // streamQuery incrementally reads rows from a database/sql result. A finite
 // maxRows consumes at most maxRows rows for display plus one lookahead row to
 // determine whether the result is truncated. maxRows == 0 means unlimited.
-func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows int, onBatch func(QueryBatch) error) (streamResult QueryStreamResult, returnErr error) {
 	if onBatch == nil {
 		return QueryStreamResult{}, errNilQueryBatchHandler
 	}
@@ -60,6 +60,12 @@ func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows 
 	if err != nil {
 		return QueryStreamResult{}, err
 	}
+
+	defer func() {
+		if err := rows.Err(); err != nil && returnErr == nil {
+			returnErr = err
+		}
+	}()
 
 	columns, err := rows.Columns()
 	if err != nil {
@@ -130,7 +136,11 @@ func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows 
 				return
 			}
 			if !rows.Next() {
-				sendResult(readResult{err: rows.Err()})
+				if err := rows.Err(); err != nil {
+					sendResult(readResult{err: err})
+				} else {
+					sendResult(readResult{})
+				}
 				return
 			}
 

@@ -58,7 +58,7 @@ The matrix covers:
 Use `--loglevel debug --logfile /path/to/lazysql.jsonl` to write local JSONL
 records. Performance records contain an operation, duration, stable database
 identity where available, row/byte counts, and outcome fields such as
-`cancelled`, `error`, `cache_hit`, or `fallback`.
+`canceled`, `error`, `cache_hit`, or `fallback`.
 
 The first-paint events are explicit:
 

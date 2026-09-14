@@ -116,7 +116,7 @@ func RunMatrix(ctx context.Context, rtts []time.Duration) ([]Result, error) {
 }
 
 // RunScenario executes one named scenario with the default options.
-func RunScenario(ctx context.Context, rtt time.Duration, scenario Scenario) (Result, error) {
+func RunScenario(ctx context.Context, rtt time.Duration, scenario Scenario) (result Result, returnErr error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -132,7 +132,11 @@ func RunScenario(ctx context.Context, rtt time.Duration, scenario Scenario) (Res
 	if err != nil {
 		return Result{}, fmt.Errorf("%s: %w", scenario, err)
 	}
-	defer run.close()
+	defer func() {
+		if closeErr := run.close(); closeErr != nil && returnErr == nil {
+			returnErr = fmt.Errorf("%s: %w", scenario, closeErr)
+		}
+	}()
 	if err := run.execute(); err != nil {
 		return Result{}, fmt.Errorf("%s: %w", scenario, err)
 	}

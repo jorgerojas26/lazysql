@@ -117,7 +117,7 @@ func (loader *schemaLoader) requestTables(ctx context.Context, database string) 
 	done := loader.cache.request(key, func() (any, error) {
 		started := time.Now()
 		tables, err := loader.driver.GetTables(ctx, database)
-		logDatabaseOperation("get_tables", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "get_tables", started, map[string]any{
 			"database":  database,
 			"cache_hit": false,
 		}, err)
@@ -158,13 +158,6 @@ func (loader *schemaLoader) loadTables(ctx context.Context, database string) (ma
 	return copySchemaTables(tables), nil
 }
 
-func (loader *schemaLoader) invalidateTables(database string) {
-	if loader == nil || loader.cache == nil || database == "" {
-		return
-	}
-	loader.cache.invalidate(newMetadataKey(database, "", MetadataTables))
-}
-
 func (loader *schemaLoader) invalidateAll() {
 	if loader == nil || loader.cache == nil {
 		return
@@ -173,11 +166,11 @@ func (loader *schemaLoader) invalidateAll() {
 }
 
 func copySchemaTables(tables map[string][]string) map[string][]string {
-	copy := make(map[string][]string, len(tables))
+	copied := make(map[string][]string, len(tables))
 	for schema, names := range tables {
-		copy[schema] = append([]string(nil), names...)
+		copied[schema] = append([]string(nil), names...)
 	}
-	return copy
+	return copied
 }
 
 // editorTableNames keeps the familiar bare-name completion for unique tables,
@@ -207,7 +200,7 @@ func editorTableNames(tables []editorSchemaTable) []string {
 
 // visibleTables converts the driver's table map into deterministic table
 // descriptors and excludes configured schemas before any column work begins.
-func (loader *schemaLoader) visibleTables(database string, tables map[string][]string, schemas []string) []editorSchemaTable {
+func (loader *schemaLoader) visibleTables(_ string, tables map[string][]string, schemas []string) []editorSchemaTable {
 	if loader == nil || loader.driver == nil {
 		return nil
 	}
@@ -255,7 +248,7 @@ func (loader *schemaLoader) requestColumns(ctx context.Context, database, table 
 	done := loader.cache.request(key, func() (any, error) {
 		started := time.Now()
 		columns, err := loader.driver.GetTableColumns(ctx, database, table)
-		logDatabaseOperation("get_table_columns", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "get_table_columns", started, map[string]any{
 			"database":  database,
 			"table":     table,
 			"cache_hit": false,
@@ -326,7 +319,7 @@ func (loader *schemaLoader) preloadEditorColumns(ctx context.Context, database s
 	}
 	started := time.Now()
 	bulkResults, err := bulkLoader.GetTableColumnsBulk(ctx, database, names)
-	logDatabaseOperation("get_table_columns_bulk", started, ctx, map[string]any{
+	logDatabaseOperation(ctx, "get_table_columns_bulk", started, map[string]any{
 		"database": database,
 		"tables":   len(names),
 	}, err)

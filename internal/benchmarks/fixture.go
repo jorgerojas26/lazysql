@@ -418,8 +418,6 @@ func argInt(args []driver.NamedValue, index int) int {
 		return int(value)
 	case int32:
 		return int(value)
-	case uint64:
-		return int(value)
 	default:
 		parsed, _ := strconv.Atoi(fmt.Sprint(value))
 		return parsed

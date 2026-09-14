@@ -199,7 +199,7 @@ func TestStartingRecordsLoadCancelsPreviousContext(t *testing.T) {
 	}
 
 	if table.isCurrentLoad(firstContext, firstGeneration) {
-		t.Fatal("cancelled load is still considered current")
+		t.Fatal("canceled load is still considered current")
 	}
 	if !table.isCurrentLoad(secondContext, secondGeneration) {
 		t.Fatal("newer load is not considered current")

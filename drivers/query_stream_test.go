@@ -137,7 +137,7 @@ func TestSQLiteStreamQueryFlushesSlowBatchByTime(t *testing.T) {
 	select {
 	case <-finished:
 	case <-time.After(2 * time.Second):
-		t.Fatal("cancelled slow stream did not finish")
+		t.Fatal("canceled slow stream did not finish")
 	}
 	if !errors.Is(streamErr, context.Canceled) {
 		t.Fatalf("stream error = %v, want context.Canceled (result=%+v)", streamErr, result)
@@ -189,7 +189,7 @@ func TestSQLiteStreamQueryCancellationPropagates(t *testing.T) {
 	defer cancel()
 
 	streamer := &SQLite{Connection: db}
-	result, err := streamer.StreamQuery(ctx, "SELECT id", 0, func(batch QueryBatch) error {
+	result, err := streamer.StreamQuery(ctx, "SELECT id", 0, func(_ QueryBatch) error {
 		cancel()
 		return nil
 	})

@@ -10,7 +10,7 @@ import (
 
 // logDatabaseOperation emits the stable fields used by local performance
 // diagnostics. The logger intentionally receives no SQL or row values.
-func logDatabaseOperation(operation string, started time.Time, ctx context.Context, fields map[string]any, err error) {
+func logDatabaseOperation(ctx context.Context, operation string, started time.Time, fields map[string]any, err error) {
 	data := make(map[string]any, len(fields)+4)
 	for key, value := range fields {
 		data[key] = value
@@ -20,7 +20,7 @@ func logDatabaseOperation(operation string, started time.Time, ctx context.Conte
 		data["error"] = err.Error()
 	}
 	if ctxErr := contextError(ctx, err); ctxErr != nil {
-		data["cancelled"] = true
+		data["canceled"] = true
 		if _, present := data["cancellation_reason"]; !present {
 			data["cancellation_reason"] = cancellationReason(ctxErr)
 		}
@@ -47,5 +47,5 @@ func cancellationReason(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "deadline"
 	}
-	return "cancelled"
+	return "canceled"
 }

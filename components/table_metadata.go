@@ -116,14 +116,14 @@ func newMetadataCache() *metadataCache {
 // request returns a completion channel for a new or in-flight request. A nil
 // channel means the value is already ready in the cache.
 func (cache *metadataCache) request(key metadataKey, load func() (any, error)) <-chan struct{} {
-	return cache.requestWithContext(key, nil, nil, load)
+	return cache.requestWithContext(context.Background(), key, nil, load)
 }
 
 // requestWithContext associates an optional cancellation context with the
 // underlying cache entry. The context belongs to the database work, not to a
 // particular Records/surface load generation, so invalidating one entry can
 // stop only that query while unrelated metadata continues in flight.
-func (cache *metadataCache) requestWithContext(key metadataKey, ctx context.Context, cancel context.CancelFunc, load func() (any, error)) <-chan struct{} {
+func (cache *metadataCache) requestWithContext(ctx context.Context, key metadataKey, cancel context.CancelFunc, load func() (any, error)) <-chan struct{} {
 	var staleCancel context.CancelFunc
 
 	cache.mu.Lock()
@@ -352,7 +352,7 @@ func (table *ResultsTable) requestMetadataWithContext(ctx context.Context, datab
 		ctx = context.Background()
 	}
 	metadataCtx, metadataCancel := context.WithCancel(ctx)
-	done := cache.requestWithContext(key, metadataCtx, metadataCancel, func() (any, error) {
+	done := cache.requestWithContext(metadataCtx, key, metadataCancel, func() (any, error) {
 		started := time.Now()
 		var value any
 		var err error
@@ -370,7 +370,7 @@ func (table *ResultsTable) requestMetadataWithContext(ctx context.Context, datab
 		default:
 			err = fmt.Errorf("unknown metadata kind %q", kind)
 		}
-		logDatabaseOperation("get_"+string(kind), started, metadataCtx, map[string]any{
+		logDatabaseOperation(metadataCtx, "get_"+string(kind), started, map[string]any{
 			"database":  databaseName,
 			"table":     tableName,
 			"kind":      kind,
@@ -624,13 +624,6 @@ func (table *ResultsTable) showMetadataSurface(kind MetadataKind) {
 		rows = table.GetIndexes()
 	}
 	table.UpdateRows(rows)
-}
-
-// queueMetadataResult is kept as a compatibility wrapper for callers that
-// already have a Records load token. Metadata delivery itself is keyed to the
-// table identity, not that token, so a same-table refresh cannot abandon it.
-func (table *ResultsTable) queueMetadataResult(_ context.Context, _ uint64, databaseName, tableName string, kind MetadataKind, key metadataKey, done <-chan struct{}) {
-	table.queueMetadataResultForIdentity(table.metadataIdentityGenerationValue(), databaseName, tableName, kind, key, done)
 }
 
 // queueMetadataResultForIdentity keeps the cache consumer alive across

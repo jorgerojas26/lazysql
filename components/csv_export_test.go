@@ -356,7 +356,7 @@ func TestExportAllQueryResultsCancellationAbortsAtomicFile(t *testing.T) {
 	}}
 	table := newCSVExportTestTable(driver)
 	dir := t.TempDir()
-	path := filepath.Join(dir, "cancelled.csv")
+	path := filepath.Join(dir, "canceled.csv")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -369,7 +369,7 @@ func TestExportAllQueryResultsCancellationAbortsAtomicFile(t *testing.T) {
 		t.Fatalf("export error = %v, want context.Canceled", err)
 	}
 	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
-		t.Fatalf("cancelled export left final file: %v", statErr)
+		t.Fatalf("canceled export left final file: %v", statErr)
 	}
 	_, _, _, cancelSeen := driver.streamSnapshot()
 	if !cancelSeen {
@@ -384,7 +384,7 @@ func TestCancelExportCancelsTheActiveStreamingOperation(t *testing.T) {
 	run := table.beginCSVExport()
 
 	done := make(chan error, 1)
-	path := filepath.Join(t.TempDir(), "cancelled.csv")
+	path := filepath.Join(t.TempDir(), "canceled.csv")
 	go func() {
 		_, err := table.exportAllQueryResults(run.ctx, path, "SELECT id FROM users", nil)
 		done <- err
@@ -411,7 +411,7 @@ func TestCancelExportCancelsTheActiveStreamingOperation(t *testing.T) {
 		t.Fatal("active database operation did not observe cancellation")
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("cancelled export left final file: %v", err)
+		t.Fatalf("canceled export left final file: %v", err)
 	}
 	assertNoCSVExportTempFiles(t, filepath.Dir(path))
 }

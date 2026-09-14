@@ -21,7 +21,7 @@ type blockingEditorStreamDriver struct {
 	started       chan struct{}
 	batchReturned chan struct{}
 	released      chan struct{}
-	cancelled     chan struct{}
+	canceled      chan struct{}
 	done          chan struct{}
 	startOnce     sync.Once
 	cancelOnce    sync.Once
@@ -32,7 +32,7 @@ func newBlockingEditorStreamDriver() *blockingEditorStreamDriver {
 		started:       make(chan struct{}),
 		batchReturned: make(chan struct{}),
 		released:      make(chan struct{}),
-		cancelled:     make(chan struct{}),
+		canceled:      make(chan struct{}),
 		done:          make(chan struct{}),
 	}
 }
@@ -50,7 +50,7 @@ func (driver *blockingEditorStreamDriver) StreamQuery(ctx context.Context, _ str
 	case <-driver.released:
 		return result, nil
 	case <-ctx.Done():
-		driver.cancelOnce.Do(func() { close(driver.cancelled) })
+		driver.cancelOnce.Do(func() { close(driver.canceled) })
 		return result, ctx.Err()
 	}
 }
@@ -136,7 +136,7 @@ func newEditorPipelineTable(driver drivers.Driver) (*ResultsTable, *SQLEditor, *
 	return table, editor, pages
 }
 
-func startEditorPipeline(t *testing.T, table *ResultsTable, editor *SQLEditor, pages *tview.Pages) chan struct{} {
+func startEditorPipeline(t *testing.T, table *ResultsTable, _ *SQLEditor, pages *tview.Pages) chan struct{} {
 	t.Helper()
 	// tview applications cannot reliably be restarted after Stop; each
 	// pipeline test owns a fresh UI loop while sharing the application config.
@@ -314,16 +314,16 @@ func TestEditorStreamCancellationKeepsPartialRows(t *testing.T) {
 		t.Fatal("CancelActiveQuery() did not report an active stream")
 	}
 	select {
-	case <-driver.cancelled:
+	case <-driver.canceled:
 	case <-time.After(3 * time.Second):
 		t.Fatal("cancellation did not reach the stream driver")
 	}
 
 	rows := table.GetRecords()
 	if len(rows) != 2 || rows[1][0] != "1" {
-		t.Fatalf("cancelled stream discarded rows = %v", rows)
+		t.Fatalf("canceled stream discarded rows = %v", rows)
 	}
-	if !containsEditorText(table.GetQueryStatus(), "partial result: query cancelled") {
+	if !containsEditorText(table.GetQueryStatus(), "partial result: query canceled") {
 		t.Fatalf("query status = %q, want partial cancellation label", table.GetQueryStatus())
 	}
 }

@@ -58,19 +58,19 @@ func TestCancelActiveQueryPreservesRenderedRows(t *testing.T) {
 		t.Fatal("CancelActiveQuery() did not cancel the query context")
 	}
 	if table.IsQueryActive() {
-		t.Fatal("cancelled query remained active")
+		t.Fatal("canceled query remained active")
 	}
 	if got := table.GetRecords(); len(got) != 2 || got[1][0] != "1" {
-		t.Fatalf("cancelled query discarded rendered rows: %v", got)
+		t.Fatalf("canceled query discarded rendered rows: %v", got)
 	}
-	if !strings.Contains(table.GetQueryStatus(), "partial result: query cancelled") {
+	if !strings.Contains(table.GetQueryStatus(), "partial result: query canceled") {
 		t.Fatalf("query status = %q, want partial cancellation label", table.GetQueryStatus())
 	}
-	if !strings.Contains(table.Pagination.GetText(), "partial result: query cancelled") {
+	if !strings.Contains(table.Pagination.GetText(), "partial result: query canceled") {
 		t.Fatalf("pagination text = %q, want visible cancellation label", table.Pagination.GetText())
 	}
 	if table.finishEditorQuery(run) {
-		t.Fatal("cancelled query should no longer be finishable")
+		t.Fatal("canceled query should no longer be finishable")
 	}
 }
 
@@ -104,7 +104,7 @@ func TestEditorEscapeCancellationIsContextual(t *testing.T) {
 	}
 }
 
-func TestStreamEditorQueryUsesDriverContract(t *testing.T) {
+func TestStreamEditorQueryUsesDriverContract(_ *testing.T) {
 	// This compile-time assertion documents the UI/driver seam: the contract is
 	// independent of tview and can be implemented by a test or third-party
 	// driver without importing components.

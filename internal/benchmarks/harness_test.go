@@ -139,7 +139,11 @@ func TestObservedExtraBlockingCallChangesScenarioMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newScenarioRun() error = %v", err)
 	}
-	defer run.close()
+	defer func() {
+		if err := run.close(); err != nil {
+			t.Errorf("close scenario run: %v", err)
+		}
+	}()
 
 	if err := run.execute(); err != nil {
 		t.Fatalf("scenario execution error = %v", err)

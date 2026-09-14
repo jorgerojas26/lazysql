@@ -105,7 +105,7 @@ func (run *csvExportRun) cancelAndGetRows() int {
 	return rows
 }
 
-func (run *csvExportRun) cancelled() bool {
+func (run *csvExportRun) canceled() bool {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	return run.wasCancelled
@@ -1213,7 +1213,7 @@ func (table *ResultsTable) CancelActiveQuery() bool {
 	}
 	run.cancelRequested = true
 	// Stop accepting batches immediately. The stream's context is still
-	// cancelled below, while already rendered rows remain in the table.
+	// canceled below, while already rendered rows remain in the table.
 	table.activeQuery = nil
 	table.queryMu.Unlock()
 
@@ -1237,9 +1237,9 @@ func (table *ResultsTable) CancelActiveQuery() bool {
 	table.SetLoading(false)
 	count := table.editorQueryRowCount()
 	if count == 0 {
-		table.SetQueryStatus("Query cancelled")
+		table.SetQueryStatus("Query canceled")
 	} else {
-		table.SetQueryStatus(fmt.Sprintf("%d rows — partial result: query cancelled", count))
+		table.SetQueryStatus(fmt.Sprintf("%d rows — partial result: query canceled", count))
 	}
 	return true
 }
@@ -1349,7 +1349,7 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 
 	if streamer, ok := table.DBDriver.(drivers.QueryStreamer); ok {
 		result, err := streamer.StreamQuery(ctx, query, table.maxInteractiveQueryRows(), onBatch)
-		logDatabaseOperation("stream_query", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "stream_query", started, map[string]any{
 			"connection": table.connectionIdentifier,
 			"rows":       result.Rows,
 			"truncated":  result.Truncated,
@@ -1363,7 +1363,7 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 	rows, count, err := table.DBDriver.ExecuteQuery(ctx, query)
 	result := drivers.QueryStreamResult{Rows: count}
 	if err != nil {
-		logDatabaseOperation("execute_query", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "execute_query", started, map[string]any{
 			"connection": table.connectionIdentifier,
 			"rows":       result.Rows,
 			"streaming":  false,
@@ -1380,7 +1380,7 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 		}
 		result.Rows = len(data)
 		if err := onBatch(drivers.QueryBatch{Columns: result.Columns, Rows: data}); err != nil {
-			logDatabaseOperation("execute_query", started, ctx, map[string]any{
+			logDatabaseOperation(ctx, "execute_query", started, map[string]any{
 				"connection": table.connectionIdentifier,
 				"rows":       result.Rows,
 				"truncated":  result.Truncated,
@@ -1389,7 +1389,7 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 			return result, err
 		}
 	}
-	logDatabaseOperation("execute_query", started, ctx, map[string]any{
+	logDatabaseOperation(ctx, "execute_query", started, map[string]any{
 		"connection": table.connectionIdentifier,
 		"rows":       result.Rows,
 		"truncated":  result.Truncated,
@@ -1410,7 +1410,7 @@ func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editor
 	}
 
 	// The invocation below is the dispatch boundary. Recording immediately
-	// before it captures completed, truncated, cancelled, and post-dispatch
+	// before it captures completed, truncated, canceled, and post-dispatch
 	// failed queries while validation failures never reach history.
 	table.addEditorQueryToHistory(query)
 	result, err := table.streamEditorQuery(ctx, run, query)
@@ -1432,14 +1432,14 @@ func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editor
 		}
 
 		rowCount := table.editorQueryRowCount()
-		cancelled := errors.Is(err, context.Canceled) || ctx.Err() != nil
-		if cancelled {
+		canceled := errors.Is(err, context.Canceled) || ctx.Err() != nil
+		if canceled {
 			table.Pagination.SetPageInfo(rowCount, true)
 			table.SetLoading(false)
 			if rowCount == 0 {
-				table.SetQueryStatus("Query cancelled")
+				table.SetQueryStatus("Query canceled")
 			} else {
-				table.SetQueryStatus(fmt.Sprintf("%d rows — partial result: query cancelled", rowCount))
+				table.SetQueryStatus(fmt.Sprintf("%d rows — partial result: query canceled", rowCount))
 			}
 			if rowCount > 0 || len(result.Columns) > 0 {
 				table.showEditorQueryResults()
@@ -1776,7 +1776,7 @@ func (table *ResultsTable) beginCSVExport() *csvExportRun {
 }
 
 func (table *ResultsTable) isCurrentCSVExport(run *csvExportRun) bool {
-	if run == nil || run.cancelled() {
+	if run == nil || run.canceled() {
 		return false
 	}
 	table.exportMu.Lock()
@@ -1798,7 +1798,7 @@ func (table *ResultsTable) updateCSVExportProgress(run *csvExportRun, rows int) 
 }
 
 // finishCSVExport applies the terminal state for an export. It must run on
-// the UI goroutine so a cancelled or superseded worker can never show a stale
+// the UI goroutine so a canceled or superseded worker can never show a stale
 // success modal.
 func (table *ResultsTable) finishCSVExport(run *csvExportRun, exportErr error) bool {
 	if run == nil {
@@ -1812,7 +1812,7 @@ func (table *ResultsTable) finishCSVExport(run *csvExportRun, exportErr error) b
 	}
 	table.activeExport = nil
 	rows := run.rows()
-	cancelled := run.cancelled() || run.ctx.Err() != nil || errors.Is(exportErr, context.Canceled)
+	canceled := run.canceled() || run.ctx.Err() != nil || errors.Is(exportErr, context.Canceled)
 	table.exportMu.Unlock()
 
 	table.state.loadingMu.Lock()
@@ -1822,9 +1822,9 @@ func (table *ResultsTable) finishCSVExport(run *csvExportRun, exportErr error) b
 	table.state.loadingMu.Unlock()
 	table.SetLoading(false)
 
-	if cancelled {
+	if canceled {
 		if table.Pagination != nil {
-			table.Pagination.SetResultStatus(fmt.Sprintf("Export cancelled after %d rows written", rows))
+			table.Pagination.SetResultStatus(fmt.Sprintf("Export canceled after %d rows written", rows))
 		}
 		return true
 	}
@@ -1868,7 +1868,7 @@ func (table *ResultsTable) CancelExport() bool {
 	table.state.loadingMu.Unlock()
 	table.SetLoading(false)
 	if table.Pagination != nil {
-		table.Pagination.SetResultStatus(fmt.Sprintf("Export cancelled after %d rows written", rows))
+		table.Pagination.SetResultStatus(fmt.Sprintf("Export canceled after %d rows written", rows))
 	}
 	return true
 }
@@ -1904,7 +1904,7 @@ func (table *ResultsTable) CancelLoading() bool {
 
 func (table *ResultsTable) startLoad() (context.Context, uint64) {
 	// Any new operation supersedes an interactive result stream or export.
-	// Clearing each consumer before cancelling its context prevents late
+	// Clearing each consumer before canceling its context prevents late
 	// batches from touching the new table state.
 	table.invalidateCSVExport()
 	table.invalidateEditorQuery()
@@ -2020,7 +2020,7 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 		}
 
 		page, visibleRows, err := FetchRecordsPage(ctx, table.DBDriver, databaseName, tableName, where, sort, offset, pageSize)
-		logDatabaseOperation("fetch_records", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "fetch_records", started, map[string]any{
 			"database": databaseName,
 			"table":    tableName,
 			"offset":   offset,
@@ -2510,14 +2510,14 @@ func (table *ResultsTable) markedRowsToText() string {
 		}
 
 		if wroteRow {
-			builder.WriteByte('\n')
+			_ = builder.WriteByte('\n')
 		}
 
 		for columnIndex := 0; columnIndex < columnCount; columnIndex++ {
 			if columnIndex > 0 {
-				builder.WriteByte('\t')
+				_ = builder.WriteByte('\t')
 			}
-			builder.WriteString(table.getRawCellValue(rowIndex, columnIndex))
+			_, _ = builder.WriteString(table.getRawCellValue(rowIndex, columnIndex))
 		}
 
 		wroteRow = true
@@ -3212,7 +3212,7 @@ func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
 func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, filePath string, onProgress func(int)) (rows int, err error) {
 	started := time.Now()
 	defer func() {
-		logDatabaseOperation("export_visible_results", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "export_visible_results", started, map[string]any{
 			"connection": table.connectionIdentifier,
 			"rows":       rows,
 		}, err)
@@ -3247,15 +3247,6 @@ func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, fil
 	return writer.RowCount(), nil
 }
 
-// exportAllRecordsInBatches retains the original testable table-export seam.
-func (table *ResultsTable) exportAllRecordsInBatches(
-	ctx context.Context,
-	filePath, databaseName, tableName, where, sort string,
-	batchSize int,
-) (int, error) {
-	return table.exportAllRecordsInBatchesWithProgress(ctx, filePath, databaseName, tableName, where, sort, batchSize, nil)
-}
-
 // exportAllRecordsInBatches exports all records using bounded page fetching.
 // It stops only when a returned page proves the end, never asking for an exact
 // count and never consulting the interactive max_query_rows cap.
@@ -3267,7 +3258,7 @@ func (table *ResultsTable) exportAllRecordsInBatchesWithProgress(
 ) (rows int, err error) {
 	started := time.Now()
 	defer func() {
-		logDatabaseOperation("export_all_records", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "export_all_records", started, map[string]any{
 			"database": databaseName,
 			"table":    tableName,
 			"rows":     rows,
@@ -3415,7 +3406,7 @@ func (table *ResultsTable) exportAllQueryResults(
 ) (rows int, err error) {
 	started := time.Now()
 	defer func() {
-		logDatabaseOperation("export_all_query_results", started, ctx, map[string]any{
+		logDatabaseOperation(ctx, "export_all_query_results", started, map[string]any{
 			"connection": table.connectionIdentifier,
 			"rows":       rows,
 		}, err)
