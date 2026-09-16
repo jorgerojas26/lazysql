@@ -10,6 +10,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -298,6 +299,50 @@ func TestHandleForeignKeyEnterConsumesOnNullValues(t *testing.T) {
 
 	if consumed := table.handleForeignKeyEnter(1, 0); !consumed {
 		t.Fatal("expected Enter to be consumed on FK column with NULL value")
+	}
+}
+
+func TestTableInputCaptureForeignKeyJumpCommand(t *testing.T) {
+	changes := []models.DBDMLChange{}
+
+	db := &drivers.Postgres{}
+	db.SetProvider(drivers.DriverPostgres)
+
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			listOfDBChanges:       &changes,
+			columns:               [][]string{{"Field"}, {"user_id"}},
+			foreignKeyColumns:     map[string]bool{"user_id": true},
+			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{"user_id": {ReferencedTable: "public.users", ReferencedColumn: "id"}},
+			fkRawCellValues:       map[string]string{},
+		},
+		DBDriver: db,
+	}
+
+	table.SetCell(1, 0, tview.NewTableCell("7"))
+	table.Select(1, 0)
+
+	if got := table.tableInputCapture(tcell.NewEventKey(tcell.KeyEnter, 0, 0)); got != nil {
+		t.Fatal("expected Enter on a foreign key cell to be consumed by the foreign key jump")
+	}
+
+	// The jump must also be reachable through a rebound key, which only resolves
+	// via the ForeignKeyJump command.
+	group := app.Keymaps.Groups[app.TableGroup]
+	saved := make(app.Map, len(group))
+	copy(saved, group)
+	defer func() { app.Keymaps.Groups[app.TableGroup] = saved }()
+
+	for i := range group {
+		if group[i].Cmd == commands.ForeignKeyJump {
+			group[i].Key = app.Key{Char: 'F'}
+			break
+		}
+	}
+
+	if got := table.tableInputCapture(tcell.NewEventKey(tcell.KeyRune, 'F', tcell.ModNone)); got != nil {
+		t.Fatal("expected the rebound ForeignKeyJump key to be consumed by the foreign key jump")
 	}
 }
 

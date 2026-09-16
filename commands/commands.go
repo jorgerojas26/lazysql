@@ -90,6 +90,9 @@ const (
 
 	// Export
 	ExportCSV
+
+	// Foreign keys
+	ForeignKeyJump
 )
 
 func (c Command) String() string {
@@ -244,6 +247,8 @@ func (c Command) String() string {
 		return "ToggleJSONViewerWrap"
 	case ExportCSV:
 		return "ExportCSV"
+	case ForeignKeyJump:
+		return "ForeignKeyJump"
 	}
 
 	return "Unknown"

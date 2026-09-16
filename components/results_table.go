@@ -643,11 +643,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ShowCellJSONViewer {
 		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 		return nil
-	} else if event.Key() == tcell.KeyEnter {
+	} else if command == commands.ForeignKeyJump || event.Key() == tcell.KeyEnter {
 		if table.handleForeignKeyEnter(selectedRowIndex, selectedColumnIndex) {
 			return nil
 		}
-		if app.App.Config().EnterOpensJSONViewer {
+		if event.Key() == tcell.KeyEnter && app.App.Config().EnterOpensJSONViewer {
 			table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 			return nil
 		}

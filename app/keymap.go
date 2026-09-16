@@ -149,6 +149,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'E'}, Cmd: cmd.ExportCSV, Description: "Export to CSV"},
 			// External editor
 			Bind{Key: Key{Char: 'e'}, Cmd: cmd.OpenCellInExternalEditor, Description: "Edit cell in external editor"},
+			// Foreign keys
+			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.ForeignKeyJump, Description: "Jump to the referenced row (foreign key)"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},

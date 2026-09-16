@@ -364,6 +364,34 @@ You can update the tree by pressing `R`, so you can see your newly created table
 
 > To remove the filter, focus the filter input (press `/`) and press `<Esc>`.
 
+### Jump to a referenced row (Foreign Key Jump)
+
+Columns that belong to a foreign key are underlined in the header, and the
+values you can follow are underlined too. Cells with pending changes (inserted,
+edited or deleted rows) are not marked.
+
+1. [Open a table](#openview-a-table)
+2. Press `1` to switch to the record tab
+3. Move to the underlined foreign key cell you want to follow
+4. Press `<Enter>` to jump to the referenced row
+
+The referenced table opens in a new tab (or is focused, if it is already open)
+with a filter prefilled for the referenced value, so only the matching rows are
+shown: `WHERE <referenced_column> = '<value>'`.
+
+> To switch tabs press `[` or `]`, to switch back to the table-tree press `H`.
+
+Notes:
+
+- Only single-column foreign keys can be followed. Composite foreign keys
+  (constraints spanning multiple columns) are ignored.
+- Cells whose value is `NULL`, `EMPTY` or `DEFAULT` have nothing to follow, so
+  `<Enter>` does nothing on them.
+- Supported providers: PostgreSQL, SQLite and SQL Server (MSSQL). MySQL tables
+  do not expose the foreign key information needed for the jump.
+- On a cell that supports a Foreign Key Jump, `<Enter>` follows the relation
+  instead of opening the JSON viewer, even when `EnterOpensJSONViewer` is enabled.
+
 ### Insert a row
 
 1. [Open a table](#openview-a-table)
@@ -587,6 +615,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | b | GotoPrev | Go to previous cell |
 | $ | GotoEnd | Go to last cell |
 | 0 | GotoStart | Go to first cell |
+| Enter | ForeignKeyJump | Jump to the referenced row from a foreign key cell (see [Foreign Key Jump](#jump-to-a-referenced-row-foreign-key-jump)) |
 | y | Copy | Copy cell value to clipboard (or marked rows if any) |
 | Space | RowSelect | Toggle row selection |
 | o | AppendNewRow | Append new row |
@@ -614,6 +643,8 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | f | ReverseForeignKeyJump | Pick a table referencing the current row and open it filtered |
 | E | ExportCSV | Export to CSV |
 
+> `Enter` (`ForeignKeyJump`) only applies on the record tab (`1`) of a table view. It is part of the `Table` group, so it can be remapped like any other keybinding: `[keymap.Table] ForeignKeyJump = "Ctrl-G"`.
+
 #### Editor
 
 | Default Key | Command | Description |
@@ -632,7 +663,7 @@ Specific editor for lazysql can be set by `$SQL_EDITOR`.
 | y   | Copy to clipboard|
 | z/Z | Close viewer     |
 
-The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cell. If `EnterOpensJSONViewer` is enabled, pressing Enter on a cell will also open the JSON viewer.
+The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cell. If `EnterOpensJSONViewer` is enabled, pressing Enter on a cell will also open the JSON viewer, unless the cell supports a [Foreign Key Jump](#jump-to-a-referenced-row-foreign-key-jump) (which takes precedence).
 
 
 #### Sidebar

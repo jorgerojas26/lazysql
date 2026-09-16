@@ -329,6 +329,30 @@ func TestApplyKeymapConfig(t *testing.T) {
 		t.Error("Search command not found in table group")
 	})
 
+	t.Run("rebinds foreign key jump in table group", func(t *testing.T) {
+		saved := saveKeymaps()
+		defer restoreKeymaps(saved)
+
+		cfg := models.KeymapConfig{
+			"table": {"ForeignKeyJump": "F"},
+		}
+
+		if err := ApplyKeymapConfig(cfg); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		group := Keymaps.Groups[TableGroup]
+		for _, bind := range group {
+			if bind.Cmd == cmd.ForeignKeyJump {
+				if bind.Key.Char != 'F' {
+					t.Errorf("expected ForeignKeyJump rebound to 'F', got %+v", bind.Key)
+				}
+				return
+			}
+		}
+		t.Error("ForeignKeyJump command not found in table group")
+	})
+
 	t.Run("multiple groups and bindings", func(t *testing.T) {
 		saved := saveKeymaps()
 		defer restoreKeymaps(saved)
@@ -363,4 +387,28 @@ func TestApplyKeymapConfig(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestForeignKeyJumpDefaultBinding(t *testing.T) {
+	group := Keymaps.Groups[TableGroup]
+
+	var bind *Bind
+	for i := range group {
+		if group[i].Cmd == cmd.ForeignKeyJump {
+			bind = &group[i]
+			break
+		}
+	}
+
+	if bind == nil {
+		t.Fatal("ForeignKeyJump command not found in table group")
+	}
+
+	if bind.Key.Code != tcell.KeyEnter {
+		t.Errorf("expected ForeignKeyJump bound to Enter, got %+v", bind.Key)
+	}
+
+	if got := group.Resolve(tcell.NewEventKey(tcell.KeyEnter, 0, 0)); got != cmd.ForeignKeyJump {
+		t.Errorf("expected Enter to resolve to ForeignKeyJump, got %s", got)
+	}
 }
