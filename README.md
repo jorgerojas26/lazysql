@@ -404,8 +404,10 @@ Notes:
 
 1. [Open a table](#openview-a-table)
 2. Press `1` to switch to the record tab
-3. Move to the column you want to edit
-4. Press `c` to edit, Press `<Enter>` to submit
+3. Move to the cell you want to edit
+4. Edit the value:
+    - press `c` to edit it inline, then press `<Enter>` to submit
+    - press `e` to edit it in your editor, then save and quit the editor
 5. Press `<Ctrl+S>` to save the changes
 
 ### Copy rows
@@ -642,6 +644,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | z | ShowCellJSONViewer | Toggle JSON viewer for cell |
 | f | ReverseForeignKeyJump | Pick a table referencing the current row and open it filtered |
 | E | ExportCSV | Export to CSV |
+| e | OpenCellInExternalEditor | Edit cell in external editor |
 
 > `Enter` (`ForeignKeyJump`) only applies on the record tab (`1`) of a table view. It is part of the `Table` group, so it can be remapped like any other keybinding: `[keymap.Table] ForeignKeyJump = "Ctrl-G"`.
 
@@ -715,10 +718,15 @@ The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cel
 
 ### External Editor
 
-The external editor feature (CTRL + Space in SQL Editor, CTRL + o in Table) uses the following environment variables to determine which editor to use:
+The external editor feature (CTRL + Space in SQL Editor, `e` in Table) uses the following environment variables to determine which editor to use:
 
 - SQL Editor: `$SQL_EDITOR` > `$EDITOR` > `$VISUAL` > `vi`
 - Table cells: `$EDITOR` > `$VISUAL` > `vi`
+
+Editor commands with flags are supported, e.g. `EDITOR="vim -u NONE"`. GUI editors
+should use the flag that blocks until the file is closed (such as `--wait` for VS
+Code or `-w` for Sublime Text), otherwise lazysql reads the file back before you
+finish editing.
 
 This feature is only available on Linux and macOS.
 
