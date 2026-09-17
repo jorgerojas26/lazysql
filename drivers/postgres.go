@@ -186,29 +186,41 @@ func (db *Postgres) GetTableColumns(database, table string) ([][]string, error) 
 	return results, nil
 }
 
-func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
+// qualifiedTableConnection validates a "schema.table" argument, splits it and
+// returns a connection scoped to the given database. The returned closeConn is
+// always safe to defer: it is a no-op when the shared connection is reused.
+func (db *Postgres) qualifiedTableConnection(database, table string) (conn *sql.DB, closeConn func(), tableSchema, tableName string, err error) {
 	if database == "" {
-		return nil, errors.New("database name is required")
+		return nil, nil, "", "", errors.New("database name is required")
 	}
 	if table == "" {
-		return nil, errors.New("table name is required")
+		return nil, nil, "", "", errors.New("table name is required")
 	}
 
 	splitTableString := strings.Split(table, ".")
 	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
+		return nil, nil, "", "", errors.New("table must be in the format schema.table")
 	}
 
 	conn, needsClose, err := db.connectionFor(database)
 	if err != nil {
-		return nil, err
-	}
-	if needsClose {
-		defer conn.Close()
+		return nil, nil, "", "", err
 	}
 
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
+	closeConn = func() {}
+	if needsClose {
+		closeConn = func() { _ = conn.Close() }
+	}
+
+	return conn, closeConn, splitTableString[0], splitTableString[1], nil
+}
+
+func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
+	if err != nil {
+		return nil, err
+	}
+	defer closeConn()
 
 	rows, err := conn.Query(fmt.Sprintf(`
         SELECT
@@ -262,28 +274,11 @@ func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
 }
 
 func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
-	if database == "" {
-		return nil, errors.New("database name is required")
-	}
-	if table == "" {
-		return nil, errors.New("table name is required")
-	}
-
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
-	}
-
-	conn, needsClose, err := db.connectionFor(database)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
 	if err != nil {
 		return nil, err
 	}
-	if needsClose {
-		defer conn.Close()
-	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
+	defer closeConn()
 
 	rows, err := conn.Query(fmt.Sprintf(`
         SELECT
@@ -343,28 +338,11 @@ func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
 // GetReferencingTables returns every foreign key that points at the given
 // table, i.e. the reverse direction of GetForeignKeys.
 func (db *Postgres) GetReferencingTables(database, table string) ([][]string, error) {
-	if database == "" {
-		return nil, errors.New("database name is required")
-	}
-	if table == "" {
-		return nil, errors.New("table name is required")
-	}
-
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
-	}
-
-	conn, needsClose, err := db.connectionFor(database)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
 	if err != nil {
 		return nil, err
 	}
-	if needsClose {
-		defer conn.Close()
-	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
+	defer closeConn()
 
 	rows, err := conn.Query(`
         SELECT
@@ -395,28 +373,11 @@ func (db *Postgres) GetReferencingTables(database, table string) ([][]string, er
 }
 
 func (db *Postgres) GetIndexes(database, table string) ([][]string, error) {
-	if database == "" {
-		return nil, errors.New("database name is required")
-	}
-	if table == "" {
-		return nil, errors.New("table name is required")
-	}
-
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
-	}
-
-	conn, needsClose, err := db.connectionFor(database)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
 	if err != nil {
 		return nil, err
 	}
-	if needsClose {
-		defer conn.Close()
-	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
+	defer closeConn()
 
 	rows, err := conn.Query(fmt.Sprintf(`
         SELECT

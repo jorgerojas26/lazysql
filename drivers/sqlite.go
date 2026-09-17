@@ -296,13 +296,10 @@ func (db *SQLite) resolveImplicitReferencedColumns(database, table string, resul
 		return nil, err
 	}
 
-	resolved := results[:1]
+	resolved := make([][]string, 1, len(results))
+	resolved[0] = results[0]
 
-	for i, row := range results {
-		if i == 0 {
-			continue
-		}
-
+	for _, row := range results[1:] {
 		if row[4] == "" {
 			if len(primaryKeyColumnNames) != 1 {
 				continue

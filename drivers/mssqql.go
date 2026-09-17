@@ -263,6 +263,11 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
 
 // GetReferencingTables returns every foreign key that points at the given
 // table, i.e. the reverse direction of GetForeignKeys.
+//
+// Table names are not schema qualified in this driver, so the referenced table
+// is looked up in the connection's default schema. Matching on the bare name
+// alone would also return foreign keys pointing at a same named table in
+// another schema.
 func (db *MSSQL) GetReferencingTables(database, table string) ([][]string, error) {
 	query := db.databasePrefix(database) + `
         SELECT
@@ -286,7 +291,10 @@ func (db *MSSQL) GetReferencingTables(database, table string) ([][]string, error
             ON t.schema_id = s.schema_id
         INNER JOIN sys.tables rt
             ON fk.referenced_object_id = rt.object_id
+        INNER JOIN sys.schemas rs
+            ON rt.schema_id = rs.schema_id
         WHERE rt.name = @p2
+          AND rs.name = SCHEMA_NAME()
           AND DB_NAME(DB_ID(@p1)) = @p1
         ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id
     `

@@ -538,7 +538,7 @@ func TestSQLite_GetReferencingTables(t *testing.T) {
 	}
 
 	expected := [][]string{
-		referencingTablesHeader,
+		ReferencingTablesHeader,
 		{"lookup_list:0", "", "lookup_list", "organization_id", "id"},
 		{"role:0", "", "role", "organization_id", "id"},
 	}

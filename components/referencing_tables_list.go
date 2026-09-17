@@ -77,6 +77,10 @@ func buildReferencingEntries(rows [][]string) []referencingTableEntry {
 		})
 	}
 
+	if len(entries) == 0 {
+		return nil
+	}
+
 	return entries
 }
 

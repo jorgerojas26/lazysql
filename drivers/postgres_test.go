@@ -745,7 +745,7 @@ func TestPostgres_GetReferencingTables(t *testing.T) {
 	}
 	defer db.Close()
 
-	rows := sqlmock.NewRows(referencingTablesHeader).
+	rows := sqlmock.NewRows(ReferencingTablesHeader).
 		AddRow("LookupList_organizationId_fkey", schemaPostgres, "LookupList", "organizationId", "id").
 		AddRow("Role_organizationId_fkey", schemaPostgres, "Role", "organizationId", "id")
 
@@ -761,7 +761,7 @@ func TestPostgres_GetReferencingTables(t *testing.T) {
 	}
 
 	expected := [][]string{
-		referencingTablesHeader,
+		ReferencingTablesHeader,
 		{"LookupList_organizationId_fkey", schemaPostgres, "LookupList", "organizationId", "id"},
 		{"Role_organizationId_fkey", schemaPostgres, "Role", "organizationId", "id"},
 	}

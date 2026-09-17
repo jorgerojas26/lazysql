@@ -665,3 +665,40 @@ func TestMSSQL_GetRecordsAzureSQLDoesNotUseUSE(t *testing.T) {
 		t.Errorf("Unfulfilled expectations: %s", err)
 	}
 }
+
+func TestMSSQL_GetReferencingTables(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+
+	rows := sqlmock.NewRows(ReferencingTablesHeader).
+		AddRow("FK_orders_users", schemaMSSQL, "orders", "user_id", "id")
+
+	// The referenced table is matched by name and by the default schema, so a
+	// same named table in another schema does not leak into the results.
+	mock.ExpectQuery(`(?s)USE \[test_db\];.*FROM sys\.foreign_keys fk.*INNER JOIN sys\.schemas rs.*WHERE rt\.name = @p2\s+AND rs\.name = SCHEMA_NAME\(\)`).
+		WithArgs(DBNameMSSQL, tableNameMSSQL).
+		WillReturnRows(rows)
+
+	results, err := mssql.GetReferencingTables(DBNameMSSQL, tableNameMSSQL)
+	if err != nil {
+		t.Fatalf("GetReferencingTables failed: %v", err)
+	}
+
+	expected := [][]string{
+		ReferencingTablesHeader,
+		{"FK_orders_users", schemaMSSQL, "orders", "user_id", "id"},
+	}
+
+	if !reflect.DeepEqual(results, expected) {
+		t.Errorf("GetReferencingTables returned %v, expected %v", results, expected)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}

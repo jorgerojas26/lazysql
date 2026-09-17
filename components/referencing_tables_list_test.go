@@ -3,17 +3,11 @@ package components
 import (
 	"reflect"
 	"testing"
+
+	"github.com/jorgerojas26/lazysql/drivers"
 )
 
-// referencingTablesHeader mirrors the header every driver returns from
-// GetReferencingTables.
-var referencingTablesHeader = []string{
-	"constraint_name",
-	"table_schema",
-	"table_name",
-	"column_name",
-	"referenced_column_name",
-}
+var referencingTablesHeader = drivers.ReferencingTablesHeader
 
 func TestBuildReferencingEntries(t *testing.T) {
 	testCases := []struct {
@@ -80,10 +74,6 @@ func TestBuildReferencingEntries(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			entries := buildReferencingEntries(tc.rows)
-
-			if len(entries) == 0 && len(tc.expected) == 0 {
-				return
-			}
 
 			if !reflect.DeepEqual(entries, tc.expected) {
 				t.Errorf("buildReferencingEntries returned %v, expected %v", entries, tc.expected)
