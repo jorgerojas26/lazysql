@@ -261,6 +261,47 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
 	return db.getTableInformation(query, database, table, "")
 }
 
+// GetReferencingTables returns every foreign key that points at the given
+// table, i.e. the reverse direction of GetForeignKeys.
+//
+// Table names are not schema qualified in this driver, so the referenced table
+// is looked up in the connection's default schema. Matching on the bare name
+// alone would also return foreign keys pointing at a same named table in
+// another schema.
+func (db *MSSQL) GetReferencingTables(database, table string) ([][]string, error) {
+	query := db.databasePrefix(database) + `
+        SELECT
+            fk.name AS constraint_name,
+            s.name AS table_schema,
+            t.name AS table_name,
+            c.name AS column_name,
+            rc.name AS referenced_column_name
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc
+            ON fk.object_id = fkc.constraint_object_id
+        INNER JOIN sys.columns c
+            ON fkc.parent_column_id = c.column_id
+            AND fkc.parent_object_id = c.object_id
+        INNER JOIN sys.columns rc
+            ON fkc.referenced_column_id = rc.column_id
+            AND fkc.referenced_object_id = rc.object_id
+        INNER JOIN sys.tables t
+            ON fk.parent_object_id = t.object_id
+        INNER JOIN sys.schemas s
+            ON t.schema_id = s.schema_id
+        INNER JOIN sys.tables rt
+            ON fk.referenced_object_id = rt.object_id
+        INNER JOIN sys.schemas rs
+            ON rt.schema_id = rs.schema_id
+        WHERE rt.name = @p2
+          AND rs.name = SCHEMA_NAME()
+          AND DB_NAME(DB_ID(@p1)) = @p1
+        ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id
+    `
+
+	return db.getTableInformation(query, database, table, "")
+}
+
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
 	currentSchema, err := db.getCurrentSchema()
 	if err != nil {

@@ -38,6 +38,7 @@ type ResultsTableState struct {
 	records               [][]string
 	foreignKeyColumns     map[string]bool
 	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
+	referencingTables     [][]string
 	fkRawCellValues       map[string]string
 	markedRows            map[int]bool
 	isEditing             bool
@@ -645,6 +646,9 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 			return nil
 		}
+	} else if command == commands.ReverseForeignKeyJump {
+		table.handleReverseForeignKeyJump(selectedRowIndex)
+		return nil
 	} else if command == commands.RowSelect {
 		table.toggleRowMark(selectedRowIndex)
 		return nil
@@ -1100,6 +1104,12 @@ func (table *ResultsTable) SetForeignKeys(foreignKeys [][]string) {
 	table.rebuildForeignKeyJumpMetadata()
 }
 
+// SetReferencingTables stores the reverse foreign key lookup (see
+// drivers.Driver.GetReferencingTables) for the currently loaded table.
+func (table *ResultsTable) SetReferencingTables(referencingTables [][]string) {
+	table.state.referencingTables = referencingTables
+}
+
 func (table *ResultsTable) SetIndexes(indexes [][]string) {
 	table.state.indexes = indexes
 }
@@ -1270,12 +1280,15 @@ func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 		}
 
 		if err == nil {
-			var columns, constraints, foreignKeys, indexes [][]string
+			var columns, constraints, foreignKeys, referencingTables, indexes [][]string
 			var primaryKeyColumnNames []string
 
 			columns, _ = table.DBDriver.GetTableColumns(databaseName, tableName)
 			constraints, _ = table.DBDriver.GetConstraints(databaseName, tableName)
 			foreignKeys, _ = table.DBDriver.GetForeignKeys(databaseName, tableName)
+			if table.IsForeignKeyJumpSupportedProvider() {
+				referencingTables, _ = table.DBDriver.GetReferencingTables(databaseName, tableName)
+			}
 			indexes, _ = table.DBDriver.GetIndexes(databaseName, tableName)
 			primaryKeyColumnNames, _ = table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
 
@@ -1297,6 +1310,7 @@ func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 				table.SetColumns(columns)
 				table.SetConstraints(constraints)
 				table.SetForeignKeys(foreignKeys)
+				table.SetReferencingTables(referencingTables)
 				table.SetIndexes(indexes)
 				table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
 
@@ -1935,10 +1949,85 @@ func (table *ResultsTable) handleForeignKeyEnter(selectedRowIndex, selectedColum
 		return true
 	}
 
-	where := fmt.Sprintf("WHERE %s = '%s'", table.DBDriver.FormatReference(target.ReferencedColumn), escapeSingleQuotes(rawValue))
+	where := table.foreignKeyWhereClause(target.ReferencedColumn, rawValue)
 	table.Home.ShowTableWithFilter(table.GetDatabaseName(), target.ReferencedTable, where)
 
 	return true
+}
+
+// foreignKeyWhereClause builds the filter that selects the rows whose column
+// equals the given raw cell value. Both foreign key jump directions use it.
+func (table *ResultsTable) foreignKeyWhereClause(column, rawValue string) string {
+	return fmt.Sprintf("WHERE %s = '%s'", table.DBDriver.FormatReference(column), escapeSingleQuotes(rawValue))
+}
+
+// handleReverseForeignKeyJump opens a picker with the tables that reference the
+// selected row and, once one is chosen, opens it filtered to that row.
+func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
+	if selectedRowIndex <= 0 {
+		return
+	}
+
+	// Query results from the editor have no table name and no menu.
+	if table.Menu == nil || table.Menu.GetSelectedOption() != 1 || table.GetTableName() == "" {
+		return
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return
+	}
+
+	if table.Home == nil {
+		return
+	}
+
+	entries := buildReferencingEntries(table.state.referencingTables)
+	if len(entries) == 0 {
+		table.SetError("No table references this table", nil)
+		return
+	}
+
+	navigableEntries := make([]referencingTableEntry, 0, len(entries))
+	navigableValues := make([]string, 0, len(entries))
+
+	for _, entry := range entries {
+		columnIndex := table.GetColumnIndexByName(entry.ReferencedColumn)
+		if columnIndex < 0 {
+			continue
+		}
+
+		rawValue := table.getRawCellValue(selectedRowIndex, columnIndex)
+		if !isNavigableForeignKeyValue(rawValue) {
+			continue
+		}
+
+		navigableEntries = append(navigableEntries, entry)
+		navigableValues = append(navigableValues, rawValue)
+	}
+
+	if len(navigableEntries) == 0 {
+		table.SetError("The selected row has no key value that referencing tables can be filtered by", nil)
+		return
+	}
+
+	useSchemas := table.DBDriver.UseSchemas()
+
+	closePicker := func() {
+		mainPages.RemovePage(pageNameReferencingTables)
+		App.SetFocus(table)
+	}
+
+	picker := NewReferencingTablesList(navigableEntries, useSchemas, func(index int) {
+		closePicker()
+
+		entry := navigableEntries[index]
+		where := table.foreignKeyWhereClause(entry.Column, navigableValues[index])
+
+		table.Home.ShowTableWithFilter(table.GetDatabaseName(), entry.QualifiedTable(useSchemas), where)
+	}, closePicker)
+
+	mainPages.AddPage(pageNameReferencingTables, picker, true, true)
+	App.SetFocus(picker.GetList())
 }
 
 func (table *ResultsTable) foreignKeyCellMapKey(rowIndex, columnIndex int) string {

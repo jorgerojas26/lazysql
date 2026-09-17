@@ -37,6 +37,9 @@ const (
 	// SetValueList
 	pageNameSetValue string = "SetValue"
 
+	// Referencing tables picker
+	pageNameReferencingTables string = "ReferencingTables"
+
 	// Query History
 	pageNameQueryHistory     string = "QueryHistoryModal"
 	pageNameSaveQuery        string = "SaveQueryModal"

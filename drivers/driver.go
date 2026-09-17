@@ -12,6 +12,10 @@ type Driver interface {
 	GetTableColumns(database, table string) ([][]string, error)
 	GetConstraints(database, table string) ([][]string, error)
 	GetForeignKeys(database, table string) ([][]string, error)
+	// GetReferencingTables returns the tables that hold a foreign key pointing
+	// at the given table. Rows are returned with a leading header row shaped as
+	// constraint_name, table_schema, table_name, column_name, referenced_column_name.
+	GetReferencingTables(database, table string) ([][]string, error)
 	GetIndexes(database, table string) ([][]string, error)
 	GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, string, error)
 	UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
