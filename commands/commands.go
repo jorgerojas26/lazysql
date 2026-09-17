@@ -116,7 +116,7 @@ func (c Command) String() string {
 	case MoveDown:
 		return "MoveDown"
 	case MoveLeft:
-		return "MoveRight"
+		return "MoveLeft"
 	case MoveRight:
 		return "MoveRight"
 	// Movement: Jumps
