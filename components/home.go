@@ -253,12 +253,30 @@ func (home *Home) showTable(databaseName, tableName string) {
 }
 
 func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
+	home.showTableWithFilter(databaseName, tableName, where, false)
+}
+
+// ShowTableWithFilterInNewTab opens the table in a tab of its own even when one
+// is already open for it. Reusing the tab would replace the filter the user is
+// currently looking at, which is what a self referencing foreign key jump would
+// otherwise do.
+func (home *Home) ShowTableWithFilterInNewTab(databaseName, tableName, where string) {
+	home.showTableWithFilter(databaseName, tableName, where, true)
+}
+
+func (home *Home) showTableWithFilter(databaseName, tableName, where string, forceNewTab bool) {
 	if tableName == "" {
 		return
 	}
 
 	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
-	tab := home.TabbedPane.GetTabByReference(tabReference)
+
+	var tab *Tab
+	if forceNewTab {
+		tabReference = home.TabbedPane.NextAvailableReference(tabReference)
+	} else {
+		tab = home.TabbedPane.GetTabByReference(tabReference)
+	}
 
 	var table *ResultsTable
 	if tab != nil {

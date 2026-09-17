@@ -149,3 +149,23 @@ func TestHeaderRightShift(t *testing.T) {
 		})
 	}
 }
+
+func TestNextAvailableReference(t *testing.T) {
+	pane := newTestTabbedPane(t, "public.LookupList")
+
+	if got := pane.NextAvailableReference("public.Organization"); got != "public.Organization" {
+		t.Errorf("NextAvailableReference returned %q for a free reference, expected %q", got, "public.Organization")
+	}
+
+	second := pane.NextAvailableReference("public.LookupList")
+	if second != "public.LookupList#2" {
+		t.Errorf("NextAvailableReference returned %q, expected %q", second, "public.LookupList#2")
+	}
+
+	pane.AppendTab("public.LookupList", stubTabContent{}, second)
+
+	third := pane.NextAvailableReference("public.LookupList")
+	if third != "public.LookupList#3" {
+		t.Errorf("NextAvailableReference returned %q, expected %q", third, "public.LookupList#3")
+	}
+}

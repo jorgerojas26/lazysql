@@ -2017,7 +2017,16 @@ func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
 			escapeSingleQuotes(navigableValues[index]),
 		)
 
-		table.Home.ShowTableWithFilter(table.GetDatabaseName(), entry.QualifiedTable(useSchemas), where)
+		targetTable := entry.QualifiedTable(useSchemas)
+
+		// A self referencing foreign key would otherwise reuse the tab the user
+		// is looking at and silently replace its filter.
+		if strings.EqualFold(targetTable, table.GetTableName()) {
+			table.Home.ShowTableWithFilterInNewTab(table.GetDatabaseName(), targetTable, where)
+			return
+		}
+
+		table.Home.ShowTableWithFilter(table.GetDatabaseName(), targetTable, where)
 	}, closePicker)
 
 	mainPages.AddPage(pageNameReferencingTables, picker, true, true)
