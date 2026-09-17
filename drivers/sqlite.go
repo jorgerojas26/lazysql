@@ -238,6 +238,84 @@ func (db *SQLite) GetForeignKeys(_, table string) (results [][]string, err error
 	return results, nil
 }
 
+// GetReferencingTables returns every foreign key that points at the given
+// table, i.e. the reverse direction of GetForeignKeys.
+func (db *SQLite) GetReferencingTables(database, table string) ([][]string, error) {
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	rows, err := db.Connection.Query(`
+        SELECT
+            m.name || ':' || fk.id AS constraint_name,
+            '' AS table_schema,
+            m.name AS table_name,
+            fk."from" AS column_name,
+            COALESCE(fk."to", '') AS referenced_column_name
+        FROM sqlite_master m
+        JOIN pragma_foreign_key_list(m.name) fk
+        WHERE m.type = 'table'
+          AND m.name NOT LIKE 'sqlite_%'
+          AND lower(fk."table") = lower(?)
+        ORDER BY m.name, fk.id, fk.seq
+    `, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results, err := scanReferencingTables(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return db.resolveImplicitReferencedColumns(database, table, results)
+}
+
+// resolveImplicitReferencedColumns fills in the referenced column for foreign
+// keys declared without one ("REFERENCES parent" instead of "REFERENCES
+// parent(id)"), where SQLite implicitly targets the parent primary key. Rows
+// are dropped when the primary key is composite, matching the way composite
+// foreign keys are skipped elsewhere.
+func (db *SQLite) resolveImplicitReferencedColumns(database, table string, results [][]string) ([][]string, error) {
+	needsPrimaryKey := false
+
+	for i, row := range results {
+		if i > 0 && row[4] == "" {
+			needsPrimaryKey = true
+			break
+		}
+	}
+
+	if !needsPrimaryKey {
+		return results, nil
+	}
+
+	primaryKeyColumnNames, err := db.GetPrimaryKeyColumnNames(database, table)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved := results[:1]
+
+	for i, row := range results {
+		if i == 0 {
+			continue
+		}
+
+		if row[4] == "" {
+			if len(primaryKeyColumnNames) != 1 {
+				continue
+			}
+			row[4] = primaryKeyColumnNames[0]
+		}
+
+		resolved = append(resolved, row)
+	}
+
+	return resolved, nil
+}
+
 func (db *SQLite) GetIndexes(_, table string) (results [][]string, err error) {
 	if table == "" {
 		return nil, errors.New("table name is required")

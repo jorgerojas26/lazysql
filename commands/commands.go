@@ -77,6 +77,7 @@ const (
 	ToggleSidebar
 	ShowRowJSONViewer
 	ShowCellJSONViewer
+	ReverseForeignKeyJump
 	ToggleJSONViewerWrap
 
 	// Connection
@@ -234,6 +235,8 @@ func (c Command) String() string {
 		return "ShowRowJSONViewer"
 	case ShowCellJSONViewer:
 		return "ShowCellJSONViewer"
+	case ReverseForeignKeyJump:
+		return "ReverseForeignKeyJump"
 	case ToggleJSONViewerWrap:
 		return "ToggleJSONViewerWrap"
 	case ExportCSV:

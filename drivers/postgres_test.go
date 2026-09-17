@@ -737,3 +737,56 @@ func TestBuildReconnectURL(t *testing.T) {
 		})
 	}
 }
+
+func TestPostgres_GetReferencingTables(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	rows := sqlmock.NewRows(referencingTablesHeader).
+		AddRow("LookupList_organizationId_fkey", schemaPostgres, "LookupList", "organizationId", "id").
+		AddRow("Role_organizationId_fkey", schemaPostgres, "Role", "organizationId", "id")
+
+	mock.ExpectQuery("SELECT(.|\n)+FROM pg_constraint con(.|\n)+ref_ns.nspname = \\$1(.|\n)+ref_cls.relname = \\$2").
+		WithArgs(schemaPostgres, tableNamePostgres).
+		WillReturnRows(rows)
+
+	pg := &Postgres{Connection: db, CurrentDatabase: DBNamePostgres}
+
+	results, err := pg.GetReferencingTables(DBNamePostgres, schemaAndTablePostgres)
+	if err != nil {
+		t.Fatalf("GetReferencingTables failed: %v", err)
+	}
+
+	expected := [][]string{
+		referencingTablesHeader,
+		{"LookupList_organizationId_fkey", schemaPostgres, "LookupList", "organizationId", "id"},
+		{"Role_organizationId_fkey", schemaPostgres, "Role", "organizationId", "id"},
+	}
+
+	if !reflect.DeepEqual(results, expected) {
+		t.Errorf("GetReferencingTables returned %v, expected %v", results, expected)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestPostgres_GetReferencingTables_RequiresQualifiedTable(t *testing.T) {
+	pg := &Postgres{}
+
+	if _, err := pg.GetReferencingTables(DBNamePostgres, tableNamePostgres); err == nil {
+		t.Error("expected an error for a table name without a schema")
+	}
+
+	if _, err := pg.GetReferencingTables("", schemaAndTablePostgres); err == nil {
+		t.Error("expected an error for an empty database name")
+	}
+
+	if _, err := pg.GetReferencingTables(DBNamePostgres, ""); err == nil {
+		t.Error("expected an error for an empty table name")
+	}
+}

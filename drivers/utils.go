@@ -293,3 +293,42 @@ func buildPlaceholders(values []models.CellValue, driver Driver) []string {
 	}
 	return placeholders
 }
+
+// referencingTablesHeader is the shape every driver returns from
+// GetReferencingTables, so the UI does not need per-provider normalization.
+var referencingTablesHeader = []string{
+	"constraint_name",
+	"table_schema",
+	"table_name",
+	"column_name",
+	"referenced_column_name",
+}
+
+// scanReferencingTables reads rows shaped like referencingTablesHeader and
+// prepends that header, mirroring the [][]string convention of the other
+// table information getters.
+func scanReferencingTables(rows *sql.Rows) ([][]string, error) {
+	results := [][]string{referencingTablesHeader}
+
+	for rows.Next() {
+		var constraintName, tableSchema, tableName, columnName, referencedColumn sql.NullString
+
+		if err := rows.Scan(&constraintName, &tableSchema, &tableName, &columnName, &referencedColumn); err != nil {
+			return nil, err
+		}
+
+		results = append(results, []string{
+			constraintName.String,
+			tableSchema.String,
+			tableName.String,
+			columnName.String,
+			referencedColumn.String,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}

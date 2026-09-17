@@ -340,6 +340,60 @@ func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
 	return foreignKeys, nil
 }
 
+// GetReferencingTables returns every foreign key that points at the given
+// table, i.e. the reverse direction of GetForeignKeys.
+func (db *Postgres) GetReferencingTables(database, table string) ([][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	splitTableString := strings.Split(table, ".")
+	if len(splitTableString) == 1 {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	tableSchema := splitTableString[0]
+	tableName := splitTableString[1]
+
+	rows, err := conn.Query(`
+        SELECT
+            con.conname AS constraint_name,
+            src_ns.nspname AS table_schema,
+            src_cls.relname AS table_name,
+            src_att.attname AS column_name,
+            ref_att.attname AS referenced_column_name
+        FROM pg_constraint con
+        JOIN pg_class src_cls ON src_cls.oid = con.conrelid
+        JOIN pg_namespace src_ns ON src_ns.oid = src_cls.relnamespace
+        JOIN pg_class ref_cls ON ref_cls.oid = con.confrelid
+        JOIN pg_namespace ref_ns ON ref_ns.oid = ref_cls.relnamespace
+        JOIN LATERAL unnest(con.conkey, con.confkey) AS fk(src_attnum, ref_attnum) ON true
+        JOIN pg_attribute src_att ON src_att.attrelid = con.conrelid AND src_att.attnum = fk.src_attnum
+        JOIN pg_attribute ref_att ON ref_att.attrelid = con.confrelid AND ref_att.attnum = fk.ref_attnum
+        WHERE con.contype = 'f'
+          AND ref_ns.nspname = $1
+          AND ref_cls.relname = $2
+        ORDER BY src_ns.nspname, src_cls.relname, con.conname, src_att.attnum
+  `, tableSchema, tableName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanReferencingTables(rows)
+}
+
 func (db *Postgres) GetIndexes(database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
