@@ -1,27 +1,32 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/xo/dburl"
 
+	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
 type MySQL struct {
 	Connection *sql.DB
 	Provider   string
+	PoolConfig models.ConnectionPoolConfig
 }
 
-func (db *MySQL) TestConnection(urlstr string) (err error) {
-	return db.Connect(urlstr)
+func (db *MySQL) TestConnection(ctx context.Context, urlstr string) (err error) {
+	return db.Connect(ctx, urlstr)
 }
 
-func (db *MySQL) Connect(urlstr string) (err error) {
+func (db *MySQL) Connect(ctx context.Context, urlstr string) (err error) {
+	ctx = contextOrBackground(ctx)
 	db.SetProvider(DriverMySQL)
 
 	db.Connection, err = dburl.Open(urlstr)
@@ -29,7 +34,12 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 		return err
 	}
 
-	err = db.Connection.Ping()
+	if err = applyConnectionPoolConfig(db.Connection, db.PoolConfig); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
+
+	err = db.Connection.PingContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -37,10 +47,11 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 	return nil
 }
 
-func (db *MySQL) GetDatabases() ([]string, error) {
+func (db *MySQL) GetDatabases(ctx context.Context) ([]string, error) {
+	ctx = contextOrBackground(ctx)
 	var databases []string
 
-	rows, err := db.Connection.Query("SHOW DATABASES")
+	rows, err := db.Connection.QueryContext(ctx, "SHOW DATABASES")
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +74,13 @@ func (db *MySQL) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *MySQL) GetTables(database string) (map[string][]string, error) {
+func (db *MySQL) GetTables(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	rows, err := db.Connection.Query(fmt.Sprintf("SHOW TABLES FROM `%s`", database))
+	rows, err := db.Connection.QueryContext(ctx, fmt.Sprintf("SHOW TABLES FROM `%s`", database))
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +103,8 @@ func (db *MySQL) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *MySQL) GetTableColumns(database, table string) (results [][]string, err error) {
+func (db *MySQL) GetTableColumns(ctx context.Context, database, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -103,7 +116,7 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 	query := "SHOW FULL COLUMNS FROM "
 	query += db.formatTableName(database, table)
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +155,8 @@ func (db *MySQL) GetTableColumns(database, table string) (results [][]string, er
 	return results, nil
 }
 
-func (db *MySQL) GetConstraints(database, table string) (results [][]string, err error) {
+func (db *MySQL) GetConstraints(ctx context.Context, database, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -153,7 +167,7 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 
 	query := "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
 
-	rows, err := db.Connection.Query(query, database, table)
+	rows, err := db.Connection.QueryContext(ctx, query, database, table)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +205,80 @@ func (db *MySQL) GetConstraints(database, table string) (results [][]string, err
 	return results, nil
 }
 
-func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err error) {
+// MySQL 5.6/5.7 expose the InnoDB dictionary with the INNODB_SYS_* names;
+// MySQL 8 uses the corresponding INNODB_* tables. Both avoid the
+// instance-wide KEY_COLUMN_USAGE lookup for the common InnoDB case.
+const (
+	mysqlForeignKeysLegacyFastPathQuery = `
+SELECT
+    SUBSTRING_INDEX(f.FOR_NAME, '/', -1) AS TABLE_NAME,
+    fc.FOR_COL_NAME AS COLUMN_NAME,
+    SUBSTRING_INDEX(f.ID, '/', -1) AS CONSTRAINT_NAME,
+    fc.REF_COL_NAME AS REFERENCED_COLUMN_NAME,
+    SUBSTRING_INDEX(f.REF_NAME, '/', -1) AS REFERENCED_TABLE_NAME
+FROM information_schema.INNODB_SYS_FOREIGN AS f
+INNER JOIN information_schema.INNODB_SYS_FOREIGN_COLS AS fc
+    ON f.ID = fc.ID
+WHERE f.REF_NAME = CONCAT(?, '/', ?)
+ORDER BY f.ID, fc.POS`
+	mysqlForeignKeysFastPathQuery = `
+SELECT
+    SUBSTRING_INDEX(f.FOR_NAME, '/', -1) AS TABLE_NAME,
+    fc.FOR_COL_NAME AS COLUMN_NAME,
+    SUBSTRING_INDEX(f.ID, '/', -1) AS CONSTRAINT_NAME,
+    fc.REF_COL_NAME AS REFERENCED_COLUMN_NAME,
+    SUBSTRING_INDEX(f.REF_NAME, '/', -1) AS REFERENCED_TABLE_NAME
+FROM information_schema.INNODB_FOREIGN AS f
+INNER JOIN information_schema.INNODB_FOREIGN_COLS AS fc
+    ON f.ID = fc.ID
+WHERE f.REF_NAME = CONCAT(?, '/', ?)
+ORDER BY f.ID, fc.POS`
+	mysqlForeignKeysFallbackQuery = "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
+)
+
+var mysqlForeignKeysFastPathQueries = []struct {
+	name  string
+	query string
+}{
+	{name: "innodb_sys_foreign", query: mysqlForeignKeysLegacyFastPathQuery},
+	{name: "innodb_foreign", query: mysqlForeignKeysFastPathQuery},
+}
+
+func (db *MySQL) GetForeignKeys(ctx context.Context, database, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
+
+	started := time.Now()
+	fallback := "none"
+	fastPath := "none"
+	var fastPathErrors []string
+	defer func() {
+		data := map[string]any{
+			"operation":     "get_foreign_keys",
+			"driver":        DriverMySQL,
+			"database":      database,
+			"table":         table,
+			"duration":      time.Since(started).String(),
+			"fast_path":     fastPath,
+			"fallback":      fallback,
+			"fallback_used": fallback != "none",
+		}
+		if len(fastPathErrors) > 0 {
+			data["fast_path_error"] = strings.Join(fastPathErrors, "; ")
+		}
+		if err != nil {
+			data["error"] = err.Error()
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			data["canceled"] = true
+			if errors.Is(ctxErr, context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+				data["cancellation_reason"] = "deadline"
+			} else {
+				data["cancellation_reason"] = "canceled"
+			}
+		}
+		logger.Debug("Loaded MySQL foreign-key metadata", data)
+	}()
+
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -200,9 +287,24 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	query := "SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?"
+	for _, fastPathQuery := range mysqlForeignKeysFastPathQueries {
+		results, err = db.queryForeignKeys(ctx, fastPathQuery.query, database, table)
+		if err == nil {
+			fastPath = fastPathQuery.name
+			return results, nil
+		}
+		fastPathErrors = append(fastPathErrors, fastPathQuery.name+": "+err.Error())
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
 
-	rows, err := db.Connection.Query(query, database, table)
+	fallback = "key_column_usage"
+	return db.queryForeignKeys(ctx, mysqlForeignKeysFallbackQuery, database, table)
+}
+
+func (db *MySQL) queryForeignKeys(ctx context.Context, query string, args ...any) (results [][]string, err error) {
+	rows, err := db.Connection.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -221,12 +323,11 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		err = rows.Scan(rowValues...)
-		if err != nil {
+		if err := rows.Scan(rowValues...); err != nil {
 			return nil, err
 		}
 
-		var row []string
+		row := make([]string, 0, len(rowValues))
 		for _, col := range rowValues {
 			row = append(row, string(*col.(*sql.RawBytes)))
 		}
@@ -240,7 +341,8 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 	return results, nil
 }
 
-func (db *MySQL) GetIndexes(database, table string) (results [][]string, err error) {
+func (db *MySQL) GetIndexes(ctx context.Context, database, table string) (results [][]string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -252,7 +354,7 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 	query := "SHOW INDEX FROM "
 	query += db.formatTableName(database, table)
 
-	rows, err := db.Connection.Query(query)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -290,20 +392,18 @@ func (db *MySQL) GetIndexes(database, table string) (results [][]string, err err
 	return results, nil
 }
 
-func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, queryString string, err error) {
+func (db *MySQL) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
+	ctx = contextOrBackground(ctx)
 	if table == "" {
-		return nil, 0, "", errors.New("table name is required")
+		return PageResult{}, errors.New("table name is required")
 	}
 
 	if database == "" {
-		return nil, 0, "", errors.New("database name is required")
+		return PageResult{}, errors.New("database name is required")
 	}
 
-	if limit == 0 {
-		limit = DefaultRowLimit
-	}
-
-	queryString = "SELECT * FROM "
+	pageSize, fetchLimit := pageSizeAndFetchLimit(limit)
+	queryString := "SELECT * FROM "
 	queryString += db.formatTableName(database, table)
 
 	if where != "" {
@@ -316,18 +416,18 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	queryString += " LIMIT ?, ?"
 
-	paginatedRows, err := db.Connection.Query(queryString, offset, limit)
+	paginatedRows, err := db.Connection.QueryContext(ctx, queryString, offset, fetchLimit)
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	defer paginatedRows.Close()
 
 	columns, err := paginatedRows.Columns()
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	paginatedResults = append(paginatedResults, columns)
+	paginatedResults := [][]string{columns}
 
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
@@ -339,7 +439,7 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 
 		err = paginatedRows.Scan(rowValues...)
 		if err != nil {
-			return nil, 0, queryString, err
+			return PageResult{Query: queryString}, err
 		}
 
 		var row []string
@@ -358,34 +458,78 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 		paginatedResults = append(paginatedResults, row)
 	}
 	if err := paginatedRows.Err(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	countQuery := "SELECT COUNT(*) FROM "
-	countQuery += fmt.Sprintf("`%s`.", database)
-	countQuery += fmt.Sprintf("`%s`", table)
-	if where != "" { // Add WHERE clause to count query as well if it exists
-		countQuery += fmt.Sprintf(" %s", where)
-	}
-	countRow := db.Connection.QueryRow(countQuery)
-	if err := countRow.Scan(&totalRecords); err != nil {
-		// Return the main query string even if count fails, for debugging.
-		return paginatedResults, 0, queryString, err
-	}
-
-	// Replace the limit and offset with actual values in the query string
+	// Replace the limit and offset with actual values in the query string.
 	queryString = strings.Replace(queryString, "?", strconv.Itoa(offset), 1)
-	queryString = strings.Replace(queryString, "?", strconv.Itoa(limit), 1)
+	queryString = strings.Replace(queryString, "?", strconv.Itoa(fetchLimit), 1)
 
-	return paginatedResults, totalRecords, queryString, nil
+	return newPageResult(paginatedResults, queryString, pageSize), nil
 }
 
-func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
-	rows, err := db.Connection.Query(query)
+func (db *MySQL) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	ctx = contextOrBackground(ctx)
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	var estimate sql.NullInt64
+	err := db.Connection.QueryRowContext(ctx, `
+		SELECT TABLE_ROWS
+		FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+	`, database, table).Scan(&estimate)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !estimate.Valid || estimate.Int64 < 0 {
+		return nil, nil
+	}
+
+	return &estimate.Int64, nil
+}
+
+func (db *MySQL) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	ctx = contextOrBackground(ctx)
+	if database == "" {
+		return 0, errors.New("database name is required")
+	}
+	if table == "" {
+		return 0, errors.New("table name is required")
+	}
+
+	query := "SELECT COUNT(*) FROM " + db.formatTableName(database, table)
+	if where != "" {
+		query += " " + where
+	}
+
+	var count int64
+	if err := db.Connection.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// StreamQuery incrementally emits interactive SQL results and honors context
+// cancellation through database/sql.
+func (db *MySQL) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
+}
+
+func (db *MySQL) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+	ctx = contextOrBackground(ctx)
+	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -425,27 +569,30 @@ func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 	return results, len(records), nil
 }
 
-func (db *MySQL) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MySQL) UpdateRecord(ctx context.Context, database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	query := "UPDATE "
 	query += db.formatTableName(database, table)
 	query += fmt.Sprintf(" SET %s = ? WHERE %s = ?", column, primaryKeyColumnName)
 
-	_, err := db.Connection.Exec(query, value, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, value, primaryKeyValue)
 
 	return err
 }
 
-func (db *MySQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *MySQL) DeleteRecord(ctx context.Context, database, table, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	query := "DELETE FROM "
 	query += db.formatTableName(database, table)
 	query += fmt.Sprintf(" WHERE %s = ?", primaryKeyColumnName)
-	_, err := db.Connection.Exec(query, primaryKeyValue)
+	_, err := db.Connection.ExecContext(ctx, query, primaryKeyValue)
 
 	return err
 }
 
-func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
-	res, err := db.Connection.Exec(query)
+func (db *MySQL) ExecuteDMLStatement(ctx context.Context, query string) (result string, err error) {
+	ctx = contextOrBackground(ctx)
+	res, err := db.Connection.ExecContext(ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -458,7 +605,8 @@ func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *MySQL) ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error {
+	ctx = contextOrBackground(ctx)
 	var queries []models.Query
 
 	for _, change := range changes {
@@ -476,10 +624,11 @@ func (db *MySQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 		}
 	}
 
-	return queriesInTransaction(db.Connection, queries)
+	return queriesInTransaction(ctx, db.Connection, queries)
 }
 
-func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyColumnName []string, err error) {
+func (db *MySQL) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) (primaryKeyColumnName []string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -488,7 +637,7 @@ func (db *MySQL) GetPrimaryKeyColumnNames(database, table string) (primaryKeyCol
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query("SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = ? AND table_name = ? AND constraint_name = ?", database, table, "PRIMARY")
+	rows, err := db.Connection.QueryContext(ctx, "SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = ? AND table_name = ? AND constraint_name = ?", database, table, "PRIMARY")
 	if err != nil {
 		return nil, err
 	}
@@ -621,15 +770,15 @@ func (db *MySQL) DMLChangeToQueryString(change models.DBDMLChange) (string, erro
 	return queryStr, nil
 }
 
-func (db *MySQL) GetFunctions(_ string) (map[string][]string, error) {
+func (db *MySQL) GetFunctions(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *MySQL) GetProcedures(_ string) (map[string][]string, error) {
+func (db *MySQL) GetProcedures(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *MySQL) GetViews(_ string) (map[string][]string, error) {
+func (db *MySQL) GetViews(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -641,14 +790,14 @@ func (db *MySQL) UseSchemas() bool {
 	return false
 }
 
-func (db *MySQL) GetFunctionDefinition(_ string, _ string) (string, error) {
+func (db *MySQL) GetFunctionDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *MySQL) GetProcedureDefinition(_ string, _ string) (string, error) {
+func (db *MySQL) GetProcedureDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *MySQL) GetViewDefinition(_ string, _ string) (string, error) {
+func (db *MySQL) GetViewDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }

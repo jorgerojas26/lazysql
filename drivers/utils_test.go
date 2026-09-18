@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -15,39 +16,107 @@ import (
 // mockDriver implements Driver with postgres-like formatting for unit tests.
 type mockDriver struct{}
 
-func (m *mockDriver) Connect(string) error                               { panic("not used") }
-func (m *mockDriver) TestConnection(string) error                        { panic("not used") }
-func (m *mockDriver) GetDatabases() ([]string, error)                    { panic("not used") }
-func (m *mockDriver) GetTables(string) (map[string][]string, error)      { panic("not used") }
-func (m *mockDriver) GetTableColumns(string, string) ([][]string, error) { panic("not used") }
-func (m *mockDriver) GetConstraints(string, string) ([][]string, error)  { panic("not used") }
-func (m *mockDriver) GetForeignKeys(string, string) ([][]string, error)  { panic("not used") }
-func (m *mockDriver) GetIndexes(string, string) ([][]string, error)      { panic("not used") }
-func (m *mockDriver) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
+func (m *mockDriver) Connect(context.Context, string) error          { panic("not used") }
+func (m *mockDriver) TestConnection(context.Context, string) error   { panic("not used") }
+func (m *mockDriver) GetDatabases(context.Context) ([]string, error) { panic("not used") }
+func (m *mockDriver) GetTables(context.Context, string) (map[string][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetTableColumns(context.Context, string, string) ([][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetConstraints(context.Context, string, string) ([][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetForeignKeys(context.Context, string, string) ([][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetIndexes(context.Context, string, string) ([][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetRecords(context.Context, string, string, string, string, int, int) (PageResult, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetEstimatedRowCount(context.Context, string, string) (*int64, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetExactRowCount(context.Context, string, string, string) (int64, error) {
 	panic("not used")
 }
 
-func (m *mockDriver) UpdateRecord(string, string, string, string, string, string) error {
+func (m *mockDriver) UpdateRecord(context.Context, string, string, string, string, string, string) error {
 	panic("not used")
 }
-func (m *mockDriver) DeleteRecord(string, string, string, string) error { panic("not used") }
-func (m *mockDriver) ExecuteDMLStatement(string) (string, error)        { panic("not used") }
-func (m *mockDriver) ExecuteQuery(string) ([][]string, int, error)      { panic("not used") }
-func (m *mockDriver) ExecutePendingChanges([]models.DBDMLChange) error  { panic("not used") }
-func (m *mockDriver) GetProvider() string                               { return "mock" }
-func (m *mockDriver) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
+func (m *mockDriver) DeleteRecord(context.Context, string, string, string, string) error {
 	panic("not used")
 }
-func (m *mockDriver) SupportsProgramming() bool                                 { return false }
-func (m *mockDriver) UseSchemas() bool                                          { return false }
-func (m *mockDriver) GetFunctions(string) (map[string][]string, error)          { panic("not used") }
-func (m *mockDriver) GetProcedures(string) (map[string][]string, error)         { panic("not used") }
-func (m *mockDriver) GetViews(string) (map[string][]string, error)              { panic("not used") }
-func (m *mockDriver) GetFunctionDefinition(string, string) (string, error)      { panic("not used") }
-func (m *mockDriver) GetProcedureDefinition(string, string) (string, error)     { panic("not used") }
-func (m *mockDriver) GetViewDefinition(string, string) (string, error)          { panic("not used") }
+func (m *mockDriver) ExecuteDMLStatement(context.Context, string) (string, error) { panic("not used") }
+func (m *mockDriver) ExecuteQuery(context.Context, string) ([][]string, int, error) {
+	panic("not used")
+}
+func (m *mockDriver) ExecutePendingChanges(context.Context, []models.DBDMLChange) error {
+	panic("not used")
+}
+func (m *mockDriver) GetProvider() string { return "mock" }
+func (m *mockDriver) GetPrimaryKeyColumnNames(context.Context, string, string) ([]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) SupportsProgramming() bool { return false }
+func (m *mockDriver) UseSchemas() bool          { return false }
+func (m *mockDriver) GetFunctions(context.Context, string) (map[string][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetProcedures(context.Context, string) (map[string][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetViews(context.Context, string) (map[string][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetFunctionDefinition(context.Context, string, string) (string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetProcedureDefinition(context.Context, string, string) (string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetViewDefinition(context.Context, string, string) (string, error) {
+	panic("not used")
+}
 func (m *mockDriver) DMLChangeToQueryString(models.DBDMLChange) (string, error) { panic("not used") }
 func (m *mockDriver) SetProvider(string)                                        {}
+
+func TestPageSizeAndFetchLimit(t *testing.T) {
+	pageSize, fetchLimit := pageSizeAndFetchLimit(2)
+	if pageSize != 2 || fetchLimit != 3 {
+		t.Fatalf("expected page size 2 and fetch limit 3, got %d and %d", pageSize, fetchLimit)
+	}
+
+	pageSize, fetchLimit = pageSizeAndFetchLimit(0)
+	if pageSize != DefaultRowLimit || fetchLimit != DefaultRowLimit+1 {
+		t.Fatalf("expected default page size and lookahead, got %d and %d", pageSize, fetchLimit)
+	}
+}
+
+func TestNewPageResultTrimsLookahead(t *testing.T) {
+	rows := [][]string{
+		{"id"},
+		{"1"},
+		{"2"},
+		{"3"},
+	}
+
+	page := newPageResult(rows, "SELECT ... LIMIT 3", 2)
+	wantRows := [][]string{{"id"}, {"1"}, {"2"}}
+
+	if !reflect.DeepEqual(page.Rows, wantRows) {
+		t.Fatalf("expected visible rows %v, got %v", wantRows, page.Rows)
+	}
+	if !page.HasNextPage {
+		t.Fatal("expected lookahead row to set HasNextPage")
+	}
+	if page.Query != "SELECT ... LIMIT 3" {
+		t.Fatalf("expected query to be preserved, got %q", page.Query)
+	}
+}
 
 func (m *mockDriver) FormatArg(arg any, _ models.CellValueType) any {
 	return arg
@@ -174,7 +243,7 @@ func Test_queriesInTransaction(t *testing.T) {
 			}
 			defer db.Close()
 			tt.setMockExpectations(mock)
-			queryErr := queriesInTransaction(db, tt.queries)
+			queryErr := queriesInTransaction(context.Background(), db, tt.queries)
 			if tt.assertErr != nil {
 				tt.assertErr(t, queryErr)
 			}
