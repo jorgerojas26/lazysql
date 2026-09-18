@@ -37,6 +37,7 @@ const (
 	ConstraintsMenu
 	ForeignKeysMenu
 	IndexesMenu
+	ToggleCheckConstraints
 
 	// Tabs
 	TabNext
@@ -206,6 +207,8 @@ func (c Command) String() string {
 		return "ForeignKeysMenu"
 	case IndexesMenu:
 		return "IndexesMenu"
+	case ToggleCheckConstraints:
+		return "ToggleCheckConstraints"
 	case UnfocusTreeFilter:
 		return "UnfocusTreeFilter"
 	case CommitTreeFilter:
