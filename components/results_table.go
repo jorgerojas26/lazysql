@@ -345,7 +345,7 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 				changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
 				tableCell := table.GetCell(row, changedColumnIndex)
 
-				tableCell.SetText(params.NewValue)
+				tableCell.SetText(tview.Escape(params.NewValue))
 
 				cellValue := models.CellValue{
 					Type:             params.Type,
@@ -373,7 +373,7 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 func (table *ResultsTable) AddRows(rows [][]string) {
 	for i, row := range rows {
 		for j, cell := range row {
-			tableCell := tview.NewTableCell(cell)
+			tableCell := tview.NewTableCell(tview.Escape(cell))
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
@@ -422,7 +422,7 @@ func (table *ResultsTable) AddInsertedRows() {
 		rowIndex := rowCount + i
 
 		for j, cell := range row {
-			tableCell := tview.NewTableCell(cell.Value.(string))
+			tableCell := tview.NewTableCell(tview.Escape(cell.Value.(string)))
 			tableCell.SetExpansion(1)
 			tableCell.SetReference(inserts[i].PrimaryKeyInfo[0].Value)
 
@@ -436,7 +436,7 @@ func (table *ResultsTable) AddInsertedRows() {
 
 func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUID string) {
 	for i, cell := range cells {
-		tableCell := tview.NewTableCell(cell.Value.(string))
+		tableCell := tview.NewTableCell(tview.Escape(cell.Value.(string)))
 		tableCell.SetExpansion(1)
 		// Appended rows have a reference to the row UUID so we can identify them later
 		// Also, rows that have columns marked to be UPDATED will have a reference to the type of the new value (NULL, EMPTY, DEFAULT)
@@ -658,7 +658,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		} else {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 			if selectedCell != nil {
-				if err := clipboard.Write(selectedCell.Text); err != nil {
+				if err := clipboard.Write(cellText(selectedCell)); err != nil {
 					table.SetError(err.Error(), nil)
 				}
 			}
@@ -671,7 +671,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.Editor == nil && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 			if selectedCell != nil {
-				originalText := selectedCell.Text
+				originalText := cellText(selectedCell)
 				var newText string
 				app.App.Suspend(func() {
 					newText = openCellInExternalEditor(originalText)
@@ -679,7 +679,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				// Strip trailing newline that editors typically add
 				newText = strings.TrimSuffix(newText, "\n")
 				if newText != originalText {
-					selectedCell.SetText(newText)
+					selectedCell.SetText(tview.Escape(newText))
 					columnName := table.GetColumnNameByIndex(selectedColumnIndex)
 					err := table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{
 						Type:             models.String,
@@ -745,7 +745,7 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 
 				if cellReference != nil && (cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&") && (cell.BackgroundColor != colorTableDelete && cell.BackgroundColor != colorTableChange && cell.BackgroundColor != colorTableInsert) {
 					cell.SetStyle(table.GetItalicStyle())
-				} else if table.shouldShowForeignKeyMarker(i, j, cell.Text) {
+				} else if table.shouldShowForeignKeyMarker(i, j, cellText(cell)) {
 					cell.SetStyle(tcell.StyleDefault.Underline(true))
 					cell.SetTextColor(rowColor)
 				} else {
@@ -1334,7 +1334,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 	cell := table.GetCell(row, col)
 	inputField := tview.NewInputField()
-	inputField.SetText(cell.Text)
+	inputField.SetText(cellText(cell))
 	inputField.SetFieldBackgroundColor(app.Styles.PrimaryTextColor)
 	inputField.SetFieldTextColor(app.Styles.PrimitiveBackgroundColor)
 	inputField.SetBorder(true)
@@ -1343,7 +1343,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
-		currentValue := cell.Text
+		currentValue := cellText(cell)
 		newValue := inputField.GetText()
 		columnName := table.GetCell(0, col).Text
 
@@ -1354,7 +1354,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		var appendErr error
 
 		if key != tcell.KeyEscape {
-			cell.SetText(newValue)
+			cell.SetText(tview.Escape(newValue))
 
 			if currentValue != newValue {
 				appendErr = table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
@@ -1427,12 +1427,12 @@ func (table *ResultsTable) handleShowJSONViewer(command commands.Command) {
 	case commands.ShowRowJSONViewer:
 		for i := 0; i < table.GetColumnCount(); i++ {
 			columnName := table.GetColumnNameByIndex(i)
-			cellValue := table.GetCell(selectedRow, i).Text
+			cellValue := cellText(table.GetCell(selectedRow, i))
 			rowData[columnName] = cellValue
 		}
 	case commands.ShowCellJSONViewer:
 		columnName := table.GetColumnNameByIndex(selectedCol)
-		cellValue := table.GetCell(selectedRow, selectedCol).Text
+		cellValue := cellText(table.GetCell(selectedRow, selectedCol))
 		rowData[columnName] = cellValue
 	}
 
@@ -1742,7 +1742,7 @@ func (table *ResultsTable) duplicateRow() {
 	for i, column := range dbColumns {
 		if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
 			origCell := table.GetCell(row, i-1)
-			newRow[i-1] = models.CellValue{Type: models.String, Column: column[0], Value: origCell.Text, TableRowIndex: newRowTableIndex, TableColumnIndex: i}
+			newRow[i-1] = models.CellValue{Type: models.String, Column: column[0], Value: cellText(origCell), TableRowIndex: newRowTableIndex, TableColumnIndex: i}
 		}
 	}
 
@@ -1993,7 +1993,14 @@ func (table *ResultsTable) getRawCellValue(rowIndex, columnIndex int) string {
 		return ""
 	}
 
-	return cell.Text
+	return cellText(cell)
+}
+
+// cellText returns the value shown in a results cell. Cell text is stored
+// tview-escaped so values like "[red]" or `["x"]` are not parsed as style or
+// region tags; this undoes that escaping.
+func cellText(cell *tview.TableCell) string {
+	return tview.Unescape(cell.Text)
 }
 
 func (table *ResultsTable) isForeignKeyColumn(columnName string) bool {
@@ -2164,7 +2171,7 @@ func (table *ResultsTable) UpdateSidebar() {
 
 			sidebarWidth := table.getSidebarWidth()
 
-			text := table.GetCell(selectedRow, i-1).Text
+			text := cellText(table.GetCell(selectedRow, i-1))
 			title := name
 
 			repeatCount := sidebarWidth - len(name) - len(colType) - 4 // idk why 4 is needed, but it works.
