@@ -1,6 +1,7 @@
 package components
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -448,5 +449,52 @@ func TestReadOnlyAllowsCTESelect(t *testing.T) {
 	executed := runEditorQuery(t, true, query)
 	if len(executed) != 1 || executed[0] != query {
 		t.Fatalf("read-only WITH ... SELECT should still execute, got %q", executed)
+	}
+}
+
+func TestAddRowsRendersBracketValuesLiterally(t *testing.T) {
+	values := []string{`["x"] and [red]hi`, "[::b]bold", "[red[]", "plain"}
+
+	table := newMarkTestTable(nil)
+	table.DBDriver = &drivers.MySQL{}
+	table.AddRows([][]string{
+		{"a", "b", "c", "d", "e"},
+		{values[0], values[1], values[2], values[3], "NULL&"},
+	})
+
+	for col, want := range values {
+		if got := cellText(table.GetCell(1, col)); got != want {
+			t.Errorf("cellText(1, %d) = %q, want %q", col, got, want)
+		}
+		if got := table.getRawCellValue(1, col); got != want {
+			t.Errorf("getRawCellValue(1, %d) = %q, want %q", col, got, want)
+		}
+	}
+
+	// lazysql's own NULL placeholder keeps its label and styling.
+	nullCell := table.GetCell(1, 4)
+	if nullCell.Text != "NULL" || nullCell.GetReference() != "NULL&" {
+		t.Errorf("NULL placeholder = %q (ref %v), want \"NULL\" (ref \"NULL&\")", nullCell.Text, nullCell.GetReference())
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(120, 3)
+	table.SetRect(0, 0, 120, 3)
+	table.Draw(screen)
+	screen.Show()
+
+	cells, width, _ := screen.GetContents()
+	var line strings.Builder
+	for x := 0; x < width; x++ {
+		line.WriteString(string(cells[width+x].Runes))
+	}
+	for _, want := range values[:3] {
+		if !strings.Contains(line.String(), want) {
+			t.Errorf("rendered row %q does not contain %q", line.String(), want)
+		}
 	}
 }
