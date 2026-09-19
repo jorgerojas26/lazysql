@@ -361,6 +361,7 @@ You can update the tree by pressing `R`, so you can see your newly created table
 - [x] PostgreSQL
 - [x] SQLite
 - [x] MSSQL
+- [x] ClickHouse
 - [ ] MongoDB
 
 Support for multiple RDBMS is a work in progress.
@@ -647,7 +648,17 @@ sap://user:pass@localhost/dbname
 file:myfile.sqlite3?loc=auto
 /path/to/sqlite/file/test.db
 odbc+postgres://user:pass@localhost:port/dbname?option1=
+clickhouse://user:pass@localhost:9000/dbname
+ch://user:pass@remote-host.com:9440/dbname?secure=true
+clickhouse+http://user:pass@localhost:8123/dbname
+clickhouse+https://user:pass@remote-host.com:8443/dbname
 ```
+
+### ClickHouse notes
+
+- `clickhouse://` (alias `ch://`) uses the native protocol (port 9000 by default); `clickhouse+http://` and `clickhouse+https://` use the HTTP interface. Query parameters are passed to [clickhouse-go](https://github.com/ClickHouse/clickhouse-go#dsn), e.g. `?secure=true` for TLS on the native port.
+- The Constraints tab shows the table engine and its partition, sorting and primary keys. The Indexes tab shows data skipping indexes. ClickHouse has no foreign keys.
+- Row edits and deletes are run as mutations (`ALTER TABLE ... UPDATE/DELETE`) and wait for the mutation to finish. They only work on tables that support mutations (such as the MergeTree family), key columns cannot be updated, and ClickHouse primary keys are not unique: every row that shares the primary key values of the edited row is changed. Pending changes are not run in a transaction.
 
 <!-- ROADMAP -->
 
