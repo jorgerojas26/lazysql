@@ -47,9 +47,9 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	errorModal := tview.NewModal()
 	errorModal.AddButtons([]string{"Ok"})
 	errorModal.SetText("An error occurred")
-	errorModal.SetBackgroundColor(tcell.ColorRed)
+	errorModal.SetBackgroundColor(app.Styles.ErrorColor)
 	errorModal.SetTextColor(app.Styles.PrimaryTextColor)
-	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor).Background(app.Styles.PrimitiveBackgroundColor))
 	errorModal.SetFocus(0)
 
 	keybindings := tview.NewTextView()
@@ -60,7 +60,7 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	keybindings.SetTitle(" Keybindings ")
 
 	for _, command := range app.Keymaps.Group(app.QueryPreviewGroup) {
-		keybindings.SetText(fmt.Sprintf("%s [yellow](%s) [default]%s", keybindings.GetText(false), command.Key.String(), command.Description))
+		keybindings.SetText(fmt.Sprintf("%s [%s](%s) [default]%s", keybindings.GetText(false), app.Styles.SecondaryTextColor, command.Key.String(), command.Description))
 	}
 
 	container.AddItem(table, 0, 1, true)

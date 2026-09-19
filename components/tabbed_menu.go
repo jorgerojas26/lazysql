@@ -434,6 +434,6 @@ func (t *TabbedPane) styleHeaders(selected *Tab, normalColor tcell.Color) {
 			tab.Header.SetTextStyle(selectedStyle)
 			continue
 		}
-		tab.Header.SetTextStyle(tcell.StyleDefault.Foreground(normalColor))
+		tab.Header.SetTextStyle(tcell.StyleDefault.Foreground(normalColor).Background(app.Styles.PrimitiveBackgroundColor))
 	}
 }

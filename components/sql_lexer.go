@@ -5,6 +5,8 @@ import (
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
+
+	"github.com/jorgerojas26/lazysql/app"
 )
 
 // SQLTokenType classifies a span of SQL text for syntax highlighting.
@@ -342,23 +344,23 @@ func isPunctuation(ch rune) bool {
 func colorForToken(t SQLTokenType) tcell.Color {
 	switch t {
 	case TokenKeyword:
-		return tcell.ColorDodgerBlue
+		return app.Styles.SQLKeywordColor
 	case TokenString:
-		return tcell.ColorOrange
+		return app.Styles.SQLStringColor
 	case TokenNumber:
-		return tcell.ColorLimeGreen
+		return app.Styles.SQLNumberColor
 	case TokenComment:
-		return tcell.ColorGray
+		return app.Styles.SQLCommentColor
 	case TokenFunction:
-		return tcell.ColorMediumPurple
+		return app.Styles.SQLFunctionColor
 	case TokenOperator:
-		return tcell.ColorDarkOrange
+		return app.Styles.SQLOperatorColor
 	case TokenTypeDef:
-		return tcell.ColorDarkCyan
+		return app.Styles.SQLTypeColor
 	case TokenBoolean:
-		return tcell.ColorOrangeRed
+		return app.Styles.SQLBooleanColor
 	case TokenParameter:
-		return tcell.ColorGold
+		return app.Styles.SQLParameterColor
 	case TokenIdentifier:
 		return tcell.ColorDefault
 	case TokenPunctuation:

@@ -1,8 +1,6 @@
 package components
 
 import (
-	"github.com/gdamore/tcell/v2"
-
 	"github.com/jorgerojas26/lazysql/app"
 )
 
@@ -96,9 +94,4 @@ const (
 const (
 	focusedWrapperLeft  string = "left"
 	focusedWrapperRight string = "right"
-
-	colorTableChange = tcell.ColorOrange
-	colorTableInsert = tcell.ColorDarkGreen
-	colorTableDelete = tcell.ColorRed
-	colorTableMarked = tcell.ColorSteelBlue
 )
