@@ -30,12 +30,6 @@ type Application struct {
 	onQuitRequest   func()
 }
 
-type Theme struct {
-	tview.Theme
-
-	SidebarTitleBorderColor string
-}
-
 func init() {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -50,24 +44,10 @@ func init() {
 	App.EnableMouse(true)
 	App.EnablePaste(true)
 
-	Styles = &Theme{
-		Theme: tview.Theme{
-			PrimitiveBackgroundColor:    tcell.ColorDefault,
-			ContrastBackgroundColor:     tcell.ColorBlue,
-			MoreContrastBackgroundColor: tcell.ColorGreen,
-			BorderColor:                 tcell.ColorWhite,
-			TitleColor:                  tcell.ColorWhite,
-			GraphicsColor:               tcell.ColorGray,
-			PrimaryTextColor:            tcell.ColorDefault.TrueColor(),
-			SecondaryTextColor:          tcell.ColorYellow,
-			TertiaryTextColor:           tcell.ColorGreen,
-			InverseTextColor:            tcell.ColorWhite,
-			ContrastSecondaryTextColor:  tcell.ColorBlack,
-		},
-		SidebarTitleBorderColor: "#666A7E",
+	// Start with the default theme; LoadConfig applies the configured one.
+	if err := ApplyTheme(ThemeConfig{}); err != nil {
+		panic(err)
 	}
-
-	tview.Styles = Styles.Theme
 }
 
 // Context returns the application context.

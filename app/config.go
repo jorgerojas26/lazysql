@@ -19,6 +19,7 @@ type Config struct {
 	AppConfig       *models.AppConfig   `toml:"application"`
 	Connections     []models.Connection `toml:"database"`
 	Keymaps         models.KeymapConfig `toml:"keymap"`
+	Theme           *ThemeConfig        `toml:"theme,omitempty"`
 }
 
 func defaultConfig() *Config {
@@ -179,6 +180,14 @@ func LoadConfig(configFile string) error {
 	}
 
 	if err := ApplyKeymapConfig(App.config.Keymaps); err != nil {
+		return err
+	}
+
+	themeConfig := ThemeConfig{}
+	if App.config.Theme != nil {
+		themeConfig = *App.config.Theme
+	}
+	if err := ApplyTheme(themeConfig); err != nil {
 		return err
 	}
 
