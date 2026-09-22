@@ -168,6 +168,14 @@ func TestNewThemeErrors(t *testing.T) {
 			wantErr: `unknown theme color "Bordr"`,
 		},
 		{
+			name: "duplicate case-insensitive color key",
+			cfg: ThemeConfig{Colors: map[string]string{
+				"Border": "red",
+				"border": "blue",
+			}},
+			wantErr: "duplicate theme color keys",
+		},
+		{
 			name:    "invalid color name",
 			cfg:     ThemeConfig{Colors: map[string]string{"Border": "not-a-color"}},
 			wantErr: `theme color Border: invalid color "not-a-color"`,

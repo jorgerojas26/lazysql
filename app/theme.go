@@ -122,8 +122,15 @@ func (t *Theme) set(values map[string]string) error {
 		fields[strings.ToLower(key)] = field
 	}
 
+	seen := make(map[string]string, len(values))
 	for key, value := range values {
-		field, ok := fields[strings.ToLower(key)]
+		normalizedKey := strings.ToLower(key)
+		if previousKey, ok := seen[normalizedKey]; ok {
+			return fmt.Errorf("duplicate theme color keys %q and %q (keys are case-insensitive)", previousKey, key)
+		}
+		seen[normalizedKey] = key
+
+		field, ok := fields[normalizedKey]
 		if !ok {
 			return fmt.Errorf("unknown theme color %q", key)
 		}

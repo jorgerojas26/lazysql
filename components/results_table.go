@@ -1644,7 +1644,7 @@ func (table *ResultsTable) toggleRowMark(rowIndex int) {
 
 	if table.state.markedRows[rowIndex] {
 		delete(table.state.markedRows, rowIndex)
-		table.SetRowColor(rowIndex, tcell.ColorDefault)
+		table.SetRowColor(rowIndex, app.Styles.PrimitiveBackgroundColor)
 		// Restore any change/delete highlighting the row had before it was marked.
 		table.colorChangedCells()
 	} else {

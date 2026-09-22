@@ -8,6 +8,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -64,6 +65,31 @@ func TestToggleRowMarkAddsAndRemoves(t *testing.T) {
 
 	if got := table.GetMarkedRowIndexes(); len(got) != 1 || got[0] != 2 {
 		t.Fatalf("expected marked rows [2] after unmark, got %v", got)
+	}
+}
+
+func TestToggleRowMarkRestoresThemeBackground(t *testing.T) {
+	originalStyles := app.Styles
+	if err := app.ApplyTheme(app.ThemeConfig{Preset: "dracula"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		app.Styles = originalStyles
+		tview.Styles = originalStyles.Theme
+	})
+
+	table := newMarkTestTable([][]string{
+		{"id"},
+		{"1"},
+	})
+
+	table.toggleRowMark(1)
+	table.toggleRowMark(1)
+
+	cell := table.GetCell(1, 0)
+	_, got, _ := cell.Style.Decompose()
+	if got != app.Styles.PrimitiveBackgroundColor {
+		t.Fatalf("unmarked row background = %v, want %v", got, app.Styles.PrimitiveBackgroundColor)
 	}
 }
 

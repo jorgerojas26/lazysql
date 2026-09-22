@@ -60,7 +60,7 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	keybindings.SetTitle(" Keybindings ")
 
 	for _, command := range app.Keymaps.Group(app.QueryPreviewGroup) {
-		keybindings.SetText(fmt.Sprintf("%s [%s](%s) [default]%s", keybindings.GetText(false), app.Styles.SecondaryTextColor, command.Key.String(), command.Description))
+		keybindings.SetText(fmt.Sprintf("%s [%s](%s) [-]%s", keybindings.GetText(false), app.Styles.SecondaryTextColor, command.Key.String(), command.Description))
 	}
 
 	container.AddItem(table, 0, 1, true)
