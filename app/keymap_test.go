@@ -230,6 +230,22 @@ func TestApplyKeymapConfig(t *testing.T) {
 		t.Error("Quit command not found in home group")
 	})
 
+	t.Run("global theme picker binding", func(t *testing.T) {
+		saved := append(Map(nil), Keymaps.Global...)
+		defer func() { Keymaps.Global = saved }()
+
+		cfg := models.KeymapConfig{
+			"GLOBAL": {"ThemePicker": "Ctrl-Y"},
+		}
+
+		if err := ApplyKeymapConfig(cfg); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := Keymaps.Global[0].Key.Code; got != tcell.KeyCtrlY {
+			t.Errorf("ThemePicker key = %v, want Ctrl-Y", got)
+		}
+	})
+
 	t.Run("case insensitive group name", func(t *testing.T) {
 		saved := saveKeymaps()
 		defer restoreKeymaps(saved)

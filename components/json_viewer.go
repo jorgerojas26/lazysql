@@ -197,12 +197,12 @@ func colorizeJSON(jsonString string) string {
 			}
 
 			if isKey {
-				_, err := sb.WriteString("[#73B5AE]")
+				_, err := fmt.Fprintf(&sb, "[%s]", app.Styles.JSONKeyColor)
 				if err != nil {
 					return sb.String()
 				}
 			} else {
-				_, err := sb.WriteString("[#3BC285]")
+				_, err := fmt.Fprintf(&sb, "[%s]", app.Styles.JSONStringColor)
 				if err != nil {
 					return sb.String()
 				}
@@ -214,13 +214,13 @@ func colorizeJSON(jsonString string) string {
 
 		case 't', 'f': // true, false
 			if strings.HasPrefix(jsonString[i:], "true") {
-				_, err := sb.WriteString("[#d3869b]true[-]")
+				_, err := fmt.Fprintf(&sb, "[%s]true[-]", app.Styles.JSONBooleanColor)
 				if err != nil {
 					return sb.String()
 				}
 				i += 3
 			} else if strings.HasPrefix(jsonString[i:], "false") {
-				_, err := sb.WriteString("[#d3869b]false[-]")
+				_, err := fmt.Fprintf(&sb, "[%s]false[-]", app.Styles.JSONBooleanColor)
 				if err != nil {
 					return sb.String()
 				}
@@ -233,7 +233,7 @@ func colorizeJSON(jsonString string) string {
 			}
 		case 'n': // null
 			if strings.HasPrefix(jsonString[i:], "null") {
-				_, err := sb.WriteString("[#458588]null[-]")
+				_, err := fmt.Fprintf(&sb, "[%s]null[-]", app.Styles.JSONNullColor)
 				if err != nil {
 					return sb.String()
 				}
@@ -249,7 +249,7 @@ func colorizeJSON(jsonString string) string {
 			for i+1 < len(jsonString) && (unicode.IsDigit(rune(jsonString[i+1])) || jsonString[i+1] == '.') {
 				i++
 			}
-			_, err := sb.WriteString("[#83a598]")
+			_, err := fmt.Fprintf(&sb, "[%s]", app.Styles.JSONNumberColor)
 			if err != nil {
 				return sb.String()
 			}
