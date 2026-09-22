@@ -20,18 +20,19 @@ import (
 type csvExportDriver struct {
 	schemaProgrammingMock
 
-	mu            sync.Mutex
-	pages         map[int]drivers.PageResult
-	pageCalls     []csvExportPageCall
-	exactCount    int
-	streamCalls   int
-	streamMaxRows int
-	streamQuery   string
-	streamBatches []drivers.QueryBatch
-	streamErr     error
-	blockStream   bool
-	streamStarted chan struct{}
-	cancelSeen    bool
+	mu             sync.Mutex
+	pages          map[int]drivers.PageResult
+	pageCalls      []csvExportPageCall
+	exactCount     int
+	streamCalls    int
+	streamMaxRows  int
+	streamQuery    string
+	streamDatabase string
+	streamBatches  []drivers.QueryBatch
+	streamErr      error
+	blockStream    bool
+	streamStarted  chan struct{}
+	cancelSeen     bool
 }
 
 type csvExportPageCall struct {
@@ -59,11 +60,12 @@ func (driver *csvExportDriver) GetExactRowCount(context.Context, string, string,
 	return 0, errors.New("exact count must not be requested")
 }
 
-func (driver *csvExportDriver) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
+func (driver *csvExportDriver) StreamQuery(ctx context.Context, database string, query string, maxRows int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
 	driver.mu.Lock()
 	driver.streamCalls++
 	driver.streamMaxRows = maxRows
 	driver.streamQuery = query
+	driver.streamDatabase = database
 	batches := append([]drivers.QueryBatch(nil), driver.streamBatches...)
 	streamErr := driver.streamErr
 	driver.mu.Unlock()
@@ -310,7 +312,7 @@ func TestExportAllQueryResultsStreamsWithoutInteractiveCap(t *testing.T) {
 	path := filepath.Join(dir, "query.csv")
 	var progress []int
 
-	got, err := table.exportAllQueryResults(context.Background(), path, query, func(rows int) {
+	got, err := table.exportAllQueryResults(context.Background(), path, "", query, func(rows int) {
 		progress = append(progress, rows)
 	})
 	if err != nil {
@@ -337,7 +339,7 @@ func TestExportAllQueryResultsRefusesUnsafeAndNonStreamingQueries(t *testing.T) 
 	unsafeDriver := &csvExportDriver{streamBatches: []drivers.QueryBatch{{Columns: []string{"id"}, Rows: [][]string{{"1"}}}}}
 	unsafeTable := newCSVExportTestTable(unsafeDriver)
 	unsafePath := filepath.Join(dir, "unsafe.csv")
-	if _, err := unsafeTable.exportAllQueryResults(context.Background(), "INSERT INTO users VALUES (1)", unsafePath, nil); err == nil {
+	if _, err := unsafeTable.exportAllQueryResults(context.Background(), "INSERT INTO users VALUES (1)", "", unsafePath, nil); err == nil {
 		t.Fatal("unsafe query export succeeded")
 	}
 	if calls, _, _, _ := unsafeDriver.streamSnapshot(); calls != 0 {
@@ -349,7 +351,7 @@ func TestExportAllQueryResultsRefusesUnsafeAndNonStreamingQueries(t *testing.T) 
 
 	nonStreamingTable := newCSVExportTestTable(&schemaProgrammingMock{})
 	nonStreamingPath := filepath.Join(dir, "non-streaming.csv")
-	if _, err := nonStreamingTable.exportAllQueryResults(context.Background(), "SELECT 1", nonStreamingPath, nil); err == nil {
+	if _, err := nonStreamingTable.exportAllQueryResults(context.Background(), "SELECT 1", "", nonStreamingPath, nil); err == nil {
 		t.Fatal("non-streaming query export succeeded")
 	}
 	if _, err := os.Stat(nonStreamingPath); !os.IsNotExist(err) {
@@ -368,7 +370,7 @@ func TestExportAllQueryResultsCancellationAbortsAtomicFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := table.exportAllQueryResults(ctx, path, "SELECT id FROM users", func(rows int) {
+	_, err := table.exportAllQueryResults(ctx, path, "", "SELECT id FROM users", func(rows int) {
 		if rows == 2 {
 			cancel()
 		}
@@ -394,7 +396,7 @@ func TestCancelExportCancelsTheActiveStreamingOperation(t *testing.T) {
 	done := make(chan error, 1)
 	path := filepath.Join(t.TempDir(), "canceled.csv")
 	go func() {
-		_, err := table.exportAllQueryResults(run.ctx, path, "SELECT id FROM users", nil)
+		_, err := table.exportAllQueryResults(run.ctx, path, "", "SELECT id FROM users", nil)
 		done <- err
 	}()
 	select {
@@ -436,7 +438,7 @@ func TestExportAllQueryResultsFailurePreservesExistingFinalFile(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	_, err := table.exportAllQueryResults(context.Background(), path, "SELECT id FROM users", nil)
+	_, err := table.exportAllQueryResults(context.Background(), path, "", "SELECT id FROM users", nil)
 	if err == nil || err.Error() != "connection lost" {
 		t.Fatalf("export error = %v, want connection lost", err)
 	}
@@ -488,7 +490,7 @@ func TestQueryExportsPreserveLiteralCellMarkers(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "export.csv")
 		var err error
 		if all {
-			_, err = table.exportAllQueryResults(context.Background(), path, "SELECT * FROM users", nil)
+			_, err = table.exportAllQueryResults(context.Background(), path, "", "SELECT * FROM users", nil)
 		} else {
 			_, err = table.exportCurrentPage(path)
 		}

@@ -51,8 +51,10 @@ func (m *mockDriver) UpdateRecord(context.Context, string, string, string, strin
 func (m *mockDriver) DeleteRecord(context.Context, string, string, string, string) error {
 	panic("not used")
 }
-func (m *mockDriver) ExecuteDMLStatement(context.Context, string) (string, error) { panic("not used") }
-func (m *mockDriver) ExecuteQuery(context.Context, string) ([][]string, int, error) {
+func (m *mockDriver) ExecuteDMLStatement(context.Context, string, string) (string, error) {
+	panic("not used")
+}
+func (m *mockDriver) ExecuteQuery(context.Context, string, string) ([][]string, int, error) {
 	panic("not used")
 }
 func (m *mockDriver) ExecutePendingChanges(context.Context, []models.DBDMLChange) error {

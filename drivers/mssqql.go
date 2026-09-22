@@ -22,10 +22,11 @@ import (
 )
 
 type MSSQL struct {
-	Connection *sql.DB
-	Provider   string
-	PoolConfig models.ConnectionPoolConfig
-	isAzureSQL bool
+	Connection      *sql.DB
+	Provider        string
+	PoolConfig      models.ConnectionPoolConfig
+	CurrentDatabase string
+	isAzureSQL      bool
 }
 
 // mssqlGUIDToUUID converts a 16-byte little-endian GUID from MSSQL
@@ -82,14 +83,20 @@ func (db *MSSQL) Connect(ctx context.Context, urlstr string) error {
 	}
 
 	if err := db.Connection.PingContext(ctx); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
+	if err := db.Connection.QueryRowContext(ctx, "SELECT DB_NAME()").Scan(&db.CurrentDatabase); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
 	var engineEdition int
 	if err := db.Connection.QueryRowContext(
 		ctx,
 		`SELECT CAST(SERVERPROPERTY('EngineEdition') AS INT)`,
 	).Scan(&engineEdition); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
@@ -615,13 +622,19 @@ func (db *MSSQL) DeleteRecord(ctx context.Context, database, table, primaryKeyCo
 	return err
 }
 
-func (db *MSSQL) ExecuteDMLStatement(ctx context.Context, query string) (string, error) {
+func (db *MSSQL) ExecuteDMLStatement(ctx context.Context, database, query string) (string, error) {
+	conn, cleanup, err := db.editorConnection(ctx, database)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
 	ctx = contextOrBackground(ctx)
 	if query == "" {
 		return "", errors.New("query is required")
 	}
 
-	res, err := db.Connection.ExecContext(ctx, query)
+	res, err := conn.ExecContext(ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -636,17 +649,29 @@ func (db *MSSQL) ExecuteDMLStatement(ctx context.Context, query string) (string,
 
 // StreamQuery incrementally emits interactive SQL results and honors context
 // cancellation through database/sql.
-func (db *MSSQL) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
-	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
+func (db *MSSQL) StreamQuery(ctx context.Context, database, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	conn, cleanup, err := db.editorConnection(ctx, database)
+	if err != nil {
+		return QueryStreamResult{}, err
+	}
+	defer cleanup()
+
+	return streamQuery(ctx, conn, query, maxRows, onBatch)
 }
 
-func (db *MSSQL) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+func (db *MSSQL) ExecuteQuery(ctx context.Context, database, query string) ([][]string, int, error) {
+	conn, cleanup, err := db.editorConnection(ctx, database)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cleanup()
+
 	ctx = contextOrBackground(ctx)
 	if query == "" {
 		return nil, 0, errors.New("query can not be empty")
 	}
 
-	rows, err := db.Connection.QueryContext(ctx, query)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1181,4 +1206,12 @@ func (db *MSSQL) GetReferencingTables(ctx context.Context, database, table strin
     `
 
 	return db.getTableInformation(contextOrBackground(ctx), query, database, table, "")
+}
+
+// editorConnection isolates database selection to one cancelable operation.
+func (db *MSSQL) editorConnection(ctx context.Context, database string) (editorConnection, func(), error) {
+	if database == "" || database == db.CurrentDatabase {
+		return db.Connection, func() {}, nil
+	}
+	return switchedEditorConnection(ctx, db.Connection, "USE "+quoteMSSQLIdentifier(database))
 }

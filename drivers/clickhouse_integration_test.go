@@ -147,7 +147,13 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetRecords (filtered): unexpected total %d, rows %v", len(records)-1, records)
 	}
 
-	results, count, err := db.ExecuteQuery(context.Background(), "SELECT id, note FROM "+database+".events ORDER BY id")
+	var streamed [][]string
+	streamResult, streamErr := db.StreamQuery(context.Background(), "", "SELECT id, note, tags, attrs FROM "+database+".events ORDER BY id", 2, func(batch QueryBatch) error { streamed = append(streamed, batch.Rows...); return nil })
+	if streamErr != nil || !streamResult.Truncated || len(streamed) != 2 || !reflect.DeepEqual(streamed[0], []string{"1", "NULL", "['a','b']", "{'k':1}"}) {
+		t.Fatalf("typed stream = %v, %+v, %v", streamed, streamResult, streamErr)
+	}
+
+	results, count, err := db.ExecuteQuery(context.Background(), "", "SELECT id, note FROM "+database+".events ORDER BY id")
 	if err != nil {
 		t.Fatalf("ExecuteQuery: %v", err)
 	}
@@ -155,7 +161,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("ExecuteQuery: unexpected result %v", results)
 	}
 
-	if _, err := db.ExecuteDMLStatement(context.Background(), "INSERT INTO "+database+".logs VALUES ('hello')"); err != nil {
+	if _, err := db.ExecuteDMLStatement(context.Background(), "", "INSERT INTO "+database+".logs VALUES ('hello')"); err != nil {
 		t.Fatalf("ExecuteDMLStatement: %v", err)
 	}
 
@@ -199,7 +205,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("ExecutePendingChanges: %v", err)
 	}
 
-	results, _, err = db.ExecuteQuery(context.Background(), "SELECT id, name, note IS NULL AS note_is_null, score, attrs FROM "+database+".events ORDER BY id")
+	results, _, err = db.ExecuteQuery(context.Background(), "", "SELECT id, name, note IS NULL AS note_is_null, score, attrs FROM "+database+".events ORDER BY id")
 	if err != nil {
 		t.Fatalf("ExecuteQuery after changes: %v", err)
 	}
@@ -235,7 +241,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("DeleteRecord: %v", err)
 	}
 
-	results, _, err = db.ExecuteQuery(context.Background(), "SELECT id, name FROM "+database+".events ORDER BY id")
+	results, _, err = db.ExecuteQuery(context.Background(), "", "SELECT id, name FROM "+database+".events ORDER BY id")
 	if err != nil {
 		t.Fatalf("ExecuteQuery after UpdateRecord/DeleteRecord: %v", err)
 	}
@@ -248,7 +254,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("UpdateRecord/DeleteRecord: expected %v, got %v", expected, results)
 	}
 
-	complexResults, _, err := db.ExecuteQuery(context.Background(), `SELECT
+	complexResults, _, err := db.ExecuteQuery(context.Background(), "", `SELECT
 		[toDate('2024-01-02')] AS dates,
 		[toUUID('61f0c404-5cb3-11e7-907b-a6006ad3dba0')] AS ids,
 		CAST((2, 'x') AS Nullable(Tuple(Int32, String))) AS nullable_tuple,

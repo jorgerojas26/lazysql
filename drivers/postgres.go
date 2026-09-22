@@ -701,9 +701,20 @@ func (db *Postgres) DeleteRecord(ctx context.Context, database, table, primaryKe
 	return err
 }
 
-func (db *Postgres) ExecuteDMLStatement(ctx context.Context, query string) (result string, err error) {
+func (db *Postgres) ExecuteDMLStatement(ctx context.Context, database, query string) (result string, err error) {
+	if database == "" {
+		database = db.CurrentDatabase
+	}
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
 	ctx = contextOrBackground(ctx)
-	res, err := db.Connection.ExecContext(ctx, query)
+	res, err := conn.ExecContext(ctx, query)
 	if err != nil {
 		return result, err
 	}
@@ -716,13 +727,35 @@ func (db *Postgres) ExecuteDMLStatement(ctx context.Context, query string) (resu
 
 // StreamQuery incrementally emits interactive SQL results and honors context
 // cancellation through database/sql.
-func (db *Postgres) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
-	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
+func (db *Postgres) StreamQuery(ctx context.Context, database, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	if database == "" {
+		database = db.CurrentDatabase
+	}
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return QueryStreamResult{}, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	return streamQuery(ctx, conn, query, maxRows, onBatch)
 }
 
-func (db *Postgres) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+func (db *Postgres) ExecuteQuery(ctx context.Context, database, query string) ([][]string, int, error) {
+	if database == "" {
+		database = db.CurrentDatabase
+	}
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return nil, 0, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
 	ctx = contextOrBackground(ctx)
-	rows, err := db.Connection.QueryContext(ctx, query)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}

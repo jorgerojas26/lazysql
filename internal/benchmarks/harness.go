@@ -398,7 +398,7 @@ func (run *scenarioRun) sqlResults(sourceRows, maxRows int) error {
 		benchmarkRecords,
 		sourceRows,
 	)
-	_, err := run.driver.StreamQuery(run.ctx, query, maxRows, func(batch drivers.QueryBatch) error {
+	_, err := run.driver.StreamQuery(run.ctx, "", query, maxRows, func(batch drivers.QueryBatch) error {
 		run.render(len(batch.Rows))
 		if len(batch.Rows) > 0 {
 			run.markUseful()
@@ -426,7 +426,7 @@ func (run *scenarioRun) fullExport() error {
 		benchmarkRecords,
 	)
 	lastRows := 0
-	rows, err := components.ExportAllQueryResults(run.ctx, run.driver, path, query, func(rows int) {
+	rows, err := components.ExportAllQueryResults(run.ctx, run.driver, path, "", query, func(rows int) {
 		if delta := rows - lastRows; delta > 0 {
 			run.render(delta)
 		}

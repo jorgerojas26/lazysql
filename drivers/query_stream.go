@@ -35,7 +35,7 @@ type QueryStreamResult struct {
 // rendering and applies backpressure by returning from onBatch only after a
 // batch has been handled.
 type QueryStreamer interface {
-	StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error)
+	StreamQuery(ctx context.Context, database, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error)
 }
 
 var errNilQueryBatchHandler = errors.New("query stream batch handler is nil")
@@ -43,11 +43,11 @@ var errNilQueryBatchHandler = errors.New("query stream batch handler is nil")
 // streamQuery incrementally reads rows from a database/sql result. A finite
 // maxRows consumes at most maxRows rows for display plus one lookahead row to
 // determine whether the result is truncated. maxRows == 0 means unlimited.
-func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+func streamQuery(ctx context.Context, connection editorConnection, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
 	return streamQueryWithScanner(ctx, connection, query, maxRows, onBatch, scanQueryRow)
 }
 
-func streamQueryWithScanner(ctx context.Context, connection *sql.DB, query string, maxRows int, onBatch func(QueryBatch) error, scanRow func(*sql.Rows, int) ([]string, error)) (streamResult QueryStreamResult, returnErr error) {
+func streamQueryWithScanner(ctx context.Context, connection editorConnection, query string, maxRows int, onBatch func(QueryBatch) error, scanRow func(*sql.Rows, int) ([]string, error)) (streamResult QueryStreamResult, returnErr error) {
 	if onBatch == nil {
 		return QueryStreamResult{}, errNilQueryBatchHandler
 	}
@@ -58,7 +58,8 @@ func streamQueryWithScanner(ctx context.Context, connection *sql.DB, query strin
 	// disk) can interrupt a reader blocked in Next before attempting Close.
 	ctx, cancel := context.WithCancel(contextOrBackground(ctx))
 	defer cancel()
-	if connection == nil {
+	pool, isPool := connection.(*sql.DB)
+	if connection == nil || (isPool && pool == nil) {
 		return QueryStreamResult{}, errors.New("database connection is nil")
 	}
 

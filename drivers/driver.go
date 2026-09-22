@@ -62,8 +62,11 @@ type Driver interface {
 	GetExactRowCount(ctx context.Context, database, table, where string) (int64, error)
 	UpdateRecord(ctx context.Context, database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
 	DeleteRecord(ctx context.Context, database, table string, primaryKeyColumnName, primaryKeyValue string) error
-	ExecuteDMLStatement(ctx context.Context, query string) (string, error)
-	ExecuteQuery(ctx context.Context, query string) ([][]string, int, error)
+	// database selects the editor target for reads and writes. Empty uses the
+	// login database; MySQL/MSSQL isolate USE on a reserved session and
+	// PostgreSQL opens a temporary pool. SQLite/ClickHouse keep their context.
+	ExecuteDMLStatement(ctx context.Context, database, query string) (string, error)
+	ExecuteQuery(ctx context.Context, database, query string) ([][]string, int, error)
 	ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error
 	// GetReferencingTables returns reverse foreign keys with the shared header row.
 	GetReferencingTables(ctx context.Context, database, table string) ([][]string, error)

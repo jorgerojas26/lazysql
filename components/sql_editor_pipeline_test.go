@@ -3,6 +3,7 @@ package components
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -37,7 +38,7 @@ func newBlockingEditorStreamDriver() *blockingEditorStreamDriver {
 	}
 }
 
-func (driver *blockingEditorStreamDriver) StreamQuery(ctx context.Context, _ string, _ int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
+func (driver *blockingEditorStreamDriver) StreamQuery(ctx context.Context, _ string, _ string, _ int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
 	defer close(driver.done)
 	driver.startOnce.Do(func() { close(driver.started) })
 	result := drivers.QueryStreamResult{Columns: []string{"id"}, Rows: 1}
@@ -74,7 +75,7 @@ type editorDMLNoRefreshDriver struct {
 	pages   int
 }
 
-func (driver *editorDMLNoRefreshDriver) ExecuteDMLStatement(context.Context, string) (string, error) {
+func (driver *editorDMLNoRefreshDriver) ExecuteDMLStatement(context.Context, string, string) (string, error) {
 	close(driver.dmlDone)
 	return "updated", driver.dmlErr
 }
@@ -92,7 +93,7 @@ func (driver *editorDMLNoRefreshDriver) pageCalls() int {
 	return driver.pages
 }
 
-func (driver *errorEditorStreamDriver) StreamQuery(_ context.Context, _ string, _ int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
+func (driver *errorEditorStreamDriver) StreamQuery(_ context.Context, _ string, _ string, _ int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
 	close(driver.called)
 	result := drivers.QueryStreamResult{Columns: []string{"id"}, Rows: 1}
 	if err := onBatch(drivers.QueryBatch{Columns: result.Columns, Rows: [][]string{{"1"}}}); err != nil {
@@ -101,7 +102,7 @@ func (driver *errorEditorStreamDriver) StreamQuery(_ context.Context, _ string, 
 	return result, errors.New("connection lost")
 }
 
-func (driver *truncatedEditorStreamDriver) StreamQuery(_ context.Context, _ string, maxRows int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
+func (driver *truncatedEditorStreamDriver) StreamQuery(_ context.Context, _ string, _ string, maxRows int, onBatch func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
 	close(driver.called)
 	driver.maxRows <- maxRows
 	result := drivers.QueryStreamResult{Columns: []string{"id"}, Rows: 2, Truncated: true}
@@ -455,4 +456,32 @@ func editorUIValue[T any](read func() T) T {
 	var value T
 	App.QueueUpdate(func() { value = read() })
 	return value
+}
+
+func TestEditorStreamAndExportKeepCapturedDatabase(t *testing.T) {
+	driver := &csvExportDriver{streamBatches: []drivers.QueryBatch{{Columns: []string{"id"}, Rows: [][]string{{"1"}}}}}
+	table, editor, pages := newEditorPipelineTable(driver)
+	table.SetDatabaseName("chosen")
+	appDone := startEditorPipeline(t, table, editor, pages)
+	defer stopEditorPipeline(t, appDone, table)
+	editor.Publish(eventSQLEditorQuery, "SELECT id FROM users")
+	waitFor(t, func() bool { calls, _, _, _ := driver.streamSnapshot(); return calls == 1 && !table.IsQueryActive() })
+	driver.mu.Lock()
+	database := driver.streamDatabase
+	driver.mu.Unlock()
+	if database != "chosen" {
+		t.Fatalf("stream targeted %q", database)
+	}
+	App.QueueUpdate(func() { table.SetDatabaseName("different") })
+	capturedDatabase := editorUIValue(func() string { return table.state.lastEditorDatabase })
+	query := editorUIValue(table.lastEditorQuery)
+	_, err := table.exportAllQueryResults(context.Background(), filepath.Join(t.TempDir(), "result.csv"), capturedDatabase, query, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver.mu.Lock()
+	defer driver.mu.Unlock()
+	if driver.streamDatabase != "chosen" {
+		t.Fatalf("export targeted %q instead of the original query database", driver.streamDatabase)
+	}
 }

@@ -100,7 +100,7 @@ func TestManualFixtures(t *testing.T) {
 				}
 			}
 			emitted := 0
-			result, err := db.(QueryStreamer).StreamQuery(ctx, "SELECT id FROM "+queryTable+" ORDER BY id", 2, func(batch QueryBatch) error { emitted += len(batch.Rows); return nil })
+			result, err := db.(QueryStreamer).StreamQuery(ctx, "", "SELECT id FROM "+queryTable+" ORDER BY id", 2, func(batch QueryBatch) error { emitted += len(batch.Rows); return nil })
 			if err != nil || !result.Truncated || result.Rows != 2 || emitted != 2 {
 				t.Fatalf("stream: %+v, emitted %d, error %v", result, emitted, err)
 			}

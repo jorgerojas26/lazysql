@@ -490,10 +490,10 @@ func (m *schemaProgrammingMock) UpdateRecord(context.Context, string, string, st
 func (m *schemaProgrammingMock) DeleteRecord(context.Context, string, string, string, string) error {
 	return nil
 }
-func (m *schemaProgrammingMock) ExecuteDMLStatement(context.Context, string) (string, error) {
+func (m *schemaProgrammingMock) ExecuteDMLStatement(context.Context, string, string) (string, error) {
 	return "", nil
 }
-func (m *schemaProgrammingMock) ExecuteQuery(context.Context, string) ([][]string, int, error) {
+func (m *schemaProgrammingMock) ExecuteQuery(context.Context, string, string) ([][]string, int, error) {
 	return nil, 0, nil
 }
 func (m *schemaProgrammingMock) ExecutePendingChanges(context.Context, []models.DBDMLChange) error {

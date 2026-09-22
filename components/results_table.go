@@ -44,6 +44,7 @@ type ResultsTableState struct {
 	fkRawCellValues           map[string]string
 	queryStatus               string
 	lastEditorQuery           string
+	lastEditorDatabase        string
 	lastEditorQueryReplaySafe bool
 	editorResultAvailable     bool
 	markedRows                map[int]bool
@@ -67,6 +68,7 @@ type foreignKeyJumpTarget struct {
 }
 
 type editorQueryRun struct {
+	database              string
 	generation            uint64
 	cancel                context.CancelFunc
 	cancelRequested       bool
@@ -1077,6 +1079,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				table.state.editorResultAvailable = false
 				if isSelect {
 					table.state.lastEditorQuery = query
+					table.state.lastEditorDatabase = table.GetDatabaseName()
 					table.state.lastEditorQueryReplaySafe = isReplaySafeQuery(query)
 				}
 				table.SetRecords([][]string{})
@@ -1144,7 +1147,7 @@ func isSchemaMutatingQuery(query string) bool {
 }
 
 func (table *ResultsTable) beginEditorQuery(generation uint64) *editorQueryRun {
-	run := &editorQueryRun{generation: generation, started: time.Now()}
+	run := &editorQueryRun{generation: generation, started: time.Now(), database: table.GetDatabaseName()}
 	table.state.loadingMu.Lock()
 	if table.state.loadGeneration == generation {
 		run.cancel = table.state.loadingCancel
@@ -1350,7 +1353,7 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 	}
 
 	if streamer, ok := table.DBDriver.(drivers.QueryStreamer); ok {
-		result, err := streamer.StreamQuery(ctx, query, table.maxInteractiveQueryRows(), onBatch)
+		result, err := streamer.StreamQuery(ctx, run.database, query, table.maxInteractiveQueryRows(), onBatch)
 		logDatabaseOperation(ctx, "stream_query", started, map[string]any{
 			"connection": table.connectionIdentifier,
 			"rows":       result.Rows,
@@ -1362,7 +1365,7 @@ func (table *ResultsTable) streamEditorQuery(ctx context.Context, run *editorQue
 
 	// Drivers without the optional streaming capability still use the final
 	// context-aware query contract as a cancellable fallback.
-	rows, count, err := table.DBDriver.ExecuteQuery(ctx, query)
+	rows, count, err := table.DBDriver.ExecuteQuery(ctx, run.database, query)
 	result := drivers.QueryStreamResult{Rows: count}
 	if err != nil {
 		logDatabaseOperation(ctx, "execute_query", started, map[string]any{
@@ -1491,11 +1494,11 @@ func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, run *editorQue
 	}
 
 	table.addEditorQueryToHistory(query)
-	result, err := table.DBDriver.ExecuteDMLStatement(ctx, query)
+	result, err := table.DBDriver.ExecuteDMLStatement(ctx, run.database, query)
 	ddl := isSchemaMutatingQuery(query)
 	if err == nil && ddl {
 		if table.Home != nil {
-			database := table.GetDatabaseName()
+			database := run.database
 			home := table.Home
 			home.refreshSchemaAfterDDL(database)
 		} else {
@@ -3266,6 +3269,7 @@ func (table *ResultsTable) showCSVExportModal() {
 
 	modal := NewCSVExportModal(opts, func(filePath string, scope CSVExportScope, batchSize int) {
 		query := table.lastEditorQuery()
+		queryDatabase := table.state.lastEditorDatabase
 		where := ""
 		sort := ""
 		if !isQueryResult {
@@ -3307,7 +3311,7 @@ func (table *ResultsTable) showCSVExportModal() {
 			case scope == ExportCurrentPage || scope == ExportVisibleResults || (isQueryResult && scope == ExportAllRecords):
 				_, exportErr = table.exportRecordsWithContext(run.ctx, filePath, visibleRecords, isQueryResult, progress)
 			case isQueryResult && scope == ExportAllResults:
-				_, exportErr = table.exportAllQueryResults(run.ctx, filePath, query, progress)
+				_, exportErr = table.exportAllQueryResults(run.ctx, filePath, queryDatabase, query, progress)
 			case !isQueryResult && scope == ExportAllRecords:
 				_, exportErr = table.exportAllRecordsInBatchesWithProgress(
 					run.ctx, filePath, databaseName, tableName, where, sort, batchSize, progress,
@@ -3491,7 +3495,7 @@ func (table *ResultsTable) exportAllRecordsInBatchesWithProgress(
 func ExportAllQueryResults(
 	ctx context.Context,
 	driver drivers.Driver,
-	filePath, query string,
+	filePath, database, query string,
 	onProgress func(int),
 ) (rows int, err error) {
 	if !isReplaySafeQuery(query) {
@@ -3541,7 +3545,7 @@ func ExportAllQueryResults(
 		return ctx.Err()
 	}
 
-	result, err := streamer.StreamQuery(ctx, query, 0, onBatch)
+	result, err := streamer.StreamQuery(ctx, database, query, 0, onBatch)
 	if err != nil {
 		return writer.RowCount(), err
 	}
@@ -3567,7 +3571,7 @@ func ExportAllQueryResults(
 // seam above.
 func (table *ResultsTable) exportAllQueryResults(
 	ctx context.Context,
-	filePath, query string,
+	filePath, database, query string,
 	onProgress func(int),
 ) (rows int, err error) {
 	started := time.Now()
@@ -3578,7 +3582,7 @@ func (table *ResultsTable) exportAllQueryResults(
 		}, err)
 	}()
 
-	return ExportAllQueryResults(ctx, table.DBDriver, filePath, query, onProgress)
+	return ExportAllQueryResults(ctx, table.DBDriver, filePath, database, query, onProgress)
 }
 
 func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int) {

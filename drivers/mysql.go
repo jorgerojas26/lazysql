@@ -16,9 +16,10 @@ import (
 )
 
 type MySQL struct {
-	Connection *sql.DB
-	Provider   string
-	PoolConfig models.ConnectionPoolConfig
+	Connection      *sql.DB
+	Provider        string
+	PoolConfig      models.ConnectionPoolConfig
+	CurrentDatabase string
 }
 
 func (db *MySQL) TestConnection(ctx context.Context, urlstr string) (err error) {
@@ -41,9 +42,16 @@ func (db *MySQL) Connect(ctx context.Context, urlstr string) (err error) {
 
 	err = db.Connection.PingContext(ctx)
 	if err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
+	var database sql.NullString
+	if err := db.Connection.QueryRowContext(ctx, "SELECT DATABASE()").Scan(&database); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
+	db.CurrentDatabase = database.String
 	return nil
 }
 
@@ -550,13 +558,25 @@ func (db *MySQL) GetExactRowCount(ctx context.Context, database, table, where st
 
 // StreamQuery incrementally emits interactive SQL results and honors context
 // cancellation through database/sql.
-func (db *MySQL) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
-	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
+func (db *MySQL) StreamQuery(ctx context.Context, database, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	conn, cleanup, err := db.editorConnection(ctx, database)
+	if err != nil {
+		return QueryStreamResult{}, err
+	}
+	defer cleanup()
+
+	return streamQuery(ctx, conn, query, maxRows, onBatch)
 }
 
-func (db *MySQL) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+func (db *MySQL) ExecuteQuery(ctx context.Context, database, query string) ([][]string, int, error) {
+	conn, cleanup, err := db.editorConnection(ctx, database)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cleanup()
+
 	ctx = contextOrBackground(ctx)
-	rows, err := db.Connection.QueryContext(ctx, query)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -617,9 +637,15 @@ func (db *MySQL) DeleteRecord(ctx context.Context, database, table, primaryKeyCo
 	return err
 }
 
-func (db *MySQL) ExecuteDMLStatement(ctx context.Context, query string) (result string, err error) {
+func (db *MySQL) ExecuteDMLStatement(ctx context.Context, database, query string) (result string, err error) {
+	conn, cleanup, err := db.editorConnection(ctx, database)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
 	ctx = contextOrBackground(ctx)
-	res, err := db.Connection.ExecContext(ctx, query)
+	res, err := conn.ExecContext(ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -827,4 +853,12 @@ func (db *MySQL) GetProcedureDefinition(_ context.Context, _ string, _ string) (
 
 func (db *MySQL) GetViewDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
+}
+
+// editorConnection isolates database selection to one cancelable operation.
+func (db *MySQL) editorConnection(ctx context.Context, database string) (editorConnection, func(), error) {
+	if database == "" || database == db.CurrentDatabase {
+		return db.Connection, func() {}, nil
+	}
+	return switchedEditorConnection(ctx, db.Connection, "USE "+"`"+strings.ReplaceAll(database, "`", "``")+"`")
 }

@@ -113,7 +113,7 @@ func TestStreamEditorQueryUsesDriverContract(_ *testing.T) {
 
 type streamContractProbe struct{}
 
-func (*streamContractProbe) StreamQuery(context.Context, string, int, func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
+func (*streamContractProbe) StreamQuery(context.Context, string, string, int, func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
 	return drivers.QueryStreamResult{}, nil
 }
 

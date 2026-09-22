@@ -248,7 +248,7 @@ func (db *ClickHouse) GetRecords(ctx context.Context, database, table, where, so
 	return newPageResult(paginatedResults, queryString, pageSize), nil
 }
 
-func (db *ClickHouse) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+func (db *ClickHouse) ExecuteQuery(ctx context.Context, _, query string) ([][]string, int, error) {
 	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), query)
 	if err != nil {
 		return nil, 0, err
@@ -329,7 +329,7 @@ func (db *ClickHouse) DeleteRecord(ctx context.Context, database, table, primary
 	return err
 }
 
-func (db *ClickHouse) ExecuteDMLStatement(ctx context.Context, query string) (string, error) {
+func (db *ClickHouse) ExecuteDMLStatement(ctx context.Context, _, query string) (string, error) {
 	res, err := db.Connection.ExecContext(contextOrBackground(ctx), query)
 	if err != nil {
 		return "", err
@@ -1127,7 +1127,7 @@ func (db *ClickHouse) GetExactRowCount(ctx context.Context, database, table, whe
 	err := db.Connection.QueryRowContext(contextOrBackground(ctx), query).Scan(&count)
 	return count, err
 }
-func (db *ClickHouse) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+func (db *ClickHouse) StreamQuery(ctx context.Context, _, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
 	return streamQueryWithScanner(ctx, db.Connection, query, maxRows, onBatch, func(rows *sql.Rows, _ int) ([]string, error) {
 		types, err := rows.ColumnTypes()
 		if err != nil {

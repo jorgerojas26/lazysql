@@ -32,7 +32,7 @@ func TestSQLiteStreamQueryFlushesBeforeCompleteResult(t *testing.T) {
 
 	streamer := &SQLite{Connection: db}
 	var batches int
-	result, err := streamer.StreamQuery(context.Background(), "SELECT id", 0, func(batch QueryBatch) error {
+	result, err := streamer.StreamQuery(context.Background(), "", "SELECT id", 0, func(batch QueryBatch) error {
 		batches++
 		if batches == 1 && len(batch.Rows) != queryStreamBatchSize {
 			t.Fatalf("first batch has %d rows, want %d", len(batch.Rows), queryStreamBatchSize)
@@ -113,7 +113,7 @@ func TestSQLiteStreamQueryFlushesSlowBatchByTime(t *testing.T) {
 	var result QueryStreamResult
 	var streamErr error
 	go func() {
-		result, streamErr = streamer.StreamQuery(ctx, "SELECT id", 0, func(batch QueryBatch) error {
+		result, streamErr = streamer.StreamQuery(ctx, "", "SELECT id", 0, func(batch QueryBatch) error {
 			if len(batch.Rows) != 1 {
 				t.Errorf("slow first batch has %d rows, want 1", len(batch.Rows))
 			}
@@ -155,7 +155,7 @@ func TestSQLiteStreamQueryCapUsesOneLookaheadRow(t *testing.T) {
 
 	streamer := &SQLite{Connection: db}
 	var emitted [][]string
-	result, err := streamer.StreamQuery(context.Background(), "SELECT id", 2, func(batch QueryBatch) error {
+	result, err := streamer.StreamQuery(context.Background(), "", "SELECT id", 2, func(batch QueryBatch) error {
 		emitted = append(emitted, batch.Rows...)
 		return nil
 	})
@@ -189,7 +189,7 @@ func TestSQLiteStreamQueryCancellationPropagates(t *testing.T) {
 	defer cancel()
 
 	streamer := &SQLite{Connection: db}
-	result, err := streamer.StreamQuery(ctx, "SELECT id", 0, func(_ QueryBatch) error {
+	result, err := streamer.StreamQuery(ctx, "", "SELECT id", 0, func(_ QueryBatch) error {
 		cancel()
 		return nil
 	})
@@ -216,7 +216,7 @@ func TestSQLiteStreamQueryPreservesRowsBeforeDriverError(t *testing.T) {
 
 	streamer := &SQLite{Connection: db}
 	var emitted [][]string
-	result, err := streamer.StreamQuery(context.Background(), "SELECT id", 0, func(batch QueryBatch) error {
+	result, err := streamer.StreamQuery(context.Background(), "", "SELECT id", 0, func(batch QueryBatch) error {
 		emitted = append(emitted, batch.Rows...)
 		return nil
 	})
@@ -230,7 +230,7 @@ func TestSQLiteStreamQueryPreservesRowsBeforeDriverError(t *testing.T) {
 
 func TestSQLiteStreamQueryRejectsNilBatchHandler(t *testing.T) {
 	streamer := &SQLite{}
-	_, err := streamer.StreamQuery(context.Background(), "SELECT 1", 0, nil)
+	_, err := streamer.StreamQuery(context.Background(), "", "SELECT 1", 0, nil)
 	if !errors.Is(err, errNilQueryBatchHandler) {
 		t.Fatalf("StreamQuery() error = %v, want nil-handler error", err)
 	}

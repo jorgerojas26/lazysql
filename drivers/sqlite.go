@@ -472,11 +472,11 @@ func (db *SQLite) GetExactRowCount(ctx context.Context, _, table, where string) 
 
 // StreamQuery incrementally emits interactive SQL results and honors context
 // cancellation through database/sql.
-func (db *SQLite) StreamQuery(ctx context.Context, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+func (db *SQLite) StreamQuery(ctx context.Context, _, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
 	return streamQuery(ctx, db.Connection, query, maxRows, onBatch)
 }
 
-func (db *SQLite) ExecuteQuery(ctx context.Context, query string) ([][]string, int, error) {
+func (db *SQLite) ExecuteQuery(ctx context.Context, _, query string) ([][]string, int, error) {
 	ctx = contextOrBackground(ctx)
 	rows, err := db.Connection.QueryContext(ctx, query)
 	if err != nil {
@@ -576,7 +576,7 @@ func (db *SQLite) DeleteRecord(ctx context.Context, _, table, primaryKeyColumnNa
 	return err
 }
 
-func (db *SQLite) ExecuteDMLStatement(ctx context.Context, query string) (result string, err error) {
+func (db *SQLite) ExecuteDMLStatement(ctx context.Context, _, query string) (result string, err error) {
 	ctx = contextOrBackground(ctx)
 	res, err := db.Connection.ExecContext(ctx, query)
 	if err != nil {
