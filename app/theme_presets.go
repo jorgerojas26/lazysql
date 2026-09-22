@@ -364,23 +364,23 @@ var ThemePresets = map[string]map[string]string{
 		"PrimitiveBackground":    "#1E1E2E",
 		"ContrastBackground":     "#313244",
 		"MoreContrastBackground": "#45475A",
-		"Border":                 "#89B4FA",
-		"Title":                  "#CDD6F4",
+		"Border":                 "#CBA6F7",
+		"Title":                  "#F5C2E7",
 		"Graphics":               "#6C7086",
 		"PrimaryText":            "#CDD6F4",
-		"SecondaryText":          "#89B4FA",
+		"SecondaryText":          "#CBA6F7",
 		"TertiaryText":           "#A6E3A1",
 		"InverseText":            "#BAC2DE",
 		"ContrastSecondaryText":  "#1E1E2E",
 
-		"SidebarTitleBorder": "#6C7086",
+		"SidebarTitleBorder": "#B4BEFE",
 		"Error":              "#F38BA8",
 		"ReadOnly":           "#89DCEB",
 
 		"TableChange": "#594936",
 		"TableInsert": "#3D513E",
 		"TableDelete": "#573846",
-		"TableMarked": "#394E72",
+		"TableMarked": "#574F73",
 
 		"EditorSelection":           "#45475A",
 		"EditorStatusBarBackground": "#313244",
@@ -388,7 +388,7 @@ var ThemePresets = map[string]map[string]string{
 
 		"AutocompleteBackground":  "#313244",
 		"AutocompleteText":        "#CDD6F4",
-		"AutocompleteSelected":    "#45475A",
+		"AutocompleteSelected":    "#574F73",
 		"AutocompleteDescription": "#BAC2DE",
 		"AutocompleteSeparator":   "#6C7086",
 
