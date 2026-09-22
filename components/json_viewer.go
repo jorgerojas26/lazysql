@@ -102,7 +102,7 @@ func (v *JSONViewer) Show(rowData map[string]string, focus tview.Primitive) {
 	if err != nil {
 		v.TextView.SetText(fmt.Sprintf("Error: %v", err))
 	} else {
-		highlightedJSON := colorizeJSON(string(jsonData))
+		highlightedJSON := colorizeJSON(tview.Escape(string(jsonData)))
 		v.TextView.SetText(highlightedJSON)
 	}
 
