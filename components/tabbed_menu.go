@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
@@ -310,6 +312,22 @@ func (t *TabbedPane) GetTabByName(name string) *Tab {
 	}
 
 	return tab
+}
+
+// NextAvailableReference returns baseReference when no tab uses it, or the
+// first free "<baseReference>#<n>" variant otherwise. It lets callers open a
+// second tab for a table that is already open.
+func (t *TabbedPane) NextAvailableReference(baseReference string) string {
+	if t.GetTabByReference(baseReference) == nil {
+		return baseReference
+	}
+
+	for suffix := 2; ; suffix++ {
+		candidate := fmt.Sprintf("%s#%d", baseReference, suffix)
+		if t.GetTabByReference(candidate) == nil {
+			return candidate
+		}
+	}
 }
 
 func (t *TabbedPane) GetTabByReference(reference string) *Tab {

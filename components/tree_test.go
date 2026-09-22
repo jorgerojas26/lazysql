@@ -436,7 +436,10 @@ func (m *schemaProgrammingMock) GetTables(string) (map[string][]string, error)  
 func (m *schemaProgrammingMock) GetTableColumns(string, string) ([][]string, error) { return nil, nil }
 func (m *schemaProgrammingMock) GetConstraints(string, string) ([][]string, error)  { return nil, nil }
 func (m *schemaProgrammingMock) GetForeignKeys(string, string) ([][]string, error)  { return nil, nil }
-func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error)      { return nil, nil }
+func (m *schemaProgrammingMock) GetReferencingTables(string, string) ([][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error) { return nil, nil }
 func (m *schemaProgrammingMock) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
 	return nil, 0, "", nil
 }

@@ -23,7 +23,10 @@ func (m *mockDriver) GetTables(string) (map[string][]string, error)      { panic
 func (m *mockDriver) GetTableColumns(string, string) ([][]string, error) { panic("not used") }
 func (m *mockDriver) GetConstraints(string, string) ([][]string, error)  { panic("not used") }
 func (m *mockDriver) GetForeignKeys(string, string) ([][]string, error)  { panic("not used") }
-func (m *mockDriver) GetIndexes(string, string) ([][]string, error)      { panic("not used") }
+func (m *mockDriver) GetReferencingTables(string, string) ([][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetIndexes(string, string) ([][]string, error) { panic("not used") }
 func (m *mockDriver) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
 	panic("not used")
 }

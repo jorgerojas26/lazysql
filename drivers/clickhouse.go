@@ -136,6 +136,20 @@ func (db *ClickHouse) GetForeignKeys(database, table string) ([][]string, error)
 	return [][]string{{"table_name", "column_name", "constraint_name", "referenced_column_name", "referenced_table_name"}}, nil
 }
 
+// GetReferencingTables returns only the shared header row because ClickHouse
+// does not support foreign keys.
+func (db *ClickHouse) GetReferencingTables(database, table string) ([][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	return [][]string{append([]string(nil), ReferencingTablesHeader...)}, nil
+}
+
 // GetIndexes returns the data skipping indexes of the table.
 func (db *ClickHouse) GetIndexes(database, table string) ([][]string, error) {
 	if database == "" {

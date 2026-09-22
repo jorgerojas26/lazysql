@@ -149,3 +149,55 @@ func TestHeaderRightShift(t *testing.T) {
 		})
 	}
 }
+
+func TestNextAvailableReference(t *testing.T) {
+	pane := newTestTabbedPane(t, "public.LookupList")
+
+	if got := pane.NextAvailableReference("public.Organization"); got != "public.Organization" {
+		t.Errorf("NextAvailableReference returned %q for a free reference, expected %q", got, "public.Organization")
+	}
+
+	second := pane.NextAvailableReference("public.LookupList")
+	if second != "public.LookupList#2" {
+		t.Errorf("NextAvailableReference returned %q, expected %q", second, "public.LookupList#2")
+	}
+
+	pane.AppendTab("public.LookupList", stubTabContent{}, second)
+
+	third := pane.NextAvailableReference("public.LookupList")
+	if third != "public.LookupList#3" {
+		t.Errorf("NextAvailableReference returned %q, expected %q", third, "public.LookupList#3")
+	}
+}
+
+func TestCanReuseTabForFilter(t *testing.T) {
+	filtered := &ResultsTable{Filter: &ResultsTableFilter{currentFilter: "WHERE status = 'open'"}}
+	unfiltered := &ResultsTable{Filter: &ResultsTableFilter{}}
+
+	filteredTab := &Tab{Content: filtered}
+	unfilteredTab := &Tab{Content: unfiltered}
+	stubTab := &Tab{Content: stubTabContent{}}
+	otherTab := &Tab{Content: stubTabContent{}}
+
+	testCases := []struct {
+		name     string
+		tab      *Tab
+		current  *Tab
+		where    string
+		expected bool
+	}{
+		{name: "current tab is never reused", tab: filteredTab, current: filteredTab, where: "WHERE id = '1'", expected: false},
+		{name: "tab without a filter is reused", tab: unfilteredTab, current: otherTab, where: "WHERE id = '1'", expected: true},
+		{name: "tab with a different filter is not reused", tab: filteredTab, current: otherTab, where: "WHERE id = '1'", expected: false},
+		{name: "tab with the same filter is reused", tab: filteredTab, current: otherTab, where: " WHERE status = 'open' ", expected: true},
+		{name: "non table content is reused", tab: stubTab, current: otherTab, where: "WHERE id = '1'", expected: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := canReuseTabForFilter(tc.tab, tc.current, tc.where); got != tc.expected {
+				t.Errorf("canReuseTabForFilter returned %v, expected %v", got, tc.expected)
+			}
+		})
+	}
+}

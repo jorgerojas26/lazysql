@@ -611,6 +611,7 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | s | FocusSidebar | Focus sidebar |
 | Z | ShowRowJSONViewer | Toggle JSON viewer for row |
 | z | ShowCellJSONViewer | Toggle JSON viewer for cell |
+| f | ReverseForeignKeyJump | Pick a table referencing the current row and open it filtered |
 | E | ExportCSV | Export to CSV |
 
 #### Editor
