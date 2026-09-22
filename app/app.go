@@ -10,6 +10,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -28,12 +29,9 @@ type Application struct {
 
 	onQuitRequestMu sync.RWMutex
 	onQuitRequest   func()
-}
 
-type Theme struct {
-	tview.Theme
-
-	SidebarTitleBorderColor string
+	onThemePickerRequestMu sync.RWMutex
+	onThemePickerRequest   func()
 }
 
 func init() {
@@ -49,25 +47,12 @@ func init() {
 	App.register()
 	App.EnableMouse(true)
 	App.EnablePaste(true)
+	App.SetAfterDrawFunc(themeRenderer.recolor)
 
-	Styles = &Theme{
-		Theme: tview.Theme{
-			PrimitiveBackgroundColor:    tcell.ColorDefault,
-			ContrastBackgroundColor:     tcell.ColorBlue,
-			MoreContrastBackgroundColor: tcell.ColorGreen,
-			BorderColor:                 tcell.ColorWhite,
-			TitleColor:                  tcell.ColorWhite,
-			GraphicsColor:               tcell.ColorGray,
-			PrimaryTextColor:            tcell.ColorDefault.TrueColor(),
-			SecondaryTextColor:          tcell.ColorYellow,
-			TertiaryTextColor:           tcell.ColorGreen,
-			InverseTextColor:            tcell.ColorWhite,
-			ContrastSecondaryTextColor:  tcell.ColorBlack,
-		},
-		SidebarTitleBorderColor: "#666A7E",
+	// Start with the default theme; LoadConfig applies the configured one.
+	if err := ApplyTheme(ThemeConfig{}); err != nil {
+		panic(err)
 	}
-
-	tview.Styles = Styles.Theme
 }
 
 // Context returns the application context.
@@ -88,6 +73,21 @@ func (a *Application) Connections() []models.Connection {
 // SaveConnections saves the database connections.
 func (a *Application) SaveConnections(connections []models.Connection) error {
 	return a.config.SaveConnections(connections)
+}
+
+// ThemeConfig returns a copy of the active theme configuration.
+func (a *Application) ThemeConfig() ThemeConfig {
+	if a.config.Theme == nil {
+		return ThemeConfig{}
+	}
+	cfg := *a.config.Theme
+	cfg.Colors = cloneStringMap(cfg.Colors)
+	return cfg
+}
+
+// SaveThemePreset persists a built-in theme preset to the active config file.
+func (a *Application) SaveThemePreset(preset string) error {
+	return a.config.SaveThemePreset(preset)
 }
 
 // Register adds a task to the wait group and returns a
@@ -129,6 +129,19 @@ func (a *Application) getOnQuitRequest() func() {
 	return a.onQuitRequest
 }
 
+// SetOnThemePickerRequest sets the callback invoked by the global theme shortcut.
+func (a *Application) SetOnThemePickerRequest(fn func()) {
+	a.onThemePickerRequestMu.Lock()
+	defer a.onThemePickerRequestMu.Unlock()
+	a.onThemePickerRequest = fn
+}
+
+func (a *Application) getOnThemePickerRequest() func() {
+	a.onThemePickerRequestMu.RLock()
+	defer a.onThemePickerRequestMu.RUnlock()
+	return a.onThemePickerRequest
+}
+
 // register listens for interrupt and termination signals to
 // gracefully handle shutdowns by calling the Stop method.
 func (a *Application) register() {
@@ -161,6 +174,23 @@ func (a *Application) register() {
 			requestQuit()
 			return nil
 		}
+		if Keymaps.Resolve(event) == commands.ThemePicker {
+			if fn := a.getOnThemePickerRequest(); fn != nil {
+				fn()
+			}
+			return nil
+		}
 		return event
 	})
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }

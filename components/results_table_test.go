@@ -1,6 +1,7 @@
 package components
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -64,6 +66,31 @@ func TestToggleRowMarkAddsAndRemoves(t *testing.T) {
 
 	if got := table.GetMarkedRowIndexes(); len(got) != 1 || got[0] != 2 {
 		t.Fatalf("expected marked rows [2] after unmark, got %v", got)
+	}
+}
+
+func TestToggleRowMarkRestoresThemeBackground(t *testing.T) {
+	originalStyles := app.Styles
+	if err := app.ApplyTheme(app.ThemeConfig{Preset: "dracula"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		app.Styles = originalStyles
+		tview.Styles = originalStyles.Theme
+	})
+
+	table := newMarkTestTable([][]string{
+		{"id"},
+		{"1"},
+	})
+
+	table.toggleRowMark(1)
+	table.toggleRowMark(1)
+
+	cell := table.GetCell(1, 0)
+	_, got, _ := cell.Style.Decompose()
+	if got != app.Styles.PrimitiveBackgroundColor {
+		t.Fatalf("unmarked row background = %v, want %v", got, app.Styles.PrimitiveBackgroundColor)
 	}
 }
 
@@ -448,5 +475,60 @@ func TestReadOnlyAllowsCTESelect(t *testing.T) {
 	executed := runEditorQuery(t, true, query)
 	if len(executed) != 1 || executed[0] != query {
 		t.Fatalf("read-only WITH ... SELECT should still execute, got %q", executed)
+	}
+}
+
+func TestAddRowsRendersBracketValuesLiterally(t *testing.T) {
+	headers := []string{"a", "status[red]", `payload["key"]`, "d", "e"}
+	values := []string{`["x"] and [red]hi`, "[::b]bold", "[red[]", "plain"}
+
+	table := newMarkTestTable(nil)
+	table.DBDriver = &drivers.MySQL{}
+	table.AddRows([][]string{
+		headers,
+		{values[0], values[1], values[2], values[3], "NULL&"},
+	})
+
+	// Headers double as column identifiers, so they must remain raw.
+	for col, want := range headers {
+		if got := table.GetCell(0, col).Text; got != want {
+			t.Errorf("header (0, %d) = %q, want %q", col, got, want)
+		}
+	}
+
+	for col, want := range values {
+		if got := cellText(table.GetCell(1, col)); got != want {
+			t.Errorf("cellText(1, %d) = %q, want %q", col, got, want)
+		}
+		if got := table.getRawCellValue(1, col); got != want {
+			t.Errorf("getRawCellValue(1, %d) = %q, want %q", col, got, want)
+		}
+	}
+
+	// lazysql's own NULL placeholder keeps its label and styling.
+	nullCell := table.GetCell(1, 4)
+	if nullCell.Text != "NULL" || nullCell.GetReference() != "NULL&" {
+		t.Errorf("NULL placeholder = %q (ref %v), want \"NULL\" (ref \"NULL&\")", nullCell.Text, nullCell.GetReference())
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(120, 3)
+	table.SetRect(0, 0, 120, 3)
+	table.Draw(screen)
+	screen.Show()
+
+	cells, width, _ := screen.GetContents()
+	var line strings.Builder
+	for x := 0; x < width; x++ {
+		line.WriteString(string(cells[width+x].Runes))
+	}
+	for _, want := range values[:3] {
+		if !strings.Contains(line.String(), want) {
+			t.Errorf("rendered row %q does not contain %q", line.String(), want)
+		}
 	}
 }

@@ -444,6 +444,49 @@ func TestSQLite_ExecutePendingChanges(t *testing.T) {
 	}
 }
 
+func TestSQLite_ExecutePendingChanges_InsertSpecialValues(t *testing.T) {
+	db := &SQLite{}
+	if err := db.Connect(":memory:"); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer db.Connection.Close()
+	db.Connection.SetMaxOpenConns(1)
+
+	if _, err := db.Connection.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT, b TEXT, c TEXT DEFAULT 'dflt')"); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	changes := []models.DBDMLChange{{
+		Table: "t",
+		Type:  models.DMLInsertType,
+		Values: []models.CellValue{
+			{Column: "id", Value: "DEFAULT", Type: models.Default},
+			{Column: "a", Value: "NULL", Type: models.Null},
+			{Column: "b", Value: "EMPTY", Type: models.Empty},
+			{Column: "c", Value: "DEFAULT", Type: models.Default},
+		},
+		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: "row-uuid"}},
+	}}
+
+	if err := db.ExecutePendingChanges(changes); err != nil {
+		t.Fatalf("ExecutePendingChanges failed: %v", err)
+	}
+
+	var a, b, c sql.NullString
+	if err := db.Connection.QueryRow("SELECT a, b, c FROM t").Scan(&a, &b, &c); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if a.Valid {
+		t.Errorf("a = %q, want SQL NULL", a.String)
+	}
+	if !b.Valid || b.String != "" {
+		t.Errorf("b = %#v, want empty string", b)
+	}
+	if !c.Valid || c.String != "dflt" {
+		t.Errorf("c = %#v, want column default 'dflt'", c)
+	}
+}
+
 func TestSQLite_GetPrimaryKeyColumnNames(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

@@ -69,13 +69,32 @@ func keepQuitConfirmationFocused() {
 	}
 }
 
+func showThemePicker() {
+	if mainPages == nil {
+		return
+	}
+	if mainPages.HasPage(pageNameThemePicker) {
+		mainPages.ShowPage(pageNameThemePicker).SendToFront(pageNameThemePicker)
+		_, picker := mainPages.GetFrontPage()
+		app.App.SetFocus(picker)
+		return
+	}
+
+	picker := NewThemePicker(func() {
+		mainPages.RemovePage(pageNameThemePicker)
+	})
+	mainPages.AddPage(pageNameThemePicker, picker, true, true)
+	app.App.SetFocus(picker.list)
+}
+
 func MainPages() *tview.Pages {
 	mainPages = tview.NewPages()
 	mainPages.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	mainPages.AddPage(pageNameConnections, NewConnectionPages().Grid, true, true)
 
-	// Show quit confirmation on Ctrl+C / OS interrupt.
+	// Show global dialogs from application-level shortcuts and signals.
 	app.App.SetOnQuitRequest(showQuitConfirmation)
+	app.App.SetOnThemePickerRequest(showThemePicker)
 
 	return mainPages
 }

@@ -197,6 +197,63 @@ The `[application]` section is used to define some app settings. Not all setting
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
 
+### Themes
+
+Colors are set in the `[theme]` section. Pick a preset and, optionally, override single colors on top of it:
+
+```toml
+[theme]
+Preset = "light"
+
+[theme.Colors]
+Border = "#666A7E"
+Title = "black"
+PrimaryText = "default"
+EditorStatusBarBackground = "lightgray"
+SQLKeyword = "#005F87"
+```
+
+Presets:
+
+| Preset | Description |
+| ------ | ----------- |
+| `default` | The standard lazysql colors, on the terminal's background |
+| `light` | GitHub-inspired light palette with a painted background |
+| `dracula` | [Dracula](https://draculatheme.com) |
+| `gruvbox-dark` | [Gruvbox](https://github.com/morhetz/gruvbox) dark |
+| `nord` | [Nord](https://www.nordtheme.com) |
+| `solarized-light` | [Solarized](https://ethanschoonover.com/solarized/) light |
+| `tokyo-night` | [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) |
+| `catppuccin-mocha` | [Catppuccin](https://github.com/catppuccin/catppuccin) Mocha |
+
+Press `Ctrl+T` anywhere in lazysql to open the theme picker. Move with the arrow keys, `j`/`k`, or `Ctrl+N`/`Ctrl+P` to preview each theme across the running application. Press `Enter` to apply and save the selected preset, or `q`/`Esc` to restore the previous theme.
+
+`default` uses the terminal's background color. All other presets paint their own background.
+
+A color is a name (`"red"`, `"dodgerblue"`, any [W3C color name](https://github.com/gdamore/tcell/blob/v2.7.4/color.go#L851)), a hex value (`"#RRGGBB"`), or `"default"` for the terminal's own color. Unknown keys, presets and colors are reported when lazysql starts.
+
+Keys for `[theme.Colors]`:
+
+| Key | Used for |
+| --- | -------- |
+| `PrimitiveBackground` | Background of all views |
+| `ContrastBackground`, `MoreContrastBackground` | Backgrounds of input fields, buttons and drop-downs |
+| `Border`, `Title`, `Graphics` | Default border, title and line colors |
+| `PrimaryText` | Main text |
+| `SecondaryText` | Highlights: selected rows, active tab, key hints, sidebar values |
+| `TertiaryText` | Labels and status messages |
+| `InverseText` | Borders and text of unfocused views, form fields |
+| `ContrastSecondaryText` | Text drawn on `SecondaryText` (selected rows, active tab) |
+| `SidebarTitleBorder` | Separator next to the sidebar field names |
+| `Error` | Error messages |
+| `ReadOnly` | Read-only markers |
+| `TableChange`, `TableInsert`, `TableDelete`, `TableMarked` | Backgrounds of changed, inserted, deleted and marked rows |
+| `EditorSelection` | Selected text in the SQL editor |
+| `EditorStatusBarBackground`, `EditorStatusBarText` | SQL editor status bar |
+| `AutocompleteBackground`, `AutocompleteText`, `AutocompleteSelected`, `AutocompleteDescription`, `AutocompleteSeparator` | SQL editor autocomplete popup |
+| `SQLKeyword`, `SQLString`, `SQLNumber`, `SQLComment`, `SQLFunction`, `SQLOperator`, `SQLType`, `SQLBoolean`, `SQLParameter` | SQL syntax highlighting |
+| `JSONKey`, `JSONString`, `JSONBoolean`, `JSONNull`, `JSONNumber` | JSON viewer |
+
 ### Local Configuration
 
 You can place a `.lazysql.toml` file in your project directory (next to your `.git` folder) to override the global configuration for that project. This is useful for defining project-specific database connections or settings.
@@ -210,6 +267,7 @@ lazysql searches for `.lazysql.toml` by walking up from the current working dire
 | `[application]` | Deep merge — local values override global, unset fields keep global/defaults |
 | `[[database]]` | Replace — local connections completely replace global connections |
 | `[keymap.*]` | Deep merge — local keybindings override global ones for the same command |
+| `[theme]` | Deep merge — a local `Preset` or color overrides the global one, other colors are kept |
 
 **Example `.lazysql.toml`:**
 
@@ -361,6 +419,7 @@ You can update the tree by pressing `R`, so you can see your newly created table
 - [x] PostgreSQL
 - [x] SQLite
 - [x] MSSQL
+- [x] ClickHouse
 - [ ] MongoDB
 
 Support for multiple RDBMS is a work in progress.
@@ -648,7 +707,17 @@ sap://user:pass@localhost/dbname
 file:myfile.sqlite3?loc=auto
 /path/to/sqlite/file/test.db
 odbc+postgres://user:pass@localhost:port/dbname?option1=
+clickhouse://user:pass@localhost:9000/dbname
+ch://user:pass@remote-host.com:9440/dbname?secure=true
+clickhouse+http://user:pass@localhost:8123/dbname
+clickhouse+https://user:pass@remote-host.com:8443/dbname
 ```
+
+### ClickHouse notes
+
+- `clickhouse://` (alias `ch://`) uses the native protocol (port 9000 by default); `clickhouse+http://` and `clickhouse+https://` use the HTTP interface. Query parameters are passed to [clickhouse-go](https://github.com/ClickHouse/clickhouse-go#dsn), e.g. `?secure=true` for TLS on the native port.
+- The Constraints tab shows the table engine and its partition, sorting and primary keys. The Indexes tab shows data skipping indexes. ClickHouse has no foreign keys.
+- Row edits and deletes are run as mutations (`ALTER TABLE ... UPDATE/DELETE`) and wait for the mutation to finish. They only work on tables that support mutations (such as the MergeTree family), key columns cannot be updated, and ClickHouse primary keys are not unique: every row that shares the primary key values of the edited row is changed. Pending changes are not run in a transaction.
 
 <!-- ROADMAP -->
 

@@ -3,6 +3,8 @@ package components
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/rivo/tview"
 )
 
 // formatCellJSON simulates the Show() logic for formatting row data into JSON.
@@ -115,5 +117,15 @@ func TestSingleCellJSONArray(t *testing.T) {
 	}
 	if len(parsed) != 3 {
 		t.Errorf("Expected 3 array elements, got %d", len(parsed))
+	}
+}
+
+func TestJSONViewerShowsBracketValuesLiterally(t *testing.T) {
+	viewer := NewJSONViewer(tview.NewPages())
+	viewer.Show(map[string]string{"note": `{"tag":"[red]hi","region":["x"]}`}, nil)
+
+	want := "{\n  \"region\": [\n    \"x\"\n  ],\n  \"tag\": \"[red]hi\"\n}"
+	if got := viewer.TextView.GetText(true); got != want {
+		t.Errorf("GetText(true) = %q, want %q", got, want)
 	}
 }

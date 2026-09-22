@@ -152,7 +152,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 		tree.SetFocusFunc(nil)
 	})
 
-	selectedNodeTextColor := fmt.Sprintf("[black:%s]", app.Styles.SecondaryTextColor.Name())
+	selectedNodeTextColor := fmt.Sprintf("[%s:%s]", app.Styles.ContrastSecondaryTextColor, app.Styles.SecondaryTextColor)
 	previouslyFocusedNode := tree.GetCurrentNode()
 	previouslyFocusedNode.SetText(selectedNodeTextColor + previouslyFocusedNode.GetText())
 
