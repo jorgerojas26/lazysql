@@ -25,27 +25,28 @@ import (
 )
 
 type ResultsTableState struct {
-	listOfDBChanges       *[]models.DBDMLChange
-	error                 string
-	currentSort           string
-	databaseName          string
-	tableName             string
-	primaryKeyColumnNames []string
-	columns               [][]string
-	constraints           [][]string
-	foreignKeys           [][]string
-	indexes               [][]string
-	records               [][]string
-	foreignKeyColumns     map[string]bool
-	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
-	referencingTables     [][]string
-	fkRawCellValues       map[string]string
-	markedRows            map[int]bool
-	isEditing             bool
-	isFiltering           bool
-	isLoading             bool
-	showSidebar           bool
-	loadingCancel         context.CancelFunc
+	listOfDBChanges        *[]models.DBDMLChange
+	error                  string
+	currentSort            string
+	databaseName           string
+	tableName              string
+	primaryKeyColumnNames  []string
+	columns                [][]string
+	constraints            [][]string
+	foreignKeys            [][]string
+	indexes                [][]string
+	records                [][]string
+	foreignKeyColumns      map[string]bool
+	foreignKeyJumpTargets  map[string]foreignKeyJumpTarget
+	referencingTables      [][]string
+	referencingTablesError error
+	fkRawCellValues        map[string]string
+	markedRows             map[int]bool
+	isEditing              bool
+	isFiltering            bool
+	isLoading              bool
+	showSidebar            bool
+	loadingCancel          context.CancelFunc
 }
 
 type foreignKeyJumpTarget struct {
@@ -1106,8 +1107,9 @@ func (table *ResultsTable) SetForeignKeys(foreignKeys [][]string) {
 
 // SetReferencingTables stores the reverse foreign key lookup (see
 // drivers.Driver.GetReferencingTables) for the currently loaded table.
-func (table *ResultsTable) SetReferencingTables(referencingTables [][]string) {
+func (table *ResultsTable) SetReferencingTables(referencingTables [][]string, err error) {
 	table.state.referencingTables = referencingTables
+	table.state.referencingTablesError = err
 }
 
 func (table *ResultsTable) SetIndexes(indexes [][]string) {
@@ -1281,13 +1283,14 @@ func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 
 		if err == nil {
 			var columns, constraints, foreignKeys, referencingTables, indexes [][]string
+			var referencingTablesError error
 			var primaryKeyColumnNames []string
 
 			columns, _ = table.DBDriver.GetTableColumns(databaseName, tableName)
 			constraints, _ = table.DBDriver.GetConstraints(databaseName, tableName)
 			foreignKeys, _ = table.DBDriver.GetForeignKeys(databaseName, tableName)
 			if table.IsForeignKeyJumpSupportedProvider() {
-				referencingTables, _ = table.DBDriver.GetReferencingTables(databaseName, tableName)
+				referencingTables, referencingTablesError = table.DBDriver.GetReferencingTables(databaseName, tableName)
 			}
 			indexes, _ = table.DBDriver.GetIndexes(databaseName, tableName)
 			primaryKeyColumnNames, _ = table.DBDriver.GetPrimaryKeyColumnNames(databaseName, tableName)
@@ -1310,7 +1313,7 @@ func (table *ResultsTable) FetchRecords(onError func(), onSuccess func()) {
 				table.SetColumns(columns)
 				table.SetConstraints(constraints)
 				table.SetForeignKeys(foreignKeys)
-				table.SetReferencingTables(referencingTables)
+				table.SetReferencingTables(referencingTables, referencingTablesError)
 				table.SetIndexes(indexes)
 				table.SetPrimaryKeyColumnNames(primaryKeyColumnNames)
 
@@ -1981,7 +1984,11 @@ func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
 		return
 	}
 
-	entries := buildReferencingEntries(table.state.referencingTables)
+	entries, err := table.getReferencingEntries()
+	if err != nil {
+		table.SetError(err.Error(), nil)
+		return
+	}
 	if len(entries) == 0 {
 		table.SetError("No table references this table", nil)
 		return
@@ -2010,7 +2017,10 @@ func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
 		return
 	}
 
-	useSchemas := table.DBDriver.UseSchemas()
+	// MSSQL does not expose schemas in the tree yet, but reverse lookups can
+	// return referencing tables from any schema. Preserve that schema so a
+	// same-named table in the default schema cannot be opened by mistake.
+	useSchemas := useQualifiedReferencingTables(table.DBDriver.UseSchemas(), table.DBDriver.GetProvider())
 
 	closePicker := func() {
 		mainPages.RemovePage(pageNameReferencingTables)
@@ -2028,6 +2038,14 @@ func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
 
 	mainPages.AddPage(pageNameReferencingTables, picker, true, true)
 	App.SetFocus(picker.GetList())
+}
+
+func (table *ResultsTable) getReferencingEntries() ([]referencingTableEntry, error) {
+	if table.state.referencingTablesError != nil {
+		return nil, fmt.Errorf("failed to load referencing tables: %w", table.state.referencingTablesError)
+	}
+
+	return buildReferencingEntries(table.state.referencingTables), nil
 }
 
 func (table *ResultsTable) foreignKeyCellMapKey(rowIndex, columnIndex int) string {

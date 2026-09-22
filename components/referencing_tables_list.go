@@ -8,6 +8,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/drivers"
 )
 
 // referencingTableEntry describes a single foreign key pointing at the table
@@ -27,6 +28,10 @@ func (entry referencingTableEntry) QualifiedTable(useSchemas bool) string {
 	}
 
 	return entry.Table
+}
+
+func useQualifiedReferencingTables(driverUsesSchemas bool, provider string) bool {
+	return driverUsesSchemas || provider == drivers.DriverMSSQL
 }
 
 // buildReferencingEntries converts driver rows (a header row followed by rows

@@ -95,6 +95,36 @@ func quoteMSSQLIdentifier(identifier string) string {
 	return "[" + strings.ReplaceAll(identifier, "]", "]]") + "]"
 }
 
+// formatTableName quotes a table name one identifier at a time. Reverse and
+// forward foreign-key navigation can provide schema-qualified names, which SQL
+// Server must render as [schema].[table], not [schema.table].
+func (db *MSSQL) formatTableName(table string) string {
+	schema, tableName, qualified := strings.Cut(table, ".")
+	if !qualified {
+		return quoteMSSQLIdentifier(table)
+	}
+
+	return quoteMSSQLIdentifier(schema) + "." + quoteMSSQLIdentifier(tableName)
+}
+
+// tableSchemaAndName returns an explicit schema for metadata queries. Bare
+// table names retain the driver's existing default-schema behavior.
+func (db *MSSQL) tableSchemaAndName(table string) (string, string, error) {
+	if schema, tableName, qualified := strings.Cut(table, "."); qualified {
+		if schema == "" || tableName == "" {
+			return "", "", errors.New("table must be in the format schema.table")
+		}
+		return schema, tableName, nil
+	}
+
+	schema, err := db.getCurrentSchema()
+	if err != nil {
+		return "", "", err
+	}
+
+	return schema, table, nil
+}
+
 func (db *MSSQL) databasePrefix(database string) string {
 	if db.isAzureSQL {
 		return ""
@@ -201,7 +231,7 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
 }
 
 func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
 	if err != nil {
 		return nil, err
 	}
@@ -227,10 +257,15 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
           AND kc.type IN ('PK', 'UQ')
     `
 
-	return db.getTableInformation(query, currentSchema, table, "")
+	return db.getTableInformation(query, tableSchema, tableName, "")
 }
 
 func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
+	if err != nil {
+		return nil, err
+	}
+
 	query := db.databasePrefix(database) + `
         SELECT
             fk.name AS constraint_name,
@@ -255,19 +290,17 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
         INNER JOIN sys.schemas s
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
+          AND s.name = @p3
           AND DB_NAME(DB_ID(@p1)) = @p1
     `
 
-	return db.getTableInformation(query, database, table, "")
+	return db.getTableInformation(query, database, tableName, tableSchema)
 }
 
 // GetReferencingTables returns every foreign key that points at the given
-// table, i.e. the reverse direction of GetForeignKeys.
-//
-// Table names are not schema qualified in this driver, so the referenced table
-// is looked up in the connection's default schema. Matching on the bare name
-// alone would also return foreign keys pointing at a same named table in
-// another schema.
+// table, i.e. the reverse direction of GetForeignKeys. OBJECT_ID applies SQL
+// Server's normal schema resolution to bare names and handles explicitly
+// qualified names without guessing which same-named table was opened.
 func (db *MSSQL) GetReferencingTables(database, table string) ([][]string, error) {
 	query := db.databasePrefix(database) + `
         SELECT
@@ -289,13 +322,8 @@ func (db *MSSQL) GetReferencingTables(database, table string) ([][]string, error
             ON fk.parent_object_id = t.object_id
         INNER JOIN sys.schemas s
             ON t.schema_id = s.schema_id
-        INNER JOIN sys.tables rt
-            ON fk.referenced_object_id = rt.object_id
-        INNER JOIN sys.schemas rs
-            ON rt.schema_id = rs.schema_id
-        WHERE rt.name = @p2
-          AND rs.name = SCHEMA_NAME()
-          AND DB_NAME(DB_ID(@p1)) = @p1
+        WHERE fk.referenced_object_id = OBJECT_ID(@p2, 'U')
+          AND DB_NAME() = @p1
         ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id
     `
 
@@ -303,7 +331,7 @@ func (db *MSSQL) GetReferencingTables(database, table string) ([][]string, error
 }
 
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +380,7 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
         ORDER BY i.type_desc
     `, databaseJoin, databaseFilter)
 
-	return db.getTableInformation(query, database, table, currentSchema)
+	return db.getTableInformation(query, database, tableName, tableSchema)
 }
 
 func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) (results [][]string, totalRecords int, displayQueryString string, err error) {
@@ -370,7 +398,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	results = make([][]string, 0)
 
-	baseQuery := db.databasePrefix(database) + "SELECT * FROM " + db.FormatReference(table)
+	baseQuery := db.databasePrefix(database) + "SELECT * FROM " + db.formatTableName(table)
 
 	if where != "" {
 		baseQuery += fmt.Sprintf(" %s", where)
@@ -481,7 +509,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	countQuery := db.databasePrefix(database) +
 		"SELECT COUNT(*) FROM " +
-		db.FormatReference(table)
+		db.formatTableName(table)
 
 	if where != "" {
 		countQuery += fmt.Sprintf(" %s", where)
@@ -527,7 +555,7 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 	}
 
 	query := db.databasePrefix(database) +
-		"UPDATE " + db.FormatReference(table) +
+		"UPDATE " + db.formatTableName(table) +
 		" SET " + db.FormatReference(column) +
 		" = @p1 WHERE " + db.FormatReference(primaryKeyColumnName) +
 		" = @p2"
@@ -555,7 +583,7 @@ func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 	}
 
 	query := db.databasePrefix(database) +
-		"DELETE FROM " + db.FormatReference(table) +
+		"DELETE FROM " + db.formatTableName(table) +
 		" WHERE " + db.FormatReference(primaryKeyColumnName) +
 		" = @p1"
 
@@ -634,7 +662,7 @@ func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 
 	for _, change := range changes {
 
-		formattedTableName := db.FormatReference(change.Table)
+		formattedTableName := db.formatTableName(change.Table)
 
 		switch change.Type {
 
@@ -661,7 +689,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	currentSchema, err := db.getCurrentSchema()
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
 	if err != nil {
 		return nil, err
 	}
@@ -694,7 +722,7 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		ORDER BY ic.key_ordinal
 	`
 
-	rows, err := db.Connection.Query(query, "PK", currentSchema, table)
+	rows, err := db.Connection.Query(query, "PK", tableSchema, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -872,7 +900,7 @@ func (db *MSSQL) FormatPlaceholder(index int) string {
 func (db *MSSQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
 	var queryStr string
 
-	formattedTableName := db.FormatReference(change.Table)
+	formattedTableName := db.formatTableName(change.Table)
 
 	columnNames, values := getColNamesAndArgsAsString(change.Values)
 

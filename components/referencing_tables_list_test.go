@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -97,5 +98,35 @@ func TestReferencingTableEntry_QualifiedTable(t *testing.T) {
 
 	if got := schemaless.QualifiedTable(true); got != "lookup_list" {
 		t.Errorf("QualifiedTable(true) with no schema returned %q, expected %q", got, "lookup_list")
+	}
+}
+
+func TestResultsTable_GetReferencingEntriesReturnsLookupError(t *testing.T) {
+	table := &ResultsTable{state: &ResultsTableState{referencingTablesError: errors.New("permission denied")}}
+
+	entries, err := table.getReferencingEntries()
+	if err == nil || err.Error() != "failed to load referencing tables: permission denied" {
+		t.Fatalf("getReferencingEntries returned entries=%v, err=%v", entries, err)
+	}
+}
+
+func TestUseQualifiedReferencingTables(t *testing.T) {
+	testCases := []struct {
+		name              string
+		driverUsesSchemas bool
+		provider          string
+		expected          bool
+	}{
+		{name: "schema aware driver", driverUsesSchemas: true, provider: drivers.DriverPostgres, expected: true},
+		{name: "MSSQL reverse navigation", provider: drivers.DriverMSSQL, expected: true},
+		{name: "schemaless driver", provider: drivers.DriverSqlite, expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := useQualifiedReferencingTables(tc.driverUsesSchemas, tc.provider); got != tc.expected {
+				t.Errorf("useQualifiedReferencingTables returned %v, expected %v", got, tc.expected)
+			}
+		})
 	}
 }
