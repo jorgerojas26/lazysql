@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,8 +14,9 @@ import (
 )
 
 type MySQL struct {
-	Connection *sql.DB
-	Provider   string
+	Connection      *sql.DB
+	Provider        string
+	CurrentDatabase string
 }
 
 func (db *MySQL) TestConnection(urlstr string) (err error) {
@@ -33,6 +35,19 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Track the database in scope at connection time so ExecuteQuery can
+	// avoid an unnecessary "USE" statement when the caller targets the same
+	// database the connection is already on.
+	row := db.Connection.QueryRow("SELECT DATABASE()")
+
+	var database sql.NullString
+	if err := row.Scan(&database); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
+
+	db.CurrentDatabase = database.String
 
 	return nil
 }
@@ -412,13 +427,25 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 	return paginatedResults, totalRecords, queryString, nil
 }
 
-func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
-	rows, err := db.Connection.Query(query)
+func (db *MySQL) ExecuteQuery(database, query string) ([][]string, int, error) {
+	conn, cleanup, err := db.editorConnection(database)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cleanup()
+
+	rows, err := conn.QueryContext(context.Background(), query)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
+	return scanMySQLRows(rows)
+}
+
+// scanMySQLRows scans a *sql.Rows into the [][]string shape used across the
+// codebase, with the column names prepended as the first row.
+func scanMySQLRows(rows *sql.Rows) ([][]string, int, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, 0, err
@@ -431,8 +458,7 @@ func (db *MySQL) ExecuteQuery(query string) ([][]string, int, error) {
 			rowValues[i] = new(sql.RawBytes)
 		}
 
-		err = rows.Scan(rowValues...)
-		if err != nil {
+		if err := rows.Scan(rowValues...); err != nil {
 			return nil, 0, err
 		}
 
@@ -472,8 +498,13 @@ func (db *MySQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 	return err
 }
 
-func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
-	res, err := db.Connection.Exec(query)
+func (db *MySQL) ExecuteDMLStatement(database, query string) (result string, err error) {
+	conn, cleanup, err := db.editorConnection(database)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	res, err := conn.ExecContext(context.Background(), query)
 	if err != nil {
 		return "", err
 	}
@@ -679,4 +710,12 @@ func (db *MySQL) GetProcedureDefinition(_ string, _ string) (string, error) {
 
 func (db *MySQL) GetViewDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
+}
+
+// editorConnection keeps database selection local to this editor operation.
+func (db *MySQL) editorConnection(database string) (editorConnection, func(), error) {
+	if database == "" || database == db.CurrentDatabase {
+		return db.Connection, func() {}, nil
+	}
+	return switchedEditorConnection(db.Connection, "USE "+"`"+strings.ReplaceAll(database, "`", "``")+"`")
 }

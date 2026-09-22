@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -21,9 +22,10 @@ import (
 )
 
 type MSSQL struct {
-	Connection *sql.DB
-	Provider   string
-	isAzureSQL bool
+	Connection      *sql.DB
+	Provider        string
+	CurrentDatabase string
+	isAzureSQL      bool
 }
 
 // mssqlGUIDToUUID converts a 16-byte little-endian GUID from MSSQL
@@ -74,13 +76,27 @@ func (db *MSSQL) Connect(urlstr string) error {
 	}
 
 	if err := db.Connection.Ping(); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
+	// Track the database in scope at connection time so ExecuteQuery can
+	// avoid an unnecessary "USE" statement when the caller targets the same
+	// database the connection is already on.
+	row := db.Connection.QueryRow("SELECT DB_NAME()")
+
+	var database string
+	if err := row.Scan(&database); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
+
+	db.CurrentDatabase = database
 	var engineEdition int
 	if err := db.Connection.QueryRow(
 		`SELECT CAST(SERVERPROPERTY('EngineEdition') AS INT)`,
 	).Scan(&engineEdition); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
@@ -592,12 +608,17 @@ func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 	return err
 }
 
-func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
+func (db *MSSQL) ExecuteDMLStatement(database, query string) (string, error) {
 	if query == "" {
 		return "", errors.New("query is required")
 	}
 
-	res, err := db.Connection.Exec(query)
+	conn, cleanup, err := db.editorConnection(database)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	res, err := conn.ExecContext(context.Background(), query)
 	if err != nil {
 		return "", err
 	}
@@ -610,16 +631,20 @@ func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *MSSQL) ExecuteQuery(query string) ([][]string, int, error) {
+func (db *MSSQL) ExecuteQuery(database, query string) ([][]string, int, error) {
 	if query == "" {
 		return nil, 0, errors.New("query can not be empty")
 	}
-
-	rows, err := db.Connection.Query(query)
+	conn, cleanup, err := db.editorConnection(database)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer cleanup()
 
+	rows, err := conn.QueryContext(context.Background(), query)
+	if err != nil {
+		return nil, 0, err
+	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -1090,4 +1115,12 @@ func (db *MSSQL) GetProcedureDefinition(database string, name string) (string, e
 
 func (db *MSSQL) GetViewDefinition(database string, name string) (string, error) {
 	return db.GetObjectDefinition(database, name)
+}
+
+// editorConnection keeps database selection local to this editor operation.
+func (db *MSSQL) editorConnection(database string) (editorConnection, func(), error) {
+	if database == "" || database == db.CurrentDatabase {
+		return db.Connection, func() {}, nil
+	}
+	return switchedEditorConnection(db.Connection, "USE "+quoteMSSQLIdentifier(database))
 }

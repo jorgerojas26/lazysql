@@ -38,8 +38,12 @@ type Driver interface {
 	GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, string, error)
 	UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
 	DeleteRecord(database, table string, primaryKeyColumnName, primaryKeyValue string) error
-	ExecuteDMLStatement(query string) (string, error)
-	ExecuteQuery(query string) ([][]string, int, error)
+	// database selects the editor's target database for both reads and writes.
+	// Empty uses the original connection context. MSSQL and MySQL isolate USE
+	// on a reserved connection; PostgreSQL opens a temporary database connection.
+	// SQLite and ClickHouse retain their original connection context.
+	ExecuteDMLStatement(database, query string) (string, error)
+	ExecuteQuery(database, query string) ([][]string, int, error)
 	ExecutePendingChanges(changes []models.DBDMLChange) error
 	GetProvider() string
 	GetPrimaryKeyColumnNames(database, table string) ([]string, error)

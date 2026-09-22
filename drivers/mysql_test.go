@@ -844,7 +844,7 @@ func TestMySQL_ExecuteQuery_Error(t *testing.T) {
 
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).WillReturnError(errors.New("query error"))
 
-	_, _, err = mysql.ExecuteQuery(fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
+	_, _, err = mysql.ExecuteQuery("", fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -912,7 +912,7 @@ func TestMySQL_ExecuteDMLStatement_Error(t *testing.T) {
 
 	mock.ExpectExec("UPDATE test_table SET value = 3 WHERE name = 'test1'").WillReturnError(errors.New("query error"))
 
-	_, err = mysql.ExecuteDMLStatement(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", testDBTableNameMySQL))
+	_, err = mysql.ExecuteDMLStatement("", fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", testDBTableNameMySQL))
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -1439,7 +1439,7 @@ func TestMySQL_ExecuteQuery(t *testing.T) {
 	mock.ExpectQuery(fmt.Sprintf("SELECT \\* FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
 		WillReturnRows(rows)
 
-	results, _, err := mysql.ExecuteQuery(fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
+	results, _, err := mysql.ExecuteQuery("", fmt.Sprintf("SELECT * FROM %s", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
 	if err != nil {
 		t.Fatalf("ExecuteQuery failed: %v", err)
 	}
@@ -1452,6 +1452,69 @@ func TestMySQL_ExecuteQuery(t *testing.T) {
 
 	if !reflect.DeepEqual(results, expectedResults) {
 		t.Fatalf("Expected results:\n%v\nGot:\n%v", expectedResults, results)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_ExecuteQuery_CrossDatabase(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	mysql := &MySQL{Connection: db, CurrentDatabase: "otherdb"}
+
+	columns := []string{"id", "name"}
+	rows := sqlmock.NewRows(columns).AddRow(1, "Alice")
+
+	mock.ExpectExec("USE `targetdb`").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT \\* FROM users").WillReturnRows(rows)
+
+	results, total, err := mysql.ExecuteQuery("targetdb", "SELECT * FROM users")
+	if err != nil {
+		t.Fatalf("ExecuteQuery failed: %v", err)
+	}
+
+	if total != 1 {
+		t.Fatalf("Expected total 1, got %d", total)
+	}
+
+	expectedResults := [][]string{
+		{"id", "name"},
+		{"1", "Alice"},
+	}
+
+	if !reflect.DeepEqual(results, expectedResults) {
+		t.Fatalf("Expected results:\n%v\nGot:\n%v", expectedResults, results)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMySQL_ExecuteQuery_SameDatabase_NoUseStatement(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("error creating mock: %s", err)
+	}
+	defer db.Close()
+
+	mysql := &MySQL{Connection: db, CurrentDatabase: "targetdb"}
+
+	columns := []string{"id"}
+	rows := sqlmock.NewRows(columns).AddRow(1)
+
+	// No ExpectExec for USE: only the SELECT should be issued.
+	mock.ExpectQuery("SELECT \\* FROM users").WillReturnRows(rows)
+
+	_, _, err = mysql.ExecuteQuery("targetdb", "SELECT * FROM users")
+	if err != nil {
+		t.Fatalf("ExecuteQuery failed: %v", err)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -1518,7 +1581,7 @@ func TestMySQL_ExecuteDMLStatement(t *testing.T) {
 	mock.ExpectExec(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
-	result, err := mysql.ExecuteDMLStatement(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
+	result, err := mysql.ExecuteDMLStatement("", fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
 	if err != nil {
 		t.Fatalf("ExecuteDMLStatement failed: %v", err)
 	}

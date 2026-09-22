@@ -249,7 +249,7 @@ func (db *ClickHouse) GetRecords(database, table, where, sort string, offset, li
 	return paginatedResults, totalRecords, queryString, nil
 }
 
-func (db *ClickHouse) ExecuteQuery(query string) ([][]string, int, error) {
+func (db *ClickHouse) ExecuteQuery(_, query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, 0, err
@@ -330,7 +330,7 @@ func (db *ClickHouse) DeleteRecord(database, table, primaryKeyColumnName, primar
 	return err
 }
 
-func (db *ClickHouse) ExecuteDMLStatement(query string) (string, error) {
+func (db *ClickHouse) ExecuteDMLStatement(_, query string) (string, error) {
 	res, err := db.Connection.Exec(query)
 	if err != nil {
 		return "", err

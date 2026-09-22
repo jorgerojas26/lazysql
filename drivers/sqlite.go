@@ -449,7 +449,9 @@ func (db *SQLite) GetRecords(_, table, where, sort string, offset, limit int) (p
 	return paginatedResults, totalRecords, queryString, nil
 }
 
-func (db *SQLite) ExecuteQuery(query string) ([][]string, int, error) {
+// ExecuteQuery ignores the database parameter: SQLite is a single-file
+// database with no concept of multiple databases within one connection.
+func (db *SQLite) ExecuteQuery(_, query string) ([][]string, int, error) {
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, 0, err
@@ -546,7 +548,7 @@ func (db *SQLite) DeleteRecord(_, table, primaryKeyColumnName, primaryKeyValue s
 	return err
 }
 
-func (db *SQLite) ExecuteDMLStatement(query string) (result string, err error) {
+func (db *SQLite) ExecuteDMLStatement(_, query string) (result string, err error) {
 	res, err := db.Connection.Exec(query)
 	if err != nil {
 		return "", err

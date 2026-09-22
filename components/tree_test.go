@@ -446,11 +446,13 @@ func (m *schemaProgrammingMock) GetRecords(string, string, string, string, int, 
 func (m *schemaProgrammingMock) UpdateRecord(string, string, string, string, string, string) error {
 	return nil
 }
-func (m *schemaProgrammingMock) DeleteRecord(string, string, string, string) error { return nil }
-func (m *schemaProgrammingMock) ExecuteDMLStatement(string) (string, error)        { return "", nil }
-func (m *schemaProgrammingMock) ExecuteQuery(string) ([][]string, int, error)      { return nil, 0, nil }
-func (m *schemaProgrammingMock) ExecutePendingChanges([]models.DBDMLChange) error  { return nil }
-func (m *schemaProgrammingMock) GetProvider() string                               { return "mock" }
+func (m *schemaProgrammingMock) DeleteRecord(string, string, string, string) error  { return nil }
+func (m *schemaProgrammingMock) ExecuteDMLStatement(string, string) (string, error) { return "", nil }
+func (m *schemaProgrammingMock) ExecuteQuery(string, string) ([][]string, int, error) {
+	return nil, 0, nil
+}
+func (m *schemaProgrammingMock) ExecutePendingChanges([]models.DBDMLChange) error { return nil }
+func (m *schemaProgrammingMock) GetProvider() string                              { return "mock" }
 func (m *schemaProgrammingMock) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
 	return nil, nil
 }

@@ -360,6 +360,69 @@ func TestPostgres_GetRecords(t *testing.T) {
 	}
 }
 
+func TestPostgres_ExecuteQuery_SameDatabase(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	// connectionFor short-circuits to the existing connection when the
+	// requested database matches CurrentDatabase, so no new physical
+	// connection (untestable via sqlmock) is opened.
+	pg := &Postgres{Connection: db, CurrentDatabase: DBNamePostgres}
+
+	rows := sqlmock.NewRows([]string{"id", "name"}).AddRow(1, "Alice")
+
+	mock.ExpectQuery(`SELECT \* FROM users`).WillReturnRows(rows)
+
+	results, total, err := pg.ExecuteQuery(DBNamePostgres, "SELECT * FROM users")
+	if err != nil {
+		t.Fatalf("ExecuteQuery failed: %v", err)
+	}
+
+	if total != 1 {
+		t.Fatalf("Expected total 1, got %d", total)
+	}
+
+	expected := [][]string{
+		{"id", "name"},
+		{"1", "Alice"},
+	}
+
+	if !reflect.DeepEqual(results, expected) {
+		t.Fatalf("Expected %v, got %v", expected, results)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestPostgres_ExecuteQuery_EmptyDatabaseFallsBackToCurrent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	pg := &Postgres{Connection: db, CurrentDatabase: DBNamePostgres}
+
+	rows := sqlmock.NewRows([]string{"id"}).AddRow(1)
+
+	mock.ExpectQuery(`SELECT \* FROM users`).WillReturnRows(rows)
+
+	// Empty database string must not attempt to open a new connection to "".
+	_, _, err = pg.ExecuteQuery("", "SELECT * FROM users")
+	if err != nil {
+		t.Fatalf("ExecuteQuery failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
 func TestPostgres_GetForeignKeys(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {

@@ -870,9 +870,11 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				// Clear existing records immediately for SQL editor queries and
 				// start a cancellable loading cycle on the UI goroutine.
 				var ctx context.Context
+				var database string
 				App.QueueUpdateDraw(func() {
 					table.SetRecords([][]string{})
 					ctx = table.StartLoad()
+					database = table.GetDatabaseName()
 				})
 
 				// Validate before routing: a CTE such as "WITH ... INSERT" starts
@@ -893,7 +895,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							return
 						}
 
-						rows, records, err := table.DBDriver.ExecuteQuery(query)
+						rows, records, err := table.DBDriver.ExecuteQuery(database, query)
 
 						if ctx.Err() != nil {
 							return
@@ -936,7 +938,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 							return
 						}
 
-						result, err := table.DBDriver.ExecuteDMLStatement(query)
+						result, err := table.DBDriver.ExecuteDMLStatement(database, query)
 
 						if ctx.Err() != nil {
 							return

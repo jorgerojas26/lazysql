@@ -415,14 +415,16 @@ func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *te
 type readOnlyRoutingMock struct {
 	schemaProgrammingMock
 
-	mu       sync.Mutex
-	executed []string
+	mu        sync.Mutex
+	executed  []string
+	databases []string
 }
 
-func (m *readOnlyRoutingMock) record(query string) {
+func (m *readOnlyRoutingMock) record(database, query string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.executed = append(m.executed, query)
+	m.databases = append(m.databases, database)
 }
 
 func (m *readOnlyRoutingMock) queries() []string {
@@ -431,13 +433,13 @@ func (m *readOnlyRoutingMock) queries() []string {
 	return append([]string(nil), m.executed...)
 }
 
-func (m *readOnlyRoutingMock) ExecuteQuery(query string) ([][]string, int, error) {
-	m.record(query)
+func (m *readOnlyRoutingMock) ExecuteQuery(database, query string) ([][]string, int, error) {
+	m.record(database, query)
 	return [][]string{{"col"}}, 0, nil
 }
 
-func (m *readOnlyRoutingMock) ExecuteDMLStatement(query string) (string, error) {
-	m.record(query)
+func (m *readOnlyRoutingMock) ExecuteDMLStatement(database, query string) (string, error) {
+	m.record(database, query)
 	return "", nil
 }
 
@@ -468,6 +470,7 @@ func runEditorQuery(t *testing.T, readOnly bool, query string) []string {
 		Table: tview.NewTable(),
 		state: &ResultsTableState{
 			records:         [][]string{},
+			databaseName:    "selected_database",
 			listOfDBChanges: &changes,
 		},
 		Page:        pages,
@@ -498,6 +501,13 @@ func runEditorQuery(t *testing.T, readOnly bool, query string) []string {
 	App.Application.Stop()
 	<-appDone
 
+	driver.mu.Lock()
+	for _, database := range driver.databases {
+		if database != "selected_database" {
+			t.Errorf("editor targeted %q instead of selected database", database)
+		}
+	}
+	driver.mu.Unlock()
 	return driver.queries()
 }
 
@@ -575,5 +585,12 @@ func TestAddRowsRendersBracketValuesLiterally(t *testing.T) {
 		if !strings.Contains(line.String(), want) {
 			t.Errorf("rendered row %q does not contain %q", line.String(), want)
 		}
+	}
+}
+
+func TestEditorRoutesWritesToSelectedDatabase(t *testing.T) {
+	query := "UPDATE items SET value = 2"
+	if executed := runEditorQuery(t, false, query); len(executed) != 1 || executed[0] != query {
+		t.Fatalf("expected editor write, got %q", executed)
 	}
 }

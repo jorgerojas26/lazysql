@@ -623,8 +623,18 @@ func (db *Postgres) DeleteRecord(database, table, primaryKeyColumnName, primaryK
 	return err
 }
 
-func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error) {
-	res, err := db.Connection.Exec(query)
+func (db *Postgres) ExecuteDMLStatement(database, query string) (result string, err error) {
+	if database == "" {
+		database = db.CurrentDatabase
+	}
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return "", err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+	res, err := conn.Exec(query)
 	if err != nil {
 		return result, err
 	}
@@ -635,8 +645,23 @@ func (db *Postgres) ExecuteDMLStatement(query string) (result string, err error)
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *Postgres) ExecuteQuery(query string) ([][]string, int, error) {
-	rows, err := db.Connection.Query(query)
+func (db *Postgres) ExecuteQuery(database, query string) ([][]string, int, error) {
+	// An empty database falls back to whatever the connection is currently
+	// on (preserves pre-existing behavior for callers that don't resolve a
+	// database name).
+	if database == "" {
+		database = db.CurrentDatabase
+	}
+
+	conn, needsClose, err := db.connectionFor(database)
+	if err != nil {
+		return nil, 0, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	rows, err := conn.Query(query)
 	if err != nil {
 		return nil, 0, err
 	}
