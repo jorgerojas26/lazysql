@@ -108,6 +108,22 @@ func TestThemePresetsAreComplete(t *testing.T) {
 	}
 }
 
+func TestLightThemePaintsItsOwnBackground(t *testing.T) {
+	theme, err := NewTheme(ThemeConfig{Preset: "light"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if theme.PrimitiveBackgroundColor == tcell.ColorDefault {
+		t.Fatal("light theme uses the terminal background")
+	}
+	if theme.PrimaryTextColor == tcell.ColorDefault {
+		t.Fatal("light theme uses the terminal foreground")
+	}
+	if theme.PrimitiveBackgroundColor == theme.PrimaryTextColor {
+		t.Fatal("light theme background and primary text colors are identical")
+	}
+}
+
 func TestNewThemeOverrides(t *testing.T) {
 	theme, err := NewTheme(ThemeConfig{
 		Preset: "Light",

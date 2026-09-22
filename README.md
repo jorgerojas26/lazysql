@@ -218,7 +218,7 @@ Presets:
 | Preset | Description |
 | ------ | ----------- |
 | `default` | The standard lazysql colors, on the terminal's background |
-| `light` | For light terminal backgrounds |
+| `light` | GitHub-inspired light palette with a painted background |
 | `dracula` | [Dracula](https://draculatheme.com) |
 | `gruvbox-dark` | [Gruvbox](https://github.com/morhetz/gruvbox) dark |
 | `nord` | [Nord](https://www.nordtheme.com) |
@@ -228,7 +228,7 @@ Presets:
 
 Press `Ctrl+T` anywhere in lazysql to open the theme picker. Move with the arrow keys, `j`/`k`, or `Ctrl+N`/`Ctrl+P` to preview each theme across the running application. Press `Enter` to apply and save the selected preset, or `q`/`Esc` to restore the previous theme.
 
-`default` and `light` use the terminal's background color. The other presets paint their own background.
+`default` uses the terminal's background color. All other presets paint their own background.
 
 A color is a name (`"red"`, `"dodgerblue"`, any [W3C color name](https://github.com/gdamore/tcell/blob/v2.7.4/color.go#L851)), a hex value (`"#RRGGBB"`), or `"default"` for the terminal's own color. Unknown keys, presets and colors are reported when lazysql starts.
 

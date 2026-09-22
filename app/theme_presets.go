@@ -58,19 +58,19 @@ var ThemePresets = map[string]map[string]string{
 		"JSONNumber":  "#83A598",
 	},
 
-	// For light terminal backgrounds. Keeps the terminal's background and
-	// foreground, and uses dark accents that read on white.
+	// GitHub-inspired light palette. It paints its own background so it remains
+	// light regardless of the user's terminal color scheme.
 	"light": {
-		"PrimitiveBackground":    "default",
-		"ContrastBackground":     "#EAEEF2",
+		"PrimitiveBackground":    "#FFFFFF",
+		"ContrastBackground":     "#F6F8FA",
 		"MoreContrastBackground": "#D0D7DE",
 		"Border":                 "#57606A",
 		"Title":                  "#24292F",
-		"Graphics":               "#8C959F",
-		"PrimaryText":            "default",
-		"SecondaryText":          "#9A6700",
+		"Graphics":               "#57606A",
+		"PrimaryText":            "#24292F",
+		"SecondaryText":          "#0969DA",
 		"TertiaryText":           "#1A7F37",
-		"InverseText":            "#24292F",
+		"InverseText":            "#57606A",
 		"ContrastSecondaryText":  "#FFFFFF",
 
 		"SidebarTitleBorder": "#8C959F",
@@ -86,7 +86,7 @@ var ThemePresets = map[string]map[string]string{
 		"EditorStatusBarBackground": "#D0D7DE",
 		"EditorStatusBarText":       "#24292F",
 
-		"AutocompleteBackground":  "#EAEEF2",
+		"AutocompleteBackground":  "#F6F8FA",
 		"AutocompleteText":        "#24292F",
 		"AutocompleteSelected":    "#B6E3FF",
 		"AutocompleteDescription": "#57606A",
