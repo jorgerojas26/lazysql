@@ -10,6 +10,7 @@ var App = app.App
 const (
 	// General
 	pageNameHelp          string = "Help"
+	pageNameThemePicker   string = "ThemePicker"
 	pageNameConfirmation  string = "Confirmation"
 	pageNameConnections   string = "Connections"
 	pageNameDMLPreview    string = "DMLPreview"

@@ -9,6 +9,7 @@ const (
 	SwitchToEditorView
 	SwitchToConnectionsView
 	HelpPopup
+	ThemePicker
 	ToggleQueryHistory
 	ToggleTree
 	WidenTree
@@ -101,6 +102,8 @@ func (c Command) String() string {
 		return "SwitchToConnectionsView"
 	case HelpPopup:
 		return "HelpPopup"
+	case ThemePicker:
+		return "ThemePicker"
 	case ToggleQueryHistory:
 		return "ToggleQueryHistory"
 	case ToggleTree:

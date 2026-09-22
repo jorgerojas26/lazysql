@@ -223,6 +223,10 @@ Presets:
 | `gruvbox-dark` | [Gruvbox](https://github.com/morhetz/gruvbox) dark |
 | `nord` | [Nord](https://www.nordtheme.com) |
 | `solarized-light` | [Solarized](https://ethanschoonover.com/solarized/) light |
+| `tokyo-night` | [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) |
+| `catppuccin-mocha` | [Catppuccin](https://github.com/catppuccin/catppuccin) Mocha |
+
+Press `Ctrl+T` anywhere in lazysql to open the theme picker. Move with the arrow keys, `j`/`k`, or `Ctrl+N`/`Ctrl+P` to preview each theme across the running application. Press `Enter` to apply and save the selected preset, or `q`/`Esc` to restore the previous theme.
 
 `default` and `light` use the terminal's background color. The other presets paint their own background.
 

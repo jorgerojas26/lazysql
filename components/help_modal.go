@@ -33,6 +33,10 @@ func NewHelpModal() *HelpModal {
 		Wrapper: tview.NewFlex(),
 	}
 
+	modal.KeybindGroups = append(modal.KeybindGroups, KeybindGroup{
+		Group: app.GlobalGroup,
+		Binds: app.Keymaps.Global,
+	})
 	for group, binds := range app.Keymaps.Groups {
 		modal.KeybindGroups = append(modal.KeybindGroups, KeybindGroup{
 			Group: group,

@@ -281,6 +281,34 @@ Title = "green"
 	}
 }
 
+func TestSaveThemePreset(t *testing.T) {
+	config := defaultConfig()
+	config.ConfigFile = filepath.Join(t.TempDir(), "config.toml")
+	config.Theme = &ThemeConfig{
+		Preset: "dracula",
+		Colors: map[string]string{"Border": "red"},
+	}
+
+	if err := config.SaveThemePreset("tokyo-night"); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := os.ReadFile(config.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved Config
+	if err := toml.Unmarshal(file, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Theme == nil || saved.Theme.Preset != "tokyo-night" {
+		t.Fatalf("saved theme = %#v, want tokyo-night", saved.Theme)
+	}
+	if len(saved.Theme.Colors) != 0 {
+		t.Fatalf("saved theme overrides = %v, want none", saved.Theme.Colors)
+	}
+}
+
 // Saving connections must not add a [theme] section to a config without one.
 func TestThemeNotWrittenWhenUnset(t *testing.T) {
 	var buf bytes.Buffer

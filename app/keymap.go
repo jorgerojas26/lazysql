@@ -42,6 +42,7 @@ func (c KeymapSystem) Resolve(event *tcell.EventKey) cmd.Command {
 }
 
 const (
+	GlobalGroup       = "global"
 	HomeGroup         = "home"
 	TreeGroup         = "tree"
 	TreeFilterGroup   = "treefilter"
@@ -57,6 +58,9 @@ const (
 
 // Define a global KeymapSystem object with default keybinds
 var Keymaps = KeymapSystem{
+	Global: Map{
+		Bind{Key: Key{Code: tcell.KeyCtrlT}, Cmd: cmd.ThemePicker, Description: "Choose color theme"},
+	},
 	Groups: map[string]Map{
 		HomeGroup: {
 			Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight, Description: "Focus table"},
@@ -239,6 +243,15 @@ func ApplyKeymapConfig(keymaps models.KeymapConfig) error {
 
 	for groupName, bindings := range keymaps {
 		groupKey := strings.ToLower(groupName)
+		if groupKey == GlobalGroup {
+			updated, err := setBindings(bindings, Keymaps.Global, groupName)
+			if err != nil {
+				return err
+			}
+			Keymaps.Global = updated
+			continue
+		}
+
 		group, ok := Keymaps.Groups[groupKey]
 		if !ok {
 			return fmt.Errorf("unknown keymap group: %s", groupName)
