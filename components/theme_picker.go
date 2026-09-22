@@ -25,7 +25,7 @@ type ThemePicker struct {
 func NewThemePicker(onClose func()) *ThemePicker {
 	picker := &ThemePicker{
 		Flex:           tview.NewFlex().SetDirection(tview.FlexRow),
-		list:           tview.NewList().ShowSecondaryText(true),
+		list:           tview.NewList().ShowSecondaryText(false),
 		preview:        tview.NewTextView().SetDynamicColors(true),
 		status:         tview.NewTextView(),
 		originalConfig: app.App.ThemeConfig(),
@@ -43,17 +43,6 @@ func NewThemePicker(onClose func()) *ThemePicker {
 	picker.status.SetTextAlign(tview.AlignCenter)
 	picker.status.SetDynamicColors(true)
 
-	descriptions := map[string]string{
-		"default":          "Terminal background with classic lazysql colors",
-		"light":            "Dark accents for a light terminal background",
-		"dracula":          "Dracula's purple, pink, and green palette",
-		"gruvbox-dark":     "Warm retro dark palette",
-		"nord":             "Cool arctic dark palette",
-		"solarized-light":  "Solarized light palette",
-		"tokyo-night":      "Deep blue Tokyo Night palette",
-		"catppuccin-mocha": "Catppuccin's dark Mocha palette",
-	}
-
 	names := app.ThemePresetNames()
 	currentPreset := strings.ToLower(picker.originalConfig.Preset)
 	if currentPreset == "" {
@@ -61,7 +50,7 @@ func NewThemePicker(onClose func()) *ThemePicker {
 	}
 	currentIndex := 0
 	for index, name := range names {
-		picker.list.AddItem(name, descriptions[name], 0, nil)
+		picker.list.AddItem(name, "", 0, nil)
 		if name == currentPreset {
 			currentIndex = index
 		}
