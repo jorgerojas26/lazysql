@@ -4,8 +4,8 @@ services:
     environment:
       MYSQL_DATABASE: lazysql_test
       MYSQL_USER: lazysql
-      MYSQL_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
-      MYSQL_ROOT_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
+      MYSQL_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
+      MYSQL_ROOT_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
     ports:
       - "127.0.0.1:3307:3306"
     volumes:
@@ -30,7 +30,7 @@ services:
     environment:
       POSTGRES_DB: lazysql_test
       POSTGRES_USER: lazysql
-      POSTGRES_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
+      POSTGRES_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
@@ -54,7 +54,7 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
+      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
       MSSQL_PID: Developer
     ports:
       - "127.0.0.1:14331:1433"
@@ -78,7 +78,7 @@ services:
       mssql:
         condition: service_healthy
     environment:
-      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
+      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
     volumes:
       - ./testdata/mssql:/seed:ro
     entrypoint:

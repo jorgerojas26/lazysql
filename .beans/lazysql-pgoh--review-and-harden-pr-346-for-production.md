@@ -1,11 +1,11 @@
 ---
 # lazysql-pgoh
 title: Review and harden PR 346 for production
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-09-22T06:03:36Z
-updated_at: 2026-09-22T06:29:53Z
+updated_at: 2026-09-22T06:35:00Z
 ---
 
 Review streaming, cancellation, metadata and exports; reconcile current main compatibility, fix confirmed issues with regression tests, remove committed fixture credentials, and validate tests/race/build/lint.
@@ -28,3 +28,9 @@ Passed go test ./..., go test -race ./... -count=3, go build ./..., golangci-lin
 ## Publication
 
 Local fixes prepared on fix/pr346-production in /private/tmp/lazysql-pr346-review. Remote CI/security gates must be rechecked after publication.
+
+## Summary of Changes
+
+Published c75d799 to feat/network-performance with operator approval using a normal non-force push. GitHub now reports MERGEABLE. CI run 35695242311 passed lint, tests, race detector, performance contracts, and build.
+
+Follow-up: simplified required Compose interpolation to ${LAZYSQL_FIXTURE_PASSWORD:?}; GitGuardian incorrectly identified the previous interpolation error message as a Generic Password (incident 37513126). No generated local passwords were committed. Historical development-fixture incidents 37224298, 37224299, 37224300 and interpolation false positive 37513126 require owner review in GitGuardian. No history rewrite or scanner suppression was performed. Code-review remediation and validation are complete; security-check clearance remains an external merge gate.
