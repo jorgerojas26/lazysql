@@ -453,14 +453,22 @@ func TestReadOnlyAllowsCTESelect(t *testing.T) {
 }
 
 func TestAddRowsRendersBracketValuesLiterally(t *testing.T) {
+	headers := []string{"a", "status[red]", `payload["key"]`, "d", "e"}
 	values := []string{`["x"] and [red]hi`, "[::b]bold", "[red[]", "plain"}
 
 	table := newMarkTestTable(nil)
 	table.DBDriver = &drivers.MySQL{}
 	table.AddRows([][]string{
-		{"a", "b", "c", "d", "e"},
+		headers,
 		{values[0], values[1], values[2], values[3], "NULL&"},
 	})
+
+	// Headers double as column identifiers, so they must remain raw.
+	for col, want := range headers {
+		if got := table.GetCell(0, col).Text; got != want {
+			t.Errorf("header (0, %d) = %q, want %q", col, got, want)
+		}
+	}
 
 	for col, want := range values {
 		if got := cellText(table.GetCell(1, col)); got != want {

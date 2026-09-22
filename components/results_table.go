@@ -373,7 +373,11 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 func (table *ResultsTable) AddRows(rows [][]string) {
 	for i, row := range rows {
 		for j, cell := range row {
-			tableCell := tview.NewTableCell(tview.Escape(cell))
+			displayText := cell
+			if i > 0 {
+				displayText = tview.Escape(cell)
+			}
+			tableCell := tview.NewTableCell(displayText)
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
