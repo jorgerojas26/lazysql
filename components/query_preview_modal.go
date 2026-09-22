@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 
@@ -86,6 +87,9 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 				if buttonLabel == "Yes" {
 					err := dbdriver.ExecutePendingChanges(*queries)
 					if err != nil {
+						if removeAppliedPendingChanges(queries, err) {
+							r.populateTable()
+						}
 						r.SetError(err.Error())
 						return
 					}
@@ -134,6 +138,17 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	r.populateTable()
 
 	return r
+}
+
+func removeAppliedPendingChanges(queries *[]models.DBDMLChange, err error) bool {
+	var partialErr *drivers.PartialExecutionError
+	if !errors.As(err, &partialErr) || partialErr.Applied <= 0 {
+		return false
+	}
+
+	applied := min(partialErr.Applied, len(*queries))
+	*queries = slices.Delete(*queries, 0, applied)
+	return true
 }
 
 func (modal *QueryPreviewModal) SetError(err string) {

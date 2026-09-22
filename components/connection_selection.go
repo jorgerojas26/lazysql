@@ -242,8 +242,10 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		newDBDriver = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
 		newDBDriver = &drivers.MSSQL{}
+	case drivers.DriverClickHouse:
+		newDBDriver = &drivers.ClickHouse{}
 	default:
-		errorMsg := fmt.Sprintf("Unsupported database provider: '%s'. Valid providers are: mysql, postgres, sqlite3, sqlserver", connection.Provider)
+		errorMsg := fmt.Sprintf("Unsupported database provider: '%s'. Valid providers are: mysql, postgres, sqlite3, sqlserver, clickhouse", connection.Provider)
 		cs.StatusText.SetText(errorMsg).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return App.Draw()
 	}
