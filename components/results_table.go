@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -1071,36 +1070,6 @@ func (table *ResultsTable) subscribeToFilterChanges() {
 			}
 		}
 	}
-}
-
-var returningClausePattern = regexp.MustCompile(`\breturning\b`)
-
-// queryReturnsRows reports whether an editor query produces a result set and
-// must run through ExecuteQuery; anything else goes to ExecuteDMLStatement,
-// which only reports the number of rows affected.
-func queryReturnsRows(query string) bool {
-	queryTrimmed := strings.ToLower(drivers.StripSQLComments(query))
-
-	if strings.HasPrefix(queryTrimmed, "select") ||
-		strings.HasPrefix(queryTrimmed, "with") ||
-		strings.HasPrefix(queryTrimmed, "explain") ||
-		strings.HasPrefix(queryTrimmed, "show") ||
-		strings.HasPrefix(queryTrimmed, "describe") ||
-		strings.HasPrefix(queryTrimmed, "desc") ||
-		strings.HasPrefix(queryTrimmed, "values") ||
-		strings.HasPrefix(queryTrimmed, "pragma") {
-		return true
-	}
-
-	// INSERT, UPDATE and DELETE with a RETURNING clause (PostgreSQL, SQLite,
-	// MariaDB) return the affected rows.
-	if strings.HasPrefix(queryTrimmed, "insert") ||
-		strings.HasPrefix(queryTrimmed, "update") ||
-		strings.HasPrefix(queryTrimmed, "delete") {
-		return returningClausePattern.MatchString(queryTrimmed)
-	}
-
-	return false
 }
 
 func (table *ResultsTable) subscribeToEditorChanges() {
