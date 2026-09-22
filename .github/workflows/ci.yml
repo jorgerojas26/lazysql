@@ -30,5 +30,14 @@ jobs:
       - name: Test
         run: go test -v ./...
 
+      - name: Race detector
+        run: go test -race ./...
+
+      - name: Network performance contract
+        run: >-
+          go test ./components ./drivers ./app ./helpers ./helpers/logger ./internal/benchmarks
+          -run
+          'Test(FetchRecords|PaginationUsesPageFetchOnlyAfterMetadataIsCached|AutomaticCount|ManualExactCount|Metadata|Stale|EditorStream|CancelActiveQuery|Export|CanExport|ReplaySafe|SuccessfulEditorDDL|EditorDML|SQLiteStream|ExactRowCount|SQLiteGetRecords|MySQL_GetForeignKeys|ApplyConnectionPool|ConnectionPool|CSVWriter|SchemaLoader|PerformanceKeybindings|DebugPerformance|Scenario|Harness|ParseRTTs)'
+
       - name: Build
         run: go build -v ./...

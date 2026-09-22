@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"os"
 	"reflect"
@@ -24,10 +25,10 @@ func TestClickHouse_Integration(t *testing.T) {
 	const database = "lazysql_integration"
 
 	db := &ClickHouse{}
-	if err := db.TestConnection(url); err != nil {
+	if err := db.TestConnection(context.Background(), url); err != nil {
 		t.Fatalf("TestConnection: %v", err)
 	}
-	if err := db.Connect(url); err != nil {
+	if err := db.Connect(context.Background(), url); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
 	defer db.Connection.Close()
@@ -63,7 +64,7 @@ func TestClickHouse_Integration(t *testing.T) {
 	}
 	defer db.Connection.Exec("DROP DATABASE IF EXISTS " + database) //nolint:errcheck
 
-	databases, err := db.GetDatabases()
+	databases, err := db.GetDatabases(context.Background())
 	if err != nil {
 		t.Fatalf("GetDatabases: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetDatabases: unexpected result %v", databases)
 	}
 
-	tables, err := db.GetTables(database)
+	tables, err := db.GetTables(context.Background(), database)
 	if err != nil {
 		t.Fatalf("GetTables: %v", err)
 	}
@@ -79,7 +80,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetTables: unexpected result %v", tables)
 	}
 
-	columns, err := db.GetTableColumns(database, "events")
+	columns, err := db.GetTableColumns(context.Background(), database, "events")
 	if err != nil {
 		t.Fatalf("GetTableColumns: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetTableColumns: unexpected result %v", columns)
 	}
 
-	constraints, err := db.GetConstraints(database, "events")
+	constraints, err := db.GetConstraints(context.Background(), database, "events")
 	if err != nil {
 		t.Fatalf("GetConstraints: %v", err)
 	}
@@ -95,12 +96,12 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetConstraints: unexpected result %v", constraints)
 	}
 
-	foreignKeys, err := db.GetForeignKeys(database, "events")
+	foreignKeys, err := db.GetForeignKeys(context.Background(), database, "events")
 	if err != nil || len(foreignKeys) != 1 {
 		t.Fatalf("GetForeignKeys: unexpected result %v, %v", foreignKeys, err)
 	}
 
-	indexes, err := db.GetIndexes(database, "events")
+	indexes, err := db.GetIndexes(context.Background(), database, "events")
 	if err != nil {
 		t.Fatalf("GetIndexes: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetIndexes: unexpected result %v", indexes)
 	}
 
-	primaryKeys, err := db.GetPrimaryKeyColumnNames(database, "events")
+	primaryKeys, err := db.GetPrimaryKeyColumnNames(context.Background(), database, "events")
 	if err != nil {
 		t.Fatalf("GetPrimaryKeyColumnNames: %v", err)
 	}
@@ -116,17 +117,18 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetPrimaryKeyColumnNames: unexpected result %v", primaryKeys)
 	}
 
-	noPrimaryKeys, err := db.GetPrimaryKeyColumnNames(database, "logs")
+	noPrimaryKeys, err := db.GetPrimaryKeyColumnNames(context.Background(), database, "logs")
 	if err != nil || len(noPrimaryKeys) != 0 {
 		t.Fatalf("GetPrimaryKeyColumnNames(logs): unexpected result %v, %v", noPrimaryKeys, err)
 	}
 
-	records, total, query, err := db.GetRecords(database, "events", "", "id ASC", 0, 0)
+	page, err := db.GetRecords(context.Background(), database, "events", "", "id ASC", 0, 0)
 	if err != nil {
 		t.Fatalf("GetRecords: %v", err)
 	}
-	if total != 3 || len(records) != 4 {
-		t.Fatalf("GetRecords: expected 3 records, got total %d, rows %v (query %s)", total, records, query)
+	records := page.Rows
+	if page.HasNextPage || len(records) != 4 {
+		t.Fatalf("GetRecords: expected 3 records, got total %d, rows %v (query %s)", len(records)-1, records, page.Query)
 	}
 	expectedFirst := []string{"1", "2024-01-01", "2024-01-01 10:00:00.123", "alpha", "NULL&", "['a','b']", "{'k':1}", "1.5"}
 	if !reflect.DeepEqual(records[1], expectedFirst) {
@@ -136,15 +138,22 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("GetRecords: expected EMPTY& for empty string, got %q", records[3][3])
 	}
 
-	records, total, _, err = db.GetRecords(database, "events", "WHERE id > 1", "id DESC", 1, 1)
+	page, err = db.GetRecords(context.Background(), database, "events", "WHERE id > 1", "id DESC", 1, 1)
 	if err != nil {
 		t.Fatalf("GetRecords (filtered): %v", err)
 	}
-	if total != 2 || len(records) != 2 || records[1][0] != "2" {
-		t.Fatalf("GetRecords (filtered): unexpected total %d, rows %v", total, records)
+	records = page.Rows
+	if page.HasNextPage || len(records) != 2 || records[1][0] != "2" {
+		t.Fatalf("GetRecords (filtered): unexpected total %d, rows %v", len(records)-1, records)
 	}
 
-	results, count, err := db.ExecuteQuery("", "SELECT id, note FROM "+database+".events ORDER BY id")
+	var streamed [][]string
+	streamResult, streamErr := db.StreamQuery(context.Background(), "", "SELECT id, note, tags, attrs FROM "+database+".events ORDER BY id", 2, func(batch QueryBatch) error { streamed = append(streamed, batch.Rows...); return nil })
+	if streamErr != nil || !streamResult.Truncated || len(streamed) != 2 || !reflect.DeepEqual(streamed[0], []string{"1", "NULL", "['a','b']", "{'k':1}"}) {
+		t.Fatalf("typed stream = %v, %+v, %v", streamed, streamResult, streamErr)
+	}
+
+	results, count, err := db.ExecuteQuery(context.Background(), "", "SELECT id, note FROM "+database+".events ORDER BY id")
 	if err != nil {
 		t.Fatalf("ExecuteQuery: %v", err)
 	}
@@ -152,7 +161,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("ExecuteQuery: unexpected result %v", results)
 	}
 
-	if _, err := db.ExecuteDMLStatement("", "INSERT INTO "+database+".logs VALUES ('hello')"); err != nil {
+	if _, err := db.ExecuteDMLStatement(context.Background(), "", "INSERT INTO "+database+".logs VALUES ('hello')"); err != nil {
 		t.Fatalf("ExecuteDMLStatement: %v", err)
 	}
 
@@ -192,11 +201,11 @@ func TestClickHouse_Integration(t *testing.T) {
 			t.Fatalf("DMLChangeToQueryString: %v", err)
 		}
 	}
-	if err := db.ExecutePendingChanges(changes); err != nil {
+	if err := db.ExecutePendingChanges(context.Background(), changes); err != nil {
 		t.Fatalf("ExecutePendingChanges: %v", err)
 	}
 
-	results, _, err = db.ExecuteQuery("", "SELECT id, name, note IS NULL AS note_is_null, score, attrs FROM "+database+".events ORDER BY id")
+	results, _, err = db.ExecuteQuery(context.Background(), "", "SELECT id, name, note IS NULL AS note_is_null, score, attrs FROM "+database+".events ORDER BY id")
 	if err != nil {
 		t.Fatalf("ExecuteQuery after changes: %v", err)
 	}
@@ -221,18 +230,18 @@ func TestClickHouse_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DMLChangeToQueryString: %v", err)
 	}
-	if _, err := db.Connection.ExecContext(clickHouseMutationContext(), preview); err != nil {
+	if _, err := db.Connection.ExecContext(clickHouseMutationContext(context.Background()), preview); err != nil {
 		t.Fatalf("executing preview %q: %v", preview, err)
 	}
 
-	if err := db.UpdateRecord(database, "events", "name", "via UpdateRecord", "id", "4"); err != nil {
+	if err := db.UpdateRecord(context.Background(), database, "events", "name", "via UpdateRecord", "id", "4"); err != nil {
 		t.Fatalf("UpdateRecord: %v", err)
 	}
-	if err := db.DeleteRecord(database, "events", "id", "1"); err != nil {
+	if err := db.DeleteRecord(context.Background(), database, "events", "id", "1"); err != nil {
 		t.Fatalf("DeleteRecord: %v", err)
 	}
 
-	results, _, err = db.ExecuteQuery("", "SELECT id, name FROM "+database+".events ORDER BY id")
+	results, _, err = db.ExecuteQuery(context.Background(), "", "SELECT id, name FROM "+database+".events ORDER BY id")
 	if err != nil {
 		t.Fatalf("ExecuteQuery after UpdateRecord/DeleteRecord: %v", err)
 	}
@@ -245,7 +254,7 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("UpdateRecord/DeleteRecord: expected %v, got %v", expected, results)
 	}
 
-	complexResults, _, err := db.ExecuteQuery("", `SELECT
+	complexResults, _, err := db.ExecuteQuery(context.Background(), "", `SELECT
 		[toDate('2024-01-02')] AS dates,
 		[toUUID('61f0c404-5cb3-11e7-907b-a6006ad3dba0')] AS ids,
 		CAST((2, 'x') AS Nullable(Tuple(Int32, String))) AS nullable_tuple,
@@ -273,21 +282,21 @@ func TestClickHouse_Integration(t *testing.T) {
 		}
 	}
 	defer db.Connection.Exec("DROP DATABASE IF EXISTS " + db.FormatReference(oddDatabase)) //nolint:errcheck
-	oddRecords, _, _, err := db.GetRecords(oddDatabase, oddTable, "", "", 0, 10)
-	if err != nil || !reflect.DeepEqual(oddRecords, [][]string{{"id", oddColumn}, {"1", "before"}}) {
-		t.Fatalf("GetRecords with escaped identifiers: %v, %v", oddRecords, err)
+	oddPage, err := db.GetRecords(context.Background(), oddDatabase, oddTable, "", "", 0, 10)
+	if err != nil || !reflect.DeepEqual(oddPage.Rows, [][]string{{"id", oddColumn}, {"1", "before"}}) {
+		t.Fatalf("GetRecords with escaped identifiers: %v, %v", oddPage.Rows, err)
 	}
-	if err := db.UpdateRecord(oddDatabase, oddTable, oddColumn, "after", "id", "1"); err != nil {
+	if err := db.UpdateRecord(context.Background(), oddDatabase, oddTable, oddColumn, "after", "id", "1"); err != nil {
 		t.Fatalf("UpdateRecord with escaped identifiers: %v", err)
 	}
-	oddRecords, _, _, err = db.GetRecords(oddDatabase, oddTable, "", "", 0, 10)
-	if err != nil || oddRecords[1][1] != "after" {
-		t.Fatalf("updated escaped identifier record: %v, %v", oddRecords, err)
+	oddPage, err = db.GetRecords(context.Background(), oddDatabase, oddTable, "", "", 0, 10)
+	if err != nil || oddPage.Rows[1][1] != "after" {
+		t.Fatalf("updated escaped identifier record: %v, %v", oddPage.Rows, err)
 	}
 
 	// Mutations are not supported on the TinyLog engine. Verify that a prior
 	// successful insert is reported so the caller can remove it before retrying.
-	err = db.ExecutePendingChanges([]models.DBDMLChange{
+	err = db.ExecutePendingChanges(context.Background(), []models.DBDMLChange{
 		{
 			Type:     models.DMLInsertType,
 			Database: database,

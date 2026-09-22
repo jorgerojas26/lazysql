@@ -3,6 +3,7 @@ package helpers
 import (
 	"bufio"
 	"encoding/csv"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,12 +16,15 @@ type CSVWriter struct {
 	bufferedWriter *bufio.Writer
 	csvWriter      *csv.Writer
 	columnCount    int
+	initialized    bool
 	rowCount       int
 	cleanedRecord  []string // reusable slice to reduce allocations
 	tempPath       string
 	finalPath      string
 	done           bool
 }
+
+var errCSVWriterClosed = errors.New("CSV writer is closed")
 
 // NewCSVWriter creates a new CSVWriter that writes to a temporary file.
 // Call Commit() to finalize the file, or Abort() to discard it.
@@ -54,17 +58,46 @@ func (w *CSVWriter) WriteRecords(records [][]string, includeHeader bool) error {
 	if len(records) == 0 {
 		return nil
 	}
+	return w.writeBatch(records[0], records[1:], includeHeader, true)
+}
 
-	// Initialize column count and reusable slice on first write
-	if w.columnCount == 0 {
-		w.columnCount = len(records[0])
+// WriteBatch writes one streamed batch to CSV. columns is the header returned
+// by the database and rows contains data rows only. Keeping this API separate
+// from WriteRecords lets query exports write each driver batch directly without
+// assembling a complete result in memory.
+func (w *CSVWriter) WriteBatch(columns []string, rows [][]string, includeHeader bool) error {
+	return w.writeBatch(columns, rows, includeHeader, false)
+}
+
+func (w *CSVWriter) writeBatch(columns []string, rows [][]string, includeHeader, cleanMarkers bool) error {
+	if w.done {
+		return errCSVWriterClosed
+	}
+	if len(columns) == 0 && len(rows) == 0 {
+		return nil
+	}
+	if !w.initialized {
+		if len(columns) == 0 {
+			if len(rows) == 0 {
+				return nil
+			}
+			columns = rows[0]
+			if includeHeader {
+				rows = rows[1:]
+			}
+		}
+		w.columnCount = len(columns)
 		w.cleanedRecord = make([]string, w.columnCount)
+		w.initialized = true
 	}
 
-	writeRow := func(record []string) error {
+	writeRow := func(record []string, clean bool) error {
 		for i := range w.cleanedRecord {
 			if i < len(record) {
-				w.cleanedRecord[i] = CleanCellValue(record[i])
+				w.cleanedRecord[i] = record[i]
+				if clean {
+					w.cleanedRecord[i] = CleanCellValue(record[i])
+				}
 			} else {
 				w.cleanedRecord[i] = ""
 			}
@@ -72,13 +105,13 @@ func (w *CSVWriter) WriteRecords(records [][]string, includeHeader bool) error {
 		return w.csvWriter.Write(w.cleanedRecord)
 	}
 
-	if includeHeader {
-		if err := writeRow(records[0]); err != nil {
+	if includeHeader && len(columns) > 0 {
+		if err := writeRow(columns, false); err != nil {
 			return err
 		}
 	}
-	for _, record := range records[1:] {
-		if err := writeRow(record); err != nil {
+	for _, record := range rows {
+		if err := writeRow(record, cleanMarkers); err != nil {
 			return err
 		}
 		w.rowCount++
@@ -104,13 +137,22 @@ func (w *CSVWriter) Commit() error {
 		return err
 	}
 
-	w.done = true
 	if err := w.file.Close(); err != nil {
+		w.done = true
+		_ = os.Remove(w.tempPath)
+		return err
+	}
+	w.done = true
+
+	if err := os.Rename(w.tempPath, w.finalPath); err != nil {
+		// The final path is never touched unless rename succeeds. Remove the
+		// closed temporary file on failure so an aborted export cannot leak a
+		// partial artifact beside the requested destination.
 		_ = os.Remove(w.tempPath)
 		return err
 	}
 
-	return os.Rename(w.tempPath, w.finalPath)
+	return nil
 }
 
 // Abort closes the temp file and removes it.

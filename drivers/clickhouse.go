@@ -26,13 +26,14 @@ const clickHouseMutationsSync = 2
 type ClickHouse struct {
 	Connection *sql.DB
 	Provider   string
+	PoolConfig models.ConnectionPoolConfig
 }
 
-func (db *ClickHouse) TestConnection(urlstr string) error {
-	return db.Connect(urlstr)
+func (db *ClickHouse) TestConnection(ctx context.Context, urlstr string) error {
+	return db.Connect(ctx, urlstr)
 }
 
-func (db *ClickHouse) Connect(urlstr string) (err error) {
+func (db *ClickHouse) Connect(ctx context.Context, urlstr string) (err error) {
 	db.SetProvider(DriverClickHouse)
 
 	db.Connection, err = dburl.Open(urlstr)
@@ -40,11 +41,19 @@ func (db *ClickHouse) Connect(urlstr string) (err error) {
 		return err
 	}
 
-	return db.Connection.Ping()
+	if err := applyConnectionPoolConfig(db.Connection, db.PoolConfig); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
+	if err := db.Connection.PingContext(contextOrBackground(ctx)); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
+	return nil
 }
 
-func (db *ClickHouse) GetDatabases() ([]string, error) {
-	rows, err := db.Connection.Query("SELECT name FROM system.databases WHERE name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA') ORDER BY name")
+func (db *ClickHouse) GetDatabases(ctx context.Context) ([]string, error) {
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), "SELECT name FROM system.databases WHERE name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA') ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -65,12 +74,12 @@ func (db *ClickHouse) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *ClickHouse) GetTables(database string) (map[string][]string, error) {
+func (db *ClickHouse) GetTables(ctx context.Context, database string) (map[string][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	rows, err := db.Connection.Query("SELECT name FROM system.tables WHERE database = ? AND NOT is_temporary ORDER BY name", database)
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), "SELECT name FROM system.tables WHERE database = ? AND NOT is_temporary ORDER BY name", database)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +100,7 @@ func (db *ClickHouse) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *ClickHouse) GetTableColumns(database, table string) ([][]string, error) {
+func (db *ClickHouse) GetTableColumns(ctx context.Context, database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -102,13 +111,13 @@ func (db *ClickHouse) GetTableColumns(database, table string) ([][]string, error
 
 	query := "SELECT name, type, default_kind, default_expression, is_in_partition_key, is_in_sorting_key, is_in_primary_key, comment FROM system.columns WHERE database = ? AND table = ? ORDER BY position"
 
-	return db.queryMetadata(query, database, table)
+	return db.queryMetadata(ctx, query, database, table)
 }
 
 // GetConstraints returns the table engine and keys. ClickHouse has no
 // PRIMARY/UNIQUE/FOREIGN KEY constraints; the partition, sorting and primary
 // keys are what define how a table is organized.
-func (db *ClickHouse) GetConstraints(database, table string) ([][]string, error) {
+func (db *ClickHouse) GetConstraints(ctx context.Context, database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -119,12 +128,12 @@ func (db *ClickHouse) GetConstraints(database, table string) ([][]string, error)
 
 	query := "SELECT engine, partition_key, sorting_key, primary_key, sampling_key FROM system.tables WHERE database = ? AND name = ?"
 
-	return db.queryMetadata(query, database, table)
+	return db.queryMetadata(ctx, query, database, table)
 }
 
 // GetForeignKeys returns only the header row because ClickHouse does not
 // support foreign keys.
-func (db *ClickHouse) GetForeignKeys(database, table string) ([][]string, error) {
+func (db *ClickHouse) GetForeignKeys(_ context.Context, database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -138,7 +147,7 @@ func (db *ClickHouse) GetForeignKeys(database, table string) ([][]string, error)
 
 // GetReferencingTables returns only the shared header row because ClickHouse
 // does not support foreign keys.
-func (db *ClickHouse) GetReferencingTables(database, table string) ([][]string, error) {
+func (db *ClickHouse) GetReferencingTables(_ context.Context, database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -151,7 +160,7 @@ func (db *ClickHouse) GetReferencingTables(database, table string) ([][]string, 
 }
 
 // GetIndexes returns the data skipping indexes of the table.
-func (db *ClickHouse) GetIndexes(database, table string) ([][]string, error) {
+func (db *ClickHouse) GetIndexes(ctx context.Context, database, table string) ([][]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -162,25 +171,23 @@ func (db *ClickHouse) GetIndexes(database, table string) ([][]string, error) {
 
 	query := "SELECT name, type_full AS type, expr, granularity FROM system.data_skipping_indices WHERE database = ? AND table = ?"
 
-	return db.queryMetadata(query, database, table)
+	return db.queryMetadata(ctx, query, database, table)
 }
 
-func (db *ClickHouse) GetRecords(database, table, where, sort string, offset, limit int) (paginatedResults [][]string, totalRecords int, queryString string, err error) {
+func (db *ClickHouse) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
 	if table == "" {
-		return nil, 0, "", errors.New("table name is required")
+		return PageResult{}, errors.New("table name is required")
 	}
 
 	if database == "" {
-		return nil, 0, "", errors.New("database name is required")
+		return PageResult{}, errors.New("database name is required")
 	}
 
-	if limit == 0 {
-		limit = DefaultRowLimit
-	}
+	pageSize, fetchLimit := pageSizeAndFetchLimit(limit)
 
 	formattedTableName := db.formatTableName(database, table)
 
-	queryString = "SELECT * FROM " + formattedTableName
+	queryString := "SELECT * FROM " + formattedTableName
 
 	if where != "" {
 		queryString += fmt.Sprintf(" %s", where)
@@ -190,30 +197,30 @@ func (db *ClickHouse) GetRecords(database, table, where, sort string, offset, li
 		queryString += fmt.Sprintf(" ORDER BY %s", sort)
 	}
 
-	queryString += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	queryString += fmt.Sprintf(" LIMIT %d OFFSET %d", fetchLimit, offset)
 
-	rows, err := db.Connection.Query(queryString)
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), queryString)
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	paginatedResults = append(paginatedResults, columns)
+	paginatedResults := [][]string{columns}
 
 	for rows.Next() {
 		values, nulls, err := scanClickHouseRow(rows, columnTypes)
 		if err != nil {
-			return nil, 0, queryString, err
+			return PageResult{Query: queryString}, err
 		}
 
 		row := make([]string, 0, len(values))
@@ -231,26 +238,18 @@ func (db *ClickHouse) GetRecords(database, table, where, sort string, offset, li
 		paginatedResults = append(paginatedResults, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	// close to release the connection
 	if err := rows.Close(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	countQuery := "SELECT count() FROM " + formattedTableName
-	if where != "" {
-		countQuery += fmt.Sprintf(" %s", where)
-	}
-	if err := db.Connection.QueryRow(countQuery).Scan(&totalRecords); err != nil {
-		return paginatedResults, 0, queryString, err
-	}
-
-	return paginatedResults, totalRecords, queryString, nil
+	return newPageResult(paginatedResults, queryString, pageSize), nil
 }
 
-func (db *ClickHouse) ExecuteQuery(_, query string) ([][]string, int, error) {
-	rows, err := db.Connection.Query(query)
+func (db *ClickHouse) ExecuteQuery(ctx context.Context, _, query string) ([][]string, int, error) {
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -291,7 +290,7 @@ func (db *ClickHouse) ExecuteQuery(_, query string) ([][]string, int, error) {
 	return results, len(records), nil
 }
 
-func (db *ClickHouse) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *ClickHouse) UpdateRecord(ctx context.Context, database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
 	change := models.DBDMLChange{
 		Type:     models.DMLUpdateType,
 		Database: database,
@@ -304,16 +303,16 @@ func (db *ClickHouse) UpdateRecord(database, table, column, value, primaryKeyCol
 		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: primaryKeyColumnName, Value: primaryKeyValue}},
 	}
 
-	query, err := db.buildChangeQuery(change, false)
+	query, err := db.buildChangeQuery(ctx, change, false)
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Connection.ExecContext(clickHouseMutationContext(), query.Query, query.Args...)
+	_, err = db.Connection.ExecContext(clickHouseMutationContext(ctx), query.Query, query.Args...)
 	return err
 }
 
-func (db *ClickHouse) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *ClickHouse) DeleteRecord(ctx context.Context, database, table, primaryKeyColumnName, primaryKeyValue string) error {
 	change := models.DBDMLChange{
 		Type:           models.DMLDeleteType,
 		Database:       database,
@@ -321,17 +320,17 @@ func (db *ClickHouse) DeleteRecord(database, table, primaryKeyColumnName, primar
 		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: primaryKeyColumnName, Value: primaryKeyValue}},
 	}
 
-	query, err := db.buildChangeQuery(change, false)
+	query, err := db.buildChangeQuery(ctx, change, false)
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Connection.ExecContext(clickHouseMutationContext(), query.Query, query.Args...)
+	_, err = db.Connection.ExecContext(clickHouseMutationContext(ctx), query.Query, query.Args...)
 	return err
 }
 
-func (db *ClickHouse) ExecuteDMLStatement(_, query string) (string, error) {
-	res, err := db.Connection.Exec(query)
+func (db *ClickHouse) ExecuteDMLStatement(ctx context.Context, _, query string) (string, error) {
+	res, err := db.Connection.ExecContext(contextOrBackground(ctx), query)
 	if err != nil {
 		return "", err
 	}
@@ -347,17 +346,17 @@ func (db *ClickHouse) ExecuteDMLStatement(_, query string) (string, error) {
 // ExecutePendingChanges runs the changes one by one. ClickHouse has no
 // multi-statement transactions, so a partial execution error reports how many
 // changes the caller must remove before allowing a retry.
-func (db *ClickHouse) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *ClickHouse) ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error {
 	queries := make([]models.Query, 0, len(changes))
 	for _, change := range changes {
-		query, err := db.buildChangeQuery(change, false)
+		query, err := db.buildChangeQuery(ctx, change, false)
 		if err != nil {
 			return err
 		}
 		queries = append(queries, query)
 	}
 
-	ctx := clickHouseMutationContext()
+	ctx = clickHouseMutationContext(ctx)
 	for i, query := range queries {
 		if _, err := db.Connection.ExecContext(ctx, query.Query, query.Args...); err != nil {
 			if i > 0 {
@@ -374,7 +373,7 @@ func (db *ClickHouse) ExecutePendingChanges(changes []models.DBDMLChange) error 
 // Unlike other databases, ClickHouse primary keys are not unique, so edits
 // and deletes made through the table view apply to every row sharing the same
 // primary key values.
-func (db *ClickHouse) GetPrimaryKeyColumnNames(database, table string) ([]string, error) {
+func (db *ClickHouse) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) ([]string, error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -383,7 +382,7 @@ func (db *ClickHouse) GetPrimaryKeyColumnNames(database, table string) ([]string
 		return nil, errors.New("table name is required")
 	}
 
-	rows, err := db.Connection.Query("SELECT name FROM system.columns WHERE database = ? AND table = ? AND is_in_primary_key ORDER BY position", database, table)
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), "SELECT name FROM system.columns WHERE database = ? AND table = ? AND is_in_primary_key ORDER BY position", database, table)
 	if err != nil {
 		return nil, err
 	}
@@ -457,15 +456,16 @@ func (db *ClickHouse) FormatPlaceholder(_ int) string {
 }
 
 func (db *ClickHouse) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
-	query, err := db.buildChangeQuery(change, true)
+	ctx := context.Background()
+	query, err := db.buildChangeQuery(ctx, change, true)
 	if err != nil {
 		return "", err
 	}
 	return query.Query, nil
 }
 
-func (db *ClickHouse) buildChangeQuery(change models.DBDMLChange, preview bool) (models.Query, error) {
-	columnTypes, err := db.getColumnTypes(change.Database, change.Table)
+func (db *ClickHouse) buildChangeQuery(ctx context.Context, change models.DBDMLChange, preview bool) (models.Query, error) {
+	columnTypes, err := db.getColumnTypes(ctx, change.Database, change.Table)
 	if err != nil {
 		return models.Query{}, err
 	}
@@ -776,7 +776,7 @@ func isClickHouseCompositeType(databaseType string) bool {
 	return typeName == "Array" || typeName == "Map" || typeName == "Tuple"
 }
 
-func (db *ClickHouse) getColumnTypes(database, table string) (map[string]string, error) {
+func (db *ClickHouse) getColumnTypes(ctx context.Context, database, table string) (map[string]string, error) {
 	columnTypes := make(map[string]string)
 	// Keeping query generation usable without a connection is convenient for
 	// tests and callers that only preview scalar values.
@@ -784,7 +784,7 @@ func (db *ClickHouse) getColumnTypes(database, table string) (map[string]string,
 		return columnTypes, nil
 	}
 
-	rows, err := db.Connection.Query("SELECT name, type FROM system.columns WHERE database = ? AND table = ?", database, table)
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), "SELECT name, type FROM system.columns WHERE database = ? AND table = ?", database, table)
 	if err != nil {
 		return nil, err
 	}
@@ -803,15 +803,15 @@ func (db *ClickHouse) getColumnTypes(database, table string) (map[string]string,
 	return columnTypes, nil
 }
 
-func (db *ClickHouse) GetFunctions(_ string) (map[string][]string, error) {
+func (db *ClickHouse) GetFunctions(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *ClickHouse) GetProcedures(_ string) (map[string][]string, error) {
+func (db *ClickHouse) GetProcedures(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (db *ClickHouse) GetViews(_ string) (map[string][]string, error) {
+func (db *ClickHouse) GetViews(_ context.Context, _ string) (map[string][]string, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -823,22 +823,22 @@ func (db *ClickHouse) UseSchemas() bool {
 	return false
 }
 
-func (db *ClickHouse) GetFunctionDefinition(_ string, _ string) (string, error) {
+func (db *ClickHouse) GetFunctionDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *ClickHouse) GetProcedureDefinition(_ string, _ string) (string, error) {
+func (db *ClickHouse) GetProcedureDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (db *ClickHouse) GetViewDefinition(_ string, _ string) (string, error) {
+func (db *ClickHouse) GetViewDefinition(_ context.Context, _ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
 // queryMetadata runs a metadata query and returns the column names followed
 // by the rows as strings.
-func (db *ClickHouse) queryMetadata(query string, args ...any) ([][]string, error) {
-	rows, err := db.Connection.Query(query, args...)
+func (db *ClickHouse) queryMetadata(ctx context.Context, query string, args ...any) ([][]string, error) {
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -871,8 +871,8 @@ func (db *ClickHouse) queryMetadata(query string, args ...any) ([][]string, erro
 	return results, nil
 }
 
-func clickHouseMutationContext() context.Context {
-	return clickhouse.Context(context.Background(), clickhouse.WithSettings(clickhouse.Settings{
+func clickHouseMutationContext(ctx context.Context) context.Context {
+	return clickhouse.Context(contextOrBackground(ctx), clickhouse.WithSettings(clickhouse.Settings{
 		"mutations_sync": clickHouseMutationsSync,
 	}))
 }
@@ -1096,4 +1096,49 @@ func clickHouseTupleElementType(tupleElement string) string {
 		}
 	}
 	return tupleElement
+}
+
+func (db *ClickHouse) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	if database == "" || table == "" {
+		return nil, errors.New("database and table names are required")
+	}
+	var count sql.NullInt64
+	err := db.Connection.QueryRowContext(contextOrBackground(ctx), "SELECT total_rows FROM system.tables WHERE database = ? AND name = ?", database, table).Scan(&count)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !count.Valid || count.Int64 < 0 {
+		return nil, nil
+	}
+	return &count.Int64, nil
+}
+func (db *ClickHouse) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	if database == "" || table == "" {
+		return 0, errors.New("database and table names are required")
+	}
+	query := "SELECT count() FROM " + db.formatTableName(database, table)
+	if where != "" {
+		query += " " + where
+	}
+	var count int64
+	err := db.Connection.QueryRowContext(contextOrBackground(ctx), query).Scan(&count)
+	return count, err
+}
+func (db *ClickHouse) StreamQuery(ctx context.Context, _, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	return streamQueryWithScanner(ctx, db.Connection, query, maxRows, onBatch, func(rows *sql.Rows, _ int) ([]string, error) {
+		types, err := rows.ColumnTypes()
+		if err != nil {
+			return nil, err
+		}
+		values, nulls, err := scanClickHouseRow(rows, types)
+		for i := range values {
+			if nulls[i] {
+				values[i] = "NULL"
+			}
+		}
+		return values, err
+	})
 }

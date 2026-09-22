@@ -48,6 +48,7 @@ const (
 
 	// Operations
 	Refresh
+	ExactCount
 	UnfocusEditor
 	Copy
 	RowSelect
@@ -57,6 +58,7 @@ const (
 	Save
 	Delete
 	Search
+	CancelQuery
 	SearchGlobal
 	Quit
 	Execute
@@ -171,6 +173,8 @@ func (c Command) String() string {
 		return "Delete"
 	case Search:
 		return "Search"
+	case CancelQuery:
+		return "CancelQuery"
 	case SearchGlobal:
 		return "SearchGlobal"
 	case Quit:
@@ -201,6 +205,8 @@ func (c Command) String() string {
 		return "DeleteConnection"
 	case Refresh:
 		return "Refresh"
+	case ExactCount:
+		return "ExactCount"
 	case UnfocusEditor:
 		return "UnfocusEditor"
 	case RecordsMenu:

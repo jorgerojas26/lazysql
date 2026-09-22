@@ -149,6 +149,11 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 	currentTab := t.state.CurrentTab
 
 	if currentTab != nil {
+		if table, ok := currentTab.Content.(*ResultsTable); ok {
+			table.CancelExactCount()
+			table.cancelMetadataContext()
+		}
+
 		index := 0
 		for tab := t.state.FirstTab; tab != nil; tab = tab.NextTab {
 			if tab == currentTab {
@@ -205,6 +210,11 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 }
 
 func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
+	if t.state.CurrentTab != nil && t.state.CurrentTab != tab {
+		if table, ok := t.state.CurrentTab.Content.(*ResultsTable); ok {
+			table.CancelExactCount()
+		}
+	}
 	t.state.CurrentTab = tab
 	t.HighlightTabHeader(tab)
 

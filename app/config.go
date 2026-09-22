@@ -32,6 +32,12 @@ func defaultConfig() *Config {
 			JSONViewerWordWrap:           false,
 			EnterOpensJSONViewer:         false,
 			ConfirmOnQuit:                true,
+			MaxOpenConnections:           models.DefaultMaxOpenConnections,
+			MaxIdleConnections:           models.DefaultMaxIdleConnections,
+			ExactCountThreshold:          models.DefaultExactCountThreshold,
+			ExactCountTimeoutMS:          models.DefaultExactCountTimeoutMS,
+			MaxQueryRows:                 models.DefaultMaxQueryRows,
+			SchemaBulkLoadThreshold:      models.DefaultSchemaBulkLoadThreshold,
 		},
 	}
 }
@@ -125,6 +131,13 @@ func mergeValues(globalVal, localVal any) any {
 }
 
 func LoadConfig(configFile string) error {
+	if App.config == nil {
+		App.config = defaultConfig()
+	}
+	if App.config.AppConfig == nil {
+		App.config.AppConfig = defaultConfig().AppConfig
+	}
+
 	// Load global config
 	file, err := os.ReadFile(configFile)
 	if err != nil && !os.IsNotExist(err) {
@@ -175,7 +188,24 @@ func LoadConfig(configFile string) error {
 		return err
 	}
 
+	if App.config.AppConfig.MaxQueryRows < 0 {
+		return fmt.Errorf("invalid application max_query_rows: must be non-negative")
+	}
+	if App.config.AppConfig.SchemaBulkLoadThreshold < 0 {
+		return fmt.Errorf("invalid application schema_bulk_load_threshold: must be non-negative")
+	}
+
+	poolConfig, err := App.config.AppConfig.EffectiveConnectionPool(models.Connection{})
+	if err != nil {
+		return fmt.Errorf("invalid application connection pool configuration: %w", err)
+	}
+	App.config.AppConfig.MaxOpenConnections = poolConfig.MaxOpenConnections
+	App.config.AppConfig.MaxIdleConnections = poolConfig.MaxIdleConnections
+
 	for i, conn := range App.config.Connections {
+		if _, err := App.config.AppConfig.EffectiveConnectionPool(conn); err != nil {
+			return fmt.Errorf("invalid connection pool configuration for %q: %w", conn.Name, err)
+		}
 		App.config.Connections[i].URL = parseConfigURL(&conn)
 	}
 

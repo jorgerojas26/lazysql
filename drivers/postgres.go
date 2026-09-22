@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -21,13 +22,15 @@ type Postgres struct {
 	CurrentDatabase  string
 	PreviousDatabase string
 	Urlstr           string
+	PoolConfig       models.ConnectionPoolConfig
 }
 
-func (db *Postgres) TestConnection(urlstr string) error {
-	return db.Connect(urlstr)
+func (db *Postgres) TestConnection(ctx context.Context, urlstr string) error {
+	return db.Connect(ctx, urlstr)
 }
 
-func (db *Postgres) Connect(urlstr string) error {
+func (db *Postgres) Connect(ctx context.Context, urlstr string) error {
+	ctx = contextOrBackground(ctx)
 	db.SetProvider(DriverPostgres)
 
 	connection, err := dburl.Open(urlstr)
@@ -35,9 +38,14 @@ func (db *Postgres) Connect(urlstr string) error {
 		return err
 	}
 
+	if err = applyConnectionPoolConfig(connection, db.PoolConfig); err != nil {
+		_ = connection.Close()
+		return err
+	}
+
 	db.Connection = connection
 
-	err = db.Connection.Ping()
+	err = db.Connection.PingContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -45,7 +53,7 @@ func (db *Postgres) Connect(urlstr string) error {
 	db.Urlstr = urlstr
 
 	// Get the current database.
-	rows := db.Connection.QueryRow("SELECT current_database();")
+	rows := db.Connection.QueryRowContext(ctx, "SELECT current_database();")
 
 	database := ""
 	err = rows.Scan(&database)
@@ -59,8 +67,9 @@ func (db *Postgres) Connect(urlstr string) error {
 	return nil
 }
 
-func (db *Postgres) GetDatabases() ([]string, error) {
-	rows, err := db.Connection.Query("SELECT datname FROM pg_database WHERE datallowconn AND has_database_privilege(current_user, datname, 'CONNECT');")
+func (db *Postgres) GetDatabases(ctx context.Context) ([]string, error) {
+	ctx = contextOrBackground(ctx)
+	rows, err := db.Connection.QueryContext(ctx, "SELECT datname FROM pg_database WHERE datallowconn AND has_database_privilege(current_user, datname, 'CONNECT');")
 	if err != nil {
 		return nil, err
 	}
@@ -82,12 +91,13 @@ func (db *Postgres) GetDatabases() ([]string, error) {
 	return databases, nil
 }
 
-func (db *Postgres) GetTables(database string) (map[string][]string, error) {
+func (db *Postgres) GetTables(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +106,7 @@ func (db *Postgres) GetTables(database string) (map[string][]string, error) {
 	}
 
 	query := "SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = $1"
-	rows, err := conn.Query(query, database)
+	rows, err := conn.QueryContext(ctx, query, database)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +131,8 @@ func (db *Postgres) GetTables(database string) (map[string][]string, error) {
 	return tables, nil
 }
 
-func (db *Postgres) GetTableColumns(database, table string) ([][]string, error) {
+func (db *Postgres) GetTableColumns(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -135,7 +146,7 @@ func (db *Postgres) GetTableColumns(database, table string) ([][]string, error) 
 		return nil, errors.New("table must be in the format schema.table")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +159,7 @@ func (db *Postgres) GetTableColumns(database, table string) ([][]string, error) 
 
 	query := "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(pd.description, '') as comment FROM information_schema.columns c LEFT JOIN pg_class pc ON pc.relname = c.table_name AND pc.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema) LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema AND pn.oid = pc.relnamespace LEFT JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = c.ordinal_position WHERE c.table_catalog = $1 AND c.table_schema = $2 AND c.table_name = $3 ORDER by c.ordinal_position"
 
-	rows, err := conn.Query(query, database, tableSchema, tableName)
+	rows, err := conn.QueryContext(ctx, query, database, tableSchema, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +200,8 @@ func (db *Postgres) GetTableColumns(database, table string) ([][]string, error) 
 // qualifiedTableConnection validates a "schema.table" argument, splits it and
 // returns a connection scoped to the given database. The returned closeConn is
 // always safe to defer: it is a no-op when the shared connection is reused.
-func (db *Postgres) qualifiedTableConnection(database, table string) (conn *sql.DB, closeConn func(), tableSchema, tableName string, err error) {
+func (db *Postgres) qualifiedTableConnection(ctx context.Context, database, table string) (conn *sql.DB, closeConn func(), tableSchema, tableName string, err error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, nil, "", "", errors.New("database name is required")
 	}
@@ -202,7 +214,7 @@ func (db *Postgres) qualifiedTableConnection(database, table string) (conn *sql.
 		return nil, nil, "", "", errors.New("table must be in the format schema.table")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, nil, "", "", err
 	}
@@ -215,14 +227,15 @@ func (db *Postgres) qualifiedTableConnection(database, table string) (conn *sql.
 	return conn, closeConn, splitTableString[0], splitTableString[1], nil
 }
 
-func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
-	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
+func (db *Postgres) GetConstraints(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
 	if err != nil {
 		return nil, err
 	}
 	defer closeConn()
 
-	rows, err := conn.Query(fmt.Sprintf(`
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
         SELECT
             tc.constraint_name,
             kcu.column_name,
@@ -273,14 +286,15 @@ func (db *Postgres) GetConstraints(database, table string) ([][]string, error) {
 	return constraints, nil
 }
 
-func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
-	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
+func (db *Postgres) GetForeignKeys(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
 	if err != nil {
 		return nil, err
 	}
 	defer closeConn()
 
-	rows, err := conn.Query(fmt.Sprintf(`
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
         SELECT
             con.conname AS constraint_name,
             src_att.attname AS column_name,
@@ -337,14 +351,14 @@ func (db *Postgres) GetForeignKeys(database, table string) ([][]string, error) {
 
 // GetReferencingTables returns every foreign key that points at the given
 // table, i.e. the reverse direction of GetForeignKeys.
-func (db *Postgres) GetReferencingTables(database, table string) ([][]string, error) {
-	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
+func (db *Postgres) GetReferencingTables(ctx context.Context, database, table string) ([][]string, error) {
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
 	if err != nil {
 		return nil, err
 	}
 	defer closeConn()
 
-	rows, err := conn.Query(`
+	rows, err := conn.QueryContext(contextOrBackground(ctx), `
         SELECT
             con.conname AS constraint_name,
             src_ns.nspname AS table_schema,
@@ -372,14 +386,15 @@ func (db *Postgres) GetReferencingTables(database, table string) ([][]string, er
 	return scanReferencingTables(rows)
 }
 
-func (db *Postgres) GetIndexes(database, table string) ([][]string, error) {
-	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(database, table)
+func (db *Postgres) GetIndexes(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
 	if err != nil {
 		return nil, err
 	}
 	defer closeConn()
 
-	rows, err := conn.Query(fmt.Sprintf(`
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
         SELECT
             i.relname AS index_name,
             a.attname AS column_name,
@@ -440,28 +455,30 @@ func (db *Postgres) GetIndexes(database, table string) ([][]string, error) {
 	return indexes, nil
 }
 
-func (db *Postgres) GetRecords(database, table, where, sort string, offset, limit int) (records [][]string, totalRecords int, queryString string, err error) {
+func (db *Postgres) GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
-		return nil, 0, "", errors.New("database name is required")
+		return PageResult{}, errors.New("database name is required")
 	}
 	if table == "" {
-		return nil, 0, "", errors.New("table name is required")
+		return PageResult{}, errors.New("table name is required")
 	}
 
 	formattedTableName, err := db.formatTableName(table)
 	if err != nil {
-		return nil, 0, "", err
+		return PageResult{}, err
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
-		return nil, 0, "", err
+		return PageResult{}, err
 	}
 	if needsClose {
 		defer conn.Close()
 	}
 
-	queryString = "SELECT * FROM "
+	pageSize, fetchLimit := pageSizeAndFetchLimit(limit)
+	queryString := "SELECT * FROM "
 	queryString += formattedTableName
 
 	if where != "" {
@@ -474,22 +491,18 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 
 	queryString += " LIMIT $1 OFFSET $2"
 
-	if limit == 0 {
-		limit = DefaultRowLimit
-	}
-
-	paginatedRows, err := conn.Query(queryString, limit, offset)
+	paginatedRows, err := conn.QueryContext(ctx, queryString, fetchLimit, offset)
 	if err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	defer paginatedRows.Close()
 
 	columns, columnsError := paginatedRows.Columns()
 	if columnsError != nil {
-		return nil, 0, queryString, columnsError
+		return PageResult{Query: queryString}, columnsError
 	}
 
-	records = [][]string{columns}
+	records := [][]string{columns}
 	for paginatedRows.Next() {
 		nullStringSlice := make([]sql.NullString, len(columns))
 
@@ -499,7 +512,7 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 		}
 
 		if err := paginatedRows.Scan(rowValues...); err != nil {
-			return nil, 0, queryString, err
+			return PageResult{Query: queryString}, err
 		}
 
 		var row []string
@@ -519,34 +532,98 @@ func (db *Postgres) GetRecords(database, table, where, sort string, offset, limi
 	}
 
 	if err := paginatedRows.Err(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 	// close to release the connection
 	if err := paginatedRows.Close(); err != nil {
-		return nil, 0, queryString, err
+		return PageResult{Query: queryString}, err
 	}
 
-	countQuery := "SELECT COUNT(*) FROM "
-	countQuery += formattedTableName
-
-	if where != "" {
-		countQuery += fmt.Sprintf(" %s", where)
-	}
-
-	countRow := conn.QueryRow(countQuery)
-
-	if err := countRow.Scan(&totalRecords); err != nil {
-		return records, 0, queryString, err
-	}
-
-	// Replace the limit and offset with actual values in the query string
-	queryString = strings.Replace(queryString, "$1", strconv.Itoa(limit), 1)
+	// Replace the limit and offset with actual values in the query string.
+	queryString = strings.Replace(queryString, "$1", strconv.Itoa(fetchLimit), 1)
 	queryString = strings.Replace(queryString, "$2", strconv.Itoa(offset), 1)
 
-	return records, totalRecords, queryString, nil
+	return newPageResult(records, queryString, pageSize), nil
 }
 
-func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *Postgres) GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error) {
+	ctx = contextOrBackground(ctx)
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	parts := strings.SplitN(table, ".", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, errors.New("table must be in the format schema.table")
+	}
+
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	var estimate sql.NullInt64
+	err = conn.QueryRowContext(ctx, `
+		SELECT c.reltuples::bigint
+		FROM pg_catalog.pg_class c
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = $1 AND c.relname = $2
+	`, parts[0], parts[1]).Scan(&estimate)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !estimate.Valid || estimate.Int64 < 0 {
+		return nil, nil
+	}
+
+	return &estimate.Int64, nil
+}
+
+func (db *Postgres) GetExactRowCount(ctx context.Context, database, table, where string) (int64, error) {
+	ctx = contextOrBackground(ctx)
+	if database == "" {
+		return 0, errors.New("database name is required")
+	}
+	if table == "" {
+		return 0, errors.New("table name is required")
+	}
+
+	formattedTableName, err := db.formatTableName(table)
+	if err != nil {
+		return 0, err
+	}
+
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return 0, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+
+	query := "SELECT COUNT(*) FROM " + formattedTableName
+	if where != "" {
+		query += " " + where
+	}
+
+	var count int64
+	if err := conn.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (db *Postgres) UpdateRecord(ctx context.Context, database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return errors.New("database name is required")
 	}
@@ -572,7 +649,7 @@ func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColum
 		return formatErr
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -584,11 +661,12 @@ func (db *Postgres) UpdateRecord(database, table, column, value, primaryKeyColum
 	query += formattedTableName
 	query += fmt.Sprintf(" SET \"%s\" = $1 WHERE \"%s\" = $2", column, primaryKeyColumnName)
 
-	_, err = conn.Exec(query, value, primaryKeyValue)
+	_, err = conn.ExecContext(ctx, query, value, primaryKeyValue)
 	return err
 }
 
-func (db *Postgres) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
+func (db *Postgres) DeleteRecord(ctx context.Context, database, table, primaryKeyColumnName, primaryKeyValue string) error {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return errors.New("database name is required")
 	}
@@ -607,7 +685,7 @@ func (db *Postgres) DeleteRecord(database, table, primaryKeyColumnName, primaryK
 		return formatErr
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -619,22 +697,24 @@ func (db *Postgres) DeleteRecord(database, table, primaryKeyColumnName, primaryK
 	query += formattedTableName
 	query += fmt.Sprintf(" WHERE \"%s\" = $1", primaryKeyColumnName)
 
-	_, err = conn.Exec(query, primaryKeyValue)
+	_, err = conn.ExecContext(ctx, query, primaryKeyValue)
 	return err
 }
 
-func (db *Postgres) ExecuteDMLStatement(database, query string) (result string, err error) {
+func (db *Postgres) ExecuteDMLStatement(ctx context.Context, database, query string) (result string, err error) {
 	if database == "" {
 		database = db.CurrentDatabase
 	}
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return "", err
 	}
 	if needsClose {
 		defer conn.Close()
 	}
-	res, err := conn.Exec(query)
+
+	ctx = contextOrBackground(ctx)
+	res, err := conn.ExecContext(ctx, query)
 	if err != nil {
 		return result, err
 	}
@@ -645,15 +725,28 @@ func (db *Postgres) ExecuteDMLStatement(database, query string) (result string, 
 	return fmt.Sprintf("%d rows affected", rowsAffected), nil
 }
 
-func (db *Postgres) ExecuteQuery(database, query string) ([][]string, int, error) {
-	// An empty database falls back to whatever the connection is currently
-	// on (preserves pre-existing behavior for callers that don't resolve a
-	// database name).
+// StreamQuery incrementally emits interactive SQL results and honors context
+// cancellation through database/sql.
+func (db *Postgres) StreamQuery(ctx context.Context, database, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
 	if database == "" {
 		database = db.CurrentDatabase
 	}
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return QueryStreamResult{}, err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	return streamQuery(ctx, conn, query, maxRows, onBatch)
+}
+
+func (db *Postgres) ExecuteQuery(ctx context.Context, database, query string) ([][]string, int, error) {
+	if database == "" {
+		database = db.CurrentDatabase
+	}
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -661,7 +754,8 @@ func (db *Postgres) ExecuteQuery(database, query string) ([][]string, int, error
 		defer conn.Close()
 	}
 
-	rows, err := conn.Query(query)
+	ctx = contextOrBackground(ctx)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -701,10 +795,25 @@ func (db *Postgres) ExecuteQuery(database, query string) ([][]string, int, error
 	return results, len(records), nil
 }
 
-func (db *Postgres) ExecutePendingChanges(changes []models.DBDMLChange) error {
+func (db *Postgres) ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error {
+	ctx = contextOrBackground(ctx)
+	if len(changes) == 0 {
+		return nil
+	}
+	database := changes[0].Database
+	if database == "" {
+		database = db.CurrentDatabase
+	}
 	var queries []models.Query
 
 	for _, change := range changes {
+		target := change.Database
+		if target == "" {
+			target = db.CurrentDatabase
+		}
+		if target != database {
+			return errors.New("cannot atomically apply PostgreSQL changes across databases; apply each database separately")
+		}
 
 		formattedTableName, formatErr := db.formatTableName(change.Table)
 		if formatErr != nil {
@@ -722,10 +831,18 @@ func (db *Postgres) ExecutePendingChanges(changes []models.DBDMLChange) error {
 		}
 	}
 
-	return queriesInTransaction(db.Connection, queries)
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+	return queriesInTransaction(ctx, conn, queries)
 }
 
-func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) ([]string, error) {
+func (db *Postgres) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) ([]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
@@ -741,7 +858,7 @@ func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) ([]string, 
 	schemaName := splitTableString[0]
 	tableName := splitTableString[1]
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -749,7 +866,7 @@ func (db *Postgres) GetPrimaryKeyColumnNames(database, table string) ([]string, 
 		defer conn.Close()
 	}
 
-	row, err := conn.Query(`
+	row, err := conn.QueryContext(ctx, `
 		SELECT
 			a.attname AS column_name
 		FROM
@@ -829,31 +946,49 @@ func buildReconnectURL(urlstr, newDB string) (string, error) {
 
 // connectToDatabase opens a new connection to the given database without
 // mutating the receiver. The caller must close the returned connection.
-func (db *Postgres) connectToDatabase(database string) (*sql.DB, error) {
+func (db *Postgres) connectToDatabase(ctx context.Context, database string) (*sql.DB, error) {
+	ctx = contextOrBackground(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	urlstr, err := buildReconnectURL(db.Urlstr, database)
 	if err != nil {
 		return nil, err
 	}
-	return dburl.Open(urlstr)
+	connection, err := dburl.Open(urlstr)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyConnectionPoolConfig(connection, db.PoolConfig); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	return connection, nil
 }
 
 // connectionFor returns a connection to the given database. If it matches
 // the current database, the existing connection is returned (caller must NOT
 // close it). Otherwise a new temporary connection is opened and returned
 // (caller MUST close it).
-func (db *Postgres) connectionFor(database string) (conn *sql.DB, needsClose bool, err error) {
+func (db *Postgres) connectionFor(ctx context.Context, database string) (conn *sql.DB, needsClose bool, err error) {
+	ctx = contextOrBackground(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
 	if database == db.CurrentDatabase {
 		return db.Connection, false, nil
 	}
-	conn, err = db.connectToDatabase(database)
+	conn, err = db.connectToDatabase(ctx, database)
 	if err != nil {
 		return nil, false, err
 	}
 	return conn, true, nil
 }
 
-func (db *Postgres) SwitchDatabase(database string) error {
-	conn, err := db.connectToDatabase(database)
+func (db *Postgres) SwitchDatabase(ctx context.Context, database string) error {
+	ctx = contextOrBackground(ctx)
+	conn, err := db.connectToDatabase(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -976,12 +1111,13 @@ func (db *Postgres) DMLChangeToQueryString(change models.DBDMLChange) (string, e
 	return queryStr, nil
 }
 
-func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
+func (db *Postgres) GetFunctions(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -989,7 +1125,7 @@ func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
 		defer conn.Close()
 	}
 
-	rows, err := conn.Query(`
+	rows, err := conn.QueryContext(ctx, `
 		SELECT n.nspname || '.' || p.proname
 		FROM pg_catalog.pg_proc p
 		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -1017,12 +1153,13 @@ func (db *Postgres) GetFunctions(database string) (map[string][]string, error) {
 	return functions, nil
 }
 
-func (db *Postgres) GetProcedures(database string) (map[string][]string, error) {
+func (db *Postgres) GetProcedures(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -1030,7 +1167,7 @@ func (db *Postgres) GetProcedures(database string) (map[string][]string, error) 
 		defer conn.Close()
 	}
 
-	rows, err := conn.Query(`
+	rows, err := conn.QueryContext(ctx, `
 		SELECT n.nspname || '.' || p.proname
 		FROM pg_catalog.pg_proc p
 		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -1058,12 +1195,13 @@ func (db *Postgres) GetProcedures(database string) (map[string][]string, error) 
 	return procedures, nil
 }
 
-func (db *Postgres) GetViews(database string) (map[string][]string, error) {
+func (db *Postgres) GetViews(ctx context.Context, database string) (map[string][]string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -1071,7 +1209,7 @@ func (db *Postgres) GetViews(database string) (map[string][]string, error) {
 		defer conn.Close()
 	}
 
-	rows, err := conn.Query(`
+	rows, err := conn.QueryContext(ctx, `
 		SELECT table_schema || '.' || table_name
 		FROM information_schema.views
 		WHERE table_catalog = $1
@@ -1106,7 +1244,8 @@ func (db *Postgres) UseSchemas() bool {
 	return true
 }
 
-func (db *Postgres) GetFunctionDefinition(database, name string) (string, error) {
+func (db *Postgres) GetFunctionDefinition(ctx context.Context, database, name string) (string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return "", errors.New("database name is required")
 	}
@@ -1119,7 +1258,7 @@ func (db *Postgres) GetFunctionDefinition(database, name string) (string, error)
 		return "", errors.New("function name must be in format schema.name")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return "", err
 	}
@@ -1128,7 +1267,7 @@ func (db *Postgres) GetFunctionDefinition(database, name string) (string, error)
 	}
 
 	var result string
-	row := conn.QueryRow(`
+	row := conn.QueryRowContext(ctx, `
 		SELECT pg_get_functiondef(p.oid)
 		FROM pg_catalog.pg_proc p
 		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -1142,7 +1281,8 @@ func (db *Postgres) GetFunctionDefinition(database, name string) (string, error)
 	return result, nil
 }
 
-func (db *Postgres) GetProcedureDefinition(database, name string) (string, error) {
+func (db *Postgres) GetProcedureDefinition(ctx context.Context, database, name string) (string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return "", errors.New("database name is required")
 	}
@@ -1155,7 +1295,7 @@ func (db *Postgres) GetProcedureDefinition(database, name string) (string, error
 		return "", errors.New("procedure name must be in format schema.name")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return "", err
 	}
@@ -1164,7 +1304,7 @@ func (db *Postgres) GetProcedureDefinition(database, name string) (string, error
 	}
 
 	var result string
-	row := conn.QueryRow(`
+	row := conn.QueryRowContext(ctx, `
 		SELECT pg_get_functiondef(p.oid)
 		FROM pg_catalog.pg_proc p
 		JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -1179,7 +1319,8 @@ func (db *Postgres) GetProcedureDefinition(database, name string) (string, error
 	return result, nil
 }
 
-func (db *Postgres) GetViewDefinition(database, name string) (string, error) {
+func (db *Postgres) GetViewDefinition(ctx context.Context, database, name string) (string, error) {
+	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return "", errors.New("database name is required")
 	}
@@ -1192,7 +1333,7 @@ func (db *Postgres) GetViewDefinition(database, name string) (string, error) {
 		return "", errors.New("view name must be in format schema.name")
 	}
 
-	conn, needsClose, err := db.connectionFor(database)
+	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
 		return "", err
 	}
@@ -1201,7 +1342,7 @@ func (db *Postgres) GetViewDefinition(database, name string) (string, error) {
 	}
 
 	var result string
-	row := conn.QueryRow(`
+	row := conn.QueryRowContext(ctx, `
 		SELECT definition
 		FROM pg_catalog.pg_views
 		WHERE schemaname = $1 AND viewname = $2

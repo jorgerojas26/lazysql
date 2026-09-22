@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"reflect"
@@ -245,7 +246,7 @@ func TestClickHouse_ExecutePendingChangesReportsAppliedPrefix(t *testing.T) {
 		WillReturnError(failure)
 
 	db := &ClickHouse{Connection: connection}
-	err = db.ExecutePendingChanges([]models.DBDMLChange{
+	err = db.ExecutePendingChanges(context.Background(), []models.DBDMLChange{
 		{
 			Type:     models.DMLInsertType,
 			Database: "db",
@@ -274,7 +275,7 @@ func TestClickHouse_ExecutePendingChangesReportsAppliedPrefix(t *testing.T) {
 func TestClickHouse_GetForeignKeys(t *testing.T) {
 	db := &ClickHouse{}
 
-	fks, err := db.GetForeignKeys("db", "t")
+	fks, err := db.GetForeignKeys(context.Background(), "db", "t")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -286,7 +287,7 @@ func TestClickHouse_GetForeignKeys(t *testing.T) {
 func TestClickHouse_GetReferencingTables(t *testing.T) {
 	db := &ClickHouse{}
 
-	references, err := db.GetReferencingTables("db", "t")
+	references, err := db.GetReferencingTables(context.Background(), "db", "t")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

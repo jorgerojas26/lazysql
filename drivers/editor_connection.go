@@ -12,8 +12,8 @@ type editorConnection interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func switchedEditorConnection(pool *sql.DB, use string) (editorConnection, func(), error) {
-	ctx := context.Background()
+func switchedEditorConnection(ctx context.Context, pool *sql.DB, use string) (editorConnection, func(), error) {
+	ctx = contextOrBackground(ctx)
 	conn, err := pool.Conn(ctx)
 	if err != nil {
 		return nil, nil, err

@@ -1,0 +1,121 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: lazysql_test
+      MYSQL_USER: lazysql
+      MYSQL_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
+      MYSQL_ROOT_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./testdata/mysql/001-schema-and-data.sql:/docker-entrypoint-initdb.d/001-schema-and-data.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mysqladmin ping --protocol=TCP --host=127.0.0.1 --user=lazysql
+          --password="$${MYSQL_PASSWORD}" --silent &&
+          mysql --protocol=TCP --host=127.0.0.1 --user=lazysql
+          --password="$${MYSQL_PASSWORD}" --database=lazysql_test --batch --skip-column-names
+          --execute="SELECT 1 FROM fixture_seed_metadata LIMIT 1" >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lazysql_test
+      POSTGRES_USER: lazysql
+      POSTGRES_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./testdata/postgres/001-schema-and-data.sql:/docker-entrypoint-initdb.d/001-schema-and-data.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready --host=127.0.0.1 --username=lazysql --dbname=lazysql_test
+          && PGPASSWORD="$${POSTGRES_PASSWORD}" psql --host=127.0.0.1
+          --username=lazysql --dbname=lazysql_test --no-password
+          --tuples-only --command="SELECT 1 FROM public.fixture_seed_metadata LIMIT 1" >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  mssql:
+    platform: linux/amd64
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
+      MSSQL_PID: Developer
+    ports:
+      - "127.0.0.1:14331:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa
+          -P "$${MSSQL_SA_PASSWORD}" -C -b -l 5 -Q "SELECT 1" >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  mssql-seed:
+    platform: linux/amd64
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?}
+    volumes:
+      - ./testdata/mssql:/seed:ro
+    entrypoint:
+      - /bin/bash
+      - /seed/mssql-seed.sh
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          /opt/mssql-tools18/bin/sqlcmd -S tcp:mssql,1433 -U sa
+          -P "$${MSSQL_SA_PASSWORD}" -C -b -h -1 -l 5
+          -Q "SET NOCOUNT ON; IF OBJECT_ID(N'lazysql_test.dbo.fixture_seed_metadata', N'U') IS NULL RAISERROR('fixture not initialized', 16, 1); ELSE SELECT 1"
+          >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  sqlite:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.sqlite
+    volumes:
+      - ./testdata/sqlite:/fixture
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          sqlite3 /fixture/lazysql.sqlite3
+          "SELECT CASE WHEN EXISTS (SELECT 1 FROM fixture_seed_metadata LIMIT 1) THEN 1 ELSE 0 END;"
+          >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 2s
+
+volumes:
+  mysql-data:
+  postgres-data:
+  mssql-data:

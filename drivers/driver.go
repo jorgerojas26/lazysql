@@ -1,10 +1,36 @@
 package drivers
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jorgerojas26/lazysql/models"
 )
+
+// PageResult is one visible Records page and its lookahead state.
+type PageResult struct {
+	Rows        [][]string
+	Query       string
+	HasNextPage bool
+}
+
+// BulkTableColumnLoader is an optional driver capability for loading column
+// metadata for several tables with one efficient catalog operation. Drivers
+// that cannot provide a useful bulk operation should omit this capability; the
+// shared schema loader will keep those tables lazy.
+type BulkTableColumnLoader interface {
+	GetTableColumnsBulk(ctx context.Context, database string, tables []string) (map[string][][]string, error)
+}
+
+// contextOrBackground keeps the final Driver contract safe for callers that
+// have no operation-specific parent context while ensuring every database/sql
+// call still goes through a context-aware API.
+func contextOrBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
 
 // PartialExecutionError reports that a non-transactional driver applied some
 // changes before a later change failed. Callers must remove the applied prefix
@@ -23,39 +49,38 @@ func (err *PartialExecutionError) Unwrap() error {
 }
 
 type Driver interface {
-	Connect(urlstr string) error
-	TestConnection(urlstr string) error
-	GetDatabases() ([]string, error)
-	GetTables(database string) (map[string][]string, error)
-	GetTableColumns(database, table string) ([][]string, error)
-	GetConstraints(database, table string) ([][]string, error)
-	GetForeignKeys(database, table string) ([][]string, error)
-	// GetReferencingTables returns the tables that hold a foreign key pointing
-	// at the given table. Rows are returned with a leading header row shaped as
-	// constraint_name, table_schema, table_name, column_name, referenced_column_name.
-	GetReferencingTables(database, table string) ([][]string, error)
-	GetIndexes(database, table string) ([][]string, error)
-	GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, string, error)
-	UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
-	DeleteRecord(database, table string, primaryKeyColumnName, primaryKeyValue string) error
-	// database selects the editor's target database for both reads and writes.
-	// Empty uses the original connection context. MSSQL and MySQL isolate USE
-	// on a reserved connection; PostgreSQL opens a temporary database connection.
-	// SQLite and ClickHouse retain their original connection context.
-	ExecuteDMLStatement(database, query string) (string, error)
-	ExecuteQuery(database, query string) ([][]string, int, error)
-	ExecutePendingChanges(changes []models.DBDMLChange) error
+	Connect(ctx context.Context, urlstr string) error
+	TestConnection(ctx context.Context, urlstr string) error
+	GetDatabases(ctx context.Context) ([]string, error)
+	GetTables(ctx context.Context, database string) (map[string][]string, error)
+	GetTableColumns(ctx context.Context, database, table string) ([][]string, error)
+	GetConstraints(ctx context.Context, database, table string) ([][]string, error)
+	GetForeignKeys(ctx context.Context, database, table string) ([][]string, error)
+	GetIndexes(ctx context.Context, database, table string) ([][]string, error)
+	GetRecords(ctx context.Context, database, table, where, sort string, offset, limit int) (PageResult, error)
+	GetEstimatedRowCount(ctx context.Context, database, table string) (*int64, error)
+	GetExactRowCount(ctx context.Context, database, table, where string) (int64, error)
+	UpdateRecord(ctx context.Context, database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
+	DeleteRecord(ctx context.Context, database, table string, primaryKeyColumnName, primaryKeyValue string) error
+	// database selects the editor target for reads and writes. Empty uses the
+	// login database; MySQL/MSSQL isolate USE on a reserved session and
+	// PostgreSQL opens a temporary pool. SQLite/ClickHouse keep their context.
+	ExecuteDMLStatement(ctx context.Context, database, query string) (string, error)
+	ExecuteQuery(ctx context.Context, database, query string) ([][]string, int, error)
+	ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error
+	// GetReferencingTables returns reverse foreign keys with the shared header row.
+	GetReferencingTables(ctx context.Context, database, table string) ([][]string, error)
 	GetProvider() string
-	GetPrimaryKeyColumnNames(database, table string) ([]string, error)
+	GetPrimaryKeyColumnNames(ctx context.Context, database, table string) ([]string, error)
 
 	SupportsProgramming() bool
 	UseSchemas() bool
-	GetFunctions(database string) (map[string][]string, error)
-	GetProcedures(database string) (map[string][]string, error)
-	GetViews(database string) (map[string][]string, error)
-	GetFunctionDefinition(database string, name string) (string, error)
-	GetProcedureDefinition(database string, name string) (string, error)
-	GetViewDefinition(database string, name string) (string, error)
+	GetFunctions(ctx context.Context, database string) (map[string][]string, error)
+	GetProcedures(ctx context.Context, database string) (map[string][]string, error)
+	GetViews(ctx context.Context, database string) (map[string][]string, error)
+	GetFunctionDefinition(ctx context.Context, database string, name string) (string, error)
+	GetProcedureDefinition(ctx context.Context, database string, name string) (string, error)
+	GetViewDefinition(ctx context.Context, database string, name string) (string, error)
 
 	FormatArg(arg any, colype models.CellValueType) any
 	FormatArgForQueryString(arg any) string
@@ -69,3 +94,15 @@ type Driver interface {
 	// find a better way to do it. See *ResultsTable.GetPrimaryKeyValue()
 	SetProvider(provider string)
 }
+
+var (
+	_ Driver                = (*MySQL)(nil)
+	_ Driver                = (*Postgres)(nil)
+	_ Driver                = (*MSSQL)(nil)
+	_ Driver                = (*SQLite)(nil)
+	_ Driver                = (*ClickHouse)(nil)
+	_ BulkTableColumnLoader = (*MySQL)(nil)
+	_ BulkTableColumnLoader = (*Postgres)(nil)
+	_ BulkTableColumnLoader = (*MSSQL)(nil)
+	_ BulkTableColumnLoader = (*SQLite)(nil)
+)
