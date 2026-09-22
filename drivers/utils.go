@@ -61,7 +61,7 @@ func buildInsertQuery(formattedTableName string, values []models.CellValue, driv
 
 		if value.Value != nil && value.Type != models.Default {
 			placeholders = append(placeholders, driver.FormatPlaceholder(index))
-			args = append(args, value.Value)
+			args = append(args, driver.FormatArg(value.Value, value.Type))
 			index++
 		}
 	}

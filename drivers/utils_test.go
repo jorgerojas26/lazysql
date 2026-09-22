@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -179,6 +180,40 @@ func Test_queriesInTransaction(t *testing.T) {
 				tt.assertErr(t, queryErr)
 			}
 		})
+	}
+}
+
+func Test_buildInsertQuery_SpecialValues(t *testing.T) {
+	// Values as the results table stages them for a new row after using the
+	// set-value menu: the Value holds the placeholder label, the Type holds the meaning.
+	values := []models.CellValue{
+		{Column: "id", Value: "DEFAULT", Type: models.Default},
+		{Column: "a", Value: "NULL", Type: models.Null},
+		{Column: "b", Value: "EMPTY", Type: models.Empty},
+		{Column: "c", Value: "Alice", Type: models.String},
+	}
+	wantArgs := []any{sql.NullString{}, "", "Alice"}
+
+	drivers := map[string]Driver{
+		"mysql":    &MySQL{},
+		"postgres": &Postgres{},
+		"sqlite":   &SQLite{},
+		"mssql":    &MSSQL{},
+	}
+
+	for name, d := range drivers {
+		t.Run(name, func(t *testing.T) {
+			got := buildInsertQuery("t", values, d)
+			if !reflect.DeepEqual(got.Args, wantArgs) {
+				t.Errorf("args mismatch:\n  got:  %#v\n  want: %#v", got.Args, wantArgs)
+			}
+		})
+	}
+
+	got := buildInsertQuery(`"t"`, values, &Postgres{})
+	wantQuery := `INSERT INTO "t" ("a", "b", "c") VALUES ($1, $2, $3)`
+	if got.Query != wantQuery {
+		t.Errorf("query mismatch:\n  got:  %s\n  want: %s", got.Query, wantQuery)
 	}
 }
 

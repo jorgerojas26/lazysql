@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -32,29 +33,29 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	saveButton := tview.NewButton("[yellow]F1 [dark]Save")
-	saveButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
+	saveButton := tview.NewButton(fmt.Sprintf("[%s]F1 [-]Save", app.Styles.SecondaryTextColor))
+	saveButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	saveButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	testButton := tview.NewButton("[yellow]F2 [dark]Test")
-	testButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
+	testButton := tview.NewButton(fmt.Sprintf("[%s]F2 [-]Test", app.Styles.SecondaryTextColor))
+	testButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	testButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[yellow]F3 [dark]Connect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
+	connectButton := tview.NewButton(fmt.Sprintf("[%s]F3 [-]Connect", app.Styles.SecondaryTextColor))
+	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	connectButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	cancelButton := tview.NewButton("[yellow]Esc [dark]Cancel")
-	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(app.Styles.PrimaryTextColor)))
+	cancelButton := tview.NewButton(fmt.Sprintf("[%s]Esc [-]Cancel", app.Styles.SecondaryTextColor))
+	cancelButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	cancelButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
@@ -85,7 +86,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
 			if connectionName == "" {
-				form.StatusText.SetText("Connection name is required").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				form.StatusText.SetText("Connection name is required").SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return event
 			}
 
@@ -93,7 +94,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
 			if err != nil {
-				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return event
 			}
 
@@ -130,7 +131,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				newDatabases = append(databases, parsedDatabaseData)
 				err := app.App.SaveConnections(newDatabases)
 				if err != nil {
-					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return event
 				}
 
@@ -157,7 +158,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 				err := app.App.SaveConnections(newDatabases)
 				if err != nil {
-					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return event
 
 				}
@@ -177,7 +178,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 func (form *ConnectionForm) testConnection(connectionString string) {
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
-		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return
 	}
 
@@ -201,7 +202,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	err = db.TestConnection(connectionString)
 
 	if err != nil {
-		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 	} else {
 		form.StatusText.SetText("Connection success").SetTextColor(app.Styles.TertiaryTextColor)
 	}

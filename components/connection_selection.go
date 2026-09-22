@@ -30,36 +30,36 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexRowCSS)
 
-	newButton := tview.NewButton("[yellow]N[dark]ew")
-	newButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	newButton := tview.NewButton(fmt.Sprintf("[%s]N[-]ew", app.Styles.SecondaryTextColor))
+	newButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	newButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(newButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[yellow]C[dark]onnect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	connectButton := tview.NewButton(fmt.Sprintf("[%s]C[-]onnect", app.Styles.SecondaryTextColor))
+	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	connectButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	editButton := tview.NewButton("[yellow]E[dark]dit")
-	editButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	editButton := tview.NewButton(fmt.Sprintf("[%s]E[-]dit", app.Styles.SecondaryTextColor))
+	editButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	editButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(editButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	deleteButton := tview.NewButton("[yellow]D[dark]elete")
-	deleteButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	deleteButton := tview.NewButton(fmt.Sprintf("[%s]D[-]elete", app.Styles.SecondaryTextColor))
+	deleteButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	deleteButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(deleteButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	quitButton := tview.NewButton("[yellow]Q[dark]uit")
-	quitButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
+	quitButton := tview.NewButton(fmt.Sprintf("[%s]Q[-]uit", app.Styles.SecondaryTextColor))
+	quitButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	quitButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
@@ -164,7 +164,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		if waitsForPort {
 			port, err := helpers.GetFreePort()
 			if err != nil {
-				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return App.Draw()
 			}
 			// Add port variable for the auto-generated port.
@@ -191,7 +191,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 			}
 
 			if err := helpers.RunCommand(App.Context(), cmd, timeout, onCommandDone); err != nil {
-				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return App.Draw()
 			}
 
@@ -204,7 +204,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 				}
 
 				if portInt, err := strconv.Atoi(interpolatedPort); err != nil || portInt < 0 || portInt >= 1<<16 {
-					cs.StatusText.SetText("bad port: " + interpolatedPort).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					cs.StatusText.SetText("bad port: " + interpolatedPort).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return App.Draw()
 				}
 
@@ -213,7 +213,7 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 				App.Draw()
 
 				if err := helpers.WaitForPort(App.Context(), interpolatedPort); err != nil {
-					cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return App.Draw()
 				}
 			}
@@ -246,19 +246,19 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		newDBDriver = &drivers.ClickHouse{}
 	default:
 		errorMsg := fmt.Sprintf("Unsupported database provider: '%s'. Valid providers are: mysql, postgres, sqlite3, sqlserver, clickhouse", connection.Provider)
-		cs.StatusText.SetText(errorMsg).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		cs.StatusText.SetText(errorMsg).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return App.Draw()
 	}
 
 	err := newDBDriver.Connect(connection.URL)
 	if err != nil {
-		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return App.Draw()
 	}
 
 	selectedRow, selectedCol := connectionsTable.GetSelection()
 	cell := connectionsTable.GetCell(selectedRow, selectedCol)
-	cell.SetText(fmt.Sprintf("[green]* %s", cell.Text))
+	cell.SetText(fmt.Sprintf("[%s]* %s", app.Styles.TertiaryTextColor, cell.Text))
 	cs.StatusText.SetText("")
 
 	newHome := NewHomePage(connection, newDBDriver)
