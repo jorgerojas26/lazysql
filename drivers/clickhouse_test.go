@@ -3,6 +3,7 @@ package drivers
 import (
 	"errors"
 	"math/big"
+	"reflect"
 	"regexp"
 	"testing"
 	"time"
@@ -279,6 +280,19 @@ func TestClickHouse_GetForeignKeys(t *testing.T) {
 	}
 	if len(fks) != 1 {
 		t.Fatalf("expected only a header row, got %v", fks)
+	}
+}
+
+func TestClickHouse_GetReferencingTables(t *testing.T) {
+	db := &ClickHouse{}
+
+	references, err := db.GetReferencingTables("db", "t")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := [][]string{ReferencingTablesHeader}
+	if !reflect.DeepEqual(references, expected) {
+		t.Fatalf("expected only the shared header row, got %v", references)
 	}
 }
 
