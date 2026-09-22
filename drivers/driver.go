@@ -1,8 +1,26 @@
 package drivers
 
 import (
+	"fmt"
+
 	"github.com/jorgerojas26/lazysql/models"
 )
+
+// PartialExecutionError reports that a non-transactional driver applied some
+// changes before a later change failed. Callers must remove the applied prefix
+// before allowing a retry.
+type PartialExecutionError struct {
+	Applied int
+	Err     error
+}
+
+func (err *PartialExecutionError) Error() string {
+	return fmt.Sprintf("%d change(s) applied before failure: %v", err.Applied, err.Err)
+}
+
+func (err *PartialExecutionError) Unwrap() error {
+	return err.Err
+}
 
 type Driver interface {
 	Connect(urlstr string) error
@@ -12,16 +30,19 @@ type Driver interface {
 	GetTableColumns(database, table string) ([][]string, error)
 	GetConstraints(database, table string) ([][]string, error)
 	GetForeignKeys(database, table string) ([][]string, error)
+	// GetReferencingTables returns the tables that hold a foreign key pointing
+	// at the given table. Rows are returned with a leading header row shaped as
+	// constraint_name, table_schema, table_name, column_name, referenced_column_name.
+	GetReferencingTables(database, table string) ([][]string, error)
 	GetIndexes(database, table string) ([][]string, error)
 	GetRecords(database, table, where, sort string, offset, limit int) ([][]string, int, string, error)
 	UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error
 	DeleteRecord(database, table string, primaryKeyColumnName, primaryKeyValue string) error
-	ExecuteDMLStatement(query string) (string, error)
-	// database selects which database the query runs against. Drivers that
-	// support switching database context within a single connection (MSSQL,
-	// MySQL) prefix the query accordingly; drivers that require a dedicated
-	// connection per database (PostgreSQL) route the query through it.
-	// An empty database falls back to the connection's current database.
+	// database selects the editor's target database for both reads and writes.
+	// Empty uses the original connection context. MSSQL and MySQL isolate USE
+	// on a reserved connection; PostgreSQL opens a temporary database connection.
+	// SQLite and ClickHouse retain their original connection context.
+	ExecuteDMLStatement(database, query string) (string, error)
 	ExecuteQuery(database, query string) ([][]string, int, error)
 	ExecutePendingChanges(changes []models.DBDMLChange) error
 	GetProvider() string

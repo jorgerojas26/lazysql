@@ -42,6 +42,7 @@ func (c KeymapSystem) Resolve(event *tcell.EventKey) cmd.Command {
 }
 
 const (
+	GlobalGroup       = "global"
 	HomeGroup         = "home"
 	TreeGroup         = "tree"
 	TreeFilterGroup   = "treefilter"
@@ -57,6 +58,9 @@ const (
 
 // Define a global KeymapSystem object with default keybinds
 var Keymaps = KeymapSystem{
+	Global: Map{
+		Bind{Key: Key{Code: tcell.KeyCtrlT}, Cmd: cmd.ThemePicker, Description: "Choose color theme"},
+	},
 	Groups: map[string]Map{
 		HomeGroup: {
 			Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight, Description: "Focus table"},
@@ -69,6 +73,9 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyCtrlP}, Cmd: cmd.SearchGlobal, Description: "Global search"},
 			Bind{Key: Key{Code: tcell.KeyCtrlUnderscore}, Cmd: cmd.ToggleQueryHistory, Description: "Toggle query history modal"},
 			Bind{Key: Key{Char: 'T'}, Cmd: cmd.ToggleTree, Description: "Toggle file tree"},
+			Bind{Key: Key{Char: '+'}, Cmd: cmd.WidenTree, Description: "Widen tree"},
+			Bind{Key: Key{Char: '='}, Cmd: cmd.WidenTree, Description: "Widen tree"},
+			Bind{Key: Key{Char: '-'}, Cmd: cmd.NarrowTree, Description: "Narrow tree"},
 		},
 		ConnectionGroup: {
 			Bind{Key: Key{Char: 'n'}, Cmd: cmd.NewConnection, Description: "Create a new database connection"},
@@ -109,7 +116,8 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 'b'}, Cmd: cmd.GotoPrev, Description: "Go to previous cell"},
 			Bind{Key: Key{Char: '$'}, Cmd: cmd.GotoEnd, Description: "Go to last cell"},
 			Bind{Key: Key{Char: '0'}, Cmd: cmd.GotoStart, Description: "Go to first cell"},
-			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value to clipboard"},
+			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value to clipboard (or marked rows if any)"},
+			Bind{Key: Key{Char: ' '}, Cmd: cmd.RowSelect, Description: "Toggle row selection"},
 			Bind{Key: Key{Char: 'o'}, Cmd: cmd.AppendNewRow, Description: "Append new row"},
 			Bind{Key: Key{Char: 'O'}, Cmd: cmd.DuplicateRow, Description: "Duplicate row"},
 			Bind{Key: Key{Char: 'J'}, Cmd: cmd.SortDesc, Description: "Sort descending"},
@@ -135,10 +143,14 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
 			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Toggle JSON viewer for row"},
 			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer for cell"},
+			// Foreign keys
+			Bind{Key: Key{Char: 'f'}, Cmd: cmd.ReverseForeignKeyJump, Description: "Jump to a table referencing the current row"},
 			// Export
 			Bind{Key: Key{Char: 'E'}, Cmd: cmd.ExportCSV, Description: "Export to CSV"},
 			// External editor
 			Bind{Key: Key{Char: 'e'}, Cmd: cmd.OpenCellInExternalEditor, Description: "Edit cell in external editor"},
+			// Foreign keys
+			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.ForeignKeyJump, Description: "Jump to the referenced row (foreign key)"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
@@ -235,6 +247,15 @@ func ApplyKeymapConfig(keymaps models.KeymapConfig) error {
 
 	for groupName, bindings := range keymaps {
 		groupKey := strings.ToLower(groupName)
+		if groupKey == GlobalGroup {
+			updated, err := setBindings(bindings, Keymaps.Global, groupName)
+			if err != nil {
+				return err
+			}
+			Keymaps.Global = updated
+			continue
+		}
+
 		group, ok := Keymaps.Groups[groupKey]
 		if !ok {
 			return fmt.Errorf("unknown keymap group: %s", groupName)

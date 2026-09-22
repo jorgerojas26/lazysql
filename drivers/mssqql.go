@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -12,6 +13,8 @@ import (
 	_ "github.com/microsoft/go-mssqldb"
 	// Azure AD auth support for Azure SQL (e.g. fedauth=ActiveDirectoryDefault)
 	_ "github.com/microsoft/go-mssqldb/azuread"
+	// Kerberos auth support on non-Windows (e.g. authenticator=krb5)
+	_ "github.com/microsoft/go-mssqldb/integratedauth/krb5"
 	"github.com/xo/dburl"
 
 	"github.com/jorgerojas26/lazysql/helpers/logger"
@@ -22,6 +25,7 @@ type MSSQL struct {
 	Connection      *sql.DB
 	Provider        string
 	CurrentDatabase string
+	isAzureSQL      bool
 }
 
 // mssqlGUIDToUUID converts a 16-byte little-endian GUID from MSSQL
@@ -72,6 +76,7 @@ func (db *MSSQL) Connect(urlstr string) error {
 	}
 
 	if err := db.Connection.Ping(); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
@@ -82,15 +87,79 @@ func (db *MSSQL) Connect(urlstr string) error {
 
 	var database string
 	if err := row.Scan(&database); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
 	db.CurrentDatabase = database
+	var engineEdition int
+	if err := db.Connection.QueryRow(
+		`SELECT CAST(SERVERPROPERTY('EngineEdition') AS INT)`,
+	).Scan(&engineEdition); err != nil {
+		_ = db.Connection.Close()
+		return err
+	}
+
+	// EngineEdition 5 is Azure SQL Database.
+	// Azure SQL Database does not support switching databases with USE.
+	db.isAzureSQL = engineEdition == 5
 
 	return nil
 }
 
+func quoteMSSQLIdentifier(identifier string) string {
+	return "[" + strings.ReplaceAll(identifier, "]", "]]") + "]"
+}
+
+// formatTableName quotes a table name one identifier at a time. Reverse and
+// forward foreign-key navigation can provide schema-qualified names, which SQL
+// Server must render as [schema].[table], not [schema.table].
+func (db *MSSQL) formatTableName(table string) string {
+	schema, tableName, qualified := strings.Cut(table, ".")
+	if !qualified {
+		return quoteMSSQLIdentifier(table)
+	}
+
+	return quoteMSSQLIdentifier(schema) + "." + quoteMSSQLIdentifier(tableName)
+}
+
+// tableSchemaAndName returns an explicit schema for metadata queries. Bare
+// table names retain the driver's existing default-schema behavior.
+func (db *MSSQL) tableSchemaAndName(table string) (string, string, error) {
+	if schema, tableName, qualified := strings.Cut(table, "."); qualified {
+		if schema == "" || tableName == "" {
+			return "", "", errors.New("table must be in the format schema.table")
+		}
+		return schema, tableName, nil
+	}
+
+	schema, err := db.getCurrentSchema()
+	if err != nil {
+		return "", "", err
+	}
+
+	return schema, table, nil
+}
+
+func (db *MSSQL) databasePrefix(database string) string {
+	if db.isAzureSQL {
+		return ""
+	}
+
+	return "USE " + quoteMSSQLIdentifier(database) + "; "
+}
+
 func (db *MSSQL) GetDatabases() ([]string, error) {
+	if db.isAzureSQL {
+		var database string
+
+		if err := db.Connection.QueryRow("SELECT DB_NAME()").Scan(&database); err != nil {
+			return nil, err
+		}
+
+		return []string{database}, nil
+	}
+
 	databases := make([]string, 0)
 
 	query := `
@@ -99,6 +168,7 @@ func (db *MSSQL) GetDatabases() ([]string, error) {
 		FROM
 			sys.databases
 	`
+
 	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
@@ -129,9 +199,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 
 	tables := make(map[string][]string)
 
-	query := "SELECT name FROM "
-	query += database
-	query += ".sys.tables"
+	query := "SELECT name FROM " + quoteMSSQLIdentifier(database) + ".sys.tables"
 
 	rows, err := db.Connection.Query(query)
 	if err != nil {
@@ -157,8 +225,7 @@ func (db *MSSQL) GetTables(database string) (map[string][]string, error) {
 }
 
 func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
-	query := fmt.Sprintf(`
-		USE %s;
+	query := db.databasePrefix(database) + `
         SELECT
             c.name AS column_name,
             t.name AS data_type,
@@ -174,18 +241,18 @@ func (db *MSSQL) GetTableColumns(database, table string) ([][]string, error) {
         WHERE c.object_id = OBJECT_ID(@p2)
         AND t.name <> 'sysname'
         ORDER BY c.column_id;
-    `, database)
+    `
+
 	return db.getTableInformation(query, database, table, "")
 }
 
 func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
 	if err != nil {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`
-		USE %s;
+	query := db.databasePrefix(database) + `
         SELECT
             kc.name AS constraint_name,
             c.name AS column_name,
@@ -203,14 +270,19 @@ func (db *MSSQL) GetConstraints(database, table string) ([][]string, error) {
             AND ic.object_id = c.object_id
         WHERE s.name = @p1
           AND t.name = @p2
-          AND kc.type IN ('PK', 'UQ')  -- Primary keys and unique constraints
-    `, database)
-	return db.getTableInformation(query, currentSchema, table, "")
+          AND kc.type IN ('PK', 'UQ')
+    `
+
+	return db.getTableInformation(query, tableSchema, tableName, "")
 }
 
 func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
-	query := fmt.Sprintf(`
-		USE %s;
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
+	if err != nil {
+		return nil, err
+	}
+
+	query := db.databasePrefix(database) + `
         SELECT
             fk.name AS constraint_name,
             c.name AS column_name,
@@ -234,19 +306,67 @@ func (db *MSSQL) GetForeignKeys(database, table string) ([][]string, error) {
         INNER JOIN sys.schemas s
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
+          AND s.name = @p3
           AND DB_NAME(DB_ID(@p1)) = @p1
-    `, database)
+    `
+
+	return db.getTableInformation(query, database, tableName, tableSchema)
+}
+
+// GetReferencingTables returns every foreign key that points at the given
+// table, i.e. the reverse direction of GetForeignKeys. OBJECT_ID applies SQL
+// Server's normal schema resolution to bare names and handles explicitly
+// qualified names without guessing which same-named table was opened.
+func (db *MSSQL) GetReferencingTables(database, table string) ([][]string, error) {
+	query := db.databasePrefix(database) + `
+        SELECT
+            fk.name AS constraint_name,
+            s.name AS table_schema,
+            t.name AS table_name,
+            c.name AS column_name,
+            rc.name AS referenced_column_name
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc
+            ON fk.object_id = fkc.constraint_object_id
+        INNER JOIN sys.columns c
+            ON fkc.parent_column_id = c.column_id
+            AND fkc.parent_object_id = c.object_id
+        INNER JOIN sys.columns rc
+            ON fkc.referenced_column_id = rc.column_id
+            AND fkc.referenced_object_id = rc.object_id
+        INNER JOIN sys.tables t
+            ON fk.parent_object_id = t.object_id
+        INNER JOIN sys.schemas s
+            ON t.schema_id = s.schema_id
+        WHERE fk.referenced_object_id = OBJECT_ID(@p2, 'U')
+          AND DB_NAME() = @p1
+        ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id
+    `
+
 	return db.getTableInformation(query, database, table, "")
 }
 
 func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
-	currentSchema, err := db.getCurrentSchema()
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
 	if err != nil {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`
-		USE %s;
+	databaseJoin := `
+        INNER JOIN sys.databases d
+            ON d.name = @p1
+	`
+	databaseFilter := "AND DB_ID(@p1) = d.database_id"
+
+	if db.isAzureSQL {
+		// In Azure SQL Database, DB_ID() isn't guaranteed to match the
+		// database_id exposed by sys.databases. The connection is already
+		// scoped to the current database, so compare against DB_NAME().
+		databaseJoin = ""
+		databaseFilter = "AND DB_NAME() = @p1"
+	}
+
+	query := db.databasePrefix(database) + fmt.Sprintf(`
         SELECT
             t.name AS table_name,
             i.name AS index_name,
@@ -261,8 +381,7 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
         FROM sys.tables t
         INNER JOIN sys.schemas s
             ON t.schema_id = s.schema_id
-        INNER JOIN sys.databases d
-            ON d.name = @p1
+        %s
         INNER JOIN sys.indexes i
             ON t.object_id = i.object_id
         INNER JOIN sys.index_columns ic
@@ -273,10 +392,11 @@ func (db *MSSQL) GetIndexes(database, table string) ([][]string, error) {
             AND t.object_id = c.object_id
         WHERE t.name = @p2
           AND s.name = @p3
-          AND DB_ID(@p1) = d.database_id
+          %s
         ORDER BY i.type_desc
-    `, database)
-	return db.getTableInformation(query, database, table, currentSchema)
+    `, databaseJoin, databaseFilter)
+
+	return db.getTableInformation(query, database, tableName, tableSchema)
 }
 
 func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit int) (results [][]string, totalRecords int, displayQueryString string, err error) {
@@ -294,27 +414,33 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 
 	results = make([][]string, 0)
 
-	baseQuery := fmt.Sprintf("USE %s; SELECT * FROM ", database)
-	baseQuery += db.FormatReference(table)
+	baseQuery := db.databasePrefix(database) + "SELECT * FROM " + db.formatTableName(table)
 
 	if where != "" {
 		baseQuery += fmt.Sprintf(" %s", where)
 	}
 
-	// Since in MSSQL, ORDER BY is mandatory when using pagination
 	if sort == "" {
-		sort = "(SELECT NULL)" // Or use a primary key if available and sensible as a default
+		sort = "(SELECT NULL)"
 	}
 
-	// Query for execution with placeholders
-	executableQuery := fmt.Sprintf("%s ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY", baseQuery, sort)
+	executableQuery := fmt.Sprintf(
+		"%s ORDER BY %s OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY",
+		baseQuery,
+		sort,
+	)
 
-	// Query for display with actual values
-	displayQueryString = fmt.Sprintf("%s ORDER BY %s OFFSET %s ROWS FETCH NEXT %s ROWS ONLY", baseQuery, sort, db.FormatArg(offset, models.String), db.FormatArg(limit, models.String))
+	displayQueryString = fmt.Sprintf(
+		"%s ORDER BY %s OFFSET %s ROWS FETCH NEXT %s ROWS ONLY",
+		baseQuery,
+		sort,
+		db.FormatArg(offset, models.String),
+		db.FormatArg(limit, models.String),
+	)
 
 	rows, err := db.Connection.Query(executableQuery, offset, limit)
 	if err != nil {
-		return nil, 0, displayQueryString, err // Return display query even on error
+		return nil, 0, displayQueryString, err
 	}
 
 	defer rows.Close()
@@ -336,7 +462,7 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		if errScan := rows.Scan(rowValues...); errScan != nil {
 			return nil, 0, displayQueryString, errScan
 		}
-		// Get column types to identify UNIQUEIDENTIFIER
+
 		columnTypes, err := rows.ColumnTypes()
 		if err != nil {
 			return nil, 0, displayQueryString, err
@@ -345,7 +471,9 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		if len(columnTypes) != len(rowValues) {
 			return nil, 0, displayQueryString, errors.New("unexpected number of column")
 		}
+
 		var row []string
+
 		for i, col := range rowValues {
 			if col == nil {
 				row = append(row, "NULL&")
@@ -361,13 +489,12 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 			colType := columnType.DatabaseTypeName()
 
 			if colType == "UNIQUEIDENTIFIER" {
-				// Try to parse as a GUID
 				if guid, errParse := mssqlGUIDToUUID(*rawBytes); errParse == nil {
-					row = append(row, guid.String()) // Now this will be the correct format
+					row = append(row, guid.String())
 				} else {
-					// Fallback to hex string if parsing fails
 					hexValue := hex.EncodeToString(*rawBytes)
-					row = append(row, "0x"+hexValue) // Prefix with "0x" for clarity
+					row = append(row, "0x"+hexValue)
+
 					logger.Warn("Invalid GUID", map[string]any{
 						"table":  table,
 						"column": columns[i],
@@ -375,19 +502,20 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 						"error":  errParse,
 					})
 				}
+
 				continue
 			}
 
-			// Handle other columns as strings
 			colval := string(*rawBytes)
-			// Check nullability and handle empty strings
 			nullable, _ := columnType.Nullable()
+
 			if nullable && colval == "" {
-				row = append(row, "NULL&") // show "NULL" instead if "EMPTY" when column is Nullable and it's set to null
+				row = append(row, "NULL&")
 			} else {
 				row = append(row, colval)
 			}
 		}
+
 		results = append(results, row)
 	}
 
@@ -395,24 +523,28 @@ func (db *MSSQL) GetRecords(database, table, where, sort string, offset, limit i
 		return nil, 0, displayQueryString, err
 	}
 
-	countQuery := "USE "
-	countQuery += database
-	countQuery += "; "
-	countQuery += "SELECT COUNT(*) FROM "
-	countQuery += db.FormatReference(table)
+	countQuery := db.databasePrefix(database) +
+		"SELECT COUNT(*) FROM " +
+		db.formatTableName(table)
 
 	if where != "" {
 		countQuery += fmt.Sprintf(" %s", where)
 	}
 
 	totalRecords = 0
+
 	countRow := db.Connection.QueryRow(countQuery)
 	if err := countRow.Scan(&totalRecords); err != nil {
-		return results, 0, displayQueryString, err // Return display query even on count error
+		return results, 0, displayQueryString, err
 	}
 
-	// Replace the limit and offset with actual values in the query string
-	displayQueryString = fmt.Sprintf("%s ORDER BY %s OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", baseQuery, sort, offset, limit)
+	displayQueryString = fmt.Sprintf(
+		"%s ORDER BY %s OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+		baseQuery,
+		sort,
+		offset,
+		limit,
+	)
 
 	return results, totalRecords, displayQueryString, nil
 }
@@ -438,16 +570,12 @@ func (db *MSSQL) UpdateRecord(database, table, column, value, primaryKeyColumnNa
 		return errors.New("primary key value is required")
 	}
 
-	query := "USE "
-	query += database
-	query += "; UPDATE "
-	query += database
-	query += table
-	query += " SET "
-	query += column
-	query += " = @p1 WHERE "
-	query += primaryKeyColumnName
-	query += " = @p2"
+	query := db.databasePrefix(database) +
+		"UPDATE " + db.formatTableName(table) +
+		" SET " + db.FormatReference(column) +
+		" = @p1 WHERE " + db.FormatReference(primaryKeyColumnName) +
+		" = @p2"
+
 	_, err := db.Connection.Exec(query, value, primaryKeyValue)
 
 	return err
@@ -470,24 +598,27 @@ func (db *MSSQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 		return errors.New("primary key value is required")
 	}
 
-	query := "USE "
-	query += database
-	query += "; DELETE FROM "
-	query += table
-	query += " WHERE "
-	query += primaryKeyColumnName
-	query += " = @p1"
+	query := db.databasePrefix(database) +
+		"DELETE FROM " + db.formatTableName(table) +
+		" WHERE " + db.FormatReference(primaryKeyColumnName) +
+		" = @p1"
+
 	_, err := db.Connection.Exec(query, primaryKeyValue)
 
 	return err
 }
 
-func (db *MSSQL) ExecuteDMLStatement(query string) (string, error) {
+func (db *MSSQL) ExecuteDMLStatement(database, query string) (string, error) {
 	if query == "" {
 		return "", errors.New("query is required")
 	}
 
-	res, err := db.Connection.Exec(query)
+	conn, cleanup, err := db.editorConnection(database)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	res, err := conn.ExecContext(context.Background(), query)
 	if err != nil {
 		return "", err
 	}
@@ -504,17 +635,16 @@ func (db *MSSQL) ExecuteQuery(database, query string) ([][]string, int, error) {
 	if query == "" {
 		return nil, 0, errors.New("query can not be empty")
 	}
-
-	executableQuery := query
-	if database != "" && database != db.CurrentDatabase {
-		executableQuery = fmt.Sprintf("USE %s; %s", database, query)
-	}
-
-	rows, err := db.Connection.Query(executableQuery)
+	conn, cleanup, err := db.editorConnection(database)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer cleanup()
 
+	rows, err := conn.QueryContext(context.Background(), query)
+	if err != nil {
+		return nil, 0, err
+	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
@@ -557,7 +687,7 @@ func (db *MSSQL) ExecutePendingChanges(changes []models.DBDMLChange) error {
 
 	for _, change := range changes {
 
-		formattedTableName := db.FormatReference(change.Table)
+		formattedTableName := db.formatTableName(change.Table)
 
 		switch change.Type {
 
@@ -584,16 +714,14 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 		return nil, errors.New("table name is required")
 	}
 
-	currentSchema, err := db.getCurrentSchema()
+	tableSchema, tableName, err := db.tableSchemaAndName(table)
 	if err != nil {
 		return nil, err
 	}
 
 	pkColumnName := make([]string, 0)
-	query := "USE "
-	query += database
-	query += "; "
-	query += `
+
+	query := db.databasePrefix(database) + `
 		SELECT
 			c.name AS column_name
 		FROM
@@ -618,7 +746,8 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 			AND t.name = @p3
 		ORDER BY ic.key_ordinal
 	`
-	rows, err := db.Connection.Query(query, "PK", currentSchema, table)
+
+	rows, err := db.Connection.Query(query, "PK", tableSchema, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -627,13 +756,9 @@ func (db *MSSQL) GetPrimaryKeyColumnNames(database, table string) ([]string, err
 
 	for rows.Next() {
 		var colName string
-		err = rows.Scan(&colName)
-		if err != nil {
-			return nil, err
-		}
 
-		if rows.Err() != nil {
-			return nil, rows.Err()
+		if err := rows.Scan(&colName); err != nil {
+			return nil, err
 		}
 
 		pkColumnName = append(pkColumnName, colName)
@@ -790,7 +915,7 @@ func (db *MSSQL) FormatArgForQueryString(arg any) string {
 }
 
 func (db *MSSQL) FormatReference(reference string) string {
-	return fmt.Sprintf("[%s]", reference)
+	return quoteMSSQLIdentifier(reference)
 }
 
 func (db *MSSQL) FormatPlaceholder(index int) string {
@@ -800,7 +925,7 @@ func (db *MSSQL) FormatPlaceholder(index int) string {
 func (db *MSSQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
 	var queryStr string
 
-	formattedTableName := db.FormatReference(change.Table)
+	formattedTableName := db.formatTableName(change.Table)
 
 	columnNames, values := getColNamesAndArgsAsString(change.Values)
 
@@ -837,17 +962,14 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 
 	functions := make(map[string][]string)
 
-	query := "USE "
-	query += database
-	query += ";"
-	query += `
+	query := db.databasePrefix(database) + `
 		SELECT o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
 		WHERE o.type_desc IN ('SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION')
-		`
+	`
 
-	rows, err := db.Connection.Query(query, database)
+	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -856,6 +978,7 @@ func (db *MSSQL) GetFunctions(database string) (map[string][]string, error) {
 
 	for rows.Next() {
 		var function string
+
 		if err := rows.Scan(&function); err != nil {
 			return nil, err
 		}
@@ -877,15 +1000,12 @@ func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
 
 	procedures := make(map[string][]string)
 
-	query := "USE "
-	query += database
-	query += "; "
-	query += `
+	query := db.databasePrefix(database) + `
 		SELECT o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
 		WHERE o.type_desc IN ('SQL_STORED_PROCEDURE')
-		`
+	`
 
 	rows, err := db.Connection.Query(query)
 	if err != nil {
@@ -896,6 +1016,7 @@ func (db *MSSQL) GetProcedures(database string) (map[string][]string, error) {
 
 	for rows.Next() {
 		var procedure string
+
 		if err := rows.Scan(&procedure); err != nil {
 			return nil, err
 		}
@@ -925,10 +1046,7 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 
 	views := make(map[string][]string)
 
-	query := "USE "
-	query += database
-	query += "; "
-	query += `
+	query := db.databasePrefix(database) + `
 		SELECT o.name
 		FROM sys.sql_modules m
 		JOIN sys.objects o ON m.object_id = o.object_id
@@ -944,6 +1062,7 @@ func (db *MSSQL) GetViews(database string) (map[string][]string, error) {
 
 	for rows.Next() {
 		var view string
+
 		if err := rows.Scan(&view); err != nil {
 			return nil, err
 		}
@@ -965,13 +1084,9 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
 
 	result := ""
 
-	query := "USE "
-	query += database
-	query += "; "
-	query += `
+	query := db.databasePrefix(database) + `
 	declare @proc_source nvarchar(max);
     select @proc_source = object_definition(object_id(@name));
-
     if charindex('create', @proc_source) > 0 and
         charindex('create', @proc_source) < charindex(@name, @proc_source)
     begin
@@ -982,6 +1097,7 @@ func (db *MSSQL) GetObjectDefinition(database string, name string) (string, erro
 	`
 
 	row := db.Connection.QueryRow(query, sql.Named("name", name))
+
 	if err := row.Scan(&result); err != nil {
 		return result, err
 	}
@@ -999,4 +1115,12 @@ func (db *MSSQL) GetProcedureDefinition(database string, name string) (string, e
 
 func (db *MSSQL) GetViewDefinition(database string, name string) (string, error) {
 	return db.GetObjectDefinition(database, name)
+}
+
+// editorConnection keeps database selection local to this editor operation.
+func (db *MSSQL) editorConnection(database string) (editorConnection, func(), error) {
+	if database == "" || database == db.CurrentDatabase {
+		return db.Connection, func() {}, nil
+	}
+	return switchedEditorConnection(db.Connection, "USE "+quoteMSSQLIdentifier(database))
 }

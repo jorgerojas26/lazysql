@@ -43,6 +43,7 @@ func (db *MySQL) Connect(urlstr string) (err error) {
 
 	var database sql.NullString
 	if err := row.Scan(&database); err != nil {
+		_ = db.Connection.Close()
 		return err
 	}
 
@@ -254,6 +255,34 @@ func (db *MySQL) GetForeignKeys(database, table string) (results [][]string, err
 	return results, nil
 }
 
+// GetReferencingTables returns every foreign key that points at the given
+// table. Note that MySQL's GetForeignKeys already reports this direction, this
+// method exists so every driver exposes the reverse lookup explicitly.
+func (db *MySQL) GetReferencingTables(database, table string) ([][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	query := `
+        SELECT CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?
+        ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+    `
+
+	rows, err := db.Connection.Query(query, database, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanReferencingTables(rows)
+}
+
 func (db *MySQL) GetIndexes(database, table string) (results [][]string, err error) {
 	if database == "" {
 		return nil, errors.New("database name is required")
@@ -399,34 +428,13 @@ func (db *MySQL) GetRecords(database, table, where, sort string, offset, limit i
 }
 
 func (db *MySQL) ExecuteQuery(database, query string) ([][]string, int, error) {
-	// The MySQL driver does not support multiple statements in a single
-	// Query call by default (no multiStatements=true in the DSN), so "USE"
-	// and the actual query must run sequentially on the *same* pooled
-	// connection to avoid the USE landing on a different physical
-	// connection than the query.
-	if database != "" && database != db.CurrentDatabase {
-		ctx := context.Background()
-
-		conn, err := db.Connection.Conn(ctx)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer conn.Close()
-
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("USE `%s`", database)); err != nil {
-			return nil, 0, err
-		}
-
-		rows, err := conn.QueryContext(ctx, query)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer rows.Close()
-
-		return scanMySQLRows(rows)
+	conn, cleanup, err := db.editorConnection(database)
+	if err != nil {
+		return nil, 0, err
 	}
+	defer cleanup()
 
-	rows, err := db.Connection.Query(query)
+	rows, err := conn.QueryContext(context.Background(), query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -490,8 +498,13 @@ func (db *MySQL) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyV
 	return err
 }
 
-func (db *MySQL) ExecuteDMLStatement(query string) (result string, err error) {
-	res, err := db.Connection.Exec(query)
+func (db *MySQL) ExecuteDMLStatement(database, query string) (result string, err error) {
+	conn, cleanup, err := db.editorConnection(database)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	res, err := conn.ExecContext(context.Background(), query)
 	if err != nil {
 		return "", err
 	}
@@ -697,4 +710,12 @@ func (db *MySQL) GetProcedureDefinition(_ string, _ string) (string, error) {
 
 func (db *MySQL) GetViewDefinition(_ string, _ string) (string, error) {
 	return "", errors.New("not implemented")
+}
+
+// editorConnection keeps database selection local to this editor operation.
+func (db *MySQL) editorConnection(database string) (editorConnection, func(), error) {
+	if database == "" || database == db.CurrentDatabase {
+		return db.Connection, func() {}, nil
+	}
+	return switchedEditorConnection(db.Connection, "USE "+"`"+strings.ReplaceAll(database, "`", "``")+"`")
 }

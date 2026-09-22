@@ -9,8 +9,11 @@ const (
 	SwitchToEditorView
 	SwitchToConnectionsView
 	HelpPopup
+	ThemePicker
 	ToggleQueryHistory
 	ToggleTree
+	WidenTree
+	NarrowTree
 
 	// Movement: Basic
 	MoveUp
@@ -47,6 +50,7 @@ const (
 	Refresh
 	UnfocusEditor
 	Copy
+	RowSelect
 	Edit
 	CommitEdit
 	DiscardEdit
@@ -74,6 +78,7 @@ const (
 	ToggleSidebar
 	ShowRowJSONViewer
 	ShowCellJSONViewer
+	ReverseForeignKeyJump
 	ToggleJSONViewerWrap
 
 	// Connection
@@ -85,6 +90,9 @@ const (
 
 	// Export
 	ExportCSV
+
+	// Foreign keys
+	ForeignKeyJump
 )
 
 func (c Command) String() string {
@@ -98,10 +106,16 @@ func (c Command) String() string {
 		return "SwitchToConnectionsView"
 	case HelpPopup:
 		return "HelpPopup"
+	case ThemePicker:
+		return "ThemePicker"
 	case ToggleQueryHistory:
 		return "ToggleQueryHistory"
 	case ToggleTree:
 		return "ToggleLeftWrapper"
+	case WidenTree:
+		return "WidenTree"
+	case NarrowTree:
+		return "NarrowTree"
 
 	// Movement: Basic
 	case MoveUp:
@@ -109,7 +123,7 @@ func (c Command) String() string {
 	case MoveDown:
 		return "MoveDown"
 	case MoveLeft:
-		return "MoveRight"
+		return "MoveLeft"
 	case MoveRight:
 		return "MoveRight"
 	// Movement: Jumps
@@ -147,6 +161,8 @@ func (c Command) String() string {
 	// Operations
 	case Copy:
 		return "Copy"
+	case RowSelect:
+		return "RowSelect"
 	case Edit:
 		return "Edit"
 	case Save:
@@ -225,10 +241,14 @@ func (c Command) String() string {
 		return "ShowRowJSONViewer"
 	case ShowCellJSONViewer:
 		return "ShowCellJSONViewer"
+	case ReverseForeignKeyJump:
+		return "ReverseForeignKeyJump"
 	case ToggleJSONViewerWrap:
 		return "ToggleJSONViewerWrap"
 	case ExportCSV:
 		return "ExportCSV"
+	case ForeignKeyJump:
+		return "ForeignKeyJump"
 	}
 
 	return "Unknown"

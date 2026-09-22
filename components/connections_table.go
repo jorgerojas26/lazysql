@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
@@ -22,7 +24,7 @@ func NewConnectionsTable() *ConnectionsTable {
 	wrapper := tview.NewFlex()
 
 	errorTextView := tview.NewTextView()
-	errorTextView.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+	errorTextView.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 
 	table := &ConnectionsTable{
 		Table:         tview.NewTable().SetSelectable(true, false),
@@ -46,7 +48,7 @@ func (ct *ConnectionsTable) AddConnection(connection models.Connection) {
 	displayName := connection.Name
 
 	if connection.ReadOnly {
-		displayName = "[lightblue]READ[-] " + connection.Name
+		displayName = fmt.Sprintf("[%s]READ[-] ", app.Styles.ReadOnlyColor) + connection.Name
 	}
 	ct.SetCellSimple(rowCount, 0, displayName)
 	ct.connections = append(ct.connections, connection)

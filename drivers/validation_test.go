@@ -65,6 +65,19 @@ func TestIsQueryMutation(t *testing.T) {
 		{"with insert", "WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte", true},
 		{"with update", "WITH cte AS (SELECT 1) UPDATE t SET x=1", true},
 
+		// Multi-line CTEs (the SQL editor is multi-line, so this is how they are typed)
+		{"multiline with select", "WITH cte AS (\n  SELECT 1\n)\nSELECT * FROM cte", false},
+		{"multiline with insert", "WITH cte AS (\n  SELECT 1\n)\nINSERT INTO t SELECT * FROM cte", true},
+		{"multiline with update", "WITH cte AS (\n  SELECT 1\n)\nUPDATE t SET x=1", true},
+		{"multiline with delete", "WITH cte AS (\n  SELECT 1\n)\nDELETE FROM t", true},
+
+		// CREATE with modifiers between CREATE and the object keyword
+		{"create or replace view", "CREATE OR REPLACE VIEW v AS SELECT 1", true},
+		{"create unique index", "CREATE UNIQUE INDEX idx ON users(name)", true},
+		{"create materialized view", "CREATE MATERIALIZED VIEW mv AS SELECT 1", true},
+		{"create or replace function", "CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ SELECT 1 $$", true},
+		{"create or replace temp view allowed", "CREATE OR REPLACE TEMPORARY VIEW v AS SELECT 1", false},
+
 		// Other mutations
 		{"replace", "REPLACE INTO users VALUES (1)", true},
 		{"merge", "MERGE INTO users USING source ON condition", true},

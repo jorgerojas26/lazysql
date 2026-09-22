@@ -76,7 +76,7 @@ func TestMSSQL_GetPrimaryKeyColumnNames(t *testing.T) {
 	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
 
 	// Match exact query structure with schema and USE prefix
-	mock.ExpectQuery(`USE test_db; SELECT
+	mock.ExpectQuery(`USE [test_db]; SELECT
 			c.name AS column_name
 		FROM
 			sys.tables t
@@ -147,7 +147,7 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
 	)
 
 	mock.ExpectQuery(`
-        USE test_db; SELECT 
+        USE [test_db]; SELECT
             fk.name AS constraint_name,
             c.name AS column_name,
             DB_NAME(DB_ID(@p1)) AS current_database,
@@ -170,10 +170,11 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
         INNER JOIN sys.schemas s 
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
+          AND s.name = @p3
           AND DB_NAME(DB_ID(@p1)) = @p1
-    `).WithArgs(DBNameMSSQL, tableNameMSSQL).WillReturnRows(rows)
+    `).WithArgs(DBNameMSSQL, tableNameMSSQL, schemaMSSQL).WillReturnRows(rows)
 
-	constraints, err := pg.GetForeignKeys(DBNameMSSQL, tableNameMSSQL)
+	constraints, err := pg.GetForeignKeys(DBNameMSSQL, schemaMSSQL+"."+tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}
@@ -239,6 +240,17 @@ func TestMSSQL_DMLChangeToQueryString(t *testing.T) {
 			},
 			expected: fmt.Sprintf(`DELETE FROM [%s] WHERE [id] = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'`, tableNameMSSQL),
 		},
+		{
+			name: "Schema qualified table",
+			change: models.DBDMLChange{
+				Table: "sales.orders",
+				Type:  models.DMLDeleteType,
+				PrimaryKeyInfo: []models.PrimaryKeyInfo{
+					{Name: "id", Value: "1"},
+				},
+			},
+			expected: `DELETE FROM [sales].[orders] WHERE [id] = '1'`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -294,7 +306,7 @@ func TestMSSQL_GetIndexes(t *testing.T) {
 	mock.ExpectQuery("SELECT SCHEMA_NAME() AS CurrentSchema").WillReturnRows(schemaRow)
 
 	mock.ExpectQuery(`
-        USE test_db; SELECT
+        USE [test_db]; SELECT
             t.name AS table_name,
             i.name AS index_name,
             CAST(i.is_unique AS BIT) AS is_unique,
@@ -427,7 +439,7 @@ func TestMSSQL_GetTableColumns(t *testing.T) {
 		"", // Empty comment
 	)
 
-	mock.ExpectQuery(`USE test_db;
+	mock.ExpectQuery(`USE [test_db];
         SELECT
             c.name AS column_name,
             t.name AS data_type,
@@ -512,6 +524,242 @@ func TestMSSQL_GetRecords(t *testing.T) {
 	}
 }
 
+func TestMSSQL_GetRecordsSchemaQualifiedTable(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+	rows := sqlmock.NewRows([]string{"id"}).AddRow(1)
+
+	mock.ExpectQuery(`USE \[test_db\]; SELECT \* FROM \[sales\]\.\[orders\] ORDER BY \(SELECT NULL\) OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY`).
+		WithArgs(0, DefaultRowLimit).
+		WillReturnRows(rows)
+	mock.ExpectQuery(`USE \[test_db\]; SELECT COUNT\(\*\) FROM \[sales\]\.\[orders\]`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	records, total, _, err := mssql.GetRecords(DBNameMSSQL, "sales.orders", "", "", 0, DefaultRowLimit)
+	if err != nil {
+		t.Fatalf("GetRecords failed: %v", err)
+	}
+	if total != 1 || !reflect.DeepEqual(records, [][]string{{"id"}, {"1"}}) {
+		t.Fatalf("unexpected records=%v, total=%d", records, total)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_AzureSQLDatabasePrefix(t *testing.T) {
+	t.Run("SQL Server uses quoted USE", func(t *testing.T) {
+		db := &MSSQL{}
+
+		got := db.databasePrefix("sql-db")
+		expected := "USE [sql-db]; "
+
+		if got != expected {
+			t.Fatalf("expected %q, got %q", expected, got)
+		}
+	})
+
+	t.Run("Azure SQL does not use USE", func(t *testing.T) {
+		db := &MSSQL{isAzureSQL: true}
+
+		got := db.databasePrefix("sql-db")
+		if got != "" {
+			t.Fatalf("expected empty prefix, got %q", got)
+		}
+	})
+}
+
+func TestMSSQL_FormatReferenceEscapesClosingBracket(t *testing.T) {
+	db := &MSSQL{}
+
+	got := db.FormatReference("database]name")
+	expected := "[database]]name]"
+
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestMSSQL_FormatTableName(t *testing.T) {
+	db := &MSSQL{}
+
+	testCases := map[string]string{
+		"orders":             "[orders]",
+		"sales.orders":       "[sales].[orders]",
+		"sales].order]items": "[sales]]].[order]]items]",
+	}
+
+	for table, expected := range testCases {
+		if got := db.formatTableName(table); got != expected {
+			t.Errorf("formatTableName(%q) returned %q, expected %q", table, got, expected)
+		}
+	}
+}
+
+func TestMSSQL_GetDatabasesAzureSQL(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New(
+		sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual),
+	)
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer sqlDB.Close()
+
+	db := &MSSQL{
+		Connection: sqlDB,
+		isAzureSQL: true,
+	}
+
+	mock.ExpectQuery("SELECT DB_NAME()").
+		WillReturnRows(
+			sqlmock.NewRows([]string{"database"}).
+				AddRow("sql-db"),
+		)
+
+	databases, err := db.GetDatabases()
+	if err != nil {
+		t.Fatalf("GetDatabases failed: %v", err)
+	}
+
+	expected := []string{"sql-db"}
+	if !reflect.DeepEqual(databases, expected) {
+		t.Fatalf("expected %v, got %v", expected, databases)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetTablesQuotesDatabaseName(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New(
+		sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual),
+	)
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer sqlDB.Close()
+
+	db := &MSSQL{Connection: sqlDB}
+
+	mock.ExpectQuery("SELECT name FROM [sql-db].sys.tables").
+		WillReturnRows(
+			sqlmock.NewRows([]string{"name"}).
+				AddRow("users"),
+		)
+
+	tables, err := db.GetTables("sql-db")
+	if err != nil {
+		t.Fatalf("GetTables failed: %v", err)
+	}
+
+	expected := map[string][]string{
+		"sql-db": {"users"},
+	}
+
+	if !reflect.DeepEqual(tables, expected) {
+		t.Fatalf("expected %v, got %v", expected, tables)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetRecordsAzureSQLDoesNotUseUSE(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New(
+		sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual),
+	)
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer sqlDB.Close()
+
+	db := &MSSQL{
+		Connection: sqlDB,
+		isAzureSQL: true,
+	}
+
+	rows := sqlmock.NewRows([]string{"id", "name"}).
+		AddRow(1, "Alice")
+
+	mock.ExpectQuery(
+		"SELECT * FROM [test_table] ORDER BY (SELECT NULL) OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY",
+	).
+		WithArgs(0, DefaultRowLimit).
+		WillReturnRows(rows)
+
+	mock.ExpectQuery(
+		"SELECT COUNT(*) FROM [test_table]",
+	).
+		WillReturnRows(
+			sqlmock.NewRows([]string{"count"}).AddRow(1),
+		)
+
+	_, total, _, err := db.GetRecords(
+		DBNameMSSQL,
+		tableNameMSSQL,
+		"",
+		"",
+		0,
+		DefaultRowLimit,
+	)
+	if err != nil {
+		t.Fatalf("GetRecords failed: %v", err)
+	}
+
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetReferencingTables(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+
+	rows := sqlmock.NewRows(ReferencingTablesHeader).
+		AddRow("FK_orders_users", schemaMSSQL, "orders", "user_id", "id")
+
+	// Resolve the actual table object instead of guessing its schema from the
+	// connection default. The returned source schema is preserved by the UI.
+	mock.ExpectQuery(`(?s)USE \[test_db\];.*FROM sys\.foreign_keys fk.*WHERE fk\.referenced_object_id = OBJECT_ID\(@p2, 'U'\)\s+AND DB_NAME\(\) = @p1`).
+		WithArgs(DBNameMSSQL, schemaMSSQL+"."+tableNameMSSQL).
+		WillReturnRows(rows)
+
+	results, err := mssql.GetReferencingTables(DBNameMSSQL, schemaMSSQL+"."+tableNameMSSQL)
+	if err != nil {
+		t.Fatalf("GetReferencingTables failed: %v", err)
+	}
+
+	expected := [][]string{
+		ReferencingTablesHeader,
+		{"FK_orders_users", schemaMSSQL, "orders", "user_id", "id"},
+	}
+
+	if !reflect.DeepEqual(results, expected) {
+		t.Errorf("GetReferencingTables returned %v, expected %v", results, expected)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
 func TestMSSQL_ExecuteQuery_CrossDatabase(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {
@@ -523,7 +771,9 @@ func TestMSSQL_ExecuteQuery_CrossDatabase(t *testing.T) {
 
 	rows := sqlmock.NewRows([]string{"id", "name"}).AddRow(1, "Alice")
 
-	mock.ExpectQuery("USE targetdb; SELECT * FROM users").WillReturnRows(rows)
+	mock.ExpectExec("USE [targetdb]").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT * FROM users").WillReturnRows(rows).RowsWillBeClosed()
+	mock.ExpectClose()
 
 	results, total, err := mssql.ExecuteQuery("targetdb", "SELECT * FROM users")
 	if err != nil {

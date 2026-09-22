@@ -43,7 +43,7 @@ func (m *ConfirmationModal) SetDoneFunc(handler func(buttonIndex int, buttonLabe
 	m.Modal.SetDoneFunc(handler)
 
 	// Add y/n shortcuts for confirmation dialogs.
-	m.Modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	m.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() != tcell.KeyRune {
 			return event
 		}

@@ -1,8 +1,6 @@
 package components
 
 import (
-	"github.com/gdamore/tcell/v2"
-
 	"github.com/jorgerojas26/lazysql/app"
 )
 
@@ -12,6 +10,7 @@ var App = app.App
 const (
 	// General
 	pageNameHelp          string = "Help"
+	pageNameThemePicker   string = "ThemePicker"
 	pageNameConfirmation  string = "Confirmation"
 	pageNameConnections   string = "Connections"
 	pageNameDMLPreview    string = "DMLPreview"
@@ -36,6 +35,9 @@ const (
 
 	// SetValueList
 	pageNameSetValue string = "SetValue"
+
+	// Referencing tables picker
+	pageNameReferencingTables string = "ReferencingTables"
 
 	// Query History
 	pageNameQueryHistory     string = "QueryHistoryModal"
@@ -96,8 +98,4 @@ const (
 const (
 	focusedWrapperLeft  string = "left"
 	focusedWrapperRight string = "right"
-
-	colorTableChange = tcell.ColorOrange
-	colorTableInsert = tcell.ColorDarkGreen
-	colorTableDelete = tcell.ColorRed
 )

@@ -25,6 +25,7 @@ type Home struct {
 	MainContent          *tview.Flex
 	leftWrapperVisible   bool
 	treePinned           bool
+	treeWidth            int
 	HelpStatus           HelpStatus
 	HelpModal            *HelpModal
 	QueryHistoryModal    *QueryHistoryModal
@@ -61,6 +62,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		MainContent:        maincontent,
 		leftWrapperVisible: true,
 		treePinned:         true,
+		treeWidth:          app.App.Config().TreeWidth,
 		HelpStatus:         NewHelpStatus(),
 		HelpModal:          NewHelpModal(),
 
@@ -94,7 +96,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 
 	if connection.ReadOnly {
 		leftWrapper.SetTitle(" [READ-ONLY] ")
-		leftWrapper.SetTitleColor(tcell.ColorLightBlue)
+		leftWrapper.SetTitleColor(app.Styles.ReadOnlyColor)
 		leftWrapper.SetBorder(true)
 	}
 
@@ -105,7 +107,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
 	rightWrapper.AddItem(tabbedPane.Pages, 0, 1, false)
 
-	maincontent.AddItem(leftWrapper, app.App.Config().TreeWidth, 1, false)
+	maincontent.AddItem(leftWrapper, home.treeWidth, 1, false)
 	maincontent.AddItem(rightWrapper, 0, 5, false)
 
 	home.AddItem(maincontent, 0, 1, false)
@@ -213,7 +215,10 @@ func (home *Home) showTable(databaseName, tableName string) {
 	}
 
 	table.FetchRecords(func() {
-		home.focusLeftWrapper()
+		if !quitConfirmationVisible() {
+			home.focusLeftWrapper()
+		}
+		keepQuitConfirmationFocused()
 	}, func() {
 		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
 			records := table.GetRecords()
@@ -223,24 +228,50 @@ func (home *Home) showTable(databaseName, tableName string) {
 		}
 
 		if table.state.error == "" {
-			if !home.treePinned && home.leftWrapperVisible {
+			// toggleLeftWrapper moves focus to the table; skip it while the quit
+			// dialog is up so a load finishing after 'q' can't steal focus from
+			// the dialog and leave it undismissable.
+			if !home.treePinned && home.leftWrapperVisible && !quitConfirmationVisible() {
 				home.toggleLeftWrapper()
 			}
 		}
 
 		App.ForceDraw()
+		keepQuitConfirmationFocused()
 	})
 
-	home.focusRightWrapper()
+	// showTable runs on the tree-subscription goroutine, so a bare focus call
+	// here races with a 'q' pressed while the table is opening. Marshal it onto
+	// the UI loop so the "is the quit dialog up?" check is atomic with the
+	// dialog being shown; if it is up, leave focus on it so it stays dismissable.
+	App.QueueUpdateDraw(func() {
+		if !quitConfirmationVisible() {
+			home.focusRightWrapper()
+		}
+		keepQuitConfirmationFocused()
+	})
 }
 
+// ShowTableWithFilter opens the table filtered by the given WHERE clause. An
+// already open tab for the table is reused unless doing so would replace a
+// filter the user is looking at: the tab is the current one (self referencing
+// foreign keys) or it already carries a different filter. In that case the
+// table opens in a tab of its own.
 func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 	if tableName == "" {
 		return
 	}
 
+	tabName := tableName
 	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
 	tab := home.TabbedPane.GetTabByReference(tabReference)
+
+	if tab != nil && !canReuseTabForFilter(tab, home.TabbedPane.GetCurrentTab(), where) {
+		newReference := home.TabbedPane.NextAvailableReference(tabReference)
+		tabName += strings.TrimPrefix(newReference, tabReference)
+		tabReference = newReference
+		tab = nil
+	}
 
 	var table *ResultsTable
 	if tab != nil {
@@ -250,7 +281,7 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
 		table.SetDatabaseName(databaseName)
 		table.SetTableName(tableName)
-		home.TabbedPane.AppendTab(tableName, table, tabReference)
+		home.TabbedPane.AppendTab(tabName, table, tabReference)
 	}
 
 	if table.Filter != nil {
@@ -258,10 +289,14 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 	}
 
 	table.FetchRecords(func() {
-		home.focusLeftWrapper()
+		if !quitConfirmationVisible() {
+			home.focusLeftWrapper()
+		}
+		keepQuitConfirmationFocused()
 	}, func() {
 		if table.state.error != "" {
 			App.ForceDraw()
+			keepQuitConfirmationFocused()
 			return
 		}
 
@@ -272,13 +307,36 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 			}
 		}
 
-		if !home.treePinned && home.leftWrapperVisible {
+		if !home.treePinned && home.leftWrapperVisible && !quitConfirmationVisible() {
 			home.toggleLeftWrapper()
 		}
 		App.ForceDraw()
+		keepQuitConfirmationFocused()
 	})
 
-	home.focusRightWrapper()
+	// See showTable: this runs on the tree-subscription goroutine and races
+	// with a 'q' pressed while the table is opening.
+	if !quitConfirmationVisible() {
+		home.focusRightWrapper()
+	}
+	keepQuitConfirmationFocused()
+}
+
+// canReuseTabForFilter reports whether applying where to tab keeps whatever the
+// user currently sees intact.
+func canReuseTabForFilter(tab, currentTab *Tab, where string) bool {
+	if tab == currentTab {
+		return false
+	}
+
+	table, ok := tab.Content.(*ResultsTable)
+	if !ok || table.Filter == nil {
+		return true
+	}
+
+	currentFilter := strings.TrimSpace(table.Filter.GetCurrentFilter())
+
+	return currentFilter == "" || currentFilter == strings.TrimSpace(where)
 }
 
 func (home *Home) focusRightWrapper() {
@@ -590,6 +648,17 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 
 		return event
+	case commands.WidenTree, commands.NarrowTree:
+		if home.leftWrapperVisible && table != nil && !table.GetIsEditing() && !table.GetIsFiltering() {
+			delta := treeResizeStep
+			if command == commands.NarrowTree {
+				delta = -treeResizeStep
+			}
+			home.adjustTreeWidth(delta)
+			return nil
+		}
+
+		return event
 	}
 
 	return event
@@ -662,10 +731,32 @@ func (home *Home) toggleLeftWrapper() {
 		home.focusRightWrapper()
 	} else {
 		home.MainContent.Clear()
-		home.MainContent.AddItem(home.LeftWrapper, app.App.Config().TreeWidth, 1, false)
+		home.MainContent.AddItem(home.LeftWrapper, home.treeWidth, 1, false)
 		home.MainContent.AddItem(home.RightWrapper, 0, 5, false)
 		home.leftWrapperVisible = true
 		home.focusLeftWrapper()
 	}
+	app.App.ForceDraw()
+}
+
+const (
+	minTreeWidth   = 24
+	treeResizeStep = 2
+)
+
+// clampTreeWidth keeps the tree at least minTreeWidth wide (when it fits) and
+// at most half the container.
+func clampTreeWidth(width, containerWidth int) int {
+	width = max(width, minTreeWidth)
+	if containerWidth <= 0 {
+		return width
+	}
+	return min(width, max(containerWidth/2, minTreeWidth), containerWidth)
+}
+
+func (home *Home) adjustTreeWidth(delta int) {
+	_, _, containerWidth, _ := home.MainContent.GetInnerRect()
+	home.treeWidth = clampTreeWidth(home.treeWidth+delta, containerWidth)
+	home.MainContent.ResizeItem(home.LeftWrapper, home.treeWidth, 1)
 	app.App.ForceDraw()
 }

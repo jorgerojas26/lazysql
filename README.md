@@ -173,6 +173,18 @@ EnterOpensJSONViewer = false
 
 The `ReadOnly` field (optional, defaults to `false`) can be set to `true` to enable read-only mode for a connection. When enabled, all mutation queries (INSERT, UPDATE, DELETE, DROP, etc.) will be blocked.
 
+The `DBName` field (optional) controls how the sidebar tree is populated when a connection is opened:
+
+- **`DBName` set** (e.g. `DBName = 'foo'`): the tree is pinned to that single database only. This is the default behavior when a connection is created/edited through the in-app connection form, since `DBName` is auto-filled from whatever database is embedded in the connection URL.
+- **`DBName` empty or omitted**: the tree lists *every* database in the instance that the connecting user has `CONNECT` privileges on (via `GetDatabases()`), not just the one in the URL. This is useful when you regularly need to browse or query across multiple databases/catalogs on the same PostgreSQL or MSSQL server — PostgreSQL in particular requires a database to be specified in the connection string even though the same login is often valid for several databases on that instance.
+
+To enable multi-database browsing for a connection, either:
+
+- Remove/comment out the `DBName` line for that connection directly in `config.toml`, **or**
+- Check **"Show all databases in this instance"** when adding or editing the connection through the in-app connection form (`a` to add, `e` to edit from the connection picker). This overrides the auto-filled `DBName` and saves the connection with it left empty, without you needing to hand-edit the TOML file. When re-opening an existing connection for editing, the checkbox is automatically pre-checked if it was previously saved this way.
+
+Note: this setting only affects which databases populate the sidebar tree. It does not change which database the initial connection is authenticated against — that is still determined entirely by the database in the connection URL (a requirement of the PostgreSQL and MSSQL wire protocols).
+
 The `[application]` section is used to define some app settings. Not all settings are available yet, this is a work in progress.
 
 ### Application settings
@@ -184,6 +196,63 @@ The `[application]` section is used to define some app settings. Not all setting
 | SidebarOverlay | false | Show sidebar as overlay instead of side panel |
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+
+### Themes
+
+Colors are set in the `[theme]` section. Pick a preset and, optionally, override single colors on top of it:
+
+```toml
+[theme]
+Preset = "light"
+
+[theme.Colors]
+Border = "#666A7E"
+Title = "black"
+PrimaryText = "default"
+EditorStatusBarBackground = "lightgray"
+SQLKeyword = "#005F87"
+```
+
+Presets:
+
+| Preset | Description |
+| ------ | ----------- |
+| `default` | The standard lazysql colors, on the terminal's background |
+| `light` | GitHub-inspired light palette with a painted background |
+| `dracula` | [Dracula](https://draculatheme.com) |
+| `gruvbox-dark` | [Gruvbox](https://github.com/morhetz/gruvbox) dark |
+| `nord` | [Nord](https://www.nordtheme.com) |
+| `solarized-light` | [Solarized](https://ethanschoonover.com/solarized/) light |
+| `tokyo-night` | [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) |
+| `catppuccin-mocha` | [Catppuccin](https://github.com/catppuccin/catppuccin) Mocha |
+
+Press `Ctrl+T` anywhere in lazysql to open the theme picker. Move with the arrow keys, `j`/`k`, or `Ctrl+N`/`Ctrl+P` to preview each theme across the running application. Press `Enter` to apply and save the selected preset, or `q`/`Esc` to restore the previous theme.
+
+`default` uses the terminal's background color. All other presets paint their own background.
+
+A color is a name (`"red"`, `"dodgerblue"`, any [W3C color name](https://github.com/gdamore/tcell/blob/v2.7.4/color.go#L851)), a hex value (`"#RRGGBB"`), or `"default"` for the terminal's own color. Unknown keys, presets and colors are reported when lazysql starts.
+
+Keys for `[theme.Colors]`:
+
+| Key | Used for |
+| --- | -------- |
+| `PrimitiveBackground` | Background of all views |
+| `ContrastBackground`, `MoreContrastBackground` | Backgrounds of input fields, buttons and drop-downs |
+| `Border`, `Title`, `Graphics` | Default border, title and line colors |
+| `PrimaryText` | Main text |
+| `SecondaryText` | Highlights: selected rows, active tab, key hints, sidebar values |
+| `TertiaryText` | Labels and status messages |
+| `InverseText` | Borders and text of unfocused views, form fields |
+| `ContrastSecondaryText` | Text drawn on `SecondaryText` (selected rows, active tab) |
+| `SidebarTitleBorder` | Separator next to the sidebar field names |
+| `Error` | Error messages |
+| `ReadOnly` | Read-only markers |
+| `TableChange`, `TableInsert`, `TableDelete`, `TableMarked` | Backgrounds of changed, inserted, deleted and marked rows |
+| `EditorSelection` | Selected text in the SQL editor |
+| `EditorStatusBarBackground`, `EditorStatusBarText` | SQL editor status bar |
+| `AutocompleteBackground`, `AutocompleteText`, `AutocompleteSelected`, `AutocompleteDescription`, `AutocompleteSeparator` | SQL editor autocomplete popup |
+| `SQLKeyword`, `SQLString`, `SQLNumber`, `SQLComment`, `SQLFunction`, `SQLOperator`, `SQLType`, `SQLBoolean`, `SQLParameter` | SQL syntax highlighting |
+| `JSONKey`, `JSONString`, `JSONBoolean`, `JSONNull`, `JSONNumber` | JSON viewer |
 
 ### Local Configuration
 
@@ -198,6 +267,7 @@ lazysql searches for `.lazysql.toml` by walking up from the current working dire
 | `[application]` | Deep merge — local values override global, unset fields keep global/defaults |
 | `[[database]]` | Replace — local connections completely replace global connections |
 | `[keymap.*]` | Deep merge — local keybindings override global ones for the same command |
+| `[theme]` | Deep merge — a local `Preset` or color overrides the global one, other colors are kept |
 
 **Example `.lazysql.toml`:**
 
@@ -294,6 +364,34 @@ You can update the tree by pressing `R`, so you can see your newly created table
 
 > To remove the filter, focus the filter input (press `/`) and press `<Esc>`.
 
+### Jump to a referenced row (Foreign Key Jump)
+
+Columns that belong to a foreign key are underlined in the header, and the
+values you can follow are underlined too. Cells with pending changes (inserted,
+edited or deleted rows) are not marked.
+
+1. [Open a table](#openview-a-table)
+2. Press `1` to switch to the record tab
+3. Move to the underlined foreign key cell you want to follow
+4. Press `<Enter>` to jump to the referenced row
+
+The referenced table opens in a new tab (or is focused, if it is already open)
+with a filter prefilled for the referenced value, so only the matching rows are
+shown: `WHERE <referenced_column> = '<value>'`.
+
+> To switch tabs press `[` or `]`, to switch back to the table-tree press `H`.
+
+Notes:
+
+- Only single-column foreign keys can be followed. Composite foreign keys
+  (constraints spanning multiple columns) are ignored.
+- Cells whose value is `NULL`, `EMPTY` or `DEFAULT` have nothing to follow, so
+  `<Enter>` does nothing on them.
+- Supported providers: PostgreSQL, SQLite and SQL Server (MSSQL). MySQL tables
+  do not expose the foreign key information needed for the jump.
+- On a cell that supports a Foreign Key Jump, `<Enter>` follows the relation
+  instead of opening the JSON viewer, even when `EnterOpensJSONViewer` is enabled.
+
 ### Insert a row
 
 1. [Open a table](#openview-a-table)
@@ -306,9 +404,19 @@ You can update the tree by pressing `R`, so you can see your newly created table
 
 1. [Open a table](#openview-a-table)
 2. Press `1` to switch to the record tab
-3. Move to the column you want to edit
-4. Press `c` to edit, Press `<Enter>` to submit
+3. Move to the cell you want to edit
+4. Edit the value:
+    - press `c` to edit it inline, then press `<Enter>` to submit
+    - press `e` to edit it in your editor, then save and quit the editor
 5. Press `<Ctrl+S>` to save the changes
+
+### Copy rows
+
+1. [Open a table](#openview-a-table)
+2. Move to a row and press `<Space>` to mark it. Repeat to mark as many rows as you want (press `<Space>` again to unmark)
+3. Press `y` to copy every marked row to the clipboard as tab separated values, one row per line
+
+> With no rows marked, `y` keeps its original behavior and copies the value of the selected cell.
 
 ### Export to CSV
 
@@ -341,6 +449,7 @@ You can update the tree by pressing `R`, so you can see your newly created table
 - [x] PostgreSQL
 - [x] SQLite
 - [x] MSSQL
+- [x] ClickHouse
 - [ ] MongoDB
 
 Support for multiple RDBMS is a work in progress.
@@ -508,7 +617,9 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | b | GotoPrev | Go to previous cell |
 | $ | GotoEnd | Go to last cell |
 | 0 | GotoStart | Go to first cell |
-| y | Copy | Copy cell value to clipboard |
+| Enter | ForeignKeyJump | Jump to the referenced row from a foreign key cell (see [Foreign Key Jump](#jump-to-a-referenced-row-foreign-key-jump)) |
+| y | Copy | Copy cell value to clipboard (or marked rows if any) |
+| Space | RowSelect | Toggle row selection |
 | o | AppendNewRow | Append new row |
 | O | DuplicateRow | Duplicate row |
 | J | SortDesc | Sort descending |
@@ -531,7 +642,11 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | s | FocusSidebar | Focus sidebar |
 | Z | ShowRowJSONViewer | Toggle JSON viewer for row |
 | z | ShowCellJSONViewer | Toggle JSON viewer for cell |
+| f | ReverseForeignKeyJump | Pick a table referencing the current row and open it filtered |
 | E | ExportCSV | Export to CSV |
+| e | OpenCellInExternalEditor | Edit cell in external editor |
+
+> `Enter` (`ForeignKeyJump`) only applies on the record tab (`1`) of a table view. It is part of the `Table` group, so it can be remapped like any other keybinding: `[keymap.Table] ForeignKeyJump = "Ctrl-G"`.
 
 #### Editor
 
@@ -551,7 +666,7 @@ Specific editor for lazysql can be set by `$SQL_EDITOR`.
 | y   | Copy to clipboard|
 | z/Z | Close viewer     |
 
-The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cell. If `EnterOpensJSONViewer` is enabled, pressing Enter on a cell will also open the JSON viewer.
+The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cell. If `EnterOpensJSONViewer` is enabled, pressing Enter on a cell will also open the JSON viewer, unless the cell supports a [Foreign Key Jump](#jump-to-a-referenced-row-foreign-key-jump) (which takes precedence).
 
 
 #### Sidebar
@@ -603,10 +718,15 @@ The JSON viewer can be opened by pressing `z` (cell) or `Z` (row) on a table cel
 
 ### External Editor
 
-The external editor feature (CTRL + Space in SQL Editor, CTRL + o in Table) uses the following environment variables to determine which editor to use:
+The external editor feature (CTRL + Space in SQL Editor, `e` in Table) uses the following environment variables to determine which editor to use:
 
 - SQL Editor: `$SQL_EDITOR` > `$EDITOR` > `$VISUAL` > `vi`
 - Table cells: `$EDITOR` > `$VISUAL` > `vi`
+
+Editor commands with flags are supported, e.g. `EDITOR="vim -u NONE"`. GUI editors
+should use the flag that blocks until the file is closed (such as `--wait` for VS
+Code or `-w` for Sublime Text), otherwise lazysql reads the file back before you
+finish editing.
 
 This feature is only available on Linux and macOS.
 
@@ -626,7 +746,17 @@ sap://user:pass@localhost/dbname
 file:myfile.sqlite3?loc=auto
 /path/to/sqlite/file/test.db
 odbc+postgres://user:pass@localhost:port/dbname?option1=
+clickhouse://user:pass@localhost:9000/dbname
+ch://user:pass@remote-host.com:9440/dbname?secure=true
+clickhouse+http://user:pass@localhost:8123/dbname
+clickhouse+https://user:pass@remote-host.com:8443/dbname
 ```
+
+### ClickHouse notes
+
+- `clickhouse://` (alias `ch://`) uses the native protocol (port 9000 by default); `clickhouse+http://` and `clickhouse+https://` use the HTTP interface. Query parameters are passed to [clickhouse-go](https://github.com/ClickHouse/clickhouse-go#dsn), e.g. `?secure=true` for TLS on the native port.
+- The Constraints tab shows the table engine and its partition, sorting and primary keys. The Indexes tab shows data skipping indexes. ClickHouse has no foreign keys.
+- Row edits and deletes are run as mutations (`ALTER TABLE ... UPDATE/DELETE`) and wait for the mutation to finish. They only work on tables that support mutations (such as the MergeTree family), key columns cannot be updated, and ClickHouse primary keys are not unique: every row that shares the primary key values of the edited row is changed. Pending changes are not run in a transaction.
 
 <!-- ROADMAP -->
 
@@ -706,10 +836,10 @@ Jorge Rojas - [LinkedIn](https://www.linkedin.com/in/jorgerojas26/) - jorgeluisr
 
 ## Star History
 
-<a href="https://www.star-history.com/#jorgerojas26/lazysql&type=date&legend=top-left">
+<a href="https://star-history.dera.page/#jorgerojas26/lazysql&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=jorgerojas26/lazysql&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=jorgerojas26/lazysql&type=date&legend=top-left" />
  </picture>
 </a>

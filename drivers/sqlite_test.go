@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -443,6 +444,49 @@ func TestSQLite_ExecutePendingChanges(t *testing.T) {
 	}
 }
 
+func TestSQLite_ExecutePendingChanges_InsertSpecialValues(t *testing.T) {
+	db := &SQLite{}
+	if err := db.Connect(":memory:"); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer db.Connection.Close()
+	db.Connection.SetMaxOpenConns(1)
+
+	if _, err := db.Connection.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT, b TEXT, c TEXT DEFAULT 'dflt')"); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	changes := []models.DBDMLChange{{
+		Table: "t",
+		Type:  models.DMLInsertType,
+		Values: []models.CellValue{
+			{Column: "id", Value: "DEFAULT", Type: models.Default},
+			{Column: "a", Value: "NULL", Type: models.Null},
+			{Column: "b", Value: "EMPTY", Type: models.Empty},
+			{Column: "c", Value: "DEFAULT", Type: models.Default},
+		},
+		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: "row-uuid"}},
+	}}
+
+	if err := db.ExecutePendingChanges(changes); err != nil {
+		t.Fatalf("ExecutePendingChanges failed: %v", err)
+	}
+
+	var a, b, c sql.NullString
+	if err := db.Connection.QueryRow("SELECT a, b, c FROM t").Scan(&a, &b, &c); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if a.Valid {
+		t.Errorf("a = %q, want SQL NULL", a.String)
+	}
+	if !b.Valid || b.String != "" {
+		t.Errorf("b = %#v, want empty string", b)
+	}
+	if !c.Valid || c.String != "dflt" {
+		t.Errorf("c = %#v, want column default 'dflt'", c)
+	}
+}
+
 func TestSQLite_GetPrimaryKeyColumnNames(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -500,5 +544,67 @@ func TestSQLite_formatTableName(t *testing.T) {
 
 	if tableName != expectedTableName {
 		t.Fatalf("formatTableName failed: got %q, expected %q", tableName, expectedTableName)
+	}
+}
+
+func TestSQLite_GetReferencingTables(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Error opening in memory database: %v", err)
+	}
+	defer conn.Close()
+
+	schema := []string{
+		`CREATE TABLE organization (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE lookup_list (id INTEGER PRIMARY KEY, organization_id INTEGER REFERENCES organization(id))`,
+		// No target column: SQLite resolves it to the parent primary key.
+		`CREATE TABLE role (id INTEGER PRIMARY KEY, organization_id INTEGER REFERENCES organization)`,
+		// Composite foreign key: reported, and skipped later by the UI.
+		`CREATE TABLE tenant (id INTEGER, organization_id INTEGER, PRIMARY KEY (id, organization_id))`,
+		`CREATE TABLE membership (tenant_id INTEGER, organization_id INTEGER,
+			FOREIGN KEY (tenant_id, organization_id) REFERENCES tenant(id, organization_id))`,
+		// Unrelated table, must not show up.
+		`CREATE TABLE audit_log (id INTEGER PRIMARY KEY, message TEXT)`,
+	}
+
+	for _, statement := range schema {
+		if _, err := conn.Exec(statement); err != nil {
+			t.Fatalf("Error creating schema: %v", err)
+		}
+	}
+
+	db := &SQLite{Connection: conn}
+
+	results, err := db.GetReferencingTables(testDBNameSQLite, "organization")
+	if err != nil {
+		t.Fatalf("GetReferencingTables failed: %v", err)
+	}
+
+	expected := [][]string{
+		ReferencingTablesHeader,
+		{"lookup_list:0", "", "lookup_list", "organization_id", "id"},
+		{"role:0", "", "role", "organization_id", "id"},
+	}
+
+	if !reflect.DeepEqual(results, expected) {
+		t.Errorf("GetReferencingTables returned %v, expected %v", results, expected)
+	}
+
+	compositeResults, err := db.GetReferencingTables(testDBNameSQLite, "tenant")
+	if err != nil {
+		t.Fatalf("GetReferencingTables failed for a composite foreign key: %v", err)
+	}
+
+	if len(compositeResults) != 3 {
+		t.Errorf("expected the composite foreign key to be reported as two rows, got %v", compositeResults)
+	}
+
+	noReferences, err := db.GetReferencingTables(testDBNameSQLite, "audit_log")
+	if err != nil {
+		t.Fatalf("GetReferencingTables failed for a table without references: %v", err)
+	}
+
+	if len(noReferences) != 1 {
+		t.Errorf("expected only the header row, got %v", noReferences)
 	}
 }

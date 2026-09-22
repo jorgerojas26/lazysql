@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -105,6 +106,7 @@ type SQLEditor struct {
 
 	// --- existing API fields ---
 	state         *SQLEditorState
+	subscribersMu sync.RWMutex
 	subscribers   []chan models.StateChange
 	ConnectionURL string
 }
@@ -169,12 +171,19 @@ func (e *SQLEditor) SetText(text string, setCursor bool) {
 // Subscribe returns a channel for state change events.
 func (e *SQLEditor) Subscribe() chan models.StateChange {
 	subscriber := make(chan models.StateChange, 5)
+
+	e.subscribersMu.Lock()
 	e.subscribers = append(e.subscribers, subscriber)
+	e.subscribersMu.Unlock()
+
 	return subscriber
 }
 
 // Publish sends a state change event to all subscribers.
 func (e *SQLEditor) Publish(key string, message string) {
+	e.subscribersMu.RLock()
+	defer e.subscribersMu.RUnlock()
+
 	for _, sub := range e.subscribers {
 		select {
 		case sub <- models.StateChange{Key: key, Value: message}:
@@ -279,6 +288,7 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 		if e.vimMode == VimModeNormal {
 			// Check for keymap Execute (Ctrl+R) — still handled in normal mode
 			if cmd == commands.Execute {
+				e.acVisible = false
 				e.Publish(eventSQLEditorQuery, e.GetText())
 				return
 			}
@@ -288,6 +298,7 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 
 		// Insert & Visual mode: keymap commands first
 		if cmd == commands.Execute {
+			e.acVisible = false
 			e.Publish(eventSQLEditorQuery, e.GetText())
 			return
 		}
@@ -1173,8 +1184,8 @@ func (e *SQLEditor) acceptCompletion() {
 
 // Draw renders the editor on the screen.
 func (e *SQLEditor) Draw(screen tcell.Screen) {
-	e.Box.DrawForSubclass(screen, e)
-	x, y, width, height := e.Box.GetInnerRect()
+	e.DrawForSubclass(screen, e)
+	x, y, width, height := e.GetInnerRect()
 
 	if width <= 0 || height <= 0 {
 		return
@@ -1332,7 +1343,7 @@ func (e *SQLEditor) drawSelection(screen tcell.Screen, x, y, width int, lineText
 	if lineText == "" {
 		for col := 0; col < width; col++ {
 			mainc, combc, style, _ := screen.GetContent(x+col, y)
-			screen.SetContent(x+col, y, mainc, combc, style.Background(tcell.ColorDarkCyan))
+			screen.SetContent(x+col, y, mainc, combc, style.Background(app.Styles.EditorSelectionColor))
 		}
 		return
 	}
@@ -1370,7 +1381,7 @@ func (e *SQLEditor) drawSelection(screen tcell.Screen, x, y, width int, lineText
 
 	for col := startCol; col < endCol; col++ {
 		mainc, combc, style, _ := screen.GetContent(x+col, y)
-		screen.SetContent(x+col, y, mainc, combc, style.Background(tcell.ColorDarkCyan))
+		screen.SetContent(x+col, y, mainc, combc, style.Background(app.Styles.EditorSelectionColor))
 	}
 }
 
@@ -1378,8 +1389,8 @@ func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, _, _ tce
 	modeText := e.vimMode.String()
 	posText := "Ln " + itoa(e.cy+1) + ", Col " + itoa(cursorDisplayCol(e.lines, e.cy, e.cx, e.tabWidth)+1)
 
-	statusBg := tcell.ColorDarkSlateGray
-	statusFg := tcell.ColorWhite
+	statusBg := app.Styles.EditorStatusBarBackgroundColor
+	statusFg := app.Styles.EditorStatusBarTextColor
 
 	// Clear status line
 	for i := 0; i < width; i++ {
@@ -1509,9 +1520,9 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 	}
 
 	// Draw popup border and background
-	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkSlateGray)
-	contentStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkSlateGray)
-	selectedBg := tcell.ColorDodgerBlue
+	borderStyle := tcell.StyleDefault.Foreground(app.Styles.AutocompleteTextColor).Background(app.Styles.AutocompleteBackgroundColor)
+	contentStyle := tcell.StyleDefault.Foreground(app.Styles.AutocompleteTextColor).Background(app.Styles.AutocompleteBackgroundColor)
+	selectedBg := app.Styles.AutocompleteSelectedColor
 
 	for py := 0; py < popupHeight; py++ {
 		for px := 0; px < popupWidth; px++ {
@@ -1563,12 +1574,12 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 				if textX == descStart {
 					screen.SetContent(sx, sy, ' ', nil, itemStyle)
 				} else if textX == descStart+1 {
-					screen.SetContent(sx, sy, '-', nil, itemStyle.Foreground(tcell.ColorGray))
+					screen.SetContent(sx, sy, '-', nil, itemStyle.Foreground(app.Styles.AutocompleteSeparatorColor))
 				} else if textX > descStart+2 {
 					descIdx := textX - descStart - 3
 					if descIdx < len(item.Description) {
 						ch := rune(item.Description[descIdx])
-						screen.SetContent(sx, sy, ch, nil, itemStyle.Foreground(tcell.ColorLightGray))
+						screen.SetContent(sx, sy, ch, nil, itemStyle.Foreground(app.Styles.AutocompleteDescriptionColor))
 					} else {
 						screen.SetContent(sx, sy, ' ', nil, itemStyle)
 					}
@@ -1587,7 +1598,7 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 // ---------------------------------------------------------------------------
 
 func (e *SQLEditor) scrollToCursor() {
-	_, _, width, height := e.Box.GetInnerRect()
+	_, _, width, height := e.GetInnerRect()
 
 	// Vertical scroll
 	if e.cy < e.oy {
@@ -1738,7 +1749,7 @@ func openExternalEditor(currentText string, connectionURL string) string {
 
 	editor := getEditor()
 
-	cmd := exec.Command(editor, path)
+	cmd := exec.Command(editor, path) // #nosec G204 -- launching the user's configured external editor
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -10,6 +10,10 @@ type Key struct {
 }
 
 func (k Key) String() string {
+	if k.Char == ' ' {
+		return "<Space>"
+	}
+
 	if k.Char != 0 {
 		return string(k.Char)
 	}

@@ -1,14 +1,148 @@
 package components
 
 import (
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
+
+func newMarkTestTable(rows [][]string) *ResultsTable {
+	changes := []models.DBDMLChange{}
+
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			listOfDBChanges: &changes,
+			markedRows:      map[int]bool{},
+			fkRawCellValues: map[string]string{},
+		},
+	}
+
+	for rowIndex, row := range rows {
+		for columnIndex, cell := range row {
+			table.SetCell(rowIndex, columnIndex, tview.NewTableCell(cell))
+		}
+	}
+
+	return table
+}
+
+func TestToggleRowMarkNeverMarksHeader(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id", "name"},
+		{"1", "alice"},
+	})
+
+	table.toggleRowMark(0)
+
+	if len(table.state.markedRows) != 0 {
+		t.Fatalf("expected header row to be unmarkable, got %d marked rows", len(table.state.markedRows))
+	}
+}
+
+func TestToggleRowMarkAddsAndRemoves(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id", "name"},
+		{"1", "alice"},
+		{"2", "bob"},
+	})
+
+	table.toggleRowMark(1)
+	table.toggleRowMark(2)
+
+	if got := table.GetMarkedRowIndexes(); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("expected marked rows [1 2], got %v", got)
+	}
+
+	table.toggleRowMark(1)
+
+	if got := table.GetMarkedRowIndexes(); len(got) != 1 || got[0] != 2 {
+		t.Fatalf("expected marked rows [2] after unmark, got %v", got)
+	}
+}
+
+func TestToggleRowMarkRestoresThemeBackground(t *testing.T) {
+	originalStyles := app.Styles
+	if err := app.ApplyTheme(app.ThemeConfig{Preset: "dracula"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		app.Styles = originalStyles
+		tview.Styles = originalStyles.Theme
+	})
+
+	table := newMarkTestTable([][]string{
+		{"id"},
+		{"1"},
+	})
+
+	table.toggleRowMark(1)
+	table.toggleRowMark(1)
+
+	cell := table.GetCell(1, 0)
+	_, got, _ := cell.Style.Decompose()
+	if got != app.Styles.PrimitiveBackgroundColor {
+		t.Fatalf("unmarked row background = %v, want %v", got, app.Styles.PrimitiveBackgroundColor)
+	}
+}
+
+func TestClearRowMarks(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id"},
+		{"1"},
+		{"2"},
+	})
+
+	table.toggleRowMark(1)
+	table.toggleRowMark(2)
+	table.clearRowMarks()
+
+	if len(table.state.markedRows) != 0 {
+		t.Fatalf("expected no marked rows after clear, got %d", len(table.state.markedRows))
+	}
+}
+
+func TestMarkedRowsToTextIsOrderedTSV(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id", "name"},
+		{"1", "alice"},
+		{"2", "bob"},
+		{"3", "carol"},
+	})
+
+	// Mark out of order to prove the output is sorted top to bottom.
+	table.toggleRowMark(3)
+	table.toggleRowMark(1)
+
+	want := "1\talice\n3\tcarol"
+	if got := table.markedRowsToText(); got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestMarkedRowsToTextSkipsStaleIndexes(t *testing.T) {
+	table := newMarkTestTable([][]string{
+		{"id"},
+		{"1"},
+	})
+
+	// Simulate a mark left over from a larger result set.
+	table.state.markedRows[5] = true
+	table.toggleRowMark(1)
+
+	if got := table.markedRowsToText(); got != "1" {
+		t.Fatalf("expected only the in-range row, got %q", got)
+	}
+}
 
 // TestSetLoadingIsSynchronous verifies that SetLoading does not use
 // QueueUpdateDraw or any other blocking mechanism.
@@ -168,6 +302,50 @@ func TestHandleForeignKeyEnterConsumesOnNullValues(t *testing.T) {
 	}
 }
 
+func TestTableInputCaptureForeignKeyJumpCommand(t *testing.T) {
+	changes := []models.DBDMLChange{}
+
+	db := &drivers.Postgres{}
+	db.SetProvider(drivers.DriverPostgres)
+
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			listOfDBChanges:       &changes,
+			columns:               [][]string{{"Field"}, {"user_id"}},
+			foreignKeyColumns:     map[string]bool{"user_id": true},
+			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{"user_id": {ReferencedTable: "public.users", ReferencedColumn: "id"}},
+			fkRawCellValues:       map[string]string{},
+		},
+		DBDriver: db,
+	}
+
+	table.SetCell(1, 0, tview.NewTableCell("7"))
+	table.Select(1, 0)
+
+	if got := table.tableInputCapture(tcell.NewEventKey(tcell.KeyEnter, 0, 0)); got != nil {
+		t.Fatal("expected Enter on a foreign key cell to be consumed by the foreign key jump")
+	}
+
+	// The jump must also be reachable through a rebound key, which only resolves
+	// via the ForeignKeyJump command.
+	group := app.Keymaps.Groups[app.TableGroup]
+	saved := make(app.Map, len(group))
+	copy(saved, group)
+	defer func() { app.Keymaps.Groups[app.TableGroup] = saved }()
+
+	for i := range group {
+		if group[i].Cmd == commands.ForeignKeyJump {
+			group[i].Key = app.Key{Char: 'F'}
+			break
+		}
+	}
+
+	if got := table.tableInputCapture(tcell.NewEventKey(tcell.KeyRune, 'F', tcell.ModNone)); got != nil {
+		t.Fatal("expected the rebound ForeignKeyJump key to be consumed by the foreign key jump")
+	}
+}
+
 func TestShouldShowForeignKeyMarker(t *testing.T) {
 	changes := []models.DBDMLChange{}
 
@@ -227,5 +405,192 @@ func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *te
 
 	if target.ReferencedTable != "auth.users" {
 		t.Fatalf("expected referenced table auth.users, got %q", target.ReferencedTable)
+	}
+}
+
+// ── read-only routing ──────────────────────────────────────────────────────────
+
+// readOnlyRoutingMock records every query the editor pipeline sends to the
+// driver, so a test can assert that a mutation never reaches the database.
+type readOnlyRoutingMock struct {
+	schemaProgrammingMock
+
+	mu        sync.Mutex
+	executed  []string
+	databases []string
+}
+
+func (m *readOnlyRoutingMock) record(database, query string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.executed = append(m.executed, query)
+	m.databases = append(m.databases, database)
+}
+
+func (m *readOnlyRoutingMock) queries() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.executed...)
+}
+
+func (m *readOnlyRoutingMock) ExecuteQuery(database, query string) ([][]string, int, error) {
+	m.record(database, query)
+	return [][]string{{"col"}}, 0, nil
+}
+
+func (m *readOnlyRoutingMock) ExecuteDMLStatement(database, query string) (string, error) {
+	m.record(database, query)
+	return "", nil
+}
+
+// runEditorQuery drives subscribeToEditorChanges for a single query and returns
+// the queries that actually reached the driver.
+func runEditorQuery(t *testing.T, readOnly bool, query string) []string {
+	t.Helper()
+
+	// A simulation screen lets the queued UI updates actually run, so the
+	// editor pipeline behaves as it does in the real application.
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init simulation screen: %v", err)
+	}
+	App.SetScreen(screen)
+
+	driver := &readOnlyRoutingMock{}
+	changes := []models.DBDMLChange{}
+	errorModal := tview.NewModal()
+
+	pages := tview.NewPages()
+	pages.AddPage(pageNameTable, tview.NewFlex(), true, true)
+	pages.AddPage(pageNameTableError, errorModal, true, false)
+
+	editor := NewSQLEditor("")
+
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			records:         [][]string{},
+			databaseName:    "selected_database",
+			listOfDBChanges: &changes,
+		},
+		Page:        pages,
+		Wrapper:     tview.NewFlex(),
+		Error:       errorModal,
+		Pagination:  NewPagination(),
+		ResultsInfo: tview.NewTextView(),
+		EditorPages: tview.NewPages(),
+		Editor:      editor,
+		DBDriver:    driver,
+		ReadOnly:    readOnly,
+	}
+	table.EditorPages.AddPage(pageNameTableEditorTable, tview.NewFlex(), true, true)
+
+	go table.subscribeToEditorChanges()
+
+	appDone := make(chan struct{})
+	go func() {
+		defer close(appDone)
+		_ = App.Run(pages, "")
+	}()
+
+	// Wait for the application loop to start draining queued updates.
+	time.Sleep(100 * time.Millisecond)
+	editor.Publish(eventSQLEditorQuery, query)
+	time.Sleep(400 * time.Millisecond)
+
+	App.Application.Stop()
+	<-appDone
+
+	driver.mu.Lock()
+	for _, database := range driver.databases {
+		if database != "selected_database" {
+			t.Errorf("editor targeted %q instead of selected database", database)
+		}
+	}
+	driver.mu.Unlock()
+	return driver.queries()
+}
+
+// TestReadOnlyBlocksMultiLineCTEMutation covers the routing bug: a mutation
+// wrapped in a CTE starts with "with", so the prefix check classified it as a
+// SELECT and it executed without ever reaching the read-only validator.
+func TestReadOnlyBlocksMultiLineCTEMutation(t *testing.T) {
+	query := "WITH cte AS (\n  SELECT 1\n)\nINSERT INTO users SELECT * FROM cte"
+
+	if executed := runEditorQuery(t, true, query); len(executed) != 0 {
+		t.Fatalf("read-only connection executed a mutation, got %q", executed)
+	}
+}
+
+// TestReadOnlyAllowsCTESelect is the contract that must hold: a read-only CTE
+// is still a plain read and must keep running.
+func TestReadOnlyAllowsCTESelect(t *testing.T) {
+	query := "WITH cte AS (\n  SELECT 1\n)\nSELECT * FROM cte"
+
+	executed := runEditorQuery(t, true, query)
+	if len(executed) != 1 || executed[0] != query {
+		t.Fatalf("read-only WITH ... SELECT should still execute, got %q", executed)
+	}
+}
+
+func TestAddRowsRendersBracketValuesLiterally(t *testing.T) {
+	headers := []string{"a", "status[red]", `payload["key"]`, "d", "e"}
+	values := []string{`["x"] and [red]hi`, "[::b]bold", "[red[]", "plain"}
+
+	table := newMarkTestTable(nil)
+	table.DBDriver = &drivers.MySQL{}
+	table.AddRows([][]string{
+		headers,
+		{values[0], values[1], values[2], values[3], "NULL&"},
+	})
+
+	// Headers double as column identifiers, so they must remain raw.
+	for col, want := range headers {
+		if got := table.GetCell(0, col).Text; got != want {
+			t.Errorf("header (0, %d) = %q, want %q", col, got, want)
+		}
+	}
+
+	for col, want := range values {
+		if got := cellText(table.GetCell(1, col)); got != want {
+			t.Errorf("cellText(1, %d) = %q, want %q", col, got, want)
+		}
+		if got := table.getRawCellValue(1, col); got != want {
+			t.Errorf("getRawCellValue(1, %d) = %q, want %q", col, got, want)
+		}
+	}
+
+	// lazysql's own NULL placeholder keeps its label and styling.
+	nullCell := table.GetCell(1, 4)
+	if nullCell.Text != "NULL" || nullCell.GetReference() != "NULL&" {
+		t.Errorf("NULL placeholder = %q (ref %v), want \"NULL\" (ref \"NULL&\")", nullCell.Text, nullCell.GetReference())
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(120, 3)
+	table.SetRect(0, 0, 120, 3)
+	table.Draw(screen)
+	screen.Show()
+
+	cells, width, _ := screen.GetContents()
+	var line strings.Builder
+	for x := 0; x < width; x++ {
+		line.WriteString(string(cells[width+x].Runes))
+	}
+	for _, want := range values[:3] {
+		if !strings.Contains(line.String(), want) {
+			t.Errorf("rendered row %q does not contain %q", line.String(), want)
+		}
+	}
+}
+
+func TestEditorRoutesWritesToSelectedDatabase(t *testing.T) {
+	query := "UPDATE items SET value = 2"
+	if executed := runEditorQuery(t, false, query); len(executed) != 1 || executed[0] != query {
+		t.Fatalf("expected editor write, got %q", executed)
 	}
 }

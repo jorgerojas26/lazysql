@@ -912,7 +912,7 @@ func TestMySQL_ExecuteDMLStatement_Error(t *testing.T) {
 
 	mock.ExpectExec("UPDATE test_table SET value = 3 WHERE name = 'test1'").WillReturnError(errors.New("query error"))
 
-	_, err = mysql.ExecuteDMLStatement(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", testDBTableNameMySQL))
+	_, err = mysql.ExecuteDMLStatement("", fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", testDBTableNameMySQL))
 
 	if err == nil {
 		t.Fatalf("Expected error, but got nil")
@@ -1581,7 +1581,7 @@ func TestMySQL_ExecuteDMLStatement(t *testing.T) {
 	mock.ExpectExec(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL))).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
-	result, err := mysql.ExecuteDMLStatement(fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
+	result, err := mysql.ExecuteDMLStatement("", fmt.Sprintf("UPDATE %s SET value = 3 WHERE name = 'test1'", mysql.formatTableName(testDBNameMySQL, testDBTableNameMySQL)))
 	if err != nil {
 		t.Fatalf("ExecuteDMLStatement failed: %v", err)
 	}

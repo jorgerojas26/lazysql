@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -22,7 +23,10 @@ func (m *mockDriver) GetTables(string) (map[string][]string, error)      { panic
 func (m *mockDriver) GetTableColumns(string, string) ([][]string, error) { panic("not used") }
 func (m *mockDriver) GetConstraints(string, string) ([][]string, error)  { panic("not used") }
 func (m *mockDriver) GetForeignKeys(string, string) ([][]string, error)  { panic("not used") }
-func (m *mockDriver) GetIndexes(string, string) ([][]string, error)      { panic("not used") }
+func (m *mockDriver) GetReferencingTables(string, string) ([][]string, error) {
+	panic("not used")
+}
+func (m *mockDriver) GetIndexes(string, string) ([][]string, error) { panic("not used") }
 func (m *mockDriver) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
 	panic("not used")
 }
@@ -31,7 +35,7 @@ func (m *mockDriver) UpdateRecord(string, string, string, string, string, string
 	panic("not used")
 }
 func (m *mockDriver) DeleteRecord(string, string, string, string) error    { panic("not used") }
-func (m *mockDriver) ExecuteDMLStatement(string) (string, error)           { panic("not used") }
+func (m *mockDriver) ExecuteDMLStatement(string, string) (string, error)   { panic("not used") }
 func (m *mockDriver) ExecuteQuery(string, string) ([][]string, int, error) { panic("not used") }
 func (m *mockDriver) ExecutePendingChanges([]models.DBDMLChange) error     { panic("not used") }
 func (m *mockDriver) GetProvider() string                                  { return "mock" }
@@ -179,6 +183,40 @@ func Test_queriesInTransaction(t *testing.T) {
 				tt.assertErr(t, queryErr)
 			}
 		})
+	}
+}
+
+func Test_buildInsertQuery_SpecialValues(t *testing.T) {
+	// Values as the results table stages them for a new row after using the
+	// set-value menu: the Value holds the placeholder label, the Type holds the meaning.
+	values := []models.CellValue{
+		{Column: "id", Value: "DEFAULT", Type: models.Default},
+		{Column: "a", Value: "NULL", Type: models.Null},
+		{Column: "b", Value: "EMPTY", Type: models.Empty},
+		{Column: "c", Value: "Alice", Type: models.String},
+	}
+	wantArgs := []any{sql.NullString{}, "", "Alice"}
+
+	drivers := map[string]Driver{
+		"mysql":    &MySQL{},
+		"postgres": &Postgres{},
+		"sqlite":   &SQLite{},
+		"mssql":    &MSSQL{},
+	}
+
+	for name, d := range drivers {
+		t.Run(name, func(t *testing.T) {
+			got := buildInsertQuery("t", values, d)
+			if !reflect.DeepEqual(got.Args, wantArgs) {
+				t.Errorf("args mismatch:\n  got:  %#v\n  want: %#v", got.Args, wantArgs)
+			}
+		})
+	}
+
+	got := buildInsertQuery(`"t"`, values, &Postgres{})
+	wantQuery := `INSERT INTO "t" ("a", "b", "c") VALUES ($1, $2, $3)`
+	if got.Query != wantQuery {
+		t.Errorf("query mismatch:\n  got:  %s\n  want: %s", got.Query, wantQuery)
 	}
 }
 

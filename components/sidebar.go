@@ -333,8 +333,8 @@ func (sidebar *Sidebar) SetDisabledStyles(item *tview.TextArea) {
 }
 
 func (sidebar *Sidebar) SetEditedStyles(item *tview.TextArea) {
-	item.SetBackgroundColor(colorTableChange)
-	item.SetTextStyle(tcell.StyleDefault.Background(colorTableChange).Foreground(tview.Styles.ContrastSecondaryTextColor))
+	item.SetBackgroundColor(app.Styles.TableChangeColor)
+	item.SetTextStyle(tcell.StyleDefault.Background(app.Styles.TableChangeColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 	item.SetTitleColor(app.Styles.ContrastSecondaryTextColor)
 	item.SetBorderColor(app.Styles.ContrastSecondaryTextColor)
 

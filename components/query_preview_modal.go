@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 
@@ -47,9 +48,9 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	errorModal := tview.NewModal()
 	errorModal.AddButtons([]string{"Ok"})
 	errorModal.SetText("An error occurred")
-	errorModal.SetBackgroundColor(tcell.ColorRed)
+	errorModal.SetBackgroundColor(app.Styles.ErrorColor)
 	errorModal.SetTextColor(app.Styles.PrimaryTextColor)
-	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor).Background(app.Styles.PrimitiveBackgroundColor))
 	errorModal.SetFocus(0)
 
 	keybindings := tview.NewTextView()
@@ -60,7 +61,7 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	keybindings.SetTitle(" Keybindings ")
 
 	for _, command := range app.Keymaps.Group(app.QueryPreviewGroup) {
-		keybindings.SetText(fmt.Sprintf("%s [yellow](%s) [default]%s", keybindings.GetText(false), command.Key.String(), command.Description))
+		keybindings.SetText(fmt.Sprintf("%s [%s](%s) [-]%s", keybindings.GetText(false), app.Styles.SecondaryTextColor, command.Key.String(), command.Description))
 	}
 
 	container.AddItem(table, 0, 1, true)
@@ -86,6 +87,9 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 				if buttonLabel == "Yes" {
 					err := dbdriver.ExecutePendingChanges(*queries)
 					if err != nil {
+						if removeAppliedPendingChanges(queries, err) {
+							r.populateTable()
+						}
 						r.SetError(err.Error())
 						return
 					}
@@ -134,6 +138,17 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 	r.populateTable()
 
 	return r
+}
+
+func removeAppliedPendingChanges(queries *[]models.DBDMLChange, err error) bool {
+	var partialErr *drivers.PartialExecutionError
+	if !errors.As(err, &partialErr) || partialErr.Applied <= 0 {
+		return false
+	}
+
+	applied := min(partialErr.Applied, len(*queries))
+	*queries = slices.Delete(*queries, 0, applied)
+	return true
 }
 
 func (modal *QueryPreviewModal) SetError(err string) {

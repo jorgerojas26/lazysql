@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -28,32 +29,33 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 	addForm.AddInputField("Name", "", 0, nil, nil)
 	addForm.AddInputField("URL", "", 0, nil, nil)
 	addForm.AddCheckbox("Read-Only", false, nil)
+	addForm.AddCheckbox("Show all databases in this instance", false, nil)
 
 	buttonsWrapper := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	saveButton := tview.NewButton("[yellow]F1 [dark]Save")
-	saveButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
+	saveButton := tview.NewButton(fmt.Sprintf("[%s]F1 [-]Save", app.Styles.SecondaryTextColor))
+	saveButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	saveButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	testButton := tview.NewButton("[yellow]F2 [dark]Test")
-	testButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
+	testButton := tview.NewButton(fmt.Sprintf("[%s]F2 [-]Test", app.Styles.SecondaryTextColor))
+	testButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	testButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	connectButton := tview.NewButton("[yellow]F3 [dark]Connect")
-	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
+	connectButton := tview.NewButton(fmt.Sprintf("[%s]F3 [-]Connect", app.Styles.SecondaryTextColor))
+	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	connectButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
-	cancelButton := tview.NewButton("[yellow]Esc [dark]Cancel")
-	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(app.Styles.PrimaryTextColor)))
+	cancelButton := tview.NewButton(fmt.Sprintf("[%s]Esc [-]Cancel", app.Styles.SecondaryTextColor))
+	cancelButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(app.Styles.PrimaryTextColor))
 	cancelButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
@@ -84,7 +86,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 			connectionName := form.GetFormItem(0).(*tview.InputField).GetText()
 
 			if connectionName == "" {
-				form.StatusText.SetText("Connection name is required").SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				form.StatusText.SetText("Connection name is required").SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return event
 			}
 
@@ -92,20 +94,28 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 			parsed, err := helpers.ParseConnectionString(connectionString)
 			if err != nil {
-				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+				form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return event
 			}
 
 			databases := app.App.Connections()
 			newDatabases := make([]models.Connection, len(databases))
 
-			DBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
-
-			if DBName == "NULL" {
-				DBName = ""
-			}
-
 			readOnly := form.GetFormItem(2).(*tview.Checkbox).IsChecked()
+			showAllDatabases := form.GetFormItem(3).(*tview.Checkbox).IsChecked()
+
+			// When the user opts in to browsing every database in the
+			// instance, force DBName empty so the tree's InitializeNodes
+			// falls back to GetDatabases() instead of pinning to whatever
+			// database happens to be embedded in the connection URL.
+			var DBName string
+			if !showAllDatabases {
+				DBName = strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
+
+				if DBName == "NULL" {
+					DBName = ""
+				}
+			}
 
 			parsedDatabaseData := models.Connection{
 				Name:     connectionName,
@@ -121,7 +131,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 				newDatabases = append(databases, parsedDatabaseData)
 				err := app.App.SaveConnections(newDatabases)
 				if err != nil {
-					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return event
 				}
 
@@ -148,7 +158,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 
 				err := app.App.SaveConnections(newDatabases)
 				if err != nil {
-					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+					form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return event
 
 				}
@@ -168,7 +178,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 func (form *ConnectionForm) testConnection(connectionString string) {
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
-		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return
 	}
 
@@ -185,12 +195,14 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		db = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
 		db = &drivers.MSSQL{}
+	case drivers.DriverClickHouse:
+		db = &drivers.ClickHouse{}
 	}
 
 	err = db.TestConnection(connectionString)
 
 	if err != nil {
-		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 	} else {
 		form.StatusText.SetText("Connection success").SetTextColor(app.Styles.TertiaryTextColor)
 	}
@@ -205,4 +217,26 @@ func (form *ConnectionForm) SetConnectionData(conn models.Connection) {
 	form.GetFormItem(0).(*tview.InputField).SetText(conn.Name)
 	form.GetFormItem(1).(*tview.InputField).SetText(conn.URL)
 	form.GetFormItem(2).(*tview.Checkbox).SetChecked(conn.ReadOnly)
+	form.GetFormItem(3).(*tview.Checkbox).SetChecked(showAllDatabasesChecked(conn))
+}
+
+// showAllDatabasesChecked infers whether the "show all databases" checkbox
+// should be pre-checked when editing an existing connection: true when the
+// connection has no DBName pinned but its URL does carry an embedded
+// database (i.e. it was previously saved with this option enabled, or the
+// user cleared DBName by hand). False for freshly created / legacy
+// connections where DBName mirrors the URL, preserving prior behavior.
+func showAllDatabasesChecked(conn models.Connection) bool {
+	if conn.DBName != "" {
+		return false
+	}
+
+	parsed, err := helpers.ParseConnectionString(conn.URL)
+	if err != nil {
+		return false
+	}
+
+	urlDBName := strings.Split(parsed.Normalize(",", "NULL", 0), ",")[3]
+
+	return urlDBName != "" && urlDBName != "NULL"
 }
