@@ -1,8 +1,26 @@
 package drivers
 
 import (
+	"fmt"
+
 	"github.com/jorgerojas26/lazysql/models"
 )
+
+// PartialExecutionError reports that a non-transactional driver applied some
+// changes before a later change failed. Callers must remove the applied prefix
+// before allowing a retry.
+type PartialExecutionError struct {
+	Applied int
+	Err     error
+}
+
+func (err *PartialExecutionError) Error() string {
+	return fmt.Sprintf("%d change(s) applied before failure: %v", err.Applied, err.Err)
+}
+
+func (err *PartialExecutionError) Unwrap() error {
+	return err.Err
+}
 
 type Driver interface {
 	Connect(urlstr string) error

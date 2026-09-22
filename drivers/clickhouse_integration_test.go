@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -175,6 +176,7 @@ func TestClickHouse_Integration(t *testing.T) {
 			Values: []models.CellValue{
 				{Column: "name", Value: "alpha'updated", Type: models.String},
 				{Column: "note", Value: "NULL", Type: models.Null},
+				{Column: "attrs", Value: "{'updated':2}", Type: models.String},
 			},
 			PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "id", Value: "1"}, {Name: "day", Value: "2024-01-01"}},
 		},
@@ -194,15 +196,15 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("ExecutePendingChanges: %v", err)
 	}
 
-	results, _, err = db.ExecuteQuery("SELECT id, name, note IS NULL AS note_is_null, score FROM " + database + ".events ORDER BY id")
+	results, _, err = db.ExecuteQuery("SELECT id, name, note IS NULL AS note_is_null, score, attrs FROM " + database + ".events ORDER BY id")
 	if err != nil {
 		t.Fatalf("ExecuteQuery after changes: %v", err)
 	}
 	expected := [][]string{
-		{"id", "name", "note_is_null", "score"},
-		{"1", "alpha'updated", "1", "1.5"},
-		{"3", "", "0", "1.5"},
-		{"4", "delta", "1", "1.5"},
+		{"id", "name", "note_is_null", "score", "attrs"},
+		{"1", "alpha'updated", "1", "1.5", "{'updated':2}"},
+		{"3", "", "0", "1.5", "{'x':2}"},
+		{"4", "delta", "1", "1.5", "{}"},
 	}
 	if !reflect.DeepEqual(results, expected) {
 		t.Fatalf("ExecutePendingChanges: expected %v, got %v", expected, results)
@@ -243,16 +245,74 @@ func TestClickHouse_Integration(t *testing.T) {
 		t.Fatalf("UpdateRecord/DeleteRecord: expected %v, got %v", expected, results)
 	}
 
-	// Mutations are not supported on the TinyLog engine; the server error must
-	// be surfaced to the user.
-	err = db.ExecutePendingChanges([]models.DBDMLChange{{
-		Type:           models.DMLDeleteType,
-		Database:       database,
-		Table:          "logs",
-		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "msg", Value: "hello"}},
-	}})
-	if err == nil || !strings.Contains(err.Error(), "TinyLog") {
-		t.Fatalf("expected mutation error for TinyLog table, got %v", err)
+	complexResults, _, err := db.ExecuteQuery(`SELECT
+		[toDate('2024-01-02')] AS dates,
+		[toUUID('61f0c404-5cb3-11e7-907b-a6006ad3dba0')] AS ids,
+		CAST((2, 'x') AS Nullable(Tuple(Int32, String))) AS nullable_tuple,
+		[(3, 'y')]::Array(Tuple(Int32, String)) AS tuples`)
+	if err != nil {
+		t.Fatalf("ExecuteQuery complex values: %v", err)
+	}
+	complexExpected := [][]string{
+		{"dates", "ids", "nullable_tuple", "tuples"},
+		{"['2024-01-02']", "['61f0c404-5cb3-11e7-907b-a6006ad3dba0']", "(2,'x')", "[(3,'y')]"},
+	}
+	if !reflect.DeepEqual(complexResults, complexExpected) {
+		t.Fatalf("complex value formatting: expected %v, got %v", complexExpected, complexResults)
+	}
+
+	oddDatabase, oddTable, oddColumn := "lazysql`odd", "t`x", "c`x"
+	oddTableName := db.formatTableName(oddDatabase, oddTable)
+	for _, query := range []string{
+		"CREATE DATABASE " + db.FormatReference(oddDatabase),
+		"CREATE TABLE " + oddTableName + " (`id` UInt8, " + db.FormatReference(oddColumn) + " String) ENGINE=MergeTree ORDER BY id",
+		"INSERT INTO " + oddTableName + " VALUES (1, 'before')",
+	} {
+		if _, err := db.Connection.Exec(query); err != nil {
+			t.Fatalf("identifier setup %q: %v", query, err)
+		}
+	}
+	defer db.Connection.Exec("DROP DATABASE IF EXISTS " + db.FormatReference(oddDatabase)) //nolint:errcheck
+	oddRecords, _, _, err := db.GetRecords(oddDatabase, oddTable, "", "", 0, 10)
+	if err != nil || !reflect.DeepEqual(oddRecords, [][]string{{"id", oddColumn}, {"1", "before"}}) {
+		t.Fatalf("GetRecords with escaped identifiers: %v, %v", oddRecords, err)
+	}
+	if err := db.UpdateRecord(oddDatabase, oddTable, oddColumn, "after", "id", "1"); err != nil {
+		t.Fatalf("UpdateRecord with escaped identifiers: %v", err)
+	}
+	oddRecords, _, _, err = db.GetRecords(oddDatabase, oddTable, "", "", 0, 10)
+	if err != nil || oddRecords[1][1] != "after" {
+		t.Fatalf("updated escaped identifier record: %v, %v", oddRecords, err)
+	}
+
+	// Mutations are not supported on the TinyLog engine. Verify that a prior
+	// successful insert is reported so the caller can remove it before retrying.
+	err = db.ExecutePendingChanges([]models.DBDMLChange{
+		{
+			Type:     models.DMLInsertType,
+			Database: database,
+			Table:    "events",
+			Values: []models.CellValue{
+				{Column: "id", Value: "5", Type: models.String},
+				{Column: "day", Value: "2024-05-05", Type: models.String},
+				{Column: "created", Value: "2024-05-05 00:00:00", Type: models.String},
+				{Column: "name", Value: "partial", Type: models.String},
+			},
+		},
+		{
+			Type:           models.DMLDeleteType,
+			Database:       database,
+			Table:          "logs",
+			PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "msg", Value: "hello"}},
+		},
+	})
+	var partialErr *PartialExecutionError
+	if !errors.As(err, &partialErr) || partialErr.Applied != 1 || !strings.Contains(err.Error(), "TinyLog") {
+		t.Fatalf("expected one applied change before TinyLog error, got %v", err)
+	}
+	var inserted int
+	if err := db.Connection.QueryRow("SELECT count() FROM " + database + ".events WHERE id = 5").Scan(&inserted); err != nil || inserted != 1 {
+		t.Fatalf("expected exactly one partially applied insert, count=%d, err=%v", inserted, err)
 	}
 }
 

@@ -278,22 +278,41 @@ func (db *ClickHouse) ExecuteQuery(query string) ([][]string, int, error) {
 }
 
 func (db *ClickHouse) UpdateRecord(database, table, column, value, primaryKeyColumnName, primaryKeyValue string) error {
-	query := "ALTER TABLE "
-	query += db.formatTableName(database, table)
-	query += fmt.Sprintf(" UPDATE %s = ? WHERE %s = ?", db.FormatReference(column), db.FormatReference(primaryKeyColumnName))
+	change := models.DBDMLChange{
+		Type:     models.DMLUpdateType,
+		Database: database,
+		Table:    table,
+		Values: []models.CellValue{{
+			Column: column,
+			Value:  value,
+			Type:   models.String,
+		}},
+		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: primaryKeyColumnName, Value: primaryKeyValue}},
+	}
 
-	_, err := db.Connection.ExecContext(clickHouseMutationContext(), query, value, primaryKeyValue)
+	query, err := db.buildChangeQuery(change, false)
+	if err != nil {
+		return err
+	}
 
+	_, err = db.Connection.ExecContext(clickHouseMutationContext(), query.Query, query.Args...)
 	return err
 }
 
 func (db *ClickHouse) DeleteRecord(database, table, primaryKeyColumnName, primaryKeyValue string) error {
-	query := "ALTER TABLE "
-	query += db.formatTableName(database, table)
-	query += fmt.Sprintf(" DELETE WHERE %s = ?", db.FormatReference(primaryKeyColumnName))
+	change := models.DBDMLChange{
+		Type:           models.DMLDeleteType,
+		Database:       database,
+		Table:          table,
+		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: primaryKeyColumnName, Value: primaryKeyValue}},
+	}
 
-	_, err := db.Connection.ExecContext(clickHouseMutationContext(), query, primaryKeyValue)
+	query, err := db.buildChangeQuery(change, false)
+	if err != nil {
+		return err
+	}
 
+	_, err = db.Connection.ExecContext(clickHouseMutationContext(), query.Query, query.Args...)
 	return err
 }
 
@@ -312,31 +331,24 @@ func (db *ClickHouse) ExecuteDMLStatement(query string) (string, error) {
 }
 
 // ExecutePendingChanges runs the changes one by one. ClickHouse has no
-// multi-statement transactions, so changes that ran before a failing one are
-// not rolled back.
+// multi-statement transactions, so a partial execution error reports how many
+// changes the caller must remove before allowing a retry.
 func (db *ClickHouse) ExecutePendingChanges(changes []models.DBDMLChange) error {
-	var queries []models.Query
-
+	queries := make([]models.Query, 0, len(changes))
 	for _, change := range changes {
-		formattedTableName := db.formatTableName(change.Database, change.Table)
-
-		switch change.Type {
-		case models.DMLInsertType:
-			queries = append(queries, buildInsertQuery(formattedTableName, change.Values, db))
-		case models.DMLUpdateType:
-			query := buildUpdateQuery(formattedTableName, change.Values, change.PrimaryKeyInfo, db)
-			query.Query = toClickHouseMutation(query.Query, formattedTableName)
-			queries = append(queries, query)
-		case models.DMLDeleteType:
-			query := buildDeleteQuery(formattedTableName, change.PrimaryKeyInfo, db)
-			query.Query = toClickHouseMutation(query.Query, formattedTableName)
-			queries = append(queries, query)
+		query, err := db.buildChangeQuery(change, false)
+		if err != nil {
+			return err
 		}
+		queries = append(queries, query)
 	}
 
 	ctx := clickHouseMutationContext()
-	for _, query := range queries {
+	for i, query := range queries {
 		if _, err := db.Connection.ExecContext(ctx, query.Query, query.Args...); err != nil {
+			if i > 0 {
+				return &PartialExecutionError{Applied: i, Err: err}
+			}
 			return err
 		}
 	}
@@ -387,7 +399,7 @@ func (db *ClickHouse) GetProvider() string {
 }
 
 func (db *ClickHouse) formatTableName(database, table string) string {
-	return fmt.Sprintf("`%s`.`%s`", database, table)
+	return db.FormatReference(database) + "." + db.FormatReference(table)
 }
 
 func (db *ClickHouse) FormatArg(arg any, colType models.CellValueType) any {
@@ -403,10 +415,6 @@ func (db *ClickHouse) FormatArg(arg any, colType models.CellValueType) any {
 }
 
 func (db *ClickHouse) FormatArgForQueryString(arg any) string {
-	if arg == "NULL" || arg == "DEFAULT" {
-		return fmt.Sprintf("%v", arg)
-	}
-
 	switch v := arg.(type) {
 	case int, int64:
 		return fmt.Sprintf("%d", v)
@@ -427,7 +435,7 @@ func (db *ClickHouse) FormatArgForQueryString(arg any) string {
 }
 
 func (db *ClickHouse) FormatReference(reference string) string {
-	return fmt.Sprintf("`%s`", reference)
+	return "`" + strings.ReplaceAll(reference, "`", "``") + "`"
 }
 
 func (db *ClickHouse) FormatPlaceholder(_ int) string {
@@ -435,22 +443,350 @@ func (db *ClickHouse) FormatPlaceholder(_ int) string {
 }
 
 func (db *ClickHouse) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
-	var queryStr string
+	query, err := db.buildChangeQuery(change, true)
+	if err != nil {
+		return "", err
+	}
+	return query.Query, nil
+}
+
+func (db *ClickHouse) buildChangeQuery(change models.DBDMLChange, preview bool) (models.Query, error) {
+	columnTypes, err := db.getColumnTypes(change.Database, change.Table)
+	if err != nil {
+		return models.Query{}, err
+	}
 
 	formattedTableName := db.formatTableName(change.Database, change.Table)
-
-	columnNames, values := getColNamesAndArgsAsString(change.Values)
+	args := make([]any, 0, len(change.Values)+len(change.PrimaryKeyInfo))
+	// clickhouse-go mistakes map literals ({'key':value}) for native named
+	// query parameters when positional arguments are also present. Inline all
+	// safely formatted values whenever a composite literal is used.
+	inlineValues := preview || changeUsesCompositeType(change, columnTypes)
+	valueSQL := func(value any, valueType models.CellValueType, column string) (string, error) {
+		return db.clickHouseSQLValue(value, valueType, columnTypes[column], inlineValues, &args)
+	}
 
 	switch change.Type {
 	case models.DMLInsertType:
-		queryStr = buildInsertQueryString(formattedTableName, columnNames, values, db)
+		columns := make([]string, 0, len(change.Values))
+		values := make([]string, 0, len(change.Values))
+		for _, value := range change.Values {
+			if value.Type == models.Default {
+				continue
+			}
+			expression, err := valueSQL(value.Value, value.Type, value.Column)
+			if err != nil {
+				return models.Query{}, err
+			}
+			columns = append(columns, db.FormatReference(value.Column))
+			values = append(values, expression)
+		}
+		if len(columns) == 0 {
+			return models.Query{}, errors.New("insert requires at least one non-default value")
+		}
+		return models.Query{
+			Query: "INSERT INTO " + formattedTableName + " (" + strings.Join(columns, ", ") + ") VALUES (" + strings.Join(values, ", ") + ")",
+			Args:  args,
+		}, nil
+
 	case models.DMLUpdateType:
-		queryStr = toClickHouseMutation(buildUpdateQueryString(formattedTableName, columnNames, values, change.PrimaryKeyInfo, db), formattedTableName)
+		if len(change.Values) == 0 {
+			return models.Query{}, errors.New("update requires at least one value")
+		}
+		if len(change.PrimaryKeyInfo) == 0 {
+			return models.Query{}, errors.New("update requires primary key values")
+		}
+
+		assignments := make([]string, 0, len(change.Values))
+		for _, value := range change.Values {
+			expression, err := valueSQL(value.Value, value.Type, value.Column)
+			if err != nil {
+				return models.Query{}, err
+			}
+			assignments = append(assignments, db.FormatReference(value.Column)+" = "+expression)
+		}
+		where, err := db.clickHouseWhere(change.PrimaryKeyInfo, columnTypes, inlineValues, &args)
+		if err != nil {
+			return models.Query{}, err
+		}
+		return models.Query{
+			Query: "ALTER TABLE " + formattedTableName + " UPDATE " + strings.Join(assignments, ", ") + " WHERE " + where,
+			Args:  args,
+		}, nil
+
 	case models.DMLDeleteType:
-		queryStr = toClickHouseMutation(buildDeleteQueryString(formattedTableName, change.PrimaryKeyInfo, db), formattedTableName)
+		if len(change.PrimaryKeyInfo) == 0 {
+			return models.Query{}, errors.New("delete requires primary key values")
+		}
+		where, err := db.clickHouseWhere(change.PrimaryKeyInfo, columnTypes, inlineValues, &args)
+		if err != nil {
+			return models.Query{}, err
+		}
+		return models.Query{
+			Query: "ALTER TABLE " + formattedTableName + " DELETE WHERE " + where,
+			Args:  args,
+		}, nil
 	}
 
-	return queryStr, nil
+	return models.Query{}, fmt.Errorf("unsupported DML change type %d", change.Type)
+}
+
+func changeUsesCompositeType(change models.DBDMLChange, columnTypes map[string]string) bool {
+	for _, value := range change.Values {
+		if isClickHouseCompositeType(columnTypes[value.Column]) {
+			return true
+		}
+	}
+	for _, primaryKey := range change.PrimaryKeyInfo {
+		if isClickHouseCompositeType(columnTypes[primaryKey.Name]) {
+			return true
+		}
+	}
+	return false
+}
+
+func (db *ClickHouse) clickHouseWhere(primaryKeyInfo []models.PrimaryKeyInfo, columnTypes map[string]string, preview bool, args *[]any) (string, error) {
+	where := make([]string, 0, len(primaryKeyInfo))
+	for _, primaryKey := range primaryKeyInfo {
+		expression, err := db.clickHouseSQLValue(primaryKey.Value, models.String, columnTypes[primaryKey.Name], preview, args)
+		if err != nil {
+			return "", err
+		}
+		where = append(where, db.FormatReference(primaryKey.Name)+" = "+expression)
+	}
+	return strings.Join(where, " AND "), nil
+}
+
+func (db *ClickHouse) clickHouseSQLValue(value any, valueType models.CellValueType, databaseType string, preview bool, args *[]any) (string, error) {
+	switch valueType {
+	case models.Null:
+		return "NULL", nil
+	case models.Default:
+		return "DEFAULT", nil
+	}
+
+	if isClickHouseCompositeType(databaseType) {
+		literal := strings.TrimSpace(fmt.Sprint(value))
+		expression, err := clickHouseCompositeExpression(literal, databaseType)
+		if err != nil {
+			return "", err
+		}
+		return "CAST(" + expression + " AS " + databaseType + ")", nil
+	}
+
+	if preview {
+		if valueType == models.Empty {
+			return "''", nil
+		}
+		return db.FormatArgForQueryString(value), nil
+	}
+
+	*args = append(*args, db.FormatArg(value, valueType))
+	return db.FormatPlaceholder(len(*args)), nil
+}
+
+func clickHouseCompositeExpression(literal, databaseType string) (string, error) {
+	typeName, typeArgs := clickHouseTypeParts(databaseType)
+	var opening, closing byte
+	switch typeName {
+	case "Array":
+		opening, closing = '[', ']'
+	case "Map":
+		opening, closing = '{', '}'
+	case "Tuple":
+		opening, closing = '(', ')'
+	default:
+		return literal, nil
+	}
+
+	if len(literal) < 2 || literal[0] != opening || literal[len(literal)-1] != closing {
+		return "", fmt.Errorf("value for %s must be a ClickHouse literal enclosed by %c and %c", databaseType, opening, closing)
+	}
+
+	items, err := splitClickHouseLiteralList(literal[1 : len(literal)-1])
+	if err != nil {
+		return "", fmt.Errorf("invalid %s literal: %w", databaseType, err)
+	}
+
+	switch typeName {
+	case "Map":
+		if len(typeArgs) != 2 {
+			return "", fmt.Errorf("invalid ClickHouse map type %s", databaseType)
+		}
+		mapArgs := make([]string, 0, len(items)*2)
+		for _, item := range items {
+			key, value, err := splitClickHouseMapEntry(item)
+			if err != nil {
+				return "", fmt.Errorf("invalid %s literal: %w", databaseType, err)
+			}
+			key, err = clickHouseCompositeExpression(strings.TrimSpace(key), typeArgs[0])
+			if err != nil {
+				return "", err
+			}
+			value, err = clickHouseCompositeExpression(strings.TrimSpace(value), typeArgs[1])
+			if err != nil {
+				return "", err
+			}
+			mapArgs = append(mapArgs, key, value)
+		}
+		return "map(" + strings.Join(mapArgs, ", ") + ")", nil
+
+	case "Array":
+		if len(typeArgs) == 1 {
+			for i, item := range items {
+				items[i], err = clickHouseCompositeExpression(strings.TrimSpace(item), typeArgs[0])
+				if err != nil {
+					return "", err
+				}
+			}
+		}
+		return "[" + strings.Join(items, ", ") + "]", nil
+
+	case "Tuple":
+		for i, item := range items {
+			if i >= len(typeArgs) {
+				break
+			}
+			items[i], err = clickHouseCompositeExpression(strings.TrimSpace(item), clickHouseTupleElementType(typeArgs[i]))
+			if err != nil {
+				return "", err
+			}
+		}
+		return "(" + strings.Join(items, ", ") + ")", nil
+	}
+
+	return literal, nil
+}
+
+func splitClickHouseLiteralList(body string) ([]string, error) {
+	if strings.TrimSpace(body) == "" {
+		return nil, nil
+	}
+
+	items := make([]string, 0, 2)
+	start := 0
+	var round, square, curly int
+	quoted, escaped := false, false
+	for i := 0; i < len(body); i++ {
+		char := body[i]
+		if quoted {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch char {
+			case '\\':
+				escaped = true
+			case '\'':
+				quoted = false
+			}
+			continue
+		}
+
+		switch char {
+		case '\'':
+			quoted = true
+		case '(':
+			round++
+		case ')':
+			round--
+		case '[':
+			square++
+		case ']':
+			square--
+		case '{':
+			curly++
+		case '}':
+			curly--
+		case ',':
+			if round == 0 && square == 0 && curly == 0 {
+				items = append(items, strings.TrimSpace(body[start:i]))
+				start = i + 1
+			}
+		}
+		if round < 0 || square < 0 || curly < 0 {
+			return nil, errors.New("unbalanced delimiters")
+		}
+	}
+	if quoted || round != 0 || square != 0 || curly != 0 {
+		return nil, errors.New("unbalanced delimiters or quotes")
+	}
+	items = append(items, strings.TrimSpace(body[start:]))
+	return items, nil
+}
+
+func splitClickHouseMapEntry(entry string) (string, string, error) {
+	quoted, escaped := false, false
+	var round, square, curly int
+	for i := 0; i < len(entry); i++ {
+		char := entry[i]
+		if quoted {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch char {
+			case '\\':
+				escaped = true
+			case '\'':
+				quoted = false
+			}
+			continue
+		}
+		switch char {
+		case '\'':
+			quoted = true
+		case '(':
+			round++
+		case ')':
+			round--
+		case '[':
+			square++
+		case ']':
+			square--
+		case '{':
+			curly++
+		case '}':
+			curly--
+		case ':':
+			if round == 0 && square == 0 && curly == 0 {
+				return entry[:i], entry[i+1:], nil
+			}
+		}
+	}
+	return "", "", errors.New("map entry has no top-level colon")
+}
+
+func isClickHouseCompositeType(databaseType string) bool {
+	typeName, _ := clickHouseTypeParts(databaseType)
+	return typeName == "Array" || typeName == "Map" || typeName == "Tuple"
+}
+
+func (db *ClickHouse) getColumnTypes(database, table string) (map[string]string, error) {
+	columnTypes := make(map[string]string)
+	// Keeping query generation usable without a connection is convenient for
+	// tests and callers that only preview scalar values.
+	if db.Connection == nil {
+		return columnTypes, nil
+	}
+
+	rows, err := db.Connection.Query("SELECT name, type FROM system.columns WHERE database = ? AND table = ?", database, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name, columnType string
+		if err := rows.Scan(&name, &columnType); err != nil {
+			return nil, err
+		}
+		columnTypes[name] = columnType
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return columnTypes, nil
 }
 
 func (db *ClickHouse) GetFunctions(_ string) (map[string][]string, error) {
@@ -521,22 +857,6 @@ func (db *ClickHouse) queryMetadata(query string, args ...any) ([][]string, erro
 	return results, nil
 }
 
-// toClickHouseMutation rewrites the UPDATE/DELETE statements produced by the
-// shared query builders into ClickHouse mutations.
-func toClickHouseMutation(query, formattedTableName string) string {
-	updatePrefix := "UPDATE " + formattedTableName + " SET "
-	deletePrefix := "DELETE FROM " + formattedTableName + " "
-
-	switch {
-	case strings.HasPrefix(query, updatePrefix):
-		return "ALTER TABLE " + formattedTableName + " UPDATE " + strings.TrimPrefix(query, updatePrefix)
-	case strings.HasPrefix(query, deletePrefix):
-		return "ALTER TABLE " + formattedTableName + " DELETE " + strings.TrimPrefix(query, deletePrefix)
-	}
-
-	return query
-}
-
 func clickHouseMutationContext() context.Context {
 	return clickhouse.Context(context.Background(), clickhouse.WithSettings(clickhouse.Settings{
 		"mutations_sync": clickHouseMutationsSync,
@@ -578,6 +898,10 @@ func scanClickHouseRow(rows *sql.Rows, columnTypes []*sql.ColumnType) ([]string,
 // to the string ClickHouse itself would print, so it can be used again in
 // queries. The second return value reports whether the value is NULL.
 func clickHouseValueToString(value any, databaseType string) (string, bool) {
+	return formatClickHouseValue(value, databaseType, false)
+}
+
+func formatClickHouseValue(value any, databaseType string, nested bool) (string, bool) {
 	if value == nil {
 		return "", true
 	}
@@ -590,17 +914,29 @@ func clickHouseValueToString(value any, databaseType string) (string, bool) {
 		v = v.Elem()
 	}
 	value = v.Interface()
+	typeName, typeArgs := clickHouseTypeParts(databaseType)
 
 	switch val := value.(type) {
 	case string:
+		if nested {
+			return clickHouseQuoteString(val), false
+		}
 		return val, false
 	case time.Time:
-		if isClickHouseDateType(databaseType) {
-			return val.Format(time.DateOnly), false
+		formatted := val.Format("2006-01-02 15:04:05.999999999")
+		if typeName == "Date" || typeName == "Date32" {
+			formatted = val.Format(time.DateOnly)
 		}
-		return val.Format("2006-01-02 15:04:05.999999999"), false
+		if nested {
+			formatted = clickHouseQuoteString(formatted)
+		}
+		return formatted, false
 	case fmt.Stringer:
-		return val.String(), false
+		formatted := val.String()
+		if nested && clickHouseTypeNeedsQuotes(typeName) {
+			formatted = clickHouseQuoteString(formatted)
+		}
+		return formatted, false
 	}
 
 	// Types such as big.Int (Int128/Int256) implement fmt.Stringer on the
@@ -608,24 +944,53 @@ func clickHouseValueToString(value any, databaseType string) (string, bool) {
 	ptr := reflect.New(v.Type())
 	ptr.Elem().Set(v)
 	if stringer, ok := ptr.Interface().(fmt.Stringer); ok {
-		return stringer.String(), false
+		formatted := stringer.String()
+		if nested && clickHouseTypeNeedsQuotes(typeName) {
+			formatted = clickHouseQuoteString(formatted)
+		}
+		return formatted, false
 	}
 
 	switch v.Kind() {
 	case reflect.Slice, reflect.Array:
 		elements := make([]string, v.Len())
 		for i := range elements {
-			elements[i] = clickHouseLiteral(v.Index(i).Interface())
+			elementType := ""
+			switch typeName {
+			case "Array":
+				if len(typeArgs) > 0 {
+					elementType = typeArgs[0]
+				}
+			case "Tuple":
+				if i < len(typeArgs) {
+					elementType = clickHouseTupleElementType(typeArgs[i])
+				}
+			}
+			formatted, isNull := formatClickHouseValue(v.Index(i).Interface(), elementType, true)
+			if isNull {
+				formatted = "NULL"
+			}
+			elements[i] = formatted
 		}
-		if strings.HasPrefix(databaseType, "Tuple(") {
+		if typeName == "Tuple" {
 			return "(" + strings.Join(elements, ",") + ")", false
 		}
 		return "[" + strings.Join(elements, ",") + "]", false
+
 	case reflect.Map:
+		keyType, valueType := "", ""
+		if typeName == "Map" && len(typeArgs) == 2 {
+			keyType, valueType = typeArgs[0], typeArgs[1]
+		}
 		entries := make([]string, 0, v.Len())
 		iter := v.MapRange()
 		for iter.Next() {
-			entries = append(entries, clickHouseLiteral(iter.Key().Interface())+":"+clickHouseLiteral(iter.Value().Interface()))
+			key, _ := formatClickHouseValue(iter.Key().Interface(), keyType, true)
+			mapValue, isNull := formatClickHouseValue(iter.Value().Interface(), valueType, true)
+			if isNull {
+				mapValue = "NULL"
+			}
+			entries = append(entries, key+":"+mapValue)
 		}
 		sort.Strings(entries)
 		return "{" + strings.Join(entries, ",") + "}", false
@@ -634,39 +999,87 @@ func clickHouseValueToString(value any, databaseType string) (string, bool) {
 	return fmt.Sprintf("%v", value), false
 }
 
-// clickHouseLiteral formats a value nested in an Array or Map the way
-// ClickHouse prints it, e.g. ['a','b'] or {'k':1}.
-func clickHouseLiteral(value any) string {
-	str, isNull := clickHouseValueToString(value, "")
-	if isNull {
-		return "NULL"
+func clickHouseTypeNeedsQuotes(typeName string) bool {
+	switch typeName {
+	case "String", "FixedString", "UUID", "IPv4", "IPv6", "Enum8", "Enum16", "Date", "Date32", "DateTime", "DateTime64":
+		return true
+	default:
+		return false
 	}
-
-	v := reflect.ValueOf(value)
-	for v.Kind() == reflect.Pointer {
-		v = v.Elem()
-	}
-
-	switch v.Kind() {
-	case reflect.String:
-		return clickHouseQuoteString(str)
-	case reflect.Struct:
-		if _, ok := v.Interface().(time.Time); ok {
-			return clickHouseQuoteString(str)
-		}
-	}
-
-	return str
 }
 
-// isClickHouseDateType reports whether the type is Date or Date32, possibly
-// wrapped in Nullable or LowCardinality.
-func isClickHouseDateType(databaseType string) bool {
-	for _, wrapper := range []string{"Nullable(", "LowCardinality("} {
-		if strings.HasPrefix(databaseType, wrapper) {
-			databaseType = strings.TrimSuffix(strings.TrimPrefix(databaseType, wrapper), ")")
+// clickHouseTypeParts unwraps Nullable and LowCardinality and returns the base
+// type name and its top-level arguments.
+func clickHouseTypeParts(databaseType string) (string, []string) {
+	databaseType = strings.TrimSpace(databaseType)
+	for {
+		name, args := splitClickHouseType(databaseType)
+		if (name == "Nullable" || name == "LowCardinality") && len(args) == 1 {
+			databaseType = args[0]
+			continue
 		}
+		return name, args
+	}
+}
+
+func splitClickHouseType(databaseType string) (string, []string) {
+	open := strings.IndexByte(databaseType, '(')
+	if open < 0 || !strings.HasSuffix(databaseType, ")") {
+		return strings.TrimSpace(databaseType), nil
 	}
 
-	return databaseType == "Date" || databaseType == "Date32"
+	name := strings.TrimSpace(databaseType[:open])
+	body := databaseType[open+1 : len(databaseType)-1]
+	args := make([]string, 0, 2)
+	start, depth := 0, 0
+	quoted, escaped := false, false
+	for i := 0; i < len(body); i++ {
+		char := body[i]
+		if quoted {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch char {
+			case '\\':
+				escaped = true
+			case '\'':
+				quoted = false
+			}
+			continue
+		}
+		switch char {
+		case '\'':
+			quoted = true
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				args = append(args, strings.TrimSpace(body[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	args = append(args, strings.TrimSpace(body[start:]))
+	return name, args
+}
+
+func clickHouseTupleElementType(tupleElement string) string {
+	tupleElement = strings.TrimSpace(tupleElement)
+	depth := 0
+	for i, char := range tupleElement {
+		switch char {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ' ':
+			if depth == 0 {
+				return strings.TrimSpace(tupleElement[i+1:])
+			}
+		}
+	}
+	return tupleElement
 }
