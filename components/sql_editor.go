@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -105,6 +106,7 @@ type SQLEditor struct {
 
 	// --- existing API fields ---
 	state         *SQLEditorState
+	subscribersMu sync.RWMutex
 	subscribers   []chan models.StateChange
 	ConnectionURL string
 }
@@ -169,12 +171,19 @@ func (e *SQLEditor) SetText(text string, setCursor bool) {
 // Subscribe returns a channel for state change events.
 func (e *SQLEditor) Subscribe() chan models.StateChange {
 	subscriber := make(chan models.StateChange, 5)
+
+	e.subscribersMu.Lock()
 	e.subscribers = append(e.subscribers, subscriber)
+	e.subscribersMu.Unlock()
+
 	return subscriber
 }
 
 // Publish sends a state change event to all subscribers.
 func (e *SQLEditor) Publish(key string, message string) {
+	e.subscribersMu.RLock()
+	defer e.subscribersMu.RUnlock()
+
 	for _, sub := range e.subscribers {
 		select {
 		case sub <- models.StateChange{Key: key, Value: message}:
