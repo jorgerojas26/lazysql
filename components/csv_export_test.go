@@ -158,6 +158,14 @@ func TestReplaySafeQueryClassification(t *testing.T) {
 		safe  bool
 	}{
 		{query: "SELECT * FROM users", safe: true},
+		{query: "SELECT 1 /*!50000 INTO OUTFILE '/tmp/export' */", safe: false},
+		{query: "SELECT 1 /*M!100100 INTO OUTFILE '/tmp/export' */", safe: false},
+		{query: "SELECT @'counter' := 1", safe: false},
+		{query: "SELECT @`counter` := 1", safe: false},
+		{query: "SELECT app.abs(1)", safe: false},
+		{query: "SELECT ARRAY[nextval('seq')]", safe: false},
+		{query: "SELECT 1 # nextval('seq')::int", safe: false},
+		{query: "SELECT 1--evil()", safe: false},
 		{query: "SELECT COUNT(*) FROM users", safe: true},
 		{query: "SELECT dangerous_user_function(id) FROM users", safe: false},
 		{query: "SELECT NEXT VALUE FOR dbo.sequence_name", safe: false},
@@ -467,5 +475,28 @@ func TestCanExportAllQueryResultsRequiresShownSafeResultAndStreamingDriver(t *te
 	nonStreaming.state.editorResultAvailable = true
 	if nonStreaming.canExportAllQueryResults() {
 		t.Fatal("non-streaming driver was offered Export All")
+	}
+}
+
+func TestQueryExportsPreserveLiteralCellMarkers(t *testing.T) {
+	rows := [][]string{{"NULL&", "EMPTY&", "DEFAULT&"}}
+	driver := &csvExportDriver{streamBatches: []drivers.QueryBatch{{Columns: []string{"NULL&", "b", "c"}, Rows: rows}}}
+	table := newCSVExportTestTable(driver)
+	table.Editor = NewSQLEditor("")
+	table.state.records = append([][]string{{"NULL&", "b", "c"}}, rows...)
+	for _, all := range []bool{false, true} {
+		path := filepath.Join(t.TempDir(), "export.csv")
+		var err error
+		if all {
+			_, err = table.exportAllQueryResults(context.Background(), path, "SELECT * FROM users", nil)
+		} else {
+			_, err = table.exportCurrentPage(path)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := readCSVExportFile(t, path); got != "NULL&,b,c\nNULL&,EMPTY&,DEFAULT&\n" {
+			t.Fatalf("all=%t export lost literal data: %q", all, got)
+		}
 	}
 }

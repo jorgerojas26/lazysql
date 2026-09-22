@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -31,6 +32,22 @@ func contextOrBackground(ctx context.Context) context.Context {
 	return ctx
 }
 
+// PartialExecutionError reports that a non-transactional driver applied some
+// changes before a later change failed. Callers must remove the applied prefix
+// before allowing a retry.
+type PartialExecutionError struct {
+	Applied int
+	Err     error
+}
+
+func (err *PartialExecutionError) Error() string {
+	return fmt.Sprintf("%d change(s) applied before failure: %v", err.Applied, err.Err)
+}
+
+func (err *PartialExecutionError) Unwrap() error {
+	return err.Err
+}
+
 type Driver interface {
 	Connect(ctx context.Context, urlstr string) error
 	TestConnection(ctx context.Context, urlstr string) error
@@ -48,6 +65,8 @@ type Driver interface {
 	ExecuteDMLStatement(ctx context.Context, query string) (string, error)
 	ExecuteQuery(ctx context.Context, query string) ([][]string, int, error)
 	ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error
+	// GetReferencingTables returns reverse foreign keys with the shared header row.
+	GetReferencingTables(ctx context.Context, database, table string) ([][]string, error)
 	GetProvider() string
 	GetPrimaryKeyColumnNames(ctx context.Context, database, table string) ([]string, error)
 
@@ -78,6 +97,7 @@ var (
 	_ Driver                = (*Postgres)(nil)
 	_ Driver                = (*MSSQL)(nil)
 	_ Driver                = (*SQLite)(nil)
+	_ Driver                = (*ClickHouse)(nil)
 	_ BulkTableColumnLoader = (*MySQL)(nil)
 	_ BulkTableColumnLoader = (*Postgres)(nil)
 	_ BulkTableColumnLoader = (*MSSQL)(nil)

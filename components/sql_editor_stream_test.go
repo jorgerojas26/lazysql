@@ -116,3 +116,14 @@ type streamContractProbe struct{}
 func (*streamContractProbe) StreamQuery(context.Context, string, int, func(drivers.QueryBatch) error) (drivers.QueryStreamResult, error) {
 	return drivers.QueryStreamResult{}, nil
 }
+
+func TestNonReplayableSelectStillUsesResultPipeline(t *testing.T) {
+	for _, query := range []string{"SELECT ARRAY[nextval('seq')]", "SELECT 1 # 2", `SELECT 'back\slash'`, "SELECT 1 /*!50000 INTO OUTFILE '/tmp/out' */"} {
+		if !isResultProducingQuery(query) {
+			t.Fatalf("SELECT incorrectly routed to Exec: %s", query)
+		}
+		if isReplaySafeQuery(query) {
+			t.Fatalf("ambiguous or side-effecting SELECT allowed replay: %s", query)
+		}
+	}
+}

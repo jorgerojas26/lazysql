@@ -276,6 +276,7 @@ func (table *ResultsTable) ToggleExactCount() {
 	table.Pagination.SetCounting(true)
 
 	go func() {
+		defer cancel()
 		started := time.Now()
 		count, err := table.DBDriver.GetExactRowCount(ctx, key.database, key.table, key.where)
 		logDatabaseOperation(ctx, "get_exact_row_count", started, map[string]any{

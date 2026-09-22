@@ -93,3 +93,23 @@ are not performance thresholds.
 
 The pull-request workflow runs the regular suite and a named network-performance
 contract step so regressions are visible separately from benchmark observations.
+
+## Live fixture verification
+
+In addition to mocks, validate page lookahead, bulk/single metadata parity,
+row counts, foreign-key discovery, and capped streaming on the four local
+fixtures. PostgreSQL also verifies pending edits target the selected database
+using disposable schemas in the fixture databases.
+
+```console
+./scripts/manual-databases.sh init
+./scripts/manual-databases.sh up
+LAZYSQL_MANUAL_FIXTURES=1 go test -race ./drivers -run TestManualFixtures -v
+./scripts/manual-databases.sh down
+```
+
+Credentials are generated locally and git-ignored. ClickHouse's separate live
+suite is enabled with `LAZYSQL_CLICKHOUSE_URL`; see
+`drivers/clickhouse_integration_test.go`. The regular CI suite includes the
+race detector, blocked-stream cleanup and export replay/data-preservation
+regressions without requiring any database credentials.

@@ -341,8 +341,35 @@ func (db *MySQL) queryForeignKeys(ctx context.Context, query string, args ...any
 	return results, nil
 }
 
+// GetReferencingTables returns every foreign key that points at the given
+// table. Note that MySQL's GetForeignKeys already reports this direction, this
+// method exists so every driver exposes the reverse lookup explicitly.
+func (db *MySQL) GetReferencingTables(ctx context.Context, database, table string) ([][]string, error) {
+	if database == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	if table == "" {
+		return nil, errors.New("table name is required")
+	}
+
+	query := `
+        SELECT CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?
+        ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+    `
+
+	rows, err := db.Connection.QueryContext(contextOrBackground(ctx), query, database, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanReferencingTables(rows)
+}
+
 func (db *MySQL) GetIndexes(ctx context.Context, database, table string) (results [][]string, err error) {
-	ctx = contextOrBackground(ctx)
 	if database == "" {
 		return nil, errors.New("database name is required")
 	}

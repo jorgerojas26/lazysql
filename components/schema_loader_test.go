@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jorgerojas26/lazysql/drivers"
 )
@@ -276,5 +277,73 @@ func TestSQLAutocompleteRequestsColumnsForUncachedTable(t *testing.T) {
 	editor.triggerAutocomplete()
 	if called != "users" {
 		t.Fatalf("column loader called for %q, want users", called)
+	}
+}
+
+type invalidatingBulkDriver struct {
+	autocompleteSchemaDriver
+	invalidate func()
+}
+
+func (d *invalidatingBulkDriver) GetTableColumnsBulk(ctx context.Context, database string, tables []string) (map[string][][]string, error) {
+	result, err := d.autocompleteSchemaDriver.GetTableColumnsBulk(ctx, database, tables)
+	d.invalidate() // refresh races a catalog query already in flight
+	return result, err
+}
+
+func TestSchemaLoaderDoesNotRestoreInvalidatedBulkColumns(t *testing.T) {
+	for _, all := range []bool{false, true} {
+		cache := newMetadataCache()
+		key := newMetadataKey("db", "users", MetadataColumns)
+		d := &invalidatingBulkDriver{autocompleteSchemaDriver: autocompleteSchemaDriver{bulk: map[string][][]string{"users": autocompleteColumns("stale")}}}
+		d.invalidate = func() {
+			if all {
+				cache.invalidateAll()
+			} else {
+				cache.invalidate(key)
+			}
+		}
+		loader := newSchemaLoader(d, cache)
+		published := false
+		loader.preloadEditorColumns(context.Background(), "db", []editorSchemaTable{{bareName: "users", qualifiedName: "users"}}, 200, func(editorSchemaTable, []string) { published = true })
+		state, _, _ := cache.result(key)
+		if state != MetadataUnloaded || published {
+			t.Fatalf("all=%t stale bulk metadata survived invalidation: state=%v published=%t", all, state, published)
+		}
+	}
+}
+
+type cancelingColumnDriver struct {
+	schemaProgrammingMock
+	started  chan struct{}
+	canceled chan struct{}
+}
+
+func (d *cancelingColumnDriver) GetTableColumns(ctx context.Context, _, _ string) ([][]string, error) {
+	close(d.started)
+	<-ctx.Done()
+	close(d.canceled)
+	return nil, ctx.Err()
+}
+
+func TestSchemaLoaderInvalidationCancelsColumnWork(t *testing.T) {
+	driver := &cancelingColumnDriver{started: make(chan struct{}), canceled: make(chan struct{})}
+	cache := newMetadataCache()
+	loader := newSchemaLoader(driver, cache)
+	key, done := loader.requestColumns(context.Background(), "db", "orders")
+	select {
+	case <-driver.started:
+	case <-time.After(time.Second):
+		t.Fatal("column load did not start")
+	}
+	cache.invalidateAll()
+	<-done
+	select {
+	case <-driver.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("invalidation did not cancel column load")
+	}
+	if status, _, _ := cache.result(key); status != MetadataUnloaded {
+		t.Fatalf("invalidated state = %v", status)
 	}
 }

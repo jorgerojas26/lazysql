@@ -172,9 +172,10 @@ func TestMSSQL_GetForeignKeys(t *testing.T) {
             ON t.schema_id = s.schema_id
         WHERE t.name = @p2
           AND DB_NAME(DB_ID(@p1)) = @p1
-    `).WithArgs(DBNameMSSQL, tableNameMSSQL).WillReturnRows(rows)
+          AND s.name = @p3
+    `).WithArgs(DBNameMSSQL, tableNameMSSQL, schemaMSSQL).WillReturnRows(rows)
 
-	constraints, err := pg.GetForeignKeys(context.Background(), DBNameMSSQL, tableNameMSSQL)
+	constraints, err := pg.GetForeignKeys(context.Background(), DBNameMSSQL, schemaMSSQL+"."+tableNameMSSQL)
 	if err != nil {
 		t.Fatalf("GetForeignKeys failed: %v", err)
 	}
@@ -239,6 +240,17 @@ func TestMSSQL_DMLChangeToQueryString(t *testing.T) {
 				},
 			},
 			expected: fmt.Sprintf(`DELETE FROM [%s] WHERE [id] = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'`, tableNameMSSQL),
+		},
+		{
+			name: "Schema qualified table",
+			change: models.DBDMLChange{
+				Table: "sales.orders",
+				Type:  models.DMLDeleteType,
+				PrimaryKeyInfo: []models.PrimaryKeyInfo{
+					{Name: "id", Value: "1"},
+				},
+			},
+			expected: `DELETE FROM [sales].[orders] WHERE [id] = '1'`,
 		},
 	}
 
@@ -511,6 +523,33 @@ func TestMSSQL_GetRecords(t *testing.T) {
 	}
 }
 
+func TestMSSQL_GetRecordsSchemaQualifiedTable(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+	rows := sqlmock.NewRows([]string{"id"}).AddRow(1)
+
+	mock.ExpectQuery(`USE \[test_db\]; SELECT \* FROM \[sales\]\.\[orders\] ORDER BY \(SELECT NULL\) OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY`).
+		WithArgs(0, DefaultRowLimit+1).
+		WillReturnRows(rows)
+
+	page, err := mssql.GetRecords(context.Background(), DBNameMSSQL, "sales.orders", "", "", 0, DefaultRowLimit)
+	if err != nil {
+		t.Fatalf("GetRecords failed: %v", err)
+	}
+	if page.HasNextPage || !reflect.DeepEqual(page.Rows, [][]string{{"id"}, {"1"}}) {
+		t.Fatalf("unexpected records=%v, total=%d", page.Rows, len(page.Rows)-1)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
 func TestMSSQL_AzureSQLDatabasePrefix(t *testing.T) {
 	t.Run("SQL Server uses quoted USE", func(t *testing.T) {
 		db := &MSSQL{}
@@ -541,6 +580,22 @@ func TestMSSQL_FormatReferenceEscapesClosingBracket(t *testing.T) {
 
 	if got != expected {
 		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestMSSQL_FormatTableName(t *testing.T) {
+	db := &MSSQL{}
+
+	testCases := map[string]string{
+		"orders":             "[orders]",
+		"sales.orders":       "[sales].[orders]",
+		"sales].order]items": "[sales]]].[order]]items]",
+	}
+
+	for table, expected := range testCases {
+		if got := db.formatTableName(table); got != expected {
+			t.Errorf("formatTableName(%q) returned %q, expected %q", table, got, expected)
+		}
 	}
 }
 
@@ -730,6 +785,43 @@ func TestMSSQL_GetRecordsAzureSQLDoesNotUseUSE(t *testing.T) {
 
 	if page.HasNextPage {
 		t.Fatal("expected no next page")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
+func TestMSSQL_GetReferencingTables(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating mock: %v", err)
+	}
+	defer db.Close()
+
+	mssql := &MSSQL{Connection: db}
+
+	rows := sqlmock.NewRows(ReferencingTablesHeader).
+		AddRow("FK_orders_users", schemaMSSQL, "orders", "user_id", "id")
+
+	// Resolve the actual table object instead of guessing its schema from the
+	// connection default. The returned source schema is preserved by the UI.
+	mock.ExpectQuery(`(?s)USE \[test_db\];.*FROM sys\.foreign_keys fk.*WHERE fk\.referenced_object_id = OBJECT_ID\(@p2, 'U'\)\s+AND DB_NAME\(\) = @p1`).
+		WithArgs(DBNameMSSQL, schemaMSSQL+"."+tableNameMSSQL).
+		WillReturnRows(rows)
+
+	results, err := mssql.GetReferencingTables(context.Background(), DBNameMSSQL, schemaMSSQL+"."+tableNameMSSQL)
+	if err != nil {
+		t.Fatalf("GetReferencingTables failed: %v", err)
+	}
+
+	expected := [][]string{
+		ReferencingTablesHeader,
+		{"FK_orders_users", schemaMSSQL, "orders", "user_id", "id"},
+	}
+
+	if !reflect.DeepEqual(results, expected) {
+		t.Errorf("GetReferencingTables returned %v, expected %v", results, expected)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

@@ -42,6 +42,7 @@ func (c KeymapSystem) Resolve(event *tcell.EventKey) cmd.Command {
 }
 
 const (
+	GlobalGroup       = "global"
 	HomeGroup         = "home"
 	TreeGroup         = "tree"
 	TreeFilterGroup   = "treefilter"
@@ -57,6 +58,9 @@ const (
 
 // Define a global KeymapSystem object with default keybinds
 var Keymaps = KeymapSystem{
+	Global: Map{
+		Bind{Key: Key{Code: tcell.KeyCtrlT}, Cmd: cmd.ThemePicker, Description: "Choose color theme"},
+	},
 	Groups: map[string]Map{
 		HomeGroup: {
 			Bind{Key: Key{Char: 'L'}, Cmd: cmd.MoveRight, Description: "Focus table"},
@@ -140,10 +144,14 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: 's'}, Cmd: cmd.FocusSidebar, Description: "Focus sidebar"},
 			Bind{Key: Key{Char: 'Z'}, Cmd: cmd.ShowRowJSONViewer, Description: "Toggle JSON viewer for row"},
 			Bind{Key: Key{Char: 'z'}, Cmd: cmd.ShowCellJSONViewer, Description: "Toggle JSON viewer for cell"},
+			// Foreign keys
+			Bind{Key: Key{Char: 'f'}, Cmd: cmd.ReverseForeignKeyJump, Description: "Jump to a table referencing the current row"},
 			// Export
 			Bind{Key: Key{Char: 'E'}, Cmd: cmd.ExportCSV, Description: "Export to CSV"},
 			// External editor
 			Bind{Key: Key{Char: 'e'}, Cmd: cmd.OpenCellInExternalEditor, Description: "Edit cell in external editor"},
+			// Foreign keys
+			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.ForeignKeyJump, Description: "Jump to the referenced row (foreign key)"},
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
@@ -240,6 +248,15 @@ func ApplyKeymapConfig(keymaps models.KeymapConfig) error {
 
 	for groupName, bindings := range keymaps {
 		groupKey := strings.ToLower(groupName)
+		if groupKey == GlobalGroup {
+			updated, err := setBindings(bindings, Keymaps.Global, groupName)
+			if err != nil {
+				return err
+			}
+			Keymaps.Global = updated
+			continue
+		}
+
 		group, ok := Keymaps.Groups[groupKey]
 		if !ok {
 			return fmt.Errorf("unknown keymap group: %s", groupName)

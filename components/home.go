@@ -105,7 +105,7 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 
 	if connection.ReadOnly {
 		leftWrapper.SetTitle(" [READ-ONLY] ")
-		leftWrapper.SetTitleColor(tcell.ColorLightBlue)
+		leftWrapper.SetTitleColor(app.Styles.ReadOnlyColor)
 		leftWrapper.SetBorder(true)
 	}
 
@@ -304,13 +304,26 @@ func (home *Home) showTable(databaseName, tableName string) {
 	})
 }
 
+// ShowTableWithFilter opens the table filtered by the given WHERE clause. An
+// already open tab for the table is reused unless doing so would replace a
+// filter the user is looking at: the tab is the current one (self referencing
+// foreign keys) or it already carries a different filter. In that case the
+// table opens in a tab of its own.
 func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 	if tableName == "" {
 		return
 	}
 
+	tabName := tableName
 	tabReference := fmt.Sprintf("%s.%s", databaseName, tableName)
 	tab := home.TabbedPane.GetTabByReference(tabReference)
+
+	if tab != nil && !canReuseTabForFilter(tab, home.TabbedPane.GetCurrentTab(), where) {
+		newReference := home.TabbedPane.NextAvailableReference(tabReference)
+		tabName += strings.TrimPrefix(newReference, tabReference)
+		tabReference = newReference
+		tab = nil
+	}
 
 	var table *ResultsTable
 	if tab != nil {
@@ -320,7 +333,7 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly).WithFilter()
 		table.SetDatabaseName(databaseName)
 		table.SetTableName(tableName)
-		home.TabbedPane.AppendTab(tableName, table, tabReference)
+		home.TabbedPane.AppendTab(tabName, table, tabReference)
 	}
 
 	if table.Filter != nil {
@@ -359,6 +372,23 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 		home.focusRightWrapper()
 	}
 	keepQuitConfirmationFocused()
+}
+
+// canReuseTabForFilter reports whether applying where to tab keeps whatever the
+// user currently sees intact.
+func canReuseTabForFilter(tab, currentTab *Tab, where string) bool {
+	if tab == currentTab {
+		return false
+	}
+
+	table, ok := tab.Content.(*ResultsTable)
+	if !ok || table.Filter == nil {
+		return true
+	}
+
+	currentFilter := strings.TrimSpace(table.Filter.GetCurrentFilter())
+
+	return currentFilter == "" || currentFilter == strings.TrimSpace(where)
 }
 
 func (home *Home) focusRightWrapper() {

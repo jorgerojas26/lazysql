@@ -96,7 +96,7 @@ func buildInsertQuery(formattedTableName string, values []models.CellValue, driv
 
 		if value.Value != nil && value.Type != models.Default {
 			placeholders = append(placeholders, driver.FormatPlaceholder(index))
-			args = append(args, value.Value)
+			args = append(args, driver.FormatArg(value.Value, value.Type))
 			index++
 		}
 	}
@@ -327,4 +327,43 @@ func buildPlaceholders(values []models.CellValue, driver Driver) []string {
 		}
 	}
 	return placeholders
+}
+
+// ReferencingTablesHeader is the shape every driver returns from
+// GetReferencingTables, so the UI does not need per-provider normalization.
+var ReferencingTablesHeader = []string{
+	"constraint_name",
+	"table_schema",
+	"table_name",
+	"column_name",
+	"referenced_column_name",
+}
+
+// scanReferencingTables reads rows shaped like ReferencingTablesHeader and
+// prepends that header, mirroring the [][]string convention of the other
+// table information getters.
+func scanReferencingTables(rows *sql.Rows) ([][]string, error) {
+	results := [][]string{append([]string(nil), ReferencingTablesHeader...)}
+
+	for rows.Next() {
+		var constraintName, tableSchema, tableName, columnName, referencedColumn sql.NullString
+
+		if err := rows.Scan(&constraintName, &tableSchema, &tableName, &columnName, &referencedColumn); err != nil {
+			return nil, err
+		}
+
+		results = append(results, []string{
+			constraintName.String,
+			tableSchema.String,
+			tableName.String,
+			columnName.String,
+			referencedColumn.String,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }

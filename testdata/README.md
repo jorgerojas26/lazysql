@@ -1,6 +1,6 @@
 # LazySQL manual fixtures
 
-The fixture stack uses the same logical model in every supported provider:
+The fixture stack uses the same logical model across its four providers (MySQL, PostgreSQL, MSSQL, and SQLite):
 
 - `customers` — 1,200 customers with nullable fields, dates, numeric balances,
   and JSON/text preferences.

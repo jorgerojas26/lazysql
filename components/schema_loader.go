@@ -114,7 +114,11 @@ func (loader *schemaLoader) requestTables(ctx context.Context, database string) 
 		return key, nil
 	}
 
-	done := loader.cache.request(key, func() (any, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := loader.cache.requestWithContext(ctx, key, cancel, func() (any, error) {
 		started := time.Now()
 		tables, err := loader.driver.GetTables(ctx, database)
 		logDatabaseOperation(ctx, "get_tables", started, map[string]any{
@@ -245,7 +249,11 @@ func (loader *schemaLoader) requestColumns(ctx context.Context, database, table 
 		return key, nil
 	}
 
-	done := loader.cache.request(key, func() (any, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := loader.cache.requestWithContext(ctx, key, cancel, func() (any, error) {
 		started := time.Now()
 		columns, err := loader.driver.GetTableColumns(ctx, database, table)
 		logDatabaseOperation(ctx, "get_table_columns", started, map[string]any{
@@ -275,6 +283,7 @@ func (loader *schemaLoader) preloadEditorColumns(ctx context.Context, database s
 	}
 
 	cache := loader.cache
+	generation := cache.generationValue()
 	pending := make([]editorSchemaTable, 0, len(tables))
 	for _, table := range tables {
 		key := newMetadataKey(database, table.qualifiedName, MetadataColumns)
@@ -341,9 +350,17 @@ func (loader *schemaLoader) preloadEditorColumns(ctx context.Context, database s
 			// whose columns are inaccessible or genuinely empty.
 			value = [][]string{}
 		}
-		cache.store(key, value, nil)
-		if publish != nil {
-			publish(table, editorColumnNames(value))
+		if ctx != nil && ctx.Err() != nil {
+			return
+		}
+		if !cache.storeResult(key, value, nil, &generation) {
+			return
+		}
+		// A concurrent per-table refresh may already have published a newer
+		// ready value. Publish the value actually accepted by the cache.
+		status, cached, err := cache.result(key)
+		if publish != nil && status == MetadataReady && err == nil {
+			publish(table, editorColumnNames(cached))
 		}
 	}
 }

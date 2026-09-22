@@ -19,12 +19,13 @@ type MetadataKind string
 const (
 	// MetadataTables is the shared schema-list cache entry. It is deliberately
 	// not part of metadataKinds because Records only loads per-table metadata.
-	MetadataTables      MetadataKind = "tables"
-	MetadataColumns     MetadataKind = "columns"
-	MetadataPrimaryKeys MetadataKind = "primary_keys"
-	MetadataForeignKeys MetadataKind = "foreign_keys"
-	MetadataConstraints MetadataKind = "constraints"
-	MetadataIndexes     MetadataKind = "indexes"
+	MetadataTables            MetadataKind = "tables"
+	MetadataColumns           MetadataKind = "columns"
+	MetadataPrimaryKeys       MetadataKind = "primary_keys"
+	MetadataForeignKeys       MetadataKind = "foreign_keys"
+	MetadataReferencingTables MetadataKind = "referencing_tables"
+	MetadataConstraints       MetadataKind = "constraints"
+	MetadataIndexes           MetadataKind = "indexes"
 )
 
 var metadataKinds = []MetadataKind{
@@ -105,8 +106,9 @@ type metadataCacheEntry struct {
 // remain available until that Home is discarded; failed entries can be retried
 // while ready entries are reused without another database call.
 type metadataCache struct {
-	mu      sync.Mutex
-	entries map[metadataKey]*metadataCacheEntry
+	mu         sync.Mutex
+	entries    map[metadataKey]*metadataCacheEntry
+	generation uint64 // invalidates bulk work that has not created entries yet
 }
 
 func newMetadataCache() *metadataCache {
@@ -171,6 +173,9 @@ func (cache *metadataCache) requestWithContext(ctx context.Context, key metadata
 	}
 
 	go func() {
+		if cancel != nil {
+			defer cancel()
+		}
 		value, err := load()
 		cache.mu.Lock()
 		defer cache.mu.Unlock()
@@ -209,6 +214,7 @@ func (cache *metadataCache) requestWithContext(ctx context.Context, key metadata
 // race.
 func (cache *metadataCache) invalidate(key metadataKey) {
 	cache.mu.Lock()
+	cache.generation++
 	entry, ok := cache.entries[key]
 	if !ok {
 		cache.mu.Unlock()
@@ -238,6 +244,7 @@ func (cache *metadataCache) invalidateAll() {
 	}
 
 	cache.mu.Lock()
+	cache.generation++
 	cancels := make([]context.CancelFunc, 0, len(cache.entries))
 	for key, entry := range cache.entries {
 		delete(cache.entries, key)
@@ -286,13 +293,28 @@ func (cache *metadataCache) completion(key metadataKey) <-chan struct{} {
 // metadata key. Replacing a loading entry is safe: the old request checks its
 // entry identity before publishing, and its waiters are released here.
 func (cache *metadataCache) store(key metadataKey, value any, err error) {
+	cache.storeResult(key, value, err, nil)
+}
+
+func (cache *metadataCache) generationValue() uint64 {
 	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	return cache.generation
+}
+
+// storeResult rejects a bulk result started before refresh/DDL invalidation.
+func (cache *metadataCache) storeResult(key metadataKey, value any, err error, generation *uint64) bool {
+	cache.mu.Lock()
+	if generation != nil && *generation != cache.generation {
+		cache.mu.Unlock()
+		return false
+	}
 
 	var cancel context.CancelFunc
 	if current, ok := cache.entries[key]; ok {
 		if current.status == MetadataReady {
 			cache.mu.Unlock()
-			return
+			return true
 		}
 		if current.status == MetadataLoading && !current.doneClosed {
 			close(current.done)
@@ -319,6 +341,7 @@ func (cache *metadataCache) store(key metadataKey, value any, err error) {
 	if cancel != nil {
 		cancel()
 	}
+	return true
 }
 
 func metadataCacheForHome(home *Home) *metadataCache {
@@ -363,6 +386,12 @@ func (table *ResultsTable) requestMetadataWithContext(ctx context.Context, datab
 			value, err = table.DBDriver.GetPrimaryKeyColumnNames(metadataCtx, databaseName, tableName)
 		case MetadataForeignKeys:
 			value, err = table.DBDriver.GetForeignKeys(metadataCtx, databaseName, tableName)
+		case MetadataReferencingTables:
+			if table.IsForeignKeyJumpSupportedProvider() {
+				value, err = table.DBDriver.GetReferencingTables(metadataCtx, databaseName, tableName)
+			} else {
+				value = [][]string{}
+			}
 		case MetadataConstraints:
 			value, err = table.DBDriver.GetConstraints(metadataCtx, databaseName, tableName)
 		case MetadataIndexes:
@@ -692,6 +721,9 @@ func (table *ResultsTable) applyMetadataResultForIdentity(identityGeneration uin
 func (table *ResultsTable) applyMetadataResultValue(databaseName, tableName string, kind MetadataKind, status MetadataState, value any, err error) bool {
 	table.setMetadataState(kind, status, err)
 	if status == MetadataFailed {
+		if kind == MetadataReferencingTables {
+			table.SetReferencingTables(nil, err)
+		}
 		logger.Error("Failed to load table metadata", map[string]any{
 			"database": databaseName,
 			"table":    tableName,
@@ -727,6 +759,9 @@ func (table *ResultsTable) applyMetadataResultValue(databaseName, tableName stri
 			table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 		}
 		App.ForceDraw()
+	case MetadataReferencingTables:
+		rows, _ := value.([][]string)
+		table.SetReferencingTables(rows, nil)
 	case MetadataConstraints:
 		constraints, _ := value.([][]string)
 		table.SetConstraints(constraints)

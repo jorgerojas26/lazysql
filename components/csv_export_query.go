@@ -47,8 +47,15 @@ func isReplaySafeQuery(query string) bool {
 			if replayUnsafeWord[token.text] {
 				return false
 			}
-			if replayFunctionCall(tokens, i) && !replaySafeFunction[token.text] && !replayStructuralWord[token.text] {
-				return false
+			if replayFunctionCall(tokens, i) {
+				// A qualified name can resolve to a user-defined function even
+				// when its last component happens to name a pure built-in.
+				if i > 0 && tokens[i-1].text == "." {
+					return false
+				}
+				if !replaySafeFunction[token.text] && !replayStructuralWord[token.text] {
+					return false
+				}
 			}
 			continue
 		}
@@ -210,11 +217,9 @@ func replayContainsUnsafeSyntax(tokens []replayToken) bool {
 	// MySQL user-variable assignment is an expression, not a function call.
 	// The tokenizer keeps := as two punctuation tokens so whitespace and
 	// comments cannot bypass this check.
-	for i := 0; i+3 < len(tokens); i++ {
-		if tokens[i].kind != replayTokenPunctuation || tokens[i].text != "@" ||
-			tokens[i+1].kind != replayTokenWord ||
-			tokens[i+2].kind != replayTokenPunctuation || tokens[i+2].text != ":" ||
-			tokens[i+3].kind != replayTokenPunctuation || tokens[i+3].text != "=" {
+	for i := 0; i+1 < len(tokens); i++ {
+		if tokens[i].kind != replayTokenPunctuation || tokens[i].text != ":" ||
+			tokens[i+1].kind != replayTokenPunctuation || tokens[i+1].text != "=" {
 			continue
 		}
 		return true
@@ -244,17 +249,18 @@ func tokenizeReplayQuery(query string) ([]replayToken, bool) {
 		case isReplaySpace(c):
 			i++
 		case c == '-' && i+1 < len(query) && query[i+1] == '-':
+			// MySQL requires whitespace after --; otherwise this is arithmetic.
+			if i+2 < len(query) && !isReplaySpace(query[i+2]) {
+				return nil, false
+			}
 			i += 2
 			for i < len(query) && query[i] != '\n' {
 				i++
 			}
 		case c == '#':
-			// MySQL-style line comments are harmless but must not expose words
-			// that look like mutation verbs to the classifier.
-			i++
-			for i < len(query) && query[i] != '\n' {
-				i++
-			}
+			// # is a comment in MySQL but an operator in PostgreSQL. A
+			// dialect-neutral classifier cannot safely discard its remainder.
+			return nil, false
 		case c == '/' && i+1 < len(query) && query[i+1] == '*':
 			var ok bool
 			i, ok = skipReplayBlockComment(query, i+2)
@@ -269,9 +275,12 @@ func tokenizeReplayQuery(query string) ([]replayToken, bool) {
 			}
 			tokens = append(tokens, replayToken{kind: replayTokenQuoted, depth: depth})
 		case c == '[':
+			start := i
 			var ok bool
 			i, ok = skipReplayBracketQuote(query, i+1)
-			if !ok {
+			// Brackets can also enclose PostgreSQL array expressions. Only
+			// simple identifiers are unambiguous enough for automatic replay.
+			if !ok || strings.ContainsAny(query[start+1:i-1], "('`\"/[\\\\") {
 				return nil, false
 			}
 			tokens = append(tokens, replayToken{kind: replayTokenQuoted, depth: depth})
@@ -322,12 +331,16 @@ func tokenizeReplayQuery(query string) ([]replayToken, bool) {
 }
 
 func skipReplayBlockComment(query string, start int) (int, bool) {
+	// MySQL and MariaDB execute these comments as SQL.
+	if strings.HasPrefix(query[start:], "!") || strings.HasPrefix(query[start:], "M!") {
+		return len(query), false
+	}
 	depth := 1
 	for i := start; i < len(query)-1; i++ {
 		if query[i] == '/' && query[i+1] == '*' {
-			depth++
-			i++
-			continue
+			// Nested block comments have different termination rules across
+			// providers; do not hide potentially executable text inside them.
+			return len(query), false
 		}
 		if query[i] == '*' && query[i+1] == '/' {
 			depth--
@@ -342,9 +355,9 @@ func skipReplayBlockComment(query string, start int) (int, bool) {
 
 func skipReplayQuoted(query string, start int, quote byte) (int, bool) {
 	for i := start + 1; i < len(query); i++ {
-		if query[i] == '\\' && quote == '\'' && i+1 < len(query) {
-			i++
-			continue
+		if query[i] == '\\' {
+			// Backslash escaping depends on dialect and session SQL modes.
+			return len(query), false
 		}
 		if query[i] != quote {
 			continue

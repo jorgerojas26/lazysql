@@ -58,7 +58,7 @@ func (w *CSVWriter) WriteRecords(records [][]string, includeHeader bool) error {
 	if len(records) == 0 {
 		return nil
 	}
-	return w.WriteBatch(records[0], records[1:], includeHeader)
+	return w.writeBatch(records[0], records[1:], includeHeader, true)
 }
 
 // WriteBatch writes one streamed batch to CSV. columns is the header returned
@@ -66,6 +66,10 @@ func (w *CSVWriter) WriteRecords(records [][]string, includeHeader bool) error {
 // from WriteRecords lets query exports write each driver batch directly without
 // assembling a complete result in memory.
 func (w *CSVWriter) WriteBatch(columns []string, rows [][]string, includeHeader bool) error {
+	return w.writeBatch(columns, rows, includeHeader, false)
+}
+
+func (w *CSVWriter) writeBatch(columns []string, rows [][]string, includeHeader, cleanMarkers bool) error {
 	if w.done {
 		return errCSVWriterClosed
 	}
@@ -87,10 +91,13 @@ func (w *CSVWriter) WriteBatch(columns []string, rows [][]string, includeHeader 
 		w.initialized = true
 	}
 
-	writeRow := func(record []string) error {
+	writeRow := func(record []string, clean bool) error {
 		for i := range w.cleanedRecord {
 			if i < len(record) {
-				w.cleanedRecord[i] = CleanCellValue(record[i])
+				w.cleanedRecord[i] = record[i]
+				if clean {
+					w.cleanedRecord[i] = CleanCellValue(record[i])
+				}
 			} else {
 				w.cleanedRecord[i] = ""
 			}
@@ -99,12 +106,12 @@ func (w *CSVWriter) WriteBatch(columns []string, rows [][]string, includeHeader 
 	}
 
 	if includeHeader && len(columns) > 0 {
-		if err := writeRow(columns); err != nil {
+		if err := writeRow(columns, false); err != nil {
 			return err
 		}
 	}
 	for _, record := range rows {
-		if err := writeRow(record); err != nil {
+		if err := writeRow(record, cleanMarkers); err != nil {
 			return err
 		}
 		w.rowCount++

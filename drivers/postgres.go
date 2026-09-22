@@ -197,30 +197,43 @@ func (db *Postgres) GetTableColumns(ctx context.Context, database, table string)
 	return results, nil
 }
 
-func (db *Postgres) GetConstraints(ctx context.Context, database, table string) ([][]string, error) {
+// qualifiedTableConnection validates a "schema.table" argument, splits it and
+// returns a connection scoped to the given database. The returned closeConn is
+// always safe to defer: it is a no-op when the shared connection is reused.
+func (db *Postgres) qualifiedTableConnection(ctx context.Context, database, table string) (conn *sql.DB, closeConn func(), tableSchema, tableName string, err error) {
 	ctx = contextOrBackground(ctx)
 	if database == "" {
-		return nil, errors.New("database name is required")
+		return nil, nil, "", "", errors.New("database name is required")
 	}
 	if table == "" {
-		return nil, errors.New("table name is required")
+		return nil, nil, "", "", errors.New("table name is required")
 	}
 
 	splitTableString := strings.Split(table, ".")
 	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
+		return nil, nil, "", "", errors.New("table must be in the format schema.table")
 	}
 
 	conn, needsClose, err := db.connectionFor(ctx, database)
 	if err != nil {
-		return nil, err
-	}
-	if needsClose {
-		defer conn.Close()
+		return nil, nil, "", "", err
 	}
 
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
+	closeConn = func() {}
+	if needsClose {
+		closeConn = func() { _ = conn.Close() }
+	}
+
+	return conn, closeConn, splitTableString[0], splitTableString[1], nil
+}
+
+func (db *Postgres) GetConstraints(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
+	if err != nil {
+		return nil, err
+	}
+	defer closeConn()
 
 	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
         SELECT
@@ -275,28 +288,11 @@ func (db *Postgres) GetConstraints(ctx context.Context, database, table string) 
 
 func (db *Postgres) GetForeignKeys(ctx context.Context, database, table string) ([][]string, error) {
 	ctx = contextOrBackground(ctx)
-	if database == "" {
-		return nil, errors.New("database name is required")
-	}
-	if table == "" {
-		return nil, errors.New("table name is required")
-	}
-
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
-	}
-
-	conn, needsClose, err := db.connectionFor(ctx, database)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
 	if err != nil {
 		return nil, err
 	}
-	if needsClose {
-		defer conn.Close()
-	}
-
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
+	defer closeConn()
 
 	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
         SELECT
@@ -353,30 +349,50 @@ func (db *Postgres) GetForeignKeys(ctx context.Context, database, table string) 
 	return foreignKeys, nil
 }
 
-func (db *Postgres) GetIndexes(ctx context.Context, database, table string) ([][]string, error) {
-	ctx = contextOrBackground(ctx)
-	if database == "" {
-		return nil, errors.New("database name is required")
-	}
-	if table == "" {
-		return nil, errors.New("table name is required")
-	}
-
-	splitTableString := strings.Split(table, ".")
-	if len(splitTableString) == 1 {
-		return nil, errors.New("table must be in the format schema.table")
-	}
-
-	conn, needsClose, err := db.connectionFor(ctx, database)
+// GetReferencingTables returns every foreign key that points at the given
+// table, i.e. the reverse direction of GetForeignKeys.
+func (db *Postgres) GetReferencingTables(ctx context.Context, database, table string) ([][]string, error) {
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
 	if err != nil {
 		return nil, err
 	}
-	if needsClose {
-		defer conn.Close()
-	}
+	defer closeConn()
 
-	tableSchema := splitTableString[0]
-	tableName := splitTableString[1]
+	rows, err := conn.QueryContext(contextOrBackground(ctx), `
+        SELECT
+            con.conname AS constraint_name,
+            src_ns.nspname AS table_schema,
+            src_cls.relname AS table_name,
+            src_att.attname AS column_name,
+            ref_att.attname AS referenced_column_name
+        FROM pg_constraint con
+        JOIN pg_class src_cls ON src_cls.oid = con.conrelid
+        JOIN pg_namespace src_ns ON src_ns.oid = src_cls.relnamespace
+        JOIN pg_class ref_cls ON ref_cls.oid = con.confrelid
+        JOIN pg_namespace ref_ns ON ref_ns.oid = ref_cls.relnamespace
+        JOIN LATERAL unnest(con.conkey, con.confkey) AS fk(src_attnum, ref_attnum) ON true
+        JOIN pg_attribute src_att ON src_att.attrelid = con.conrelid AND src_att.attnum = fk.src_attnum
+        JOIN pg_attribute ref_att ON ref_att.attrelid = con.confrelid AND ref_att.attnum = fk.ref_attnum
+        WHERE con.contype = 'f'
+          AND ref_ns.nspname = $1
+          AND ref_cls.relname = $2
+        ORDER BY src_ns.nspname, src_cls.relname, con.conname, src_att.attnum
+  `, tableSchema, tableName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanReferencingTables(rows)
+}
+
+func (db *Postgres) GetIndexes(ctx context.Context, database, table string) ([][]string, error) {
+	ctx = contextOrBackground(ctx)
+	conn, closeConn, tableSchema, tableName, err := db.qualifiedTableConnection(ctx, database, table)
+	if err != nil {
+		return nil, err
+	}
+	defer closeConn()
 
 	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
         SELECT
@@ -748,9 +764,23 @@ func (db *Postgres) ExecuteQuery(ctx context.Context, query string) ([][]string,
 
 func (db *Postgres) ExecutePendingChanges(ctx context.Context, changes []models.DBDMLChange) error {
 	ctx = contextOrBackground(ctx)
+	if len(changes) == 0 {
+		return nil
+	}
+	database := changes[0].Database
+	if database == "" {
+		database = db.CurrentDatabase
+	}
 	var queries []models.Query
 
 	for _, change := range changes {
+		target := change.Database
+		if target == "" {
+			target = db.CurrentDatabase
+		}
+		if target != database {
+			return errors.New("cannot atomically apply PostgreSQL changes across databases; apply each database separately")
+		}
 
 		formattedTableName, formatErr := db.formatTableName(change.Table)
 		if formatErr != nil {
@@ -768,7 +798,14 @@ func (db *Postgres) ExecutePendingChanges(ctx context.Context, changes []models.
 		}
 	}
 
-	return queriesInTransaction(ctx, db.Connection, queries)
+	conn, needsClose, err := db.connectionFor(ctx, database)
+	if err != nil {
+		return err
+	}
+	if needsClose {
+		defer conn.Close()
+	}
+	return queriesInTransaction(ctx, conn, queries)
 }
 
 func (db *Postgres) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) ([]string, error) {

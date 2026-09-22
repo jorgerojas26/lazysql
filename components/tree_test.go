@@ -1430,3 +1430,7 @@ func TestSearch_SinglePartExactMatchDoesNotCollapseSiblings(t *testing.T) {
 		t.Errorf("expected unqualified search to keep pre-existing fuzzy behavior (should still include 'dado'), got %v", foundNames)
 	}
 }
+
+func (m *schemaProgrammingMock) GetReferencingTables(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}

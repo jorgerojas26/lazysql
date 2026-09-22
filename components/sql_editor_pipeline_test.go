@@ -159,8 +159,10 @@ func startEditorPipeline(t *testing.T, table *ResultsTable, _ *SQLEditor, pages 
 	return appDone
 }
 
-func stopEditorPipeline(t *testing.T, appDone chan struct{}) {
+func stopEditorPipeline(t *testing.T, appDone chan struct{}, table *ResultsTable) {
 	t.Helper()
+	waitFor(t, func() bool { return !table.IsQueryActive() })
+	App.QueueUpdate(func() {})
 	App.Application.Stop()
 	select {
 	case <-appDone:
@@ -178,13 +180,12 @@ func TestSuccessfulEditorDDLInvalidatesSchemaCache(t *testing.T) {
 	table.SetDatabaseName("database")
 	table.SetTableName("orders")
 	table.ResultsInfo = tview.NewTextView()
+	treeUpdates := make(chan struct{}, 3)
 	tree := &Tree{
-		TreeView: tview.NewTreeView(),
-		state:    &TreeState{},
-		DBDriver: driver,
-		queueUpdateDraw: func(update func()) {
-			update()
-		},
+		TreeView:        tview.NewTreeView(),
+		state:           &TreeState{},
+		DBDriver:        driver,
+		queueUpdateDraw: func(update func()) { App.QueueUpdateDraw(update); treeUpdates <- struct{}{} },
 	}
 	root := tview.NewTreeNode("-")
 	root.SetReference("-")
@@ -192,7 +193,7 @@ func TestSuccessfulEditorDDLInvalidatesSchemaCache(t *testing.T) {
 	table.Home = &Home{Tree: tree, metadataCache: cache}
 
 	appDone := startEditorPipeline(t, table, editor, pages)
-	defer stopEditorPipeline(t, appDone)
+	defer stopEditorPipeline(t, appDone, table)
 
 	editor.Publish(eventSQLEditorQuery, "CREATE TABLE audit (id INTEGER)")
 	select {
@@ -211,11 +212,20 @@ func TestSuccessfulEditorDDLInvalidatesSchemaCache(t *testing.T) {
 		t.Fatal("successful DDL left schema metadata cached")
 	}
 	deadline = time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && len(root.GetChildren()) == 0 {
+	for time.Now().Before(deadline) && editorUIValue(func() int { return len(root.GetChildren()) }) == 0 {
 		time.Sleep(time.Millisecond)
 	}
-	if len(root.GetChildren()) == 0 {
+	if editorUIValue(func() int { return len(root.GetChildren()) }) == 0 {
 		t.Fatal("successful DDL did not start a background tree rebuild")
+	}
+	// Wait for refresh, table-list paint, and programming enrichment before
+	// replacing the global application in the next test.
+	for range 3 {
+		select {
+		case <-treeUpdates:
+		case <-time.After(3 * time.Second):
+			t.Fatal("tree did not finish enrichment")
+		}
 	}
 }
 
@@ -231,7 +241,7 @@ func TestFailedEditorDDLKeepsSchemaCache(t *testing.T) {
 	table.ResultsInfo = tview.NewTextView()
 
 	appDone := startEditorPipeline(t, table, editor, pages)
-	defer stopEditorPipeline(t, appDone)
+	defer stopEditorPipeline(t, appDone, table)
 
 	editor.Publish(eventSQLEditorQuery, "ALTER TABLE orders ADD COLUMN audit_id INTEGER")
 	select {
@@ -252,7 +262,7 @@ func TestEditorDMLDoesNotRefreshSelectedTable(t *testing.T) {
 	table.SetTableName("orders")
 	table.ResultsInfo = tview.NewTextView()
 	appDone := startEditorPipeline(t, table, editor, pages)
-	defer stopEditorPipeline(t, appDone)
+	defer stopEditorPipeline(t, appDone, table)
 
 	editor.Publish(eventSQLEditorQuery, "UPDATE orders SET id = 2")
 	select {
@@ -272,7 +282,7 @@ func TestEditorStreamRendersFirstBatchBeforeStreamCompletes(t *testing.T) {
 	appDone := startEditorPipeline(t, table, editor, pages)
 	defer func() {
 		close(driver.released)
-		stopEditorPipeline(t, appDone)
+		stopEditorPipeline(t, appDone, table)
 	}()
 
 	editor.Publish(eventSQLEditorQuery, "SELECT id")
@@ -292,7 +302,7 @@ func TestEditorStreamRendersFirstBatchBeforeStreamCompletes(t *testing.T) {
 		t.Fatal("stream completed before the first batch was observed")
 	default:
 	}
-	rows := table.GetRecords()
+	rows := editorUIValue(table.GetRecords)
 	if len(rows) != 2 || rows[1][0] != "1" {
 		t.Fatalf("rendered records = %v, want header and first row", rows)
 	}
@@ -302,7 +312,7 @@ func TestEditorStreamCancellationKeepsPartialRows(t *testing.T) {
 	driver := newBlockingEditorStreamDriver()
 	table, editor, pages := newEditorPipelineTable(driver)
 	appDone := startEditorPipeline(t, table, editor, pages)
-	defer stopEditorPipeline(t, appDone)
+	defer stopEditorPipeline(t, appDone, table)
 
 	editor.Publish(eventSQLEditorQuery, "SELECT id")
 	select {
@@ -310,7 +320,7 @@ func TestEditorStreamCancellationKeepsPartialRows(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("first batch was not rendered")
 	}
-	if !table.CancelActiveQuery() {
+	if !editorUIValue(table.CancelActiveQuery) {
 		t.Fatal("CancelActiveQuery() did not report an active stream")
 	}
 	select {
@@ -319,12 +329,12 @@ func TestEditorStreamCancellationKeepsPartialRows(t *testing.T) {
 		t.Fatal("cancellation did not reach the stream driver")
 	}
 
-	rows := table.GetRecords()
+	rows := editorUIValue(table.GetRecords)
 	if len(rows) != 2 || rows[1][0] != "1" {
 		t.Fatalf("canceled stream discarded rows = %v", rows)
 	}
-	if !containsEditorText(table.GetQueryStatus(), "partial result: query canceled") {
-		t.Fatalf("query status = %q, want partial cancellation label", table.GetQueryStatus())
+	if !containsEditorText(editorUIValue(table.GetQueryStatus), "partial result: query canceled") {
+		t.Fatalf("query status = %q, want partial cancellation label", editorUIValue(table.GetQueryStatus))
 	}
 }
 
@@ -337,7 +347,7 @@ func TestEditorStreamShowsConfiguredTruncation(t *testing.T) {
 	driver := &truncatedEditorStreamDriver{called: make(chan struct{}), maxRows: make(chan int, 1)}
 	table, editor, pages := newEditorPipelineTable(driver)
 	appDone := startEditorPipeline(t, table, editor, pages)
-	defer stopEditorPipeline(t, appDone)
+	defer stopEditorPipeline(t, appDone, table)
 
 	editor.Publish(eventSQLEditorQuery, "SELECT id")
 	select {
@@ -354,13 +364,13 @@ func TestEditorStreamShowsConfiguredTruncation(t *testing.T) {
 		t.Fatal("stream did not receive max rows")
 	}
 	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && !containsEditorText(table.GetQueryStatus(), "result truncated (maximum 2)") {
+	for time.Now().Before(deadline) && !containsEditorText(editorUIValue(table.GetQueryStatus), "result truncated (maximum 2)") {
 		time.Sleep(time.Millisecond)
 	}
-	if !containsEditorText(table.GetQueryStatus(), "result truncated (maximum 2)") {
-		t.Fatalf("query status = %q, want truncation label", table.GetQueryStatus())
+	if !containsEditorText(editorUIValue(table.GetQueryStatus), "result truncated (maximum 2)") {
+		t.Fatalf("query status = %q, want truncation label", editorUIValue(table.GetQueryStatus))
 	}
-	rows := table.GetRecords()
+	rows := editorUIValue(table.GetRecords)
 	if len(rows) != 3 || rows[2][0] != "2" {
 		t.Fatalf("truncated records = %v, want two displayed rows", rows)
 	}
@@ -370,7 +380,7 @@ func TestEditorStreamErrorKeepsPartialRows(t *testing.T) {
 	driver := &errorEditorStreamDriver{called: make(chan struct{})}
 	table, editor, pages := newEditorPipelineTable(driver)
 	appDone := startEditorPipeline(t, table, editor, pages)
-	defer stopEditorPipeline(t, appDone)
+	defer stopEditorPipeline(t, appDone, table)
 
 	editor.Publish(eventSQLEditorQuery, "SELECT id")
 	select {
@@ -379,11 +389,11 @@ func TestEditorStreamErrorKeepsPartialRows(t *testing.T) {
 		t.Fatal("stream did not start")
 	}
 	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && !containsEditorText(table.GetQueryStatus(), "partial result: connection lost") {
+	for time.Now().Before(deadline) && !containsEditorText(editorUIValue(table.GetQueryStatus), "partial result: connection lost") {
 		time.Sleep(time.Millisecond)
 	}
-	if !containsEditorText(table.GetQueryStatus(), "partial result: connection lost") {
-		t.Fatalf("query status = %q, want partial error label", table.GetQueryStatus())
+	if !containsEditorText(editorUIValue(table.GetQueryStatus), "partial result: connection lost") {
+		t.Fatalf("query status = %q, want partial error label", editorUIValue(table.GetQueryStatus))
 	}
 }
 
@@ -413,7 +423,7 @@ func TestEditorStreamHistoryRecordsPostDispatchError(t *testing.T) {
 	driver := &errorEditorStreamDriver{called: make(chan struct{})}
 	table, editor, pages := newEditorPipelineTable(driver)
 	appDone := startEditorPipeline(t, table, editor, pages)
-	defer stopEditorPipeline(t, appDone)
+	defer stopEditorPipeline(t, appDone, table)
 
 	query := "SELECT id"
 	editor.Publish(eventSQLEditorQuery, query)
@@ -438,4 +448,11 @@ func TestEditorStreamHistoryRecordsPostDispatchError(t *testing.T) {
 
 func containsEditorText(value, want string) bool {
 	return len(value) >= len(want) && strings.Contains(value, want)
+}
+
+// tview state is owned by its event loop even when a test only reads it.
+func editorUIValue[T any](read func() T) T {
+	var value T
+	App.QueueUpdate(func() { value = read() })
+	return value
 }

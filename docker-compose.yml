@@ -4,10 +4,10 @@ services:
     environment:
       MYSQL_DATABASE: lazysql_test
       MYSQL_USER: lazysql
-      MYSQL_PASSWORD: lazysql
-      MYSQL_ROOT_PASSWORD: lazysql-root
+      MYSQL_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
+      MYSQL_ROOT_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./testdata/mysql/001-schema-and-data.sql:/docker-entrypoint-initdb.d/001-schema-and-data.sql:ro
@@ -16,9 +16,9 @@ services:
         - CMD-SHELL
         - >-
           mysqladmin ping --protocol=TCP --host=127.0.0.1 --user=lazysql
-          --password=lazysql --silent &&
+          --password="$${MYSQL_PASSWORD}" --silent &&
           mysql --protocol=TCP --host=127.0.0.1 --user=lazysql
-          --password=lazysql --database=lazysql_test --batch --skip-column-names
+          --password="$${MYSQL_PASSWORD}" --database=lazysql_test --batch --skip-column-names
           --execute="SELECT 1 FROM fixture_seed_metadata LIMIT 1" >/dev/null
       interval: 5s
       timeout: 5s
@@ -30,9 +30,9 @@ services:
     environment:
       POSTGRES_DB: lazysql_test
       POSTGRES_USER: lazysql
-      POSTGRES_PASSWORD: lazysql
+      POSTGRES_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./testdata/postgres/001-schema-and-data.sql:/docker-entrypoint-initdb.d/001-schema-and-data.sql:ro
@@ -54,10 +54,10 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Lazysql!Test123"
+      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
       MSSQL_PID: Developer
     ports:
-      - "14331:1433"
+      - "127.0.0.1:14331:1433"
     volumes:
       - mssql-data:/var/opt/mssql
     healthcheck:
@@ -78,7 +78,7 @@ services:
       mssql:
         condition: service_healthy
     environment:
-      MSSQL_SA_PASSWORD: "Lazysql!Test123"
+      MSSQL_SA_PASSWORD: ${LAZYSQL_FIXTURE_PASSWORD:?Run scripts/manual-databases.sh init}
     volumes:
       - ./testdata/mssql:/seed:ro
     entrypoint:

@@ -563,8 +563,7 @@ func TestFailedMetadataRefreshRetriesOnlyThatSurface(t *testing.T) {
 	stopApp := startRefreshApplication(t, table)
 	defer stopApp()
 
-	table.Menu.SetSelectedOption(4)
-	table.RefreshActiveSurface()
+	App.QueueUpdate(func() { table.Menu.SetSelectedOption(4); table.RefreshActiveSurface() })
 	waitForRefreshCount(t, driver.refreshCallDriver, MetadataForeignKeys, 2)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) && table.GetMetadataState(MetadataForeignKeys) != MetadataFailed {
@@ -573,12 +572,12 @@ func TestFailedMetadataRefreshRetriesOnlyThatSurface(t *testing.T) {
 	if table.GetMetadataState(MetadataForeignKeys) != MetadataFailed {
 		t.Fatal("failed metadata refresh did not expose a failed state")
 	}
-	if got := table.GetCell(0, 0).Text; got != "Foreign Keys unavailable — press R to retry" {
+	if got := editorUIValue(func() string { return table.GetCell(0, 0).Text }); got != "Foreign Keys unavailable — press R to retry" {
 		t.Fatalf("failure surface = %q", got)
 	}
 
 	driver.setFail(false)
-	table.RefreshActiveSurface()
+	App.QueueUpdate(func() { table.RefreshActiveSurface() })
 	waitForRefreshCount(t, driver.refreshCallDriver, MetadataForeignKeys, 3)
 	deadline = time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) && table.GetMetadataState(MetadataForeignKeys) != MetadataReady {
@@ -587,7 +586,7 @@ func TestFailedMetadataRefreshRetriesOnlyThatSurface(t *testing.T) {
 	if table.GetMetadataState(MetadataForeignKeys) != MetadataReady {
 		t.Fatal("failed metadata surface was not retried")
 	}
-	if got := table.GetCell(1, 0).Text; got != "orders_user_fk" {
+	if got := editorUIValue(func() string { return table.GetCell(1, 0).Text }); got != "orders_user_fk" {
 		t.Fatalf("retried metadata was not rendered: %q", got)
 	}
 }

@@ -1,5 +1,5 @@
-# Local manual-test connections and development-only credentials. Start them with:
-#   ./scripts/manual-databases.sh up
+# Template for local manual-test connections. Generate credentials with:
+#   ./scripts/manual-databases.sh init
 # Run lazysql from this repository so this file is discovered automatically.
 
 [application]
@@ -15,21 +15,21 @@ max_idle_connections = 4
 Name = "Docker MySQL"
 Provider = "mysql"
 DBName = "lazysql_test"
-URL = "mysql://lazysql:lazysql@127.0.0.1:3307/lazysql_test?parseTime=true"
+URL = "mysql://lazysql:@@PASSWORD@@@127.0.0.1:3307/lazysql_test?parseTime=true"
 
 [[database]]
 Name = "Docker PostgreSQL"
 Provider = "postgres"
 DBName = "lazysql_test"
 Schemas = ["public"]
-URL = "postgres://lazysql:lazysql@127.0.0.1:5433/lazysql_test?sslmode=disable"
+URL = "postgres://lazysql:@@PASSWORD@@@127.0.0.1:5433/lazysql_test?sslmode=disable"
 
 [[database]]
 Name = "Docker MSSQL"
 Provider = "sqlserver"
 DBName = "lazysql_test"
 Schemas = ["dbo"]
-URL = "sqlserver://sa:Lazysql%21Test123@127.0.0.1:14331?database=lazysql_test&encrypt=disable"
+URL = "sqlserver://sa:@@PASSWORD@@@127.0.0.1:14331?database=lazysql_test&encrypt=disable"
 
 [[database]]
 Name = "Docker SQLite"

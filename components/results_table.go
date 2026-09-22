@@ -57,6 +57,8 @@ type ResultsTableState struct {
 	metadataStates            map[MetadataKind]MetadataState
 	metadataErrors            map[MetadataKind]error
 	metadataMu                sync.RWMutex
+	referencingTables         [][]string
+	referencingTablesError    error
 }
 
 type foreignKeyJumpTarget struct {
@@ -188,9 +190,9 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 	errorModal := tview.NewModal()
 	errorModal.AddButtons([]string{"Ok"})
 	errorModal.SetText("An error occurred")
-	errorModal.SetBackgroundColor(tcell.ColorRed)
+	errorModal.SetBackgroundColor(app.Styles.ErrorColor)
 	errorModal.SetTextColor(app.Styles.PrimaryTextColor)
-	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor))
+	errorModal.SetButtonStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor).Background(app.Styles.PrimitiveBackgroundColor))
 	errorModal.SetFocus(0)
 
 	pages := tview.NewPages()
@@ -267,7 +269,7 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 
 		if table.ReadOnly {
 			tableContainer.SetTitle(" [READ-ONLY] ")
-			tableContainer.SetTitleColor(tcell.ColorLightBlue)
+			tableContainer.SetTitleColor(app.Styles.ReadOnlyColor)
 		}
 
 		table.SidebarContainer.AddItem(tableContainer, 0, 4, true)
@@ -520,7 +522,7 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 				changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
 				tableCell := table.GetCell(row, changedColumnIndex)
 
-				tableCell.SetText(params.NewValue)
+				tableCell.SetText(tview.Escape(params.NewValue))
 
 				cellValue := models.CellValue{
 					Type:             params.Type,
@@ -548,7 +550,11 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 func (table *ResultsTable) AddRows(rows [][]string) {
 	for i, row := range rows {
 		for j, cell := range row {
-			tableCell := tview.NewTableCell(cell)
+			displayText := cell
+			if i > 0 {
+				displayText = tview.Escape(cell)
+			}
+			tableCell := tview.NewTableCell(displayText)
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
@@ -597,12 +603,12 @@ func (table *ResultsTable) AddInsertedRows() {
 		rowIndex := rowCount + i
 
 		for j, cell := range row {
-			tableCell := tview.NewTableCell(cell.Value.(string))
+			tableCell := tview.NewTableCell(tview.Escape(cell.Value.(string)))
 			tableCell.SetExpansion(1)
 			tableCell.SetReference(inserts[i].PrimaryKeyInfo[0].Value)
 
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
-			tableCell.SetBackgroundColor(colorTableInsert)
+			tableCell.SetBackgroundColor(app.Styles.TableInsertColor)
 
 			table.SetCell(rowIndex, j, tableCell)
 		}
@@ -611,7 +617,7 @@ func (table *ResultsTable) AddInsertedRows() {
 
 func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUID string) {
 	for i, cell := range cells {
-		tableCell := tview.NewTableCell(cell.Value.(string))
+		tableCell := tview.NewTableCell(tview.Escape(cell.Value.(string)))
 		tableCell.SetExpansion(1)
 		// Appended rows have a reference to the row UUID so we can identify them later
 		// Also, rows that have columns marked to be UPDATED will have a reference to the type of the new value (NULL, EMPTY, DEFAULT)
@@ -619,7 +625,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 		// there might be a better way to do this, but it works for now
 		tableCell.SetReference(UUID)
 		tableCell.SetTextColor(app.Styles.PrimaryTextColor)
-		tableCell.SetBackgroundColor(tcell.ColorDarkGreen)
+		tableCell.SetBackgroundColor(app.Styles.TableInsertColor)
 
 		switch cell.Type {
 		case models.Null, models.Empty, models.Default:
@@ -630,7 +636,7 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 			tableCell.SetTextColor(app.Styles.InverseTextColor)
 		}
 
-		tableCell.SetBackgroundColor(colorTableInsert)
+		tableCell.SetBackgroundColor(app.Styles.TableInsertColor)
 		table.SetCell(index, i, tableCell)
 	}
 
@@ -825,14 +831,17 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ShowCellJSONViewer {
 		table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 		return nil
-	} else if event.Key() == tcell.KeyEnter {
+	} else if command == commands.ForeignKeyJump || event.Key() == tcell.KeyEnter {
 		if table.handleForeignKeyEnter(selectedRowIndex, selectedColumnIndex) {
 			return nil
 		}
-		if app.App.Config().EnterOpensJSONViewer {
+		if event.Key() == tcell.KeyEnter && app.App.Config().EnterOpensJSONViewer {
 			table.handleShowJSONViewer(commands.ShowCellJSONViewer)
 			return nil
 		}
+	} else if command == commands.ReverseForeignKeyJump {
+		table.handleReverseForeignKeyJump(selectedRowIndex)
+		return nil
 	} else if command == commands.RowSelect {
 		table.toggleRowMark(selectedRowIndex)
 		return nil
@@ -846,7 +855,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		} else {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 			if selectedCell != nil {
-				if err := clipboard.Write(selectedCell.Text); err != nil {
+				if err := clipboard.Write(cellText(selectedCell)); err != nil {
 					table.SetError(err.Error(), nil)
 				}
 			}
@@ -859,7 +868,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		if table.Editor == nil && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 			if selectedCell != nil {
-				originalText := selectedCell.Text
+				originalText := cellText(selectedCell)
 				var newText string
 				app.App.Suspend(func() {
 					newText = openCellInExternalEditor(originalText)
@@ -867,7 +876,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				// Strip trailing newline that editors typically add
 				newText = strings.TrimSuffix(newText, "\n")
 				if newText != originalText {
-					selectedCell.SetText(newText)
+					selectedCell.SetText(tview.Escape(newText))
 					columnName := table.GetColumnNameByIndex(selectedColumnIndex)
 					err := table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{
 						Type:             models.String,
@@ -931,9 +940,9 @@ func (table *ResultsTable) UpdateRowsColor(headerColor tcell.Color, rowColor tce
 			} else {
 				cellReference := cell.GetReference()
 
-				if cellReference != nil && (cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&") && (cell.BackgroundColor != colorTableDelete && cell.BackgroundColor != colorTableChange && cell.BackgroundColor != colorTableInsert) {
+				if cellReference != nil && (cellReference == "EMPTY&" || cellReference == "NULL&" || cellReference == "DEFAULT&") && (cell.BackgroundColor != app.Styles.TableDeleteColor && cell.BackgroundColor != app.Styles.TableChangeColor && cell.BackgroundColor != app.Styles.TableInsertColor) {
 					cell.SetStyle(table.GetItalicStyle())
-				} else if table.shouldShowForeignKeyMarker(i, j, cell.Text) {
+				} else if table.shouldShowForeignKeyMarker(i, j, cellText(cell)) {
 					cell.SetStyle(tcell.StyleDefault.Underline(true))
 					cell.SetTextColor(rowColor)
 				} else {
@@ -1081,7 +1090,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 			if isSelect {
 				go table.runEditorStreamQuery(ctx, run, query)
 			} else {
-				go table.runEditorDMLQuery(ctx, generation, query)
+				go table.runEditorDMLQuery(ctx, run, query)
 			}
 
 		case eventSQLEditorEscape:
@@ -1099,46 +1108,39 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 	}
 }
 
-func isResultProducingQuery(query string) bool {
-	tokens, ok := tokenizeReplayQuery(query)
-	if !ok {
-		return false
-	}
-	for _, token := range tokens {
-		if token.kind != replayTokenWord {
+func leadingQueryVerb(query string) string {
+	runes := []rune(query)
+	for _, token := range tokenize(query) {
+		if token.Type == TokenComment || token.Type == TokenWhitespace {
 			continue
 		}
-		switch token.text {
-		case "SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "DESC":
-			return true
-		default:
-			return false
+		if token.Type == TokenKeyword || token.Type == TokenIdentifier {
+			return strings.ToUpper(string(runes[token.Start:token.End]))
 		}
+		// Do not look beyond other syntax.
+		return ""
 	}
-	return false
+	return ""
 }
 
-// isSchemaMutatingQuery identifies statements whose successful execution may
-// change the visible database tree. It intentionally classifies only the
-// leading statement verb: DDL invalidation is connection-wide and does not
-// attempt to infer the affected object from arbitrary SQL.
-func isSchemaMutatingQuery(query string) bool {
-	tokens, ok := tokenizeReplayQuery(query)
-	if !ok {
+func isResultProducingQuery(query string) bool {
+	switch leadingQueryVerb(query) {
+	case "SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "DESC":
+		return true
+	default:
 		return false
 	}
-	for _, token := range tokens {
-		if token.kind != replayTokenWord {
-			continue
-		}
-		switch token.text {
-		case "ALTER", "COMMENT", "CREATE", "DROP", "GRANT", "RENAME", "REVOKE", "TRUNCATE":
-			return true
-		default:
-			return false
-		}
+}
+
+// isSchemaMutatingQuery identifies the leading DDL verb independently of
+// whether the statement is eligible for automatic export replay.
+func isSchemaMutatingQuery(query string) bool {
+	switch leadingQueryVerb(query) {
+	case "ALTER", "COMMENT", "CREATE", "DROP", "GRANT", "RENAME", "REVOKE", "TRUNCATE":
+		return true
+	default:
+		return false
 	}
-	return false
 }
 
 func (table *ResultsTable) beginEditorQuery(generation uint64) *editorQueryRun {
@@ -1405,6 +1407,9 @@ func (table *ResultsTable) addEditorQueryToHistory(query string) {
 }
 
 func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editorQueryRun, query string) {
+	if run != nil && run.cancel != nil {
+		defer run.cancel()
+	}
 	if ctx == nil || ctx.Err() != nil || !table.isCurrentEditorQuery(run) {
 		return
 	}
@@ -1414,6 +1419,9 @@ func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editor
 	// failed queries while validation failures never reach history.
 	table.addEditorQueryToHistory(query)
 	result, err := table.streamEditorQuery(ctx, run, query)
+	if !table.isCurrentEditorQuery(run) {
+		return
+	}
 	App.QueueUpdateDraw(func() {
 		if !table.isCurrentEditorQuery(run) {
 			return
@@ -1473,7 +1481,11 @@ func (table *ResultsTable) runEditorStreamQuery(ctx context.Context, run *editor
 	})
 }
 
-func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, generation uint64, query string) {
+func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, run *editorQueryRun, query string) {
+	generation := run.generation
+	if run.cancel != nil {
+		defer run.cancel()
+	}
 	if ctx == nil || ctx.Err() != nil || !table.isCurrentLoad(ctx, generation) {
 		return
 	}
@@ -1502,6 +1514,7 @@ func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, generation uin
 			return
 		}
 
+		table.finishEditorQuery(run)
 		if err != nil {
 			table.SetLoading(false)
 			table.SetQueryStatus(fmt.Sprintf("Query failed: %s", err.Error()))
@@ -1663,6 +1676,13 @@ func (table *ResultsTable) SetConstraints(constraints [][]string) {
 func (table *ResultsTable) SetForeignKeys(foreignKeys [][]string) {
 	table.state.foreignKeys = foreignKeys
 	table.rebuildForeignKeyJumpMetadata()
+}
+
+// SetReferencingTables stores the reverse foreign key lookup (see
+// drivers.Driver.GetReferencingTables) for the currently loaded table.
+func (table *ResultsTable) SetReferencingTables(referencingTables [][]string, err error) {
+	table.state.referencingTables = referencingTables
+	table.state.referencingTablesError = err
 }
 
 func (table *ResultsTable) SetIndexes(indexes [][]string) {
@@ -2066,14 +2086,14 @@ func (table *ResultsTable) fetchRecords(sort string, onError func(), onSuccess f
 			if onSuccess != nil {
 				onSuccess()
 			}
+			if table.Menu != nil {
+				table.startAutomaticRowCount(countKey)
+			}
 		})
 
 		// QueueUpdateDraw returns only after the page has been rendered, so
 		// structural metadata and row counts cannot delay the first useful
 		// Records paint.
-		if table.Menu != nil {
-			go table.startAutomaticRowCount(countKey)
-		}
 		go table.loadRecordsMetadata(ctx, generation, databaseName, tableName, metadataToLoad...)
 	}()
 }
@@ -2159,7 +2179,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 	cell := table.GetCell(row, col)
 	inputField := tview.NewInputField()
-	inputField.SetText(cell.Text)
+	inputField.SetText(cellText(cell))
 	inputField.SetFieldBackgroundColor(app.Styles.PrimaryTextColor)
 	inputField.SetFieldTextColor(app.Styles.PrimitiveBackgroundColor)
 	inputField.SetBorder(true)
@@ -2168,7 +2188,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 	inputField.SetDoneFunc(func(key tcell.Key) {
 		table.SetIsEditing(false)
-		currentValue := cell.Text
+		currentValue := cellText(cell)
 		newValue := inputField.GetText()
 		columnName := table.GetCell(0, col).Text
 
@@ -2179,7 +2199,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		var appendErr error
 
 		if key != tcell.KeyEscape {
-			cell.SetText(newValue)
+			cell.SetText(tview.Escape(newValue))
 
 			if currentValue != newValue {
 				appendErr = table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
@@ -2252,12 +2272,12 @@ func (table *ResultsTable) handleShowJSONViewer(command commands.Command) {
 	case commands.ShowRowJSONViewer:
 		for i := 0; i < table.GetColumnCount(); i++ {
 			columnName := table.GetColumnNameByIndex(i)
-			cellValue := table.GetCell(selectedRow, i).Text
+			cellValue := cellText(table.GetCell(selectedRow, i))
 			rowData[columnName] = cellValue
 		}
 	case commands.ShowCellJSONViewer:
 		columnName := table.GetColumnNameByIndex(selectedCol)
-		cellValue := table.GetCell(selectedRow, selectedCol).Text
+		cellValue := cellText(table.GetCell(selectedRow, selectedCol))
 		rowData[columnName] = cellValue
 	}
 
@@ -2370,7 +2390,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 					}
 				} else {
 					(*table.state.listOfDBChanges)[i].Values = append((*table.state.listOfDBChanges)[i].Values, value)
-					table.SetCellColor(rowIndex, colIndex, colorTableChange)
+					table.SetCellColor(rowIndex, colIndex, app.Styles.TableChangeColor)
 				}
 
 			case models.DMLDeleteType:
@@ -2383,10 +2403,10 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	if !dmlChangeAlreadyExists {
 		switch changeType {
 		case models.DMLDeleteType:
-			table.SetRowColor(rowIndex, colorTableDelete)
+			table.SetRowColor(rowIndex, app.Styles.TableDeleteColor)
 		case models.DMLUpdateType:
-			tableCell.SetStyle(tcell.StyleDefault.Background(colorTableChange))
-			table.SetCellColor(rowIndex, colIndex, colorTableChange)
+			tableCell.SetStyle(tcell.StyleDefault.Background(app.Styles.TableChangeColor))
+			table.SetCellColor(rowIndex, colIndex, app.Styles.TableChangeColor)
 		}
 
 		newDMLChange := models.DBDMLChange{
@@ -2469,12 +2489,12 @@ func (table *ResultsTable) toggleRowMark(rowIndex int) {
 
 	if table.state.markedRows[rowIndex] {
 		delete(table.state.markedRows, rowIndex)
-		table.SetRowColor(rowIndex, tcell.ColorDefault)
+		table.SetRowColor(rowIndex, app.Styles.PrimitiveBackgroundColor)
 		// Restore any change/delete highlighting the row had before it was marked.
 		table.colorChangedCells()
 	} else {
 		table.state.markedRows[rowIndex] = true
-		table.SetRowColor(rowIndex, colorTableMarked)
+		table.SetRowColor(rowIndex, app.Styles.TableMarkedColor)
 	}
 }
 
@@ -2567,7 +2587,7 @@ func (table *ResultsTable) duplicateRow() {
 	for i, column := range dbColumns {
 		if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
 			origCell := table.GetCell(row, i-1)
-			newRow[i-1] = models.CellValue{Type: models.String, Column: column[0], Value: origCell.Text, TableRowIndex: newRowTableIndex, TableColumnIndex: i}
+			newRow[i-1] = models.CellValue{Type: models.String, Column: column[0], Value: cellText(origCell), TableRowIndex: newRowTableIndex, TableColumnIndex: i}
 		}
 	}
 
@@ -2760,10 +2780,133 @@ func (table *ResultsTable) handleForeignKeyEnter(selectedRowIndex, selectedColum
 		return true
 	}
 
-	where := fmt.Sprintf("WHERE %s = '%s'", table.DBDriver.FormatReference(target.ReferencedColumn), escapeSingleQuotes(rawValue))
+	where := table.foreignKeyWhereClause(target.ReferencedColumn, rawValue)
 	table.Home.ShowTableWithFilter(table.GetDatabaseName(), target.ReferencedTable, where)
 
 	return true
+}
+
+// foreignKeyWhereClause builds the filter that selects the rows whose column
+// equals the given raw cell value. Both foreign key jump directions use it.
+func (table *ResultsTable) foreignKeyWhereClause(column, rawValue string) string {
+	return fmt.Sprintf("WHERE %s = '%s'", table.DBDriver.FormatReference(column), escapeSingleQuotes(rawValue))
+}
+
+// handleReverseForeignKeyJump opens a picker with the tables that reference the
+// selected row and, once one is chosen, opens it filtered to that row.
+func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
+	if selectedRowIndex <= 0 {
+		return
+	}
+
+	// Query results from the editor have no table name and no menu.
+	if table.Menu == nil || table.Menu.GetSelectedOption() != 1 || table.GetTableName() == "" {
+		return
+	}
+
+	if !table.IsForeignKeyJumpSupportedProvider() {
+		return
+	}
+
+	if table.Home == nil {
+		return
+	}
+
+	// Reverse foreign-key discovery can be expensive on large MySQL catalogs.
+	// Keep it off the Records path, and reuse its connection-scoped cache.
+	if table.GetMetadataState(MetadataReferencingTables) != MetadataReady && table.state.referencingTables == nil {
+		identity := table.metadataIdentityGenerationValue()
+		database, name := table.GetDatabaseName(), table.GetTableName()
+		table.metadataApplyMu.Lock()
+		ctx := table.metadataContextForIdentityLocked(identity)
+		key, done := table.requestMetadataWithContext(ctx, database, name, MetadataReferencingTables)
+		table.metadataApplyMu.Unlock()
+		go func() {
+			if done != nil {
+				<-done
+			}
+			table.queueMetadataUpdate(func() {
+				if !table.isCurrentMetadataIdentity(identity, database, name) {
+					return
+				}
+				status, value, err := table.metadataCacheForTable().result(key)
+				if status != MetadataReady && status != MetadataFailed {
+					return
+				}
+				table.applyMetadataResultForIdentity(identity, database, name, MetadataReferencingTables, status, value, err)
+				if err != nil {
+					table.SetError("Failed to load referencing tables: "+err.Error(), nil)
+					return
+				}
+				// Use the current row, not an index captured before a refresh.
+				row, _ := table.GetSelection()
+				table.handleReverseForeignKeyJump(row)
+			})
+		}()
+		return
+	}
+	entries, err := table.getReferencingEntries()
+	if err != nil {
+		table.SetError(err.Error(), nil)
+		return
+	}
+	if len(entries) == 0 {
+		table.SetError("No table references this table", nil)
+		return
+	}
+
+	navigableEntries := make([]referencingTableEntry, 0, len(entries))
+	navigableValues := make([]string, 0, len(entries))
+
+	for _, entry := range entries {
+		columnIndex := table.GetColumnIndexByName(entry.ReferencedColumn)
+		if columnIndex < 0 {
+			continue
+		}
+
+		rawValue := table.getRawCellValue(selectedRowIndex, columnIndex)
+		if !isNavigableForeignKeyValue(rawValue) {
+			continue
+		}
+
+		navigableEntries = append(navigableEntries, entry)
+		navigableValues = append(navigableValues, rawValue)
+	}
+
+	if len(navigableEntries) == 0 {
+		table.SetError("The selected row has no key value that referencing tables can be filtered by", nil)
+		return
+	}
+
+	// MSSQL does not expose schemas in the tree yet, but reverse lookups can
+	// return referencing tables from any schema. Preserve that schema so a
+	// same-named table in the default schema cannot be opened by mistake.
+	useSchemas := useQualifiedReferencingTables(table.DBDriver.UseSchemas(), table.DBDriver.GetProvider())
+
+	closePicker := func() {
+		mainPages.RemovePage(pageNameReferencingTables)
+		App.SetFocus(table)
+	}
+
+	picker := NewReferencingTablesList(navigableEntries, useSchemas, func(index int) {
+		closePicker()
+
+		entry := navigableEntries[index]
+		where := table.foreignKeyWhereClause(entry.Column, navigableValues[index])
+
+		table.Home.ShowTableWithFilter(table.GetDatabaseName(), entry.QualifiedTable(useSchemas), where)
+	}, closePicker)
+
+	mainPages.AddPage(pageNameReferencingTables, picker, true, true)
+	App.SetFocus(picker.GetTable())
+}
+
+func (table *ResultsTable) getReferencingEntries() ([]referencingTableEntry, error) {
+	if table.state.referencingTablesError != nil {
+		return nil, fmt.Errorf("failed to load referencing tables: %w", table.state.referencingTablesError)
+	}
+
+	return buildReferencingEntries(table.state.referencingTables), nil
 }
 
 func (table *ResultsTable) foreignKeyCellMapKey(rowIndex, columnIndex int) string {
@@ -2799,7 +2942,7 @@ func (table *ResultsTable) shouldShowForeignKeyMarker(rowIndex, columnIndex int,
 	cell := table.GetCell(rowIndex, columnIndex)
 	if cell != nil {
 		switch cell.BackgroundColor {
-		case colorTableDelete, colorTableChange, colorTableInsert:
+		case app.Styles.TableDeleteColor, app.Styles.TableChangeColor, app.Styles.TableInsertColor:
 			return false
 		}
 	}
@@ -2818,7 +2961,14 @@ func (table *ResultsTable) getRawCellValue(rowIndex, columnIndex int) string {
 		return ""
 	}
 
-	return cell.Text
+	return cellText(cell)
+}
+
+// cellText returns the value shown in a results cell. Cell text is stored
+// tview-escaped so values like "[red]" or `["x"]` are not parsed as style or
+// region tags; this undoes that escaping.
+func cellText(cell *tview.TableCell) string {
+	return tview.Unescape(cell.Text)
 }
 
 func (table *ResultsTable) isForeignKeyColumn(columnName string) bool {
@@ -2989,7 +3139,7 @@ func (table *ResultsTable) UpdateSidebar() {
 
 			sidebarWidth := table.getSidebarWidth()
 
-			text := table.GetCell(selectedRow, i-1).Text
+			text := cellText(table.GetCell(selectedRow, i-1))
 			title := name
 
 			repeatCount := sidebarWidth - len(name) - len(colType) - 4 // idk why 4 is needed, but it works.
@@ -3077,10 +3227,10 @@ func (table *ResultsTable) colorChangedCells() {
 
 		switch dmlChange.Type {
 		case models.DMLDeleteType:
-			table.SetRowColor(dmlChange.Values[0].TableRowIndex, colorTableDelete)
+			table.SetRowColor(dmlChange.Values[0].TableRowIndex, app.Styles.TableDeleteColor)
 		case models.DMLUpdateType:
 			for _, value := range dmlChange.Values {
-				table.SetCellColor(value.TableRowIndex, value.TableColumnIndex, colorTableChange)
+				table.SetCellColor(value.TableRowIndex, value.TableColumnIndex, app.Styles.TableChangeColor)
 			}
 		}
 	}
@@ -3135,6 +3285,14 @@ func (table *ResultsTable) showCSVExportModal() {
 		App.SetFocus(table)
 		App.ForceDraw()
 
+		// Snapshot visible data on the UI loop. Edits/new queries can replace
+		// or mutate the live Records slice while a file write is in progress.
+		var visibleRecords [][]string
+		if scope == ExportCurrentPage || scope == ExportVisibleResults || (isQueryResult && scope == ExportAllRecords) {
+			for _, row := range table.GetRecords() {
+				visibleRecords = append(visibleRecords, append([]string(nil), row...))
+			}
+		}
 		go func() {
 			if run.ctx.Err() != nil {
 				return
@@ -3147,7 +3305,7 @@ func (table *ResultsTable) showCSVExportModal() {
 
 			switch {
 			case scope == ExportCurrentPage || scope == ExportVisibleResults || (isQueryResult && scope == ExportAllRecords):
-				_, exportErr = table.exportCurrentPageWithContext(run.ctx, filePath, progress)
+				_, exportErr = table.exportRecordsWithContext(run.ctx, filePath, visibleRecords, isQueryResult, progress)
 			case isQueryResult && scope == ExportAllResults:
 				_, exportErr = table.exportAllQueryResults(run.ctx, filePath, query, progress)
 			case !isQueryResult && scope == ExportAllRecords:
@@ -3209,7 +3367,11 @@ func (table *ResultsTable) exportCurrentPage(filePath string) (int, error) {
 	return table.exportCurrentPageWithContext(context.Background(), filePath, nil)
 }
 
-func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, filePath string, onProgress func(int)) (rows int, err error) {
+func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, filePath string, onProgress func(int)) (int, error) {
+	return table.exportRecordsWithContext(ctx, filePath, table.GetRecords(), table.Editor != nil, onProgress)
+}
+
+func (table *ResultsTable) exportRecordsWithContext(ctx context.Context, filePath string, records [][]string, raw bool, onProgress func(int)) (rows int, err error) {
 	started := time.Now()
 	defer func() {
 		logDatabaseOperation(ctx, "export_visible_results", started, map[string]any{
@@ -3225,14 +3387,18 @@ func (table *ResultsTable) exportCurrentPageWithContext(ctx context.Context, fil
 		return 0, err
 	}
 
-	records := table.GetRecords()
 	writer, err := helpers.NewCSVWriter(filePath)
 	if err != nil {
 		return 0, err
 	}
 	defer writer.Abort()
 
-	if err := writer.WriteRecords(records, true); err != nil {
+	if raw && len(records) > 0 {
+		err = writer.WriteBatch(records[0], records[1:], true)
+	} else {
+		err = writer.WriteRecords(records, true)
+	}
+	if err != nil {
 		return 0, err
 	}
 	if onProgress != nil {

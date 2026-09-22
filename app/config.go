@@ -19,6 +19,7 @@ type Config struct {
 	AppConfig       *models.AppConfig   `toml:"application"`
 	Connections     []models.Connection `toml:"database"`
 	Keymaps         models.KeymapConfig `toml:"keymap"`
+	Theme           *ThemeConfig        `toml:"theme,omitempty"`
 }
 
 func defaultConfig() *Config {
@@ -212,6 +213,14 @@ func LoadConfig(configFile string) error {
 		return err
 	}
 
+	themeConfig := ThemeConfig{}
+	if App.config.Theme != nil {
+		themeConfig = *App.config.Theme
+	}
+	if err := ApplyTheme(themeConfig); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -230,7 +239,20 @@ func expandEnvVars(s string) string {
 
 func (c *Config) SaveConnections(connections []models.Connection) error {
 	c.Connections = connections
+	return c.save()
+}
 
+func (c *Config) SaveThemePreset(preset string) error {
+	previous := c.Theme
+	c.Theme = &ThemeConfig{Preset: preset}
+	if err := c.save(); err != nil {
+		c.Theme = previous
+		return err
+	}
+	return nil
+}
+
+func (c *Config) save() error {
 	configFile := c.ConfigFile
 	if c.LocalConfigFile != "" {
 		configFile = c.LocalConfigFile

@@ -12,3 +12,7 @@ testdata/sqlite/*.sqlite3-*
 # Local Pi runtime state
 .atl/
 .codegraph
+
+# Generated local fixture credentials
+/.env.manual-databases
+/.lazysql.toml

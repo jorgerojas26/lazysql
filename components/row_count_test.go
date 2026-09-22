@@ -173,6 +173,7 @@ func TestAutomaticExactCountUsesEstimateThreshold(t *testing.T) {
 		_, exactCalls := driver.counts()
 		return exactCalls == 1
 	})
+	waitForCountCompletion(t, table)
 	waitFor(t, func() bool {
 		count, ok := table.Pagination.GetExactTotal()
 		return ok && count == 7
@@ -195,6 +196,7 @@ func TestAutomaticCountEstimateAndFilteredPath(t *testing.T) {
 		estimateCalls, exactCalls := driver.counts()
 		return estimateCalls == 1 && exactCalls == 0
 	})
+	waitForCountCompletion(t, table)
 	if _, ok := table.Pagination.GetEstimatedTotal(); !ok {
 		t.Fatal("expected an available estimate")
 	}
@@ -209,6 +211,7 @@ func TestAutomaticCountEstimateAndFilteredPath(t *testing.T) {
 		estimateCalls, exactCalls := filteredDriver.counts()
 		return estimateCalls == 0 && exactCalls == 1
 	})
+	waitForCountCompletion(t, filteredTable)
 }
 
 func TestAutomaticCountTimeoutCancelsDriverWithoutTouchingRecords(t *testing.T) {
@@ -239,6 +242,7 @@ func TestAutomaticCountTimeoutCancelsDriverWithoutTouchingRecords(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("automatic timeout did not cancel the driver context")
 	}
+	waitForCountCompletion(t, table)
 	if table.Pagination.GetIsLastPage() {
 		t.Fatal("count timeout incorrectly changed pagination")
 	}
@@ -329,6 +333,7 @@ func TestAutomaticCountUsesExactFallbackWhenEstimateUnavailable(t *testing.T) {
 		_, exactCalls := driver.counts()
 		return exactCalls == 1
 	})
+	waitForCountCompletion(t, table)
 	count, ok := table.Pagination.GetExactTotal()
 	if !ok || count != 5 {
 		t.Fatalf("fallback exact total = %d, %t, want 5", count, ok)
@@ -355,6 +360,7 @@ func TestZeroAutomaticTimeoutStillAllowsEstimateButNotExactCount(t *testing.T) {
 	if exactCalls != 0 {
 		t.Fatalf("exact count calls = %d, want 0 when timeout is disabled", exactCalls)
 	}
+	waitForCountCompletion(t, table)
 	if _, ok := table.Pagination.GetEstimatedTotal(); !ok {
 		t.Fatal("expected estimate with automatic exact-count timeout disabled")
 	}
@@ -368,7 +374,10 @@ func TestManualCountFailureIsRetryable(t *testing.T) {
 	table := newRowCountTestTable(driver)
 	table.Pagination.SetPageInfo(2, true)
 	table.ToggleExactCount()
-	waitFor(t, func() bool { return table.Pagination.GetCountState() == CountFailed })
+	waitForCountCompletion(t, table)
+	if table.Pagination.GetCountState() != CountFailed {
+		t.Fatal("expected failed count")
+	}
 	if !strings.Contains(table.Pagination.GetText(), "[# retry]") {
 		t.Fatalf("retry text = %q, want retry hint", table.Pagination.GetText())
 	}
@@ -377,8 +386,14 @@ func TestManualCountFailureIsRetryable(t *testing.T) {
 	driver.exactErr = nil
 	driver.mu.Unlock()
 	table.ToggleExactCount()
+	waitForCountCompletion(t, table)
 	waitFor(t, func() bool {
 		count, ok := table.Pagination.GetExactTotal()
 		return ok && count == 8
 	})
+}
+
+func waitForCountCompletion(t *testing.T, table *ResultsTable) {
+	t.Helper()
+	waitFor(t, func() bool { table.countMu.Lock(); defer table.countMu.Unlock(); return table.countCancel == nil })
 }

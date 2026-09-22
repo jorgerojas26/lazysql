@@ -109,22 +109,22 @@ func (filter *ResultsTableFilter) RemoveHighlight() {
 }
 
 func (filter *ResultsTableFilter) RemoveLocalHighlight() {
-	filter.SetBorderColor(tcell.ColorWhite)
+	filter.SetBorderColor(app.Styles.InverseTextColor)
 	filter.Label.SetTextColor(app.Styles.TertiaryTextColor)
 	filter.Input.SetPlaceholderTextColor(app.Styles.InverseTextColor)
 	filter.Input.SetFieldTextColor(app.Styles.InverseTextColor)
 }
 
 func (filter *ResultsTableFilter) Highlight() {
-	filter.SetBorderColor(tcell.ColorWhite)
+	filter.SetBorderColor(app.Styles.InverseTextColor)
 	filter.Label.SetTextColor(app.Styles.TertiaryTextColor)
-	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
+	filter.Input.SetPlaceholderTextColor(app.Styles.InverseTextColor)
 	filter.Input.SetFieldTextColor(app.Styles.PrimaryTextColor)
 }
 
 func (filter *ResultsTableFilter) HighlightLocal() {
 	filter.SetBorderColor(app.Styles.PrimaryTextColor)
 	filter.Label.SetTextColor(app.Styles.TertiaryTextColor)
-	filter.Input.SetPlaceholderTextColor(tcell.ColorWhite)
+	filter.Input.SetPlaceholderTextColor(app.Styles.InverseTextColor)
 	filter.Input.SetFieldTextColor(app.Styles.PrimaryTextColor)
 }

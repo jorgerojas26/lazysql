@@ -44,6 +44,8 @@ func InitFromArg(connectionString string, readOnly bool) error {
 		newDBDriver = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
 		newDBDriver = &drivers.MSSQL{PoolConfig: poolConfig}
+	case drivers.DriverClickHouse:
+		newDBDriver = &drivers.ClickHouse{PoolConfig: poolConfig}
 	default:
 		return fmt.Errorf("could not handle database driver %s", connection.Provider)
 	}

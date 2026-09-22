@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sync"
 	"time"
 )
 
@@ -44,14 +43,21 @@ var errNilQueryBatchHandler = errors.New("query stream batch handler is nil")
 // streamQuery incrementally reads rows from a database/sql result. A finite
 // maxRows consumes at most maxRows rows for display plus one lookahead row to
 // determine whether the result is truncated. maxRows == 0 means unlimited.
-func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows int, onBatch func(QueryBatch) error) (streamResult QueryStreamResult, returnErr error) {
+func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows int, onBatch func(QueryBatch) error) (QueryStreamResult, error) {
+	return streamQueryWithScanner(ctx, connection, query, maxRows, onBatch, scanQueryRow)
+}
+
+func streamQueryWithScanner(ctx context.Context, connection *sql.DB, query string, maxRows int, onBatch func(QueryBatch) error, scanRow func(*sql.Rows, int) ([]string, error)) (streamResult QueryStreamResult, returnErr error) {
 	if onBatch == nil {
 		return QueryStreamResult{}, errNilQueryBatchHandler
 	}
 	if maxRows < 0 {
 		return QueryStreamResult{}, errors.New("query stream max rows cannot be negative")
 	}
-	ctx = contextOrBackground(ctx)
+	// Own the query context so a consumer failure (for example a full export
+	// disk) can interrupt a reader blocked in Next before attempting Close.
+	ctx, cancel := context.WithCancel(contextOrBackground(ctx))
+	defer cancel()
 	if connection == nil {
 		return QueryStreamResult{}, errors.New("database connection is nil")
 	}
@@ -111,18 +117,17 @@ func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows 
 	}
 	rowCh := make(chan []string)
 	readerDone := make(chan readResult, 1)
-	stopReaderCh := make(chan struct{})
-	var stopReaderOnce sync.Once
+	readerStopped := make(chan struct{})
 	stopReader := func() {
-		stopReaderOnce.Do(func() {
-			close(stopReaderCh)
-			// Closing Rows unblocks drivers that do not independently notice
-			// context cancellation while Next is waiting for network data.
-			_ = rows.Close()
-		})
+		cancel()
+		// Only the reader may call Next/Scan/Close. Concurrent Close races
+		// with database/sql's RawBytes scan bookkeeping. Cancellation unblocks
+		// Next; joining ensures the connection is released before returning.
+		<-readerStopped
 	}
 
 	go func() {
+		defer close(readerStopped)
 		defer rows.Close()
 		sendResult := func(read readResult) {
 			// Signal completion only after the connection has been released.
@@ -152,7 +157,7 @@ func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows 
 				return
 			}
 
-			row, err := scanQueryRow(rows, len(columns))
+			row, err := scanRow(rows, len(columns))
 			if err != nil {
 				sendResult(readResult{err: err})
 				return
@@ -163,8 +168,6 @@ func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows 
 			case rowCh <- row:
 			case <-ctx.Done():
 				sendResult(readResult{err: ctx.Err()})
-				return
-			case <-stopReaderCh:
 				return
 			}
 		}
@@ -183,6 +186,10 @@ func streamQuery(ctx context.Context, connection *sql.DB, query string, maxRows 
 	}
 
 	for {
+		if err := ctx.Err(); err != nil {
+			stopReader()
+			return finish(err)
+		}
 		select {
 		case row := <-rowCh:
 			batch = append(batch, row)

@@ -128,8 +128,8 @@ linters:
           arguments: # here are the exceptions we don't want to be reported
             - "fmt.Print.*"
             - "fmt.Fprint.*"
-            - "bytes.Buffer.Write*"
-            - "strings.Builder.Write*"
+            - "bytes.Buffer.Write.*"
+            - "strings.Builder.Write.*"
 
     dupword:
       # Keywords used to ignore detection.

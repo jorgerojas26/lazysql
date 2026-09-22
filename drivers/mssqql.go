@@ -386,7 +386,7 @@ func (db *MSSQL) GetRecords(ctx context.Context, database, table, where, sort st
 	}
 
 	pageSize, fetchLimit := pageSizeAndFetchLimit(limit)
-	baseQuery := db.databasePrefix(database) + "SELECT * FROM " + db.FormatReference(table)
+	baseQuery := db.databasePrefix(database) + "SELECT * FROM " + db.formatTableName(table)
 
 	if where != "" {
 		baseQuery += fmt.Sprintf(" %s", where)
@@ -542,7 +542,7 @@ func (db *MSSQL) GetExactRowCount(ctx context.Context, database, table, where st
 		return 0, errors.New("table name is required")
 	}
 
-	query := db.databasePrefix(database) + "SELECT COUNT(*) FROM " + db.FormatReference(table)
+	query := db.databasePrefix(database) + "SELECT COUNT(*) FROM " + db.formatTableName(table)
 	if where != "" {
 		query += " " + where
 	}
@@ -577,7 +577,7 @@ func (db *MSSQL) UpdateRecord(ctx context.Context, database, table, column, valu
 	}
 
 	query := db.databasePrefix(database) +
-		"UPDATE " + db.FormatReference(table) +
+		"UPDATE " + db.formatTableName(table) +
 		" SET " + db.FormatReference(column) +
 		" = @p1 WHERE " + db.FormatReference(primaryKeyColumnName) +
 		" = @p2"
@@ -606,7 +606,7 @@ func (db *MSSQL) DeleteRecord(ctx context.Context, database, table, primaryKeyCo
 	}
 
 	query := db.databasePrefix(database) +
-		"DELETE FROM " + db.FormatReference(table) +
+		"DELETE FROM " + db.formatTableName(table) +
 		" WHERE " + db.FormatReference(primaryKeyColumnName) +
 		" = @p1"
 
@@ -694,7 +694,7 @@ func (db *MSSQL) ExecutePendingChanges(ctx context.Context, changes []models.DBD
 
 	for _, change := range changes {
 
-		formattedTableName := db.FormatReference(change.Table)
+		formattedTableName := db.formatTableName(change.Table)
 
 		switch change.Type {
 
@@ -944,7 +944,7 @@ func (db *MSSQL) FormatPlaceholder(index int) string {
 func (db *MSSQL) DMLChangeToQueryString(change models.DBDMLChange) (string, error) {
 	var queryStr string
 
-	formattedTableName := db.FormatReference(change.Table)
+	formattedTableName := db.formatTableName(change.Table)
 
 	columnNames, values := getColNamesAndArgsAsString(change.Values)
 
@@ -1142,4 +1142,43 @@ func (db *MSSQL) GetProcedureDefinition(ctx context.Context, database string, na
 
 func (db *MSSQL) GetViewDefinition(ctx context.Context, database string, name string) (string, error) {
 	return db.GetObjectDefinition(ctx, database, name)
+}
+
+func (db *MSSQL) formatTableName(table string) string {
+	schema, tableName, qualified := strings.Cut(table, ".")
+	if !qualified {
+		return quoteMSSQLIdentifier(table)
+	}
+
+	return quoteMSSQLIdentifier(schema) + "." + quoteMSSQLIdentifier(tableName)
+}
+
+// GetReferencingTables discovers reverse foreign keys in the selected database.
+func (db *MSSQL) GetReferencingTables(ctx context.Context, database, table string) ([][]string, error) {
+	query := db.databasePrefix(database) + `
+        SELECT
+            fk.name AS constraint_name,
+            s.name AS table_schema,
+            t.name AS table_name,
+            c.name AS column_name,
+            rc.name AS referenced_column_name
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc
+            ON fk.object_id = fkc.constraint_object_id
+        INNER JOIN sys.columns c
+            ON fkc.parent_column_id = c.column_id
+            AND fkc.parent_object_id = c.object_id
+        INNER JOIN sys.columns rc
+            ON fkc.referenced_column_id = rc.column_id
+            AND fkc.referenced_object_id = rc.object_id
+        INNER JOIN sys.tables t
+            ON fk.parent_object_id = t.object_id
+        INNER JOIN sys.schemas s
+            ON t.schema_id = s.schema_id
+        WHERE fk.referenced_object_id = OBJECT_ID(@p2, 'U')
+          AND DB_NAME() = @p1
+        ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id
+    `
+
+	return db.getTableInformation(contextOrBackground(ctx), query, database, table, "")
 }

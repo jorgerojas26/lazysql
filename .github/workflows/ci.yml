@@ -30,6 +30,9 @@ jobs:
       - name: Test
         run: go test -v ./...
 
+      - name: Race detector
+        run: go test -race ./...
+
       - name: Network performance contract
         run: >-
           go test ./components ./drivers ./app ./helpers ./helpers/logger ./internal/benchmarks
