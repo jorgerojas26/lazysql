@@ -2037,7 +2037,7 @@ func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
 	}, closePicker)
 
 	mainPages.AddPage(pageNameReferencingTables, picker, true, true)
-	App.SetFocus(picker.GetList())
+	App.SetFocus(picker.GetTable())
 }
 
 func (table *ResultsTable) getReferencingEntries() ([]referencingTableEntry, error) {
