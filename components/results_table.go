@@ -48,6 +48,9 @@ type ResultsTableState struct {
 	lastEditorQueryReplaySafe bool
 	editorResultAvailable     bool
 	markedRows                map[int]bool
+	rangeAnchor               int
+	rangeEnd                  int
+	rangeCells                map[int][]rowCellPresentation
 	isEditing                 bool
 	isFiltering               bool
 	isLoading                 bool
@@ -60,6 +63,14 @@ type ResultsTableState struct {
 	metadataMu                sync.RWMutex
 	referencingTables         [][]string
 	referencingTablesError    error
+}
+
+// rowCellPresentation retains the full rendering state that SetBackgroundColor
+// changes, including transparency (normal table cells inherit the table color).
+type rowCellPresentation struct {
+	style       tcell.Style
+	background  tcell.Color
+	transparent bool
 }
 
 type foreignKeyJumpTarget struct {
@@ -237,7 +248,8 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 	table.SetInputCapture(table.tableInputCapture)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
 
-	table.SetSelectionChangedFunc(func(_, _ int) {
+	table.SetSelectionChangedFunc(func(row, _ int) {
+		table.previewRowRange(row)
 		if table.GetShowSidebar() {
 			go table.UpdateSidebar()
 		}
@@ -647,6 +659,10 @@ func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUI
 }
 
 func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyEscape && table.state.rangeAnchor != 0 {
+		table.cancelRowRange()
+		return nil
+	}
 	if event.Key() == tcell.KeyEscape && (table.CancelActiveQuery() || table.CancelExport()) {
 		return nil
 	}
@@ -844,8 +860,25 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.ReverseForeignKeyJump {
 		table.handleReverseForeignKeyJump(selectedRowIndex)
 		return nil
+	} else if command == commands.RowRange {
+		if table.state.rangeAnchor != 0 {
+			table.cancelRowRange()
+		} else if selectedRowIndex > 0 {
+			table.state.rangeAnchor = selectedRowIndex
+			table.previewRowRange(selectedRowIndex)
+		}
+		return nil
 	} else if command == commands.RowSelect {
-		table.toggleRowMark(selectedRowIndex)
+		if table.state.rangeAnchor != 0 {
+			start, end := table.state.rangeAnchor, table.state.rangeEnd
+			table.cancelRowRange()
+			table.markRowRange(start, end)
+		} else {
+			table.toggleRowMark(selectedRowIndex)
+		}
+		return nil
+	} else if command == commands.CopyRowsAs {
+		table.showCopyRowsAs(selectedRowIndex)
 		return nil
 	} else if command == commands.Copy {
 		clipboard := lib.NewClipboard()
@@ -2482,7 +2515,7 @@ func (table *ResultsTable) SetCellColor(rowIndex int, colIndex int, color tcell.
 // toggleRowMark adds or removes a row from the selection used by Copy.
 // The header row (index 0) can never be marked.
 func (table *ResultsTable) toggleRowMark(rowIndex int) {
-	if rowIndex <= 0 {
+	if rowIndex <= 0 || rowIndex >= table.GetRowCount() {
 		return
 	}
 
@@ -2501,9 +2534,66 @@ func (table *ResultsTable) toggleRowMark(rowIndex int) {
 	}
 }
 
-// clearRowMarks drops every marked row. It is called whenever the table
-// content is rebuilt so a mark can never point at a stale row.
+// markRowRange adds both endpoints and every row between them without removing
+// marks outside the range.
+func (table *ResultsTable) markRowRange(start, end int) {
+	if start > end {
+		start, end = end, start
+	}
+	for row := max(start, 1); row <= end && row < table.GetRowCount(); row++ {
+		if !table.state.markedRows[row] {
+			table.toggleRowMark(row)
+		}
+	}
+}
+
+// previewRowRange highlights the inclusive visual range without changing the
+// individually marked rows. Remember original styles and transparency so Esc
+// restores normal, updated, deleted and inserted cells exactly.
+func (table *ResultsTable) previewRowRange(end int) {
+	if table.state.rangeAnchor == 0 || end <= 0 || end >= table.GetRowCount() {
+		return
+	}
+	table.restoreRowRangeCells()
+	table.state.rangeEnd = end
+	table.state.rangeCells = map[int][]rowCellPresentation{}
+	start := table.state.rangeAnchor
+	if start > end {
+		start, end = end, start
+	}
+	for row := start; row <= end; row++ {
+		original := make([]rowCellPresentation, table.GetColumnCount())
+		for col := range original {
+			cell := table.GetCell(row, col)
+			original[col] = rowCellPresentation{cell.Style, cell.BackgroundColor, cell.Transparent}
+		}
+		table.state.rangeCells[row] = original
+		table.SetRowColor(row, app.Styles.TableMarkedColor)
+	}
+}
+
+func (table *ResultsTable) restoreRowRangeCells() {
+	for row, originals := range table.state.rangeCells {
+		for col, original := range originals {
+			if cell := table.GetCell(row, col); cell != nil {
+				cell.Style = original.style
+				cell.BackgroundColor = original.background
+				cell.Transparent = original.transparent
+			}
+		}
+	}
+	table.state.rangeCells = nil
+}
+
+func (table *ResultsTable) cancelRowRange() {
+	table.restoreRowRangeCells()
+	table.state.rangeAnchor = 0
+	table.state.rangeEnd = 0
+}
+
+// clearRowMarks drops every marked row and visual range on rebuild.
 func (table *ResultsTable) clearRowMarks() {
+	table.cancelRowRange()
 	table.state.markedRows = map[int]bool{}
 }
 

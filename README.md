@@ -563,10 +563,10 @@ Notes:
 ### Copy rows
 
 1. [Open a table](#openview-a-table)
-2. Move to a row and press `<Space>` to mark it. Repeat to mark as many rows as you want (press `<Space>` again to unmark)
-3. Press `y` to copy every marked row to the clipboard as tab separated values, one row per line
+2. Move to a row and press `<Space>` to mark it. Repeat for nonadjacent rows (press `<Space>` again to unmark). For a contiguous range, press `v` and move up or down: the highlighted selection grows with the cursor. Press `<Space>` to add that range to your marks, or `<Esc>` (or `v`) to cancel it.
+3. Press `Y` while selecting a range to copy it directly, without committing marks. Otherwise, `Y` copies marked rows or, with no marks, the current row. Choose SQL (`s`), Markdown (`m`), JSON (`j`), or CSV (`c`). CSV and Markdown include column headers; JSON is an array of objects. SQL produces an `INSERT` in a records table, or a standalone `VALUES` statement in SQL editor results (which have no target table).
 
-> With no rows marked, `y` keeps its original behavior and copies the value of the selected cell.
+This works in both records tables and SQL editor results. `y` is unchanged: it copies marked rows as tab-separated values, or the selected cell when no rows are marked. Marks are cleared when results reload.
 
 ### Export to CSV
 
@@ -772,7 +772,9 @@ Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`,
 | 0 | GotoStart | Go to first cell |
 | Enter | ForeignKeyJump | Jump to the referenced row from a foreign key cell (see [Foreign Key Jump](#jump-to-a-referenced-row-foreign-key-jump)) |
 | y | Copy | Copy cell value to clipboard (or marked rows if any) |
-| Space | RowSelect | Toggle row selection |
+| Y | CopyRowsAs | Copy marked rows (or current row) as SQL, Markdown, JSON, CSV |
+| v | RowRange | Select a live row range; Esc cancels |
+| Space | RowSelect | Toggle row or commit visual range |
 | o | AppendNewRow | Append new row |
 | O | DuplicateRow | Duplicate row |
 | J | SortDesc | Sort descending |
