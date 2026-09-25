@@ -51,7 +51,9 @@ const (
 	ExactCount
 	UnfocusEditor
 	Copy
+	CopyRowsAs
 	RowSelect
+	RowRange
 	Edit
 	CommitEdit
 	DiscardEdit
@@ -165,6 +167,10 @@ func (c Command) String() string {
 		return "Copy"
 	case RowSelect:
 		return "RowSelect"
+	case RowRange:
+		return "RowRange"
+	case CopyRowsAs:
+		return "CopyRowsAs"
 	case Edit:
 		return "Edit"
 	case Save:
