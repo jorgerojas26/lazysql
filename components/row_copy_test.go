@@ -145,7 +145,7 @@ func TestSQLCopyFromEditorResults(t *testing.T) {
 	}
 	table.cancelRowRange()
 	if got := table.copyRowIndexes(2); !reflect.DeepEqual(got, []int{3}) {
-		t.Fatalf("cancelling visual range should restore individual marks: %v", got)
+		t.Fatalf("canceling visual range should restore individual marks: %v", got)
 	}
 }
 
@@ -175,7 +175,7 @@ func TestVisualRangeRestoresExistingRowBackground(t *testing.T) {
 	table.tableInputCapture(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
 	assertOriginal(2, originals)
 
-	// A pre-existing Space mark must survive a cancelled preview too.
+	// A pre-existing Space mark must survive a canceled preview too.
 	table.toggleRowMark(2)
 	for col := range originals {
 		cell := table.GetCell(2, col)
