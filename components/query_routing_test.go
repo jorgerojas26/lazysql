@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"testing"
 
 	"github.com/jorgerojas26/lazysql/drivers"
@@ -49,12 +50,13 @@ func TestQueryReturnsRowsQuotedTextAndComments(t *testing.T) {
 }
 
 func TestQueryReturnsRowsSQLite(t *testing.T) {
+	ctx := context.Background()
 	db := &drivers.SQLite{}
-	if err := db.Connect(":memory:"); err != nil {
+	if err := db.Connect(ctx, ":memory:"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Connection.Close() })
-	if _, err := db.ExecuteDMLStatement("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+	if _, err := db.ExecuteDMLStatement(ctx, "", "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -63,7 +65,7 @@ func TestQueryReturnsRowsSQLite(t *testing.T) {
 	if queryReturnsRows(query) {
 		t.Fatal("quoted RETURNING incorrectly selected the result-set path")
 	}
-	if message, err := db.ExecuteDMLStatement(query); err != nil || message != "1 rows affected" {
+	if message, err := db.ExecuteDMLStatement(ctx, "", query); err != nil || message != "1 rows affected" {
 		t.Fatalf("mutation result = %q, %v", message, err)
 	}
 
@@ -76,7 +78,7 @@ func TestQueryReturnsRowsSQLite(t *testing.T) {
 		if !queryReturnsRows(query) {
 			t.Fatalf("result-set query misrouted: %s", query)
 		}
-		rows, count, err := db.ExecuteQuery(query)
+		rows, count, err := db.ExecuteQuery(ctx, "", query)
 		if err != nil {
 			t.Fatal(err)
 		}
