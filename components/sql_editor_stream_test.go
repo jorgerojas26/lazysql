@@ -119,7 +119,7 @@ func (*streamContractProbe) StreamQuery(context.Context, string, string, int, fu
 
 func TestNonReplayableSelectStillUsesResultPipeline(t *testing.T) {
 	for _, query := range []string{"SELECT ARRAY[nextval('seq')]", "SELECT 1 # 2", `SELECT 'back\slash'`, "SELECT 1 /*!50000 INTO OUTFILE '/tmp/out' */"} {
-		if !isResultProducingQuery(query) {
+		if !queryReturnsRows(query) {
 			t.Fatalf("SELECT incorrectly routed to Exec: %s", query)
 		}
 		if isReplaySafeQuery(query) {

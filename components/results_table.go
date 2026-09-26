@@ -1096,7 +1096,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				}
 			}
 
-			isSelect := isResultProducingQuery(query)
+			isSelect := queryReturnsRows(query)
 
 			// Clear existing records immediately for SQL editor queries and start
 			// a cancellable loading cycle on the UI goroutine. The active query is
@@ -1157,15 +1157,6 @@ func leadingQueryVerb(query string) string {
 		return ""
 	}
 	return ""
-}
-
-func isResultProducingQuery(query string) bool {
-	switch leadingQueryVerb(query) {
-	case "SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "DESC":
-		return true
-	default:
-		return false
-	}
 }
 
 // isSchemaMutatingQuery identifies the leading DDL verb independently of
