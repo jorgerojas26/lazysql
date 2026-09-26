@@ -14,8 +14,10 @@ import (
 )
 
 type Config struct {
-	ConfigFile      string
-	LocalConfigFile string
+	// ConfigFile and LocalConfigFile are runtime state, never read from or
+	// written to a config file.
+	ConfigFile      string              `toml:"-"`
+	LocalConfigFile string              `toml:"-"`
 	AppConfig       *models.AppConfig   `toml:"application"`
 	Connections     []models.Connection `toml:"database"`
 	Keymaps         models.KeymapConfig `toml:"keymap"`
@@ -237,25 +239,76 @@ func expandEnvVars(s string) string {
 	})
 }
 
+// SaveConnections writes the connection list back to the file it came from:
+// the local config when that file defines [[database]] (it replaces the global
+// list), otherwise the global config.
 func (c *Config) SaveConnections(connections []models.Connection) error {
-	c.Connections = connections
-	return c.save()
-}
+	configFile := c.ConfigFile
+	toLocal := false
+	if c.LocalConfigFile != "" {
+		local, err := readConfigTable(c.LocalConfigFile)
+		if err != nil {
+			return err
+		}
+		if _, toLocal = local["database"]; toLocal {
+			configFile = c.LocalConfigFile
+		}
+	}
 
-func (c *Config) SaveThemePreset(preset string) error {
-	previous := c.Theme
-	c.Theme = &ThemeConfig{Preset: preset}
-	if err := c.save(); err != nil {
-		c.Theme = previous
+	var value any = connections
+	if len(connections) == 0 {
+		value = nil
+		if toLocal {
+			// Keep an empty list so the local file still replaces the global one.
+			value = []any{}
+		}
+	}
+	if err := saveConfigKey(configFile, "database", value); err != nil {
 		return err
 	}
+	c.Connections = connections
 	return nil
 }
 
-func (c *Config) save() error {
-	configFile := c.ConfigFile
+// SaveThemePreset writes the preset to the local config when one is in use,
+// otherwise to the global config.
+func (c *Config) SaveThemePreset(preset string) error {
+	theme := &ThemeConfig{Preset: preset}
+	if err := saveConfigKey(c.activeConfigFile(), "theme", theme); err != nil {
+		return err
+	}
+	c.Theme = theme
+	return nil
+}
+
+func (c *Config) activeConfigFile() string {
 	if c.LocalConfigFile != "" {
-		configFile = c.LocalConfigFile
+		return c.LocalConfigFile
+	}
+	return c.ConfigFile
+}
+
+// saveConfigKey replaces one top-level key in configFile and keeps the rest
+// of that file's own content. It never writes the merged global and local
+// configuration, so a save to .lazysql.toml cannot copy global connections
+// or settings into it. A nil value removes the key.
+func saveConfigKey(configFile, key string, value any) error {
+	table, err := readConfigTable(configFile)
+	if err != nil {
+		return err
+	}
+	if value == nil {
+		delete(table, key)
+	} else {
+		table[key] = value
+	}
+	// Older versions wrote these runtime paths into config files.
+	delete(table, "ConfigFile")
+	delete(table, "LocalConfigFile")
+
+	data, err := toml.Marshal(table)
+	if err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o700); err != nil {
@@ -268,7 +321,26 @@ func (c *Config) save() error {
 	}
 	defer file.Close()
 
-	return toml.NewEncoder(file).Encode(c)
+	_, err = file.Write(data)
+	return err
+}
+
+// readConfigTable reads a config file as written on disk, without expanding
+// environment variables, so untouched values are saved back unchanged.
+func readConfigTable(configFile string) (map[string]any, error) {
+	data, err := os.ReadFile(configFile)
+	if os.IsNotExist(err) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	table := map[string]any{}
+	if err := toml.Unmarshal(data, &table); err != nil {
+		return nil, fmt.Errorf("reading %s: %w", configFile, err)
+	}
+	return table, nil
 }
 
 // parseConfigURL automatically generates the URL from the connection struct
