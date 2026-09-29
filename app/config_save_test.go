@@ -175,6 +175,69 @@ func TestSaveConnectionsWithLocalConnectionsWritesLocalFile(t *testing.T) {
 	if databases, ok := table["database"].([]any); !ok || len(databases) != 0 {
 		t.Errorf("local database = %#v, want an empty list", table["database"])
 	}
+
+	// A fresh load must keep the explicit local empty list in effect rather
+	// than exposing the global connection again.
+	App.config = &Config{ConfigFile: globalPath}
+	if err := LoadConfig(globalPath); err != nil {
+		t.Fatal(err)
+	}
+	if connections := App.Connections(); len(connections) != 0 {
+		t.Errorf("connections after reload = %v, want none", connections)
+	}
+}
+
+func TestSaveConnectionsPreservesLocalEnvironmentTemplates(t *testing.T) {
+	t.Setenv("PROD_USER", "realuser")
+	t.Setenv("PROD_PASSWORD", "super-secret-password")
+
+	local := `[[database]]
+Name = "prod"
+URL = "postgres://${env:PROD_USER}:${env:PROD_PASSWORD}@host/prod"
+
+[[database]]
+Name = "dev"
+URL = "sqlite://dev.db"
+
+[[database]]
+Name = "discard"
+URL = "sqlite://discard.db"
+`
+	_, localPath := loadProjectConfig(t, credentialedGlobalConfig, local)
+
+	connections := append([]models.Connection(nil), App.Connections()...)
+	if len(connections) != 3 {
+		t.Fatalf("loaded connections = %d, want 3", len(connections))
+	}
+	connections[1].ReadOnly = true
+	connections = append(connections[:2], connections[3:]...) // delete discard
+	connections = append(connections, models.Connection{Name: "test", URL: "sqlite://test.db"})
+
+	if err := App.SaveConnections(connections); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readFile(t, localPath)
+	for _, want := range []string{"${env:PROD_USER}", "${env:PROD_PASSWORD}"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("local config lost template %q:\n%s", want, content)
+		}
+	}
+	for _, secret := range []string{"realuser", "super-secret-password", "postgres://realuser:super-secret-password@host/prod"} {
+		if strings.Contains(content, secret) {
+			t.Errorf("local config contains expanded secret %q:\n%s", secret, content)
+		}
+	}
+
+	table := readTable(t, localPath)
+	databases, _ := table["database"].([]any)
+	if len(databases) != 3 {
+		t.Fatalf("local database = %v, want prod, dev, and test", table["database"])
+	}
+	dev, _ := databases[1].(map[string]any)
+	if dev["ReadOnly"] != true {
+		t.Errorf("saved dev connection = %v, want ReadOnly true", dev)
+	}
 }
 
 func TestSaveGlobalConfigKeepsOwnContentAndDropsPathKeys(t *testing.T) {
