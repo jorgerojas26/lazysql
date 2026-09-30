@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -14,8 +15,10 @@ import (
 )
 
 type Config struct {
-	ConfigFile      string
-	LocalConfigFile string
+	// ConfigFile and LocalConfigFile are runtime state, never read from or
+	// written to a config file.
+	ConfigFile      string              `toml:"-"`
+	LocalConfigFile string              `toml:"-"`
 	AppConfig       *models.AppConfig   `toml:"application"`
 	Connections     []models.Connection `toml:"database"`
 	Keymaps         models.KeymapConfig `toml:"keymap"`
@@ -237,25 +240,268 @@ func expandEnvVars(s string) string {
 	})
 }
 
+// SaveConnections writes the connection list back to the file it came from:
+// the local config when that file defines [[database]] (it replaces the global
+// list), otherwise the global config.
 func (c *Config) SaveConnections(connections []models.Connection) error {
-	c.Connections = connections
-	return c.save()
-}
+	configFile := c.ConfigFile
+	toLocal := false
+	var configTable map[string]any
+	if c.LocalConfigFile != "" {
+		local, err := readConfigTable(c.LocalConfigFile)
+		if err != nil {
+			return err
+		}
+		if _, toLocal = local["database"]; toLocal {
+			configFile = c.LocalConfigFile
+			configTable = local
+		}
+	}
+	if configTable == nil {
+		var err error
+		configTable, err = readConfigTable(configFile)
+		if err != nil {
+			return err
+		}
+	}
 
-func (c *Config) SaveThemePreset(preset string) error {
-	previous := c.Theme
-	c.Theme = &ThemeConfig{Preset: preset}
-	if err := c.save(); err != nil {
-		c.Theme = previous
+	var value any
+	if len(connections) == 0 {
+		value = nil
+		if toLocal {
+			// Keep an empty list so the local file still replaces the global one.
+			value = []any{}
+		}
+	} else {
+		var err error
+		value, err = preserveConnectionTemplates(configTable["database"], connections)
+		if err != nil {
+			return err
+		}
+	}
+	if err := saveConfigTable(configFile, configTable, "database", value); err != nil {
 		return err
 	}
+	c.Connections = connections
 	return nil
 }
 
-func (c *Config) save() error {
-	configFile := c.ConfigFile
+// preserveConnectionTemplates keeps raw config values for fields that have not
+// changed in the in-memory connection list. In particular, this prevents an
+// expanded ${env:...} URL from being written back as a literal credential.
+func preserveConnectionTemplates(rawDatabase any, connections []models.Connection) ([]any, error) {
+	rawRows, ok := rawDatabase.([]any)
+	if !ok || len(rawRows) == 0 {
+		return marshalConnectionRows(connections)
+	}
+
+	encoded, err := toml.Marshal(map[string]any{"database": rawDatabase})
+	if err != nil {
+		return nil, err
+	}
+	var originalConfig struct {
+		Connections []models.Connection `toml:"database"`
+	}
+	if err := toml.Unmarshal([]byte(expandEnvVars(string(encoded))), &originalConfig); err != nil {
+		return nil, fmt.Errorf("reading original database connections: %w", err)
+	}
+	if len(originalConfig.Connections) != len(rawRows) {
+		return nil, fmt.Errorf("database config has %d raw rows but decoded %d connections", len(rawRows), len(originalConfig.Connections))
+	}
+	for i := range originalConfig.Connections {
+		originalConfig.Connections[i].URL = parseConfigURL(&originalConfig.Connections[i])
+	}
+
+	originalRows := make([]map[string]any, len(rawRows))
+	for i, row := range rawRows {
+		rowMap, ok := row.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("database connection %d is not a table", i)
+		}
+		originalRows[i] = rowMap
+	}
+
+	// Names identify normal edits/additions/deletions. If the single remaining
+	// connection was renamed, pair it with the sole unmatched original.
+	matches := make([]int, len(connections))
+	for i := range matches {
+		matches[i] = -1
+	}
+	usedOriginals := make([]bool, len(originalConfig.Connections))
+	for i, connection := range connections {
+		for j, original := range originalConfig.Connections {
+			if !usedOriginals[j] && connection.Name == original.Name {
+				matches[i] = j
+				usedOriginals[j] = true
+				break
+			}
+		}
+	}
+
+	var unmatchedConnections, unmatchedOriginals []int
+	for i, match := range matches {
+		if match < 0 {
+			unmatchedConnections = append(unmatchedConnections, i)
+		}
+	}
+	for i, used := range usedOriginals {
+		if !used {
+			unmatchedOriginals = append(unmatchedOriginals, i)
+		}
+	}
+	if len(unmatchedConnections) == 1 && len(unmatchedOriginals) == 1 {
+		matches[unmatchedConnections[0]] = unmatchedOriginals[0]
+	}
+
+	rows := make([]any, len(connections))
+	for i, connection := range connections {
+		match := matches[i]
+		if match < 0 {
+			values, err := marshalConnectionConfig(connection)
+			if err != nil {
+				return nil, err
+			}
+			rows[i] = values
+			continue
+		}
+
+		originalValues, err := marshalConnectionConfig(originalConfig.Connections[match])
+		if err != nil {
+			return nil, err
+		}
+		updatedValues, err := marshalConnectionConfig(connection)
+		if err != nil {
+			return nil, err
+		}
+		row := make(map[string]any, len(originalRows[match])+len(updatedValues))
+		for key, value := range originalRows[match] {
+			row[key] = value
+		}
+		for key, oldValue := range originalValues {
+			newValue, exists := updatedValues[key]
+			if !exists {
+				delete(row, key)
+			} else if !reflect.DeepEqual(oldValue, newValue) {
+				row[key] = newValue
+			}
+		}
+		for key, newValue := range updatedValues {
+			if oldValue, exists := originalValues[key]; !exists || !reflect.DeepEqual(oldValue, newValue) {
+				row[key] = newValue
+			}
+		}
+		rows[i] = row
+	}
+	return rows, nil
+}
+
+func marshalConnectionRows(connections []models.Connection) ([]any, error) {
+	rows := make([]any, len(connections))
+	for i, connection := range connections {
+		values, err := marshalConnectionConfig(connection)
+		if err != nil {
+			return nil, err
+		}
+		rows[i] = values
+	}
+	return rows, nil
+}
+
+func marshalConnectionConfig(connection models.Connection) (map[string]any, error) {
+	values := map[string]any{"Name": connection.Name}
+	if connection.URL != "" {
+		values["URL"] = connection.URL
+	}
+	if connection.Provider != "" {
+		values["Provider"] = connection.Provider
+	}
+	if connection.Username != "" {
+		values["Username"] = connection.Username
+	}
+	if connection.Password != "" {
+		values["Password"] = connection.Password
+	}
+	if connection.Hostname != "" {
+		values["Hostname"] = connection.Hostname
+	}
+	if connection.Port != "" {
+		values["Port"] = connection.Port
+	}
+	if connection.DBName != "" {
+		values["DBName"] = connection.DBName
+	}
+	if connection.URLParams != "" {
+		values["URLParams"] = connection.URLParams
+	}
+	if connection.ReadOnly {
+		values["ReadOnly"] = connection.ReadOnly
+	}
+	if connection.MaxOpenConnections != nil {
+		values["max_open_connections"] = connection.MaxOpenConnections
+	}
+	if connection.MaxIdleConnections != nil {
+		values["max_idle_connections"] = connection.MaxIdleConnections
+	}
+	if len(connection.Schemas) > 0 {
+		values["Schemas"] = connection.Schemas
+	}
+	if len(connection.Commands) > 0 {
+		values["Commands"] = connection.Commands
+	}
+
+	encoded, err := toml.Marshal(values)
+	if err != nil {
+		return nil, err
+	}
+	if err := toml.Unmarshal(encoded, &values); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+// SaveThemePreset writes the preset to the local config when one is in use,
+// otherwise to the global config.
+func (c *Config) SaveThemePreset(preset string) error {
+	theme := &ThemeConfig{Preset: preset}
+	if err := saveConfigKey(c.activeConfigFile(), "theme", theme); err != nil {
+		return err
+	}
+	c.Theme = theme
+	return nil
+}
+
+func (c *Config) activeConfigFile() string {
 	if c.LocalConfigFile != "" {
-		configFile = c.LocalConfigFile
+		return c.LocalConfigFile
+	}
+	return c.ConfigFile
+}
+
+// saveConfigKey replaces one top-level key in configFile and keeps the rest
+// of that file's own content. It never writes the merged global and local
+// configuration, so a save to .lazysql.toml cannot copy global connections
+// or settings into it. A nil value removes the key.
+func saveConfigKey(configFile, key string, value any) error {
+	table, err := readConfigTable(configFile)
+	if err != nil {
+		return err
+	}
+	return saveConfigTable(configFile, table, key, value)
+}
+
+func saveConfigTable(configFile string, table map[string]any, key string, value any) error {
+	if value == nil {
+		delete(table, key)
+	} else {
+		table[key] = value
+	}
+	// Older versions wrote these runtime paths into config files.
+	delete(table, "ConfigFile")
+	delete(table, "LocalConfigFile")
+
+	data, err := toml.Marshal(table)
+	if err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o700); err != nil {
@@ -268,7 +514,26 @@ func (c *Config) save() error {
 	}
 	defer file.Close()
 
-	return toml.NewEncoder(file).Encode(c)
+	_, err = file.Write(data)
+	return err
+}
+
+// readConfigTable reads a config file as written on disk, without expanding
+// environment variables, so untouched values are saved back unchanged.
+func readConfigTable(configFile string) (map[string]any, error) {
+	data, err := os.ReadFile(configFile)
+	if os.IsNotExist(err) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	table := map[string]any{}
+	if err := toml.Unmarshal(data, &table); err != nil {
+		return nil, fmt.Errorf("reading %s: %w", configFile, err)
+	}
+	return table, nil
 }
 
 // parseConfigURL automatically generates the URL from the connection struct
