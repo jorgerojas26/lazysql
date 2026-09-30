@@ -240,6 +240,126 @@ URL = "sqlite://discard.db"
 	}
 }
 
+func TestSaveConnectionsPreservesEnvironmentTemplatesForEachAction(t *testing.T) {
+	t.Setenv("SAVE_USER", "synthetic-user")
+	t.Setenv("SAVE_PASSWORD", "synthetic-password")
+	fixture := `[[database]]
+Name = "private"
+URL = "postgres://${env:SAVE_USER}:${env:SAVE_PASSWORD}@host/db"
+
+[[database]]
+Name = "dev"
+URL = "sqlite://dev.db"
+`
+	actions := []struct {
+		name   string
+		change func([]models.Connection) []models.Connection
+	}{
+		{"add", func(connections []models.Connection) []models.Connection {
+			return append(connections, models.Connection{Name: "new", URL: "sqlite://new.db"})
+		}},
+		{"edit", func(connections []models.Connection) []models.Connection {
+			connections[1].ReadOnly = true
+			return connections
+		}},
+		{"delete", func(connections []models.Connection) []models.Connection {
+			return connections[:1]
+		}},
+		{"rename", func(connections []models.Connection) []models.Connection {
+			connections[0].Name = "renamed"
+			return connections
+		}},
+	}
+	for _, target := range []string{"local", "global"} {
+		t.Run(target, func(t *testing.T) {
+			for _, action := range actions {
+				t.Run(action.name, func(t *testing.T) {
+					global, local := credentialedGlobalConfig, fixture
+					if target == "global" {
+						global, local = fixture, "[theme]\nPreset = 'nord'\n"
+					}
+					globalPath, localPath := loadProjectConfig(t, global, local)
+					path, untouchedPath := localPath, globalPath
+					if target == "global" {
+						path, untouchedPath = globalPath, localPath
+					}
+					untouched := readFile(t, untouchedPath)
+					connections := action.change(append([]models.Connection(nil), App.Connections()...))
+					if err := App.SaveConnections(connections); err != nil {
+						t.Fatal(err)
+					}
+					content := readFile(t, path)
+					for _, placeholder := range []string{"${env:SAVE_USER}", "${env:SAVE_PASSWORD}"} {
+						if !strings.Contains(content, placeholder) {
+							t.Errorf("saved config lost placeholder %q", placeholder)
+						}
+					}
+					for _, secret := range []string{"synthetic-user", "synthetic-password"} {
+						if strings.Contains(content, secret) {
+							t.Errorf("saved config contains expanded credentials")
+						}
+					}
+					if readFile(t, untouchedPath) != untouched {
+						t.Error("save changed the other config file")
+					}
+					App.config = &Config{ConfigFile: globalPath}
+					if err := LoadConfig(globalPath); err != nil {
+						t.Fatal(err)
+					}
+					loaded := App.Connections()
+					if len(loaded) != len(connections) {
+						t.Fatalf("loaded %d connections, want %d", len(loaded), len(connections))
+					}
+					for i, want := range connections {
+						got := loaded[i]
+						if got.Name != want.Name || got.URL != want.URL || got.ReadOnly != want.ReadOnly {
+							t.Errorf("connection %d did not retain the requested changes after reload", i)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestSaveConnectionsPreservesMSSQLCredentialFields(t *testing.T) {
+	t.Setenv("SAVE_USER", "synthetic-user")
+	t.Setenv("SAVE_PASSWORD", "synthetic-password")
+	local := `[[database]]
+Name = "private"
+Provider = "sqlserver"
+Username = "${env:SAVE_USER}"
+Password = "${env:SAVE_PASSWORD}"
+Hostname = "localhost"
+Port = "1433"
+DBName = "test"
+`
+	_, localPath := loadProjectConfig(t, credentialedGlobalConfig, local)
+	connections := append([]models.Connection(nil), App.Connections()...)
+	if connections[0].URL == "" {
+		t.Fatal("MSSQL connection URL was not generated")
+	}
+	connections[0].ReadOnly = true
+	if err := App.SaveConnections(connections); err != nil {
+		t.Fatal(err)
+	}
+	databases := readTable(t, localPath)["database"].([]any)
+	connection := databases[0].(map[string]any)
+	if connection["Username"] != "${env:SAVE_USER}" || connection["Password"] != "${env:SAVE_PASSWORD}" {
+		t.Error("MSSQL credential placeholders were not preserved")
+	}
+	if _, ok := connection["URL"]; ok {
+		t.Error("save persisted the generated MSSQL URL")
+	}
+	if connection["ReadOnly"] != true {
+		t.Error("save lost the requested read-only change")
+	}
+	content := readFile(t, localPath)
+	if strings.Contains(content, "synthetic-user") || strings.Contains(content, "synthetic-password") {
+		t.Error("saved config contains expanded credentials")
+	}
+}
+
 func TestSaveGlobalConfigKeepsOwnContentAndDropsPathKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	stale := "ConfigFile = '/old/config.toml'\nLocalConfigFile = '/old/.lazysql.toml'\n\n" +

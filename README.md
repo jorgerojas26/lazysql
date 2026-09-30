@@ -304,7 +304,7 @@ URL = 'postgres://localhost/myproject_dev'
 
 With this local config, `DefaultPageSize` overrides the global value, and only the `Local development` connection is available (global connections are replaced).
 
-Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config.
+Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config. Saving connections preserves these placeholders in fields you have not changed, instead of writing the expanded credentials.
 
 Note: Changes made from the UI only update the setting that changed and keep the rest of the target file. Connections you add, edit or delete are saved to the local `.lazysql.toml` if it defines `[[database]]`, otherwise to the global config file. A theme picked with `Ctrl+T` is saved to the local `.lazysql.toml` when one is found, otherwise to the global config file. Comments in a file are not kept when lazysql saves it.
 
