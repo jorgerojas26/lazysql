@@ -25,7 +25,7 @@ func newMarkTestTable(rows [][]string) *ResultsTable {
 		state: &ResultsTableState{
 			listOfDBChanges: &changes,
 			markedRows:      map[int]bool{},
-			fkRawCellValues: map[string]string{},
+			rawCellValues:   map[string]string{},
 		},
 	}
 
@@ -290,7 +290,7 @@ func TestRebuildForeignKeyJumpMetadataPostgresSkipsComposite(t *testing.T) {
 			listOfDBChanges:       &changes,
 			foreignKeyColumns:     map[string]bool{},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 			tableName:             "public.orders",
 		},
 		DBDriver: db,
@@ -333,7 +333,7 @@ func TestRebuildForeignKeyJumpMetadataUnsupportedProvider(t *testing.T) {
 			listOfDBChanges:       &changes,
 			foreignKeyColumns:     map[string]bool{},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 		},
 		DBDriver: db,
 	}
@@ -361,7 +361,7 @@ func TestHandleForeignKeyEnterConsumesOnNullValues(t *testing.T) {
 			columns:               [][]string{{"Field"}, {"user_id"}},
 			foreignKeyColumns:     map[string]bool{"user_id": true},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{"user_id": {ReferencedTable: "public.users", ReferencedColumn: "id"}},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 		},
 		DBDriver: db,
 	}
@@ -386,7 +386,7 @@ func TestTableInputCaptureForeignKeyJumpCommand(t *testing.T) {
 			columns:               [][]string{{"Field"}, {"user_id"}},
 			foreignKeyColumns:     map[string]bool{"user_id": true},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{"user_id": {ReferencedTable: "public.users", ReferencedColumn: "id"}},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 		},
 		DBDriver: db,
 	}
@@ -430,7 +430,7 @@ func TestShouldShowForeignKeyMarker(t *testing.T) {
 			columns:               [][]string{{"Field"}, {"user_id"}},
 			foreignKeyColumns:     map[string]bool{"user_id": true},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{"user_id": {ReferencedTable: "public.users", ReferencedColumn: "id"}},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 		},
 		DBDriver: db,
 	}
@@ -458,7 +458,7 @@ func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *te
 			listOfDBChanges:       &changes,
 			foreignKeyColumns:     map[string]bool{},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 			tableName:             "public.orders",
 		},
 		DBDriver: db,
@@ -524,7 +524,7 @@ func newRecordsFetchTestTable(driver drivers.Driver) *ResultsTable {
 			indexes:               [][]string{},
 			foreignKeyColumns:     map[string]bool{},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 			markedRows:            map[int]bool{},
 			listOfDBChanges:       &changes,
 		},
