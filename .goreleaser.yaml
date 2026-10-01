@@ -38,6 +38,11 @@ archives:
       - goos: windows
         format: zip
 
+# The in-app updater verifies archives against this SHA-256 manifest.
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
 changelog:
   sort: asc
   filters:

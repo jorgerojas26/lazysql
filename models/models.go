@@ -7,6 +7,7 @@ import (
 )
 
 type AppConfig struct {
+	DisableUpdateCheck           bool
 	DefaultPageSize              int
 	DisableSidebar               bool
 	SidebarOverlay               bool

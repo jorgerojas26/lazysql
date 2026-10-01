@@ -27,6 +27,9 @@ type Application struct {
 	cancelFn  context.CancelFunc
 	waitGroup sync.WaitGroup
 
+	// Set before Run; invoked only on the UI event loop.
+	OnUpdateRequest func()
+
 	onQuitRequestMu sync.RWMutex
 	onQuitRequest   func()
 
@@ -172,6 +175,12 @@ func (a *Application) register() {
 		if event.Key() == tcell.KeyCtrlC {
 			// We're already on the UI event loop here; queuing an update can deadlock.
 			requestQuit()
+			return nil
+		}
+		if Keymaps.Resolve(event) == commands.CheckForUpdates {
+			if a.OnUpdateRequest != nil {
+				a.OnUpdateRequest()
+			}
 			return nil
 		}
 		if Keymaps.Resolve(event) == commands.ThemePicker {
