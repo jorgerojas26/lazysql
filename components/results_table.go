@@ -1096,7 +1096,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				}
 			}
 
-			isSelect := queryReturnsRows(query)
+			isSelect := queryReturnsRows(query, table.DBDriver.GetProvider())
 
 			// Clear existing records immediately for SQL editor queries and start
 			// a cancellable loading cycle on the UI goroutine. The active query is

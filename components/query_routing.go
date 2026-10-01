@@ -1,11 +1,15 @@
 package components
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/jorgerojas26/lazysql/drivers"
+)
 
 // queryReturnsRows classifies editor queries, not their safety. Read-only
 // validation must still run independently before either execution path.
-func queryReturnsRows(query string) bool {
-	tokens := sqlRoutingTokens(query)
+func queryReturnsRows(query, provider string) bool {
+	tokens := sqlRoutingTokens(query, provider)
 	if len(tokens) == 0 {
 		return false
 	}
@@ -27,7 +31,9 @@ func queryReturnsRows(query string) bool {
 // quoted values/identifiers are skipped rather than stripped with regexes: a
 // comment marker inside a string is data, and quoted RETURNING is not a clause.
 // This is deliberately not a SQL parser or a read-only security check.
-func sqlRoutingTokens(query string) []string {
+func sqlRoutingTokens(query, provider string) []string {
+	nestedComments := provider == drivers.DriverPostgres || provider == drivers.DriverMSSQL
+	bracketIdentifiers := provider == drivers.DriverSqlite || provider == drivers.DriverMSSQL
 	var tokens []string
 	for i := 0; i < len(query); {
 		switch {
@@ -40,7 +46,7 @@ func sqlRoutingTokens(query string) []string {
 			depth := 1
 			for i < len(query) && depth > 0 {
 				switch {
-				case strings.HasPrefix(query[i:], "/*"):
+				case nestedComments && strings.HasPrefix(query[i:], "/*"):
 					depth++
 					i += 2
 				case strings.HasPrefix(query[i:], "*/"):
@@ -50,11 +56,17 @@ func sqlRoutingTokens(query string) []string {
 					i++
 				}
 			}
-		case query[i] == '\'' || query[i] == '"' || query[i] == '`' || query[i] == '[':
+		case query[i] == '\'' || query[i] == '"' || query[i] == '`' || (bracketIdentifiers && query[i] == '['):
 			quote := query[i]
-			// PostgreSQL E'...' strings also support backslash escapes.
-			escaped := quote == '\'' && i > 0 && (query[i-1] == 'e' || query[i-1] == 'E') &&
-				(i == 1 || !sqlRoutingWordByte(query[i-2]))
+			// MySQL/MariaDB strings use backslash escapes by default. PostgreSQL
+			// enables them only for E'...' with standard_conforming_strings on;
+			// SQLite never treats backslashes as string escapes.
+			escaped := provider == drivers.DriverMySQL && (quote == '\'' || quote == '"')
+			if provider == drivers.DriverPostgres && quote == '\'' && i > 0 &&
+				(query[i-1] == 'e' || query[i-1] == 'E') &&
+				(i == 1 || !sqlRoutingWordByte(query[i-2])) {
+				escaped = true
+			}
 			if quote == '[' {
 				quote = ']'
 			}
@@ -73,7 +85,7 @@ func sqlRoutingTokens(query string) []string {
 					i++
 				}
 			}
-		case query[i] == '$':
+		case provider == drivers.DriverPostgres && query[i] == '$':
 			// PostgreSQL dollar-quoted strings: $$...$$ or $tag$...$tag$.
 			end := i + 1
 			for end < len(query) && query[end] != '$' && sqlRoutingWordByte(query[end]) {

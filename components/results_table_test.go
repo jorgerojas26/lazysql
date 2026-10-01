@@ -740,7 +740,7 @@ func TestQueryReturnsRows(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := queryReturnsRows(tt.query); got != tt.expected {
+			if got := queryReturnsRows(tt.query, drivers.DriverSqlite); got != tt.expected {
 				t.Errorf("queryReturnsRows(%q) = %v, want %v", tt.query, got, tt.expected)
 			}
 		})
