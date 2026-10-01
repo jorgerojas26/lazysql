@@ -131,6 +131,12 @@ makepkg -si
 
 <!-- USAGE EXAMPLES -->
 
+## Optional telemetry
+
+Telemetry is disabled by default. Configured release builds ask before sending any
+usage data; the default choice is No. See [data collected, opt-out, limitations,
+and free self-hosting instructions](docs/telemetry.md).
+
 ## Configuration
 
 If the `XDG_CONFIG_HOME` environment variable is set, the configuration file will be located at:

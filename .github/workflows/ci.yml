@@ -32,3 +32,14 @@ jobs:
 
       - name: Build
         run: go build -v ./...
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: telemetry/collector/package-lock.json
+
+      - name: Test telemetry collector
+        working-directory: telemetry/collector
+        run: npm ci && npm test

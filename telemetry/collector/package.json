@@ -1,0 +1,16 @@
+{
+  "name": "lazysql-telemetry-collector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.136.1"
+  }
+}
