@@ -65,28 +65,32 @@ func TestTelemetryPromptExplicitDisable(t *testing.T) {
 	}
 }
 
-func prepareTelemetryTest(t *testing.T, endpoint, preference string, disabled bool) (*tview.Pages, func()) {
+func prepareTelemetryTest(t *testing.T, endpoint, preference string, disabled bool) (*tview.Pages, func(), func()) {
 	t.Helper()
 	for _, key := range []string{"CI", "DO_NOT_TRACK", "LAZYSQL_NO_TELEMETRY"} {
 		t.Setenv(key, "")
 	}
-	previous := app.App.Application
-	app.App.Application = tview.NewApplication()
+	// Keep the global application pointer stable: metadata tests may still
+	// have pending callbacks that read it from background goroutines.
+	previousCapture := app.App.GetInputCapture()
+	previousFocus := app.App.GetFocus()
+	previousBeforeDraw := app.App.GetBeforeDrawFunc()
 	screen := tcell.NewSimulationScreen("")
 	if err := screen.Init(); err != nil {
 		t.Fatal(err)
 	}
 	screen.SetSize(100, 30)
-	app.App.SetScreen(screen)
 	t.Cleanup(func() {
+		app.App.SetBeforeDrawFunc(previousBeforeDraw)
+		app.App.SetInputCapture(previousCapture)
+		app.App.SetFocus(previousFocus)
 		screen.Fini()
-		app.App.Application = previous
 	})
 	pages := tview.NewPages().AddPage("base", tview.NewBox(), true, true)
-	app.App.SetRoot(pages, true)
+	pages.SetRect(0, 0, 100, 30)
 	stop := PrepareTelemetry(pages, endpoint, "1.2.3", preference, disabled, telemetry.Picker, telemetry.ReleaseBuild)
 	t.Cleanup(stop)
-	return pages, stop
+	return pages, stop, func() { pages.Draw(screen) }
 }
 
 func TestTelemetryDisclosureGateAndPreferences(t *testing.T) {
@@ -94,7 +98,7 @@ func TestTelemetryDisclosureGateAndPreferences(t *testing.T) {
 	for _, choice := range []string{"default", "escape", "disable"} {
 		t.Run(choice, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "telemetry.toml")
-			pages, _ := prepareTelemetryTest(t, endpoint, path, false)
+			pages, _, draw := prepareTelemetryTest(t, endpoint, path, false)
 			_, primitive := pages.GetFrontPage()
 			modal, ok := primitive.(*telemetryPrompt)
 			if !ok {
@@ -105,7 +109,7 @@ func TestTelemetryDisclosureGateAndPreferences(t *testing.T) {
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatal("stored preference before showing disclosure")
 			}
-			app.App.ForceDraw()
+			draw()
 			if !modal.shown {
 				t.Fatal("disclosure not drawn")
 			}
@@ -164,7 +168,7 @@ func TestTelemetryDisclosureSuppression(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			pages, stop := prepareTelemetryTest(t, "", path, true)
+			pages, stop, _ := prepareTelemetryTest(t, "", path, true)
 			stop()
 			if tc.env != "" {
 				t.Setenv(tc.env, "1")
@@ -183,10 +187,10 @@ func TestTelemetryDisclosureSuppression(t *testing.T) {
 func TestTelemetryPreferenceWriteFailureStaysOff(t *testing.T) {
 	parent := filepath.Join(t.TempDir(), "parent")
 	path := filepath.Join(parent, "telemetry.toml")
-	pages, _ := prepareTelemetryTest(t, "https://example.com/v1/events", path, false)
+	pages, _, draw := prepareTelemetryTest(t, "https://example.com/v1/events", path, false)
 	_, primitive := pages.GetFrontPage()
 	modal := primitive.(*telemetryPrompt)
-	app.App.ForceDraw()
+	draw()
 	// Make saving fail only after the valid first-run read.
 	if err := os.WriteFile(parent, nil, 0o600); err != nil {
 		t.Fatal(err)
