@@ -1,0 +1,25 @@
+name = "lazysql-telemetry"
+main = "worker.mjs"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# Do not enable request logs, tracing, Tail Workers, or Logpush for this service.
+[observability]
+enabled = false
+
+[observability.logs]
+enabled = false
+invocation_logs = false
+
+[vars]
+# Keep at most 32 public releases; older/unlisted releases aggregate as "other".
+RELEASES = "0.5.8"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lazysql-telemetry"
+database_id = "28491a2a-7126-434d-bf1c-8b189ff7b88b"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["0 * * * *"]

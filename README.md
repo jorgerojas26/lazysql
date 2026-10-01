@@ -133,6 +133,13 @@ makepkg -si
 
 <!-- USAGE EXAMPLES -->
 
+## Optional telemetry
+
+Configured official releases disclose minimal anonymous aggregate usage counts
+before sending any data. **Keep enabled** is the default; choose **Disable** or
+use `--no-telemetry` to opt out. Source builds send nothing. See [data collected, opt-out, limitations,
+and free self-hosting instructions](docs/telemetry.md).
+
 ## Configuration
 
 If the `XDG_CONFIG_HOME` environment variable is set, the configuration file will be located at:

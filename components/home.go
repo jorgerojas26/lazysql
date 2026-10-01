@@ -14,6 +14,7 @@ import (
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/internal/history"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -685,6 +686,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		app.App.SetFocus(home.Tree.Filter)
 		home.Tree.SetIsFiltering(true)
 	case commands.ToggleQueryHistory:
+		usage.Feature(telemetry.QueryHistory)
 		if mainPages.HasPage(pageNameQueryHistory) {
 			mainPages.SwitchToPage(pageNameQueryHistory)
 		} else {
