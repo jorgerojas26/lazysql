@@ -189,7 +189,7 @@ func newRefreshCallTable(driver drivers.Driver) *ResultsTable {
 			indexes:               [][]string{{"index_name"}, {"orders_id"}},
 			foreignKeyColumns:     map[string]bool{},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[string]string{},
 			markedRows:            map[int]bool{},
 			metadataStates:        newMetadataStates(),
 			metadataErrors:        map[MetadataKind]error{},
