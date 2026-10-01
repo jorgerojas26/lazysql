@@ -28,20 +28,22 @@ import (
 )
 
 type ResultsTableState struct {
-	listOfDBChanges           *[]models.DBDMLChange
-	error                     string
-	currentSort               string
-	databaseName              string
-	tableName                 string
-	primaryKeyColumnNames     []string
-	columns                   [][]string
-	constraints               [][]string
-	foreignKeys               [][]string
-	indexes                   [][]string
-	records                   [][]string
-	foreignKeyColumns         map[string]bool
-	foreignKeyJumpTargets     map[string]foreignKeyJumpTarget
-	fkRawCellValues           map[string]string
+	listOfDBChanges       *[]models.DBDMLChange
+	error                 string
+	currentSort           string
+	databaseName          string
+	tableName             string
+	primaryKeyColumnNames []string
+	columns               [][]string
+	constraints           [][]string
+	foreignKeys           [][]string
+	indexes               [][]string
+	records               [][]string
+	foreignKeyColumns     map[string]bool
+	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
+	// rawCellValues holds the record value of cells whose text differs from it,
+	// such as binary values shown as hex.
+	rawCellValues             map[string]string
 	queryStatus               string
 	lastEditorQuery           string
 	lastEditorDatabase        string
@@ -187,7 +189,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		indexes:               [][]string{},
 		foreignKeyColumns:     map[string]bool{},
 		foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-		fkRawCellValues:       map[string]string{},
+		rawCellValues:         map[string]string{},
 		markedRows:            map[int]bool{},
 		metadataStates:        newMetadataStates(),
 		metadataErrors:        map[MetadataKind]error{},
@@ -538,10 +540,15 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 
 				tableCell.SetText(tview.Escape(params.NewValue))
 
+				newValue := params.NewValue
+				if params.Type == models.String {
+					newValue = table.editedCellValue(row, changedColumnIndex, newValue)
+				}
+
 				cellValue := models.CellValue{
 					Type:             params.Type,
 					Column:           params.ColumnName,
-					Value:            params.NewValue,
+					Value:            newValue,
 					TableColumnIndex: changedColumnIndex,
 					TableRowIndex:    row,
 				}
@@ -562,11 +569,20 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 }
 
 func (table *ResultsTable) AddRows(rows [][]string) {
+	if table.state.rawCellValues == nil {
+		table.state.rawCellValues = map[string]string{}
+	}
+
 	for i, row := range rows {
 		for j, cell := range row {
 			displayText := cell
 			if i > 0 {
-				displayText = tview.Escape(cell)
+				if hexText, ok := helpers.BinaryDisplayValue(cell); ok {
+					table.state.rawCellValues[table.foreignKeyCellMapKey(i, j)] = cell
+					displayText = hexText
+				} else {
+					displayText = tview.Escape(cell)
+				}
 			}
 			tableCell := tview.NewTableCell(displayText)
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
@@ -952,7 +968,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 }
 
 func (table *ResultsTable) UpdateRows(rows [][]string) {
-	table.state.fkRawCellValues = map[string]string{}
+	table.state.rawCellValues = map[string]string{}
 	table.clearRowMarks()
 	table.Clear()
 	table.AddRows(rows)
@@ -2229,7 +2245,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 			cell.SetText(tview.Escape(newValue))
 
 			if currentValue != newValue {
-				appendErr = table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
+				appendErr = table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: table.editedCellValue(row, col, newValue), Column: columnName, TableColumnIndex: col, TableRowIndex: row})
 			}
 
 			switch key {
@@ -3034,9 +3050,27 @@ func (table *ResultsTable) shouldShowForeignKeyMarker(rowIndex, columnIndex int,
 	return true
 }
 
+// editedCellValue returns the value to store for text typed into a cell. A cell
+// shown as hex holds binary data, so hex typed into it is stored as the bytes it
+// encodes rather than as text.
+func (table *ResultsTable) editedCellValue(rowIndex, columnIndex int, text string) string {
+	key := table.foreignKeyCellMapKey(rowIndex, columnIndex)
+	if _, ok := table.state.rawCellValues[key]; !ok {
+		return text
+	}
+
+	if raw, ok := helpers.ParseBinaryDisplayValue(text); ok {
+		table.state.rawCellValues[key] = raw
+		return raw
+	}
+
+	delete(table.state.rawCellValues, key)
+	return text
+}
+
 func (table *ResultsTable) getRawCellValue(rowIndex, columnIndex int) string {
 	key := table.foreignKeyCellMapKey(rowIndex, columnIndex)
-	if value, ok := table.state.fkRawCellValues[key]; ok {
+	if value, ok := table.state.rawCellValues[key]; ok {
 		return value
 	}
 
