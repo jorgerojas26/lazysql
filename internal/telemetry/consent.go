@@ -14,7 +14,7 @@ type preference struct {
 }
 
 // Consent lives in a separate user-global file, never a project config. A new
-// collector requires new consent; declining applies to all collectors.
+// collector requires a new disclosure; disabling applies to all collectors.
 func LoadConsent(path, endpoint string) (enabled, decided bool, err error) {
 	content, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -32,6 +32,9 @@ func LoadConsent(path, endpoint string) (enabled, decided bool, err error) {
 	}
 	if !*p.Enabled {
 		return false, true, nil
+	}
+	if !ValidEndpoint(p.Endpoint) {
+		return false, true, errors.New("invalid telemetry preference endpoint")
 	}
 	if p.Endpoint != endpoint {
 		return false, false, nil

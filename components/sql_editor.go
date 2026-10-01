@@ -14,6 +14,7 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -1714,6 +1715,7 @@ func itoa(n int) string {
 // openExternalEditor opens the user's preferred editor to edit the query.
 // It should be called within app.Suspend() to ensure the TUI is properly restored.
 func openExternalEditor(currentText string, connectionURL string) string {
+	usage.Feature(telemetry.ExternalEditor)
 	tmpFile, err := os.CreateTemp("", "lazysql-*.sql")
 	if err != nil {
 		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})

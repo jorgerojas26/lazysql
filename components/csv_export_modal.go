@@ -11,6 +11,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 )
 
 const defaultBatchSize = 10000
@@ -154,6 +155,7 @@ func (cem *CSVExportModal) export(scope CSVExportScope) {
 	mainPages.RemovePage(pageNameCSVExport)
 
 	if cem.onExport != nil {
+		usage.Feature(telemetry.CSVExport)
 		cem.onExport(filePath, scope, batchSize)
 	}
 }

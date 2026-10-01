@@ -7,10 +7,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestHeartbeatInterval(t *testing.T) {
+	if HeartbeatInterval != 5*time.Minute {
+		t.Fatalf("heartbeat interval = %s, want 5m", HeartbeatInterval)
+	}
+}
 
 func TestRelease(t *testing.T) {
 	for input, want := range map[string]string{
@@ -54,14 +61,34 @@ func TestDisabled(t *testing.T) {
 
 func TestStartDisabledDoesNotSend(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+	server := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { calls.Add(1) }))
 	defer server.Close()
-	t.Setenv("DO_NOT_TRACK", "1")
-	stop := Start(context.Background(), server.URL+"/v1/events", "1.2.3")
-	stop()
-	stop() // cleanup is safe more than once
-	if calls.Load() != 0 {
-		t.Fatal("disabled client sent data")
+	for _, key := range []string{"DO_NOT_TRACK", "LAZYSQL_NO_TELEMETRY", "CI"} {
+		t.Setenv(key, "")
+	}
+	for _, key := range []string{"DO_NOT_TRACK", "LAZYSQL_NO_TELEMETRY", "CI"} {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv(key, "1")
+			r := &Reporter{}
+			stop := r.Start(context.Background(), server.URL+"/v1/events", "1.2.3", Picker, ReleaseBuild)
+			r.Feature(QueryExecute)
+			r.Connected("postgres", true)
+			r.ConnectionFailed(Auth)
+			stop()
+			stop() // cleanup is safe more than once
+			if r.ctx != nil || len(r.takeFeatures()) != 0 || calls.Load() != 0 {
+				t.Fatal("disabled client started or retained/sent data")
+			}
+		})
+	}
+	for _, endpoint := range []string{"", "http://example.com/v1/events", server.URL + "/v1/events?secret=value"} {
+		r := &Reporter{}
+		stop := r.Start(context.Background(), endpoint, "1.2.3", Picker, ReleaseBuild)
+		r.Connected("postgres", true)
+		stop()
+		if r.ctx != nil || calls.Load() != 0 {
+			t.Fatal("unconfigured/invalid collector started")
+		}
 	}
 }
 
@@ -98,12 +125,16 @@ func TestPayloadHeartbeatAndCancellation(t *testing.T) {
 	defer client.CloseIdleConnections()
 	go func() {
 		defer close(done)
-		run(ctx, client, server.URL+"/v1/events", Release("v0.5.8"), 20*time.Millisecond)
+		(&Reporter{}).run(ctx, client, server.URL+"/v1/events", Release("v0.5.8"), Picker, ReleaseBuild, 20*time.Millisecond)
 	}()
 	for _, kind := range []string{"start", "heartbeat", "heartbeat"} {
 		select {
 		case got := <-received:
-			want := map[string]any{"schema": float64(1), "event": kind, "version": "0.5.8"}
+			want := map[string]any{"schema": float64(2), "event": kind, "version": "0.5.8"}
+			if kind == "start" {
+				want["startup_mode"] = "picker"
+				want["distribution"] = "release"
+			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("payload = %#v, want %#v", got, want)
 			}
@@ -123,7 +154,7 @@ func TestNoRedirectsOrRetries(t *testing.T) {
 	for _, status := range []int{302, 307, 429, 500} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			var calls atomic.Int32
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				calls.Add(1)
 				w.Header().Set("Location", "/destination")
 				w.WriteHeader(status)
@@ -131,7 +162,7 @@ func TestNoRedirectsOrRetries(t *testing.T) {
 			defer server.Close()
 			client := newClient()
 			defer client.CloseIdleConnections()
-			send(context.Background(), client, server.URL, event{1, "start", "dev"})
+			send(context.Background(), client, server.URL, event{Schema: 2, Event: "start", Version: "dev", StartupMode: Picker, Distribution: ReleaseBuild})
 			if calls.Load() != 1 {
 				t.Fatalf("made %d requests", calls.Load())
 			}
@@ -141,7 +172,7 @@ func TestNoRedirectsOrRetries(t *testing.T) {
 
 func TestCancellationInterruptsRequest(t *testing.T) {
 	started := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
 		close(started)
 		<-r.Context().Done()
@@ -152,7 +183,10 @@ func TestCancellationInterruptsRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
-	go func() { defer close(done); run(ctx, client, server.URL, "dev", time.Minute) }()
+	go func() {
+		defer close(done)
+		(&Reporter{}).run(ctx, client, server.URL, "dev", Picker, ReleaseBuild, time.Minute)
+	}()
 	select {
 	case <-started:
 	case <-time.After(time.Second):
@@ -168,12 +202,122 @@ func TestCancellationInterruptsRequest(t *testing.T) {
 
 func TestCanceledContextSendsNothing(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { calls.Add(1) }))
 	defer server.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	run(ctx, newClient(), server.URL, "dev", time.Minute)
+	(&Reporter{}).run(ctx, newClient(), server.URL, "dev", Picker, ReleaseBuild, time.Minute)
 	if calls.Load() != 0 {
 		t.Fatal("canceled worker sent data")
+	}
+}
+
+func TestFeatureDeltasBoundedAndConcurrent(t *testing.T) {
+	r := &Reporter{}
+	r.Feature(QueryExecute) // before disclosure: not even retained
+	if len(r.takeFeatures()) != 0 {
+		t.Fatal("retained pre-disclosure features")
+	}
+	r.ctx = context.Background()
+	r.features = make(map[Feature]int)
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 1200 {
+				r.Feature(QueryExecute)
+			}
+		}()
+	}
+	wg.Wait()
+	r.Feature(Feature("private-table-name"))
+	r.Feature(RowInsert)
+	got := r.takeFeatures()
+	want := map[Feature]int{QueryExecute: MaxFeatureCount, RowInsert: 1}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("delta = %v, want %v", got, want)
+	}
+	r.Feature(JSONViewer) // counted separately from the detached delta
+	if !reflect.DeepEqual(r.takeFeatures(), map[Feature]int{JSONViewer: 1}) {
+		t.Fatal("lost concurrent/new features or resent prior batch")
+	}
+	if len(r.takeFeatures()) != 0 {
+		t.Fatal("resent features")
+	}
+}
+
+func TestConnectionPayloadsAndInactiveReporter(t *testing.T) {
+	received := make(chan map[string]any, 10)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Error(err)
+		}
+		received <- payload
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	r := &Reporter{}
+	r.Connected("secret-host", true)
+	r.ConnectionFailed(Unknown)
+	if len(received) != 0 {
+		t.Fatal("inactive reporter sent data")
+	}
+	// Supply a local test transport; production Start only accepts HTTPS.
+	ctx, cancel := context.WithCancel(context.Background())
+	r.ctx, r.client, r.endpoint, r.version = ctx, newClient(), server.URL, "1.2.3"
+	defer r.client.CloseIdleConnections()
+	for _, tc := range []struct {
+		record func()
+		want   map[string]any
+	}{
+		{func() { r.Connected("postgres", false) }, map[string]any{"engine": "postgres", "read_only": false, "event": "connection"}},
+		{func() { r.Connected("postgres://user:secret@private/db", true) }, map[string]any{"engine": "other", "read_only": true, "event": "connection"}},
+		{func() { r.ConnectionFailed(FailureCategory("private-error")) }, map[string]any{"failure": "unknown", "event": "connection_failure"}},
+	} {
+		tc.record()
+		tc.want["schema"], tc.want["version"] = float64(2), "1.2.3"
+		select {
+		case got := <-received:
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("payload = %v, want %v", got, tc.want)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("connection event not sent")
+		}
+	}
+	cancel()
+	r.workers.Wait()
+}
+
+func TestFailedHeartbeatDropsDelta(t *testing.T) {
+	received := make(chan event, 10)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var payload event
+		_ = json.NewDecoder(req.Body).Decode(&payload)
+		received <- payload
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	r := &Reporter{ctx: ctx, features: map[Feature]int{CSVExport: 3}}
+	done := make(chan struct{})
+	client := newClient()
+	defer client.CloseIdleConnections()
+	go func() {
+		defer close(done)
+		r.run(ctx, client, server.URL, "dev", Picker, ReleaseBuild, 20*time.Millisecond)
+	}()
+	defer func() { cancel(); <-done }()
+	for _, expected := range []map[Feature]int{nil, {CSVExport: 3}, nil} {
+		select {
+		case payload := <-received:
+			if !reflect.DeepEqual(payload.Features, expected) {
+				t.Fatalf("features = %v, want %v", payload.Features, expected)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("missing heartbeat")
+		}
 	}
 }

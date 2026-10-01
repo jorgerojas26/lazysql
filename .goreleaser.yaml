@@ -20,6 +20,7 @@ builds:
       - >-
         -s -w
         -X main.version={{ .Version }}
+        -X main.distribution=release
         -X main.telemetryEndpoint={{ if index .Env "TELEMETRY_ENDPOINT" }}{{ .Env.TELEMETRY_ENDPOINT }}{{ end }}
     env:
       - CGO_ENABLED=0

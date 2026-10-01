@@ -133,8 +133,9 @@ makepkg -si
 
 ## Optional telemetry
 
-Telemetry is disabled by default. Configured release builds ask before sending any
-usage data; the default choice is No. See [data collected, opt-out, limitations,
+Configured official releases disclose minimal anonymous aggregate usage counts
+before sending any data. **Keep enabled** is the default; choose **Disable** or
+use `--no-telemetry` to opt out. Source builds send nothing. See [data collected, opt-out, limitations,
 and free self-hosting instructions](docs/telemetry.md).
 
 ## Configuration

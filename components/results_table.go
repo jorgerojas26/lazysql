@@ -20,6 +20,7 @@ import (
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/internal/history"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -857,6 +858,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 		case eventSQLEditorQuery:
 			query := stateChange.Value.(string)
 			if query != "" {
+				usage.Feature(telemetry.QueryExecute)
 				queryLower := strings.ToLower(query)
 				queryTrimmed := strings.TrimSpace(queryLower)
 
@@ -1593,6 +1595,12 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 			PrimaryKeyInfo: rowPrimaryKeyInfo,
 		}
 
+		switch changeType {
+		case models.DMLUpdateType:
+			usage.Feature(telemetry.RowUpdate)
+		case models.DMLDeleteType:
+			usage.Feature(telemetry.RowDelete)
+		}
 		*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newDMLChange)
 	}
 
@@ -1742,6 +1750,7 @@ func (table *ResultsTable) appendNewRow() {
 		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: newRowUUID}},
 	}
 
+	usage.Feature(telemetry.RowInsert)
 	*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newInsert)
 
 	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
@@ -1775,6 +1784,7 @@ func (table *ResultsTable) duplicateRow() {
 		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: newRowUUID}},
 	}
 
+	usage.Feature(telemetry.RowInsert)
 	*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newInsert)
 
 	table.InsertRow(newRowTableIndex)
@@ -1957,6 +1967,7 @@ func (table *ResultsTable) handleForeignKeyEnter(selectedRowIndex, selectedColum
 	}
 
 	where := table.foreignKeyWhereClause(target.ReferencedColumn, rawValue)
+	usage.Feature(telemetry.ForeignKeyJump)
 	table.Home.ShowTableWithFilter(table.GetDatabaseName(), target.ReferencedTable, where)
 
 	return true
@@ -2037,6 +2048,7 @@ func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
 		entry := navigableEntries[index]
 		where := table.foreignKeyWhereClause(entry.Column, navigableValues[index])
 
+		usage.Feature(telemetry.ReverseForeignKeyJump)
 		table.Home.ShowTableWithFilter(table.GetDatabaseName(), entry.QualifiedTable(useSchemas), where)
 	}, closePicker)
 
@@ -2534,6 +2546,7 @@ func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int)
 // openCellInExternalEditor opens the user's preferred editor to edit a cell value.
 // It should be called within app.Suspend() to ensure the TUI is properly restored.
 func openCellInExternalEditor(currentText string) string {
+	usage.Feature(telemetry.ExternalEditor)
 	tmpFile, err := os.CreateTemp("", "lazysql-cell-*.txt")
 	if err != nil {
 		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})

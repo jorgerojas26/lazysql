@@ -10,6 +10,7 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -178,6 +179,7 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 func (form *ConnectionForm) testConnection(connectionString string) {
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
+		usage.ConnectionFailed(telemetry.InvalidConnection)
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return
 	}
@@ -197,11 +199,15 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 		db = &drivers.MSSQL{}
 	case drivers.DriverClickHouse:
 		db = &drivers.ClickHouse{}
+	default:
+		usage.ConnectionFailed(telemetry.Driver)
+		return
 	}
 
 	err = db.TestConnection(connectionString)
 
 	if err != nil {
+		usage.ConnectionFailed(telemetry.ConnectionFailure(err))
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 	} else {
 		form.StatusText.SetText("Connection success").SetTextColor(app.Styles.TertiaryTextColor)

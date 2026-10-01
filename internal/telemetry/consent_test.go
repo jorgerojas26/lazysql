@@ -38,14 +38,14 @@ func TestConsentLifecycle(t *testing.T) {
 }
 
 func TestMalformedConsentFailsClosed(t *testing.T) {
-	for _, content := range []string{"invalid TOML!", "", "enabled = 'true'", "enabled = true"} {
+	for _, content := range []string{"invalid TOML!", "", "enabled = 'true'", "enabled = true", "enabled = true\nendpoint = 'http://example.com/v1/events'"} {
 		path := filepath.Join(t.TempDir(), "telemetry.toml")
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		enabled, _, _ := LoadConsent(path, "https://example.com/v1/events")
-		if enabled {
-			t.Errorf("enabled with malformed preference %q", content)
+		enabled, decided, err := LoadConsent(path, "https://example.com/v1/events")
+		if enabled || !decided || err == nil {
+			t.Errorf("malformed preference did not fail closed: %q (%v, %v, %v)", content, enabled, decided, err)
 		}
 	}
 }
