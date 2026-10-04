@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: normal
 created_at: 2026-10-04T12:53:04Z
-updated_at: 2026-10-04T20:01:56Z
+updated_at: 2026-10-04T20:04:52Z
 ---
 
 Follow-up to lazysql-arxv: searching user incorrectly includes BusinessProgram, and n/p jumps between distant results instead of following tree order.
@@ -45,6 +45,14 @@ Restored the original exact/prefix/substring relevance scoring and ancestor weig
 User requested publication of the validated tree search fix.
 
 - [x] Revalidate the final branch and diff
-- [ ] Commit the code and beans, push the branch, and open the PR against main
+- [x] Commit the code and beans, push the branch, and open the PR against main
 
 Final publication checks on fix/tree-search-results-and-navigation: uncached normal and race suites, go vet, go build, formatting/diff checks, and golangci-lint v2.12.2 all passed. The matching CI linter was run with an isolated cache and reported 0 issues.
+
+## Publication Result
+
+Published PR https://github.com/jorgerojas26/lazysql/pull/362 from fix/tree-search-results-and-navigation to main. Code commit: 0e0a8f4. All local validation passed, including the CI-pinned golangci-lint v2.12.2. GitGuardian passed.
+
+Remote CI did not start: GitHub reports the account is locked due to a billing issue. This blocks final CI validation, not publication or local test results.
+
+- [ ] Confirm remote CI passes after the account billing lock is resolved
