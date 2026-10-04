@@ -17,12 +17,13 @@ import (
 type Config struct {
 	// ConfigFile and LocalConfigFile are runtime state, never read from or
 	// written to a config file.
-	ConfigFile      string              `toml:"-"`
-	LocalConfigFile string              `toml:"-"`
-	AppConfig       *models.AppConfig   `toml:"application"`
-	Connections     []models.Connection `toml:"database"`
-	Keymaps         models.KeymapConfig `toml:"keymap"`
-	Theme           *ThemeConfig        `toml:"theme,omitempty"`
+	ConfigFile      string                                    `toml:"-"`
+	LocalConfigFile string                                    `toml:"-"`
+	AppConfig       *models.AppConfig                         `toml:"application"`
+	Connections     []models.Connection                       `toml:"database"`
+	Keymaps         models.KeymapConfig                       `toml:"keymap"`
+	Theme           *ThemeConfig                              `toml:"theme,omitempty"`
+	HiddenColumns   map[string]map[string]map[string][]string `toml:"hidden_columns,omitempty"`
 }
 
 func defaultConfig() *Config {

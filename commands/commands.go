@@ -97,6 +97,8 @@ const (
 
 	// Foreign keys
 	ForeignKeyJump
+
+	ColumnVisibility
 )
 
 func (c Command) String() string {
@@ -261,6 +263,8 @@ func (c Command) String() string {
 		return "ExportCSV"
 	case ForeignKeyJump:
 		return "ForeignKeyJump"
+	case ColumnVisibility:
+		return "ColumnVisibility"
 	}
 
 	return "Unknown"

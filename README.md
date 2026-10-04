@@ -521,6 +521,29 @@ see [`docs/performance.md`](docs/performance.md).
 
 > To remove the filter, focus the filter input (press `/`) and press `<Esc>`.
 
+### Hide columns
+
+In a table's Records view, press `V` (**visibility**) or click **Columns [V]**
+in the pagination bar. A compact picker lets you choose which columns to show:
+
+- **Space** or click a column to toggle its checkbox.
+- **↑/↓** or **j/k** to move; **/** to find a column by name.
+- **A** or **All** to restore every column, including those outside the search.
+- **Enter** or **Apply** to save; **Esc** or **Cancel** to discard changes.
+- **Tab / Shift+Tab** to move between the list, search, and buttons.
+
+At least one column stays visible. The footer shows how many columns are hidden.
+Choices are remembered across restarts for each connection, database, and table,
+including schema-qualified table names. New columns are visible by default.
+
+This is display-only: queries still fetch all columns, and editing, primary keys,
+the row sidebar, row copies, and CSV exports retain the complete data. SQL editor
+results and metadata views are unaffected.
+
+Preferences are stored under `[hidden_columns]` in the active configuration file
+(the project `.lazysql.toml` when present, otherwise the global config). The
+shortcut can be customized with `ColumnVisibility` in `[keymap.Table]`.
+
 ### Jump to a referenced row (Foreign Key Jump)
 
 Columns that belong to a foreign key are underlined in the header, and the

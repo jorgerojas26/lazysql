@@ -177,6 +177,7 @@ type ResultsTable struct {
 	activeQuery     *editorQueryRun
 	exportMu        sync.Mutex
 	activeExport    *csvExportRun
+	columnView      *visibleColumnContent
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -237,6 +238,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		metadataCache:        metadataCacheForHome(home),
 	}
 
+	table.initColumnVisibility()
 	table.jsonViewer = NewJSONViewer(pages)
 
 	// When AppConfig.SidebarOverlay is true, the sidebar is added as a page to the table.Page.
@@ -679,6 +681,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		return nil
 	}
 
+	if command == commands.ColumnVisibility {
+		table.showColumnVisibility()
+		return nil
+	}
+
 	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu}
 
 	if helpers.ContainsCommand(menuCommands, command) {
@@ -755,12 +762,12 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			})
 		}
 	} else if command == commands.GotoNext {
-		if selectedColumnIndex+1 < colCount {
-			table.Select(selectedRowIndex, selectedColumnIndex+1)
+		if next := table.adjacentVisibleColumn(selectedColumnIndex, 1); next >= 0 {
+			table.Select(selectedRowIndex, next)
 		}
 	} else if command == commands.GotoPrev {
-		if selectedColumnIndex > 0 {
-			table.Select(selectedRowIndex, selectedColumnIndex-1)
+		if previous := table.adjacentVisibleColumn(selectedColumnIndex, -1); previous >= 0 {
+			table.Select(selectedRowIndex, previous)
 		}
 	} else if command == commands.GotoEnd {
 		table.Select(selectedRowIndex, colCount-1)
@@ -957,6 +964,7 @@ func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.clearRowMarks()
 	table.Clear()
 	table.AddRows(rows)
+	table.refreshColumnVisibility()
 	App.ForceDraw()
 	table.Select(1, 0)
 }
@@ -2236,16 +2244,16 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 			switch key {
 			case tcell.KeyTab:
-				nextEditableColumnIndex := col + 1
+				nextEditableColumnIndex := table.adjacentVisibleColumn(col, 1)
 
-				if nextEditableColumnIndex <= table.GetColumnCount()-1 {
+				if nextEditableColumnIndex >= 0 {
 					table.Select(row, nextEditableColumnIndex)
 
 					table.StartEditingCell(row, nextEditableColumnIndex, callback)
 
 				}
 			case tcell.KeyBacktab:
-				nextEditableColumnIndex := col - 1
+				nextEditableColumnIndex := table.adjacentVisibleColumn(col, -1)
 
 				if nextEditableColumnIndex >= 0 {
 					table.Select(row, nextEditableColumnIndex)
@@ -2663,7 +2671,8 @@ func (table *ResultsTable) appendNewRow() {
 
 	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
 
-	table.StartEditingCell(newRowTableIndex, 0, nil)
+	_, firstVisibleColumn := table.GetSelection()
+	table.StartEditingCell(newRowTableIndex, firstVisibleColumn, nil)
 }
 
 func (table *ResultsTable) duplicateRow() {
@@ -2699,7 +2708,8 @@ func (table *ResultsTable) duplicateRow() {
 
 	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
 
-	table.StartEditingCell(newRowTableIndex, 0, nil)
+	_, firstVisibleColumn := table.GetSelection()
+	table.StartEditingCell(newRowTableIndex, firstVisibleColumn, nil)
 }
 
 func (table *ResultsTable) search() {

@@ -109,6 +109,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.CommitTreeFilter, Description: "Commit tree filter search"},
 		},
 		TableGroup: {
+			Bind{Key: Key{Char: 'V'}, Cmd: cmd.ColumnVisibility, Description: "Choose visible columns (saved per table)"},
 			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit, Description: "Change cell"},
 			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete row"},
