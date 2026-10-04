@@ -15,7 +15,11 @@ func BinaryDisplayValue(value string) (string, bool) {
 	if utf8.ValidString(value) && !strings.ContainsFunc(value, isBinaryControlRune) {
 		return "", false
 	}
-	return "0x" + strings.ToUpper(hex.EncodeToString([]byte(value))), true
+	return EncodeBinaryDisplayValue(value), true
+}
+
+func EncodeBinaryDisplayValue(value string) string {
+	return "0x" + strings.ToUpper(hex.EncodeToString([]byte(value)))
 }
 
 // ParseBinaryDisplayValue decodes a 0x-prefixed hex string, as shown by
@@ -25,7 +29,7 @@ func ParseBinaryDisplayValue(text string) (string, bool) {
 	if !found {
 		digits, found = strings.CutPrefix(text, "0X")
 	}
-	if !found || digits == "" {
+	if !found {
 		return "", false
 	}
 	decoded, err := hex.DecodeString(digits)

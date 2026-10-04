@@ -37,7 +37,7 @@ func TestParseBinaryDisplayValue(t *testing.T) {
 	}{
 		{text: "0x636166E9", want: "caf\xe9", ok: true},
 		{text: "0X00ff", want: "\x00\xff", ok: true},
-		{text: "0x", ok: false},
+		{text: "0x", want: "", ok: true},
 		{text: "0x123", ok: false},
 		{text: "0xZZ", ok: false},
 		{text: "636166", ok: false},
@@ -61,5 +61,15 @@ func TestBinaryDisplayValueRoundTrip(t *testing.T) {
 	got, ok := ParseBinaryDisplayValue(text)
 	if !ok || got != raw {
 		t.Fatalf("ParseBinaryDisplayValue(%q) = (%q, %v), want (%q, true)", text, got, ok, raw)
+	}
+}
+
+func TestEncodeBinaryDisplayValue(t *testing.T) {
+	for _, raw := range []string{"", "AB", "\t\n\r", "\x00\xff", "0x41"} {
+		text := EncodeBinaryDisplayValue(raw)
+		got, ok := ParseBinaryDisplayValue(text)
+		if !ok || got != raw {
+			t.Fatalf("round trip %q = %q, %v", raw, got, ok)
+		}
 	}
 }

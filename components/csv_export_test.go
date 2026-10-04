@@ -125,7 +125,7 @@ func newCSVExportTestTable(driver drivers.Driver) *ResultsTable {
 			records:         [][]string{{"id", "name"}, {"visible", "row"}},
 			listOfDBChanges: &changes,
 			markedRows:      map[int]bool{},
-			rawCellValues:   map[string]string{},
+			rawCellValues:   map[*tview.TableCell]string{},
 		},
 		Pagination: NewPagination(),
 		DBDriver:   driver,

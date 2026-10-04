@@ -28,22 +28,20 @@ import (
 )
 
 type ResultsTableState struct {
-	listOfDBChanges       *[]models.DBDMLChange
-	error                 string
-	currentSort           string
-	databaseName          string
-	tableName             string
-	primaryKeyColumnNames []string
-	columns               [][]string
-	constraints           [][]string
-	foreignKeys           [][]string
-	indexes               [][]string
-	records               [][]string
-	foreignKeyColumns     map[string]bool
-	foreignKeyJumpTargets map[string]foreignKeyJumpTarget
-	// rawCellValues holds the record value of cells whose text differs from it,
-	// such as binary values shown as hex.
-	rawCellValues             map[string]string
+	listOfDBChanges           *[]models.DBDMLChange
+	error                     string
+	currentSort               string
+	databaseName              string
+	tableName                 string
+	primaryKeyColumnNames     []string
+	columns                   [][]string
+	constraints               [][]string
+	foreignKeys               [][]string
+	indexes                   [][]string
+	records                   [][]string
+	foreignKeyColumns         map[string]bool
+	foreignKeyJumpTargets     map[string]foreignKeyJumpTarget
+	rawCellValues             map[*tview.TableCell]string
 	queryStatus               string
 	lastEditorQuery           string
 	lastEditorDatabase        string
@@ -189,7 +187,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		indexes:               [][]string{},
 		foreignKeyColumns:     map[string]bool{},
 		foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-		rawCellValues:         map[string]string{},
+		rawCellValues:         map[*tview.TableCell]string{},
 		markedRows:            map[int]bool{},
 		metadataStates:        newMetadataStates(),
 		metadataErrors:        map[MetadataKind]error{},
@@ -236,6 +234,11 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		ConnectionURL:        connectionURL,
 		ReadOnly:             readOnly,
 		metadataCache:        metadataCacheForHome(home),
+	}
+
+	sidebar.RawCellValue = func(columnIndex int) string {
+		row, _ := table.GetSelection()
+		return table.getRawCellValue(row, columnIndex)
 	}
 
 	table.jsonViewer = NewJSONViewer(pages)
@@ -536,19 +539,11 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 
 				row, _ := table.GetSelection()
 				changedColumnIndex := table.GetColumnIndexByName(params.ColumnName)
-				tableCell := table.GetCell(row, changedColumnIndex)
-
-				tableCell.SetText(tview.Escape(params.NewValue))
-
-				newValue := params.NewValue
-				if params.Type == models.String {
-					newValue = table.editedCellValue(row, changedColumnIndex, newValue)
-				}
 
 				cellValue := models.CellValue{
 					Type:             params.Type,
 					Column:           params.ColumnName,
-					Value:            newValue,
+					Value:            params.NewValue,
 					TableColumnIndex: changedColumnIndex,
 					TableRowIndex:    row,
 				}
@@ -570,21 +565,15 @@ func (table *ResultsTable) subscribeToSidebarChanges() {
 
 func (table *ResultsTable) AddRows(rows [][]string) {
 	if table.state.rawCellValues == nil {
-		table.state.rawCellValues = map[string]string{}
+		table.state.rawCellValues = map[*tview.TableCell]string{}
 	}
 
 	for i, row := range rows {
 		for j, cell := range row {
-			displayText := cell
+			tableCell := tview.NewTableCell(cell)
 			if i > 0 {
-				if hexText, ok := helpers.BinaryDisplayValue(cell); ok {
-					table.state.rawCellValues[table.foreignKeyCellMapKey(i, j)] = cell
-					displayText = hexText
-				} else {
-					displayText = tview.Escape(cell)
-				}
+				table.setCellDisplayValue(tableCell, j, cell)
 			}
-			tableCell := tview.NewTableCell(displayText)
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
@@ -610,44 +599,19 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 }
 
 func (table *ResultsTable) AddInsertedRows() {
-	inserts := make([]models.DBDMLChange, 0)
-
+	row, col := table.GetSelection()
 	for _, change := range *table.state.listOfDBChanges {
-		if change.Type == models.DMLInsertType {
-			inserts = append(inserts, change)
+		if change.Type == models.DMLInsertType && change.Table == table.GetTableName() && change.Database == table.GetDatabaseName() {
+			table.AppendNewRow(change.Values, table.GetRowCount(), change.PrimaryKeyInfo[0].Value.(string))
 		}
 	}
-
-	rows := make([][]models.CellValue, len(inserts))
-
-	if len(inserts) > 0 {
-		for i, insert := range inserts {
-			if insert.Table == table.GetTableName() {
-				rows[i] = insert.Values
-			}
-		}
-	}
-
-	rowCount := table.GetRowCount()
-	for i, row := range rows {
-		rowIndex := rowCount + i
-
-		for j, cell := range row {
-			tableCell := tview.NewTableCell(tview.Escape(cell.Value.(string)))
-			tableCell.SetExpansion(1)
-			tableCell.SetReference(inserts[i].PrimaryKeyInfo[0].Value)
-
-			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
-			tableCell.SetBackgroundColor(app.Styles.TableInsertColor)
-
-			table.SetCell(rowIndex, j, tableCell)
-		}
-	}
+	table.Select(row, col)
 }
 
 func (table *ResultsTable) AppendNewRow(cells []models.CellValue, index int, UUID string) {
 	for i, cell := range cells {
-		tableCell := tview.NewTableCell(tview.Escape(cell.Value.(string)))
+		tableCell := tview.NewTableCell("")
+		table.setCellDisplayValue(tableCell, i, cell.Value.(string))
 		tableCell.SetExpansion(1)
 		// Appended rows have a reference to the row UUID so we can identify them later
 		// Also, rows that have columns marked to be UPDATED will have a reference to the type of the new value (NULL, EMPTY, DEFAULT)
@@ -899,17 +863,8 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 	} else if command == commands.Copy {
 		clipboard := lib.NewClipboard()
 
-		if len(table.state.markedRows) > 0 {
-			if err := clipboard.Write(table.markedRowsToText()); err != nil {
-				table.SetError(err.Error(), nil)
-			}
-		} else {
-			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
-			if selectedCell != nil {
-				if err := clipboard.Write(cellText(selectedCell)); err != nil {
-					table.SetError(err.Error(), nil)
-				}
-			}
+		if err := clipboard.Write(table.copySelectionValue()); err != nil {
+			table.SetError(err.Error(), nil)
 		}
 	} else if command == commands.OpenCellInExternalEditor {
 		if table.ReadOnly {
@@ -927,7 +882,6 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 				// Strip trailing newline that editors typically add
 				newText = strings.TrimSuffix(newText, "\n")
 				if newText != originalText {
-					selectedCell.SetText(tview.Escape(newText))
 					columnName := table.GetColumnNameByIndex(selectedColumnIndex)
 					err := table.AppendNewChange(models.DMLUpdateType, selectedRowIndex, selectedColumnIndex, models.CellValue{
 						Type:             models.String,
@@ -968,7 +922,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 }
 
 func (table *ResultsTable) UpdateRows(rows [][]string) {
-	table.state.rawCellValues = map[string]string{}
+	table.state.rawCellValues = map[*tview.TableCell]string{}
 	table.clearRowMarks()
 	table.Clear()
 	table.AddRows(rows)
@@ -1710,6 +1664,20 @@ func (table *ResultsTable) SetRecords(rows [][]string) {
 
 func (table *ResultsTable) SetColumns(columns [][]string) {
 	table.state.columns = columns
+	if table.Table == nil || table.Editor != nil || (table.Menu != nil && table.Menu.GetSelectedOption() != 1) {
+		return
+	}
+	for col := 0; col < table.GetColumnCount(); col++ {
+		if !table.isBinaryColumn(col) {
+			continue
+		}
+		for row := 1; row < table.GetRowCount(); row++ {
+			cell := table.GetCell(row, col)
+			if _, ok := table.state.rawCellValues[cell]; !ok {
+				table.setCellDisplayValue(cell, col, table.getRawCellValue(row, col))
+			}
+		}
+	}
 }
 
 func (table *ResultsTable) SetConstraints(constraints [][]string) {
@@ -2242,10 +2210,8 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		var appendErr error
 
 		if key != tcell.KeyEscape {
-			cell.SetText(tview.Escape(newValue))
-
 			if currentValue != newValue {
-				appendErr = table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: table.editedCellValue(row, col, newValue), Column: columnName, TableColumnIndex: col, TableRowIndex: row})
+				appendErr = table.AppendNewChange(models.DMLUpdateType, row, col, models.CellValue{Type: models.String, Value: newValue, Column: columnName, TableColumnIndex: col, TableRowIndex: row})
 			}
 
 			switch key {
@@ -2367,6 +2333,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 
 	if isAnInsertedRow {
 		if changeType == models.DMLUpdateType {
+			value = table.applyCellEdit(rowIndex, colIndex, value)
 			switch value.Type {
 			case models.Null, models.Empty, models.Default:
 				tableCell.SetText(value.Value.(string))
@@ -2384,6 +2351,7 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 	}
 
 	if changeType == models.DMLUpdateType {
+		value = table.applyCellEdit(rowIndex, colIndex, value)
 		switch value.Type {
 		case models.Null, models.Empty, models.Default:
 			tableCell.SetText(value.Value.(string))
@@ -2686,8 +2654,16 @@ func (table *ResultsTable) duplicateRow() {
 
 	for i, column := range dbColumns {
 		if i != 0 { // Skip the first row because they are the column names (e.x "Field", "Type", "Null", "Key", "Default", "Extra")
-			origCell := table.GetCell(row, i-1)
-			newRow[i-1] = models.CellValue{Type: models.String, Column: column[0], Value: cellText(origCell), TableRowIndex: newRowTableIndex, TableColumnIndex: i}
+			valueType := models.String
+			switch table.GetCell(row, i-1).GetReference() {
+			case "NULL&":
+				valueType = models.Null
+			case "EMPTY&":
+				valueType = models.Empty
+			case "DEFAULT&":
+				valueType = models.Default
+			}
+			newRow[i-1] = models.CellValue{Type: valueType, Column: column[0], Value: table.getRawCellValue(row, i-1), TableRowIndex: newRowTableIndex, TableColumnIndex: i - 1}
 		}
 	}
 
@@ -3009,10 +2985,6 @@ func (table *ResultsTable) getReferencingEntries() ([]referencingTableEntry, err
 	return buildReferencingEntries(table.state.referencingTables), nil
 }
 
-func (table *ResultsTable) foreignKeyCellMapKey(rowIndex, columnIndex int) string {
-	return fmt.Sprintf("%d:%d", rowIndex, columnIndex)
-}
-
 func (table *ResultsTable) shouldShowForeignKeyMarker(rowIndex, columnIndex int, rawValue string) bool {
 	if table.Menu != nil && table.Menu.GetSelectedOption() != 1 {
 		return false
@@ -3050,35 +3022,97 @@ func (table *ResultsTable) shouldShowForeignKeyMarker(rowIndex, columnIndex int,
 	return true
 }
 
-// editedCellValue returns the value to store for text typed into a cell. A cell
-// shown as hex holds binary data, so hex typed into it is stored as the bytes it
-// encodes rather than as text.
+func (table *ResultsTable) isBinaryColumn(columnIndex int) bool {
+	if table.Editor != nil || (table.Menu != nil && table.Menu.GetSelectedOption() != 1) {
+		return false
+	}
+	columnName := table.GetColumnNameByIndex(columnIndex)
+	for index, column := range table.GetColumns() {
+		if index == 0 || len(column) < 2 || column[0] != columnName {
+			continue
+		}
+		columnType, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(column[1])), "(")
+		switch columnType {
+		case "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "image":
+			return true
+		}
+	}
+	return false
+}
+
+func (table *ResultsTable) setCellDisplayValue(cell *tview.TableCell, columnIndex int, raw string) {
+	if table.state.rawCellValues == nil {
+		table.state.rawCellValues = map[*tview.TableCell]string{}
+	}
+	text, binary := helpers.BinaryDisplayValue(raw)
+	if table.isBinaryColumn(columnIndex) {
+		binary = true
+		text = helpers.EncodeBinaryDisplayValue(raw)
+	}
+	if raw == "NULL&" || raw == "EMPTY&" || raw == "DEFAULT&" {
+		cell.SetText(strings.TrimSuffix(raw, "&"))
+		return
+	}
+	switch cell.GetReference() {
+	case "NULL&", "EMPTY&", "DEFAULT&":
+		return
+	}
+	if binary {
+		table.state.rawCellValues[cell] = raw
+		cell.SetText(text)
+	} else {
+		cell.SetText(tview.Escape(raw))
+	}
+}
+
 func (table *ResultsTable) editedCellValue(rowIndex, columnIndex int, text string) string {
-	key := table.foreignKeyCellMapKey(rowIndex, columnIndex)
-	if _, ok := table.state.rawCellValues[key]; !ok {
+	cell := table.GetCell(rowIndex, columnIndex)
+	_, binary := table.state.rawCellValues[cell]
+	if !binary && !table.isBinaryColumn(columnIndex) {
 		return text
 	}
-
 	if raw, ok := helpers.ParseBinaryDisplayValue(text); ok {
-		table.state.rawCellValues[key] = raw
 		return raw
 	}
-
-	delete(table.state.rawCellValues, key)
 	return text
 }
 
+func (table *ResultsTable) applyCellEdit(rowIndex, columnIndex int, value models.CellValue) models.CellValue {
+	cell := table.GetCell(rowIndex, columnIndex)
+	text := value.Value.(string)
+	if value.Type == models.String {
+		value.Value = table.editedCellValue(rowIndex, columnIndex, text)
+		switch cell.GetReference() {
+		case "NULL&", "EMPTY&", "DEFAULT&":
+			cell.SetReference(nil)
+		}
+	}
+	cell.SetText(tview.Escape(text))
+	if _, binary := table.state.rawCellValues[cell]; binary || table.isBinaryColumn(columnIndex) {
+		if table.state.rawCellValues == nil {
+			table.state.rawCellValues = map[*tview.TableCell]string{}
+		}
+		table.state.rawCellValues[cell] = value.Value.(string)
+	}
+	return value
+}
+
+func (table *ResultsTable) copySelectionValue() string {
+	if len(table.state.markedRows) > 0 {
+		return table.markedRowsToText()
+	}
+	row, col := table.GetSelection()
+	return table.getRawCellValue(row, col)
+}
+
 func (table *ResultsTable) getRawCellValue(rowIndex, columnIndex int) string {
-	key := table.foreignKeyCellMapKey(rowIndex, columnIndex)
-	if value, ok := table.state.rawCellValues[key]; ok {
+	cell := table.GetCell(rowIndex, columnIndex)
+	if value, ok := table.state.rawCellValues[cell]; ok {
 		return value
 	}
-
-	cell := table.GetCell(rowIndex, columnIndex)
 	if cell == nil {
 		return ""
 	}
-
 	return cellText(cell)
 }
 
