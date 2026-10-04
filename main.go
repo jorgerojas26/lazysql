@@ -6,15 +6,25 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/go-sql-driver/mysql"
+	"golang.org/x/term"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/components"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 )
 
 var version = "dev"
+
+// Injected by release builds only after deploying the collector. Empty means
+// no telemetry and no prompt (including ordinary go install/source builds).
+var telemetryEndpoint = ""
+
+// GoReleaser marks official artifacts without guessing from version strings.
+var distribution = "source"
 
 func main() {
 	defaultConfigPath, err := app.DefaultConfigFile()
@@ -37,6 +47,7 @@ func main() {
 	logLevel := flag.String("loglevel", "info", "Log level")
 	logFile := flag.String("logfile", "", "Log file")
 	readOnly := flag.Bool("read-only", false, "Connect in read-only mode")
+	noTelemetry := flag.Bool("no-telemetry", false, "Disable telemetry and its disclosure")
 	flag.Parse()
 
 	if *printVersion {
@@ -73,10 +84,12 @@ func main() {
 	// Parse the command line arguments.
 	args := flag.Args()
 
+	startupMode := telemetry.Picker
 	switch len(args) {
 	case 0:
 		// Launch into the connection picker.
 	case 1:
+		startupMode = telemetry.ConnectionArg
 		// Set a connection from the command line.
 		err := components.InitFromArg(args[0], *readOnly)
 		if err != nil {
@@ -86,7 +99,13 @@ func main() {
 		log.Fatal("Only a single connection is allowed")
 	}
 
-	if err = app.App.Run(mainPages, *configFile); err != nil {
+	stopTelemetry := components.PrepareTelemetry(mainPages, telemetryEndpoint, version,
+		filepath.Join(filepath.Dir(defaultConfigPath), "telemetry.toml"),
+		*noTelemetry || !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())),
+		startupMode, telemetry.DistributionChannel(distribution))
+	err = app.App.Run(mainPages, *configFile)
+	stopTelemetry()
+	if err != nil {
 		log.Fatalf("Error running app: %v", err)
 	}
 }
