@@ -65,7 +65,7 @@ func (table *ResultsTable) initColumnVisibility() {
 		}
 	}
 	table.columnView = &visibleColumnContent{cells: cells}
-	table.Table.SetContent(table.columnView)
+	table.SetContent(table.columnView)
 	if table.Pagination != nil {
 		table.Pagination.SetTitleAlign(tview.AlignRight)
 		table.Pagination.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {

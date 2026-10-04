@@ -263,10 +263,10 @@ func TestInstall(t *testing.T) {
 			defer server.Close()
 			transport := server.Client().Transport
 			client := &Client{HTTP: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				copy := req.Clone(req.Context())
-				copy.URL.Scheme = "http"
-				copy.URL.Host = strings.TrimPrefix(server.URL, "http://")
-				return transport.RoundTrip(copy)
+				request := req.Clone(req.Context())
+				request.URL.Scheme = "http"
+				request.URL.Host = strings.TrimPrefix(server.URL, "http://")
+				return transport.RoundTrip(request)
 			})}}
 			base := "https://github.com/jorgerojas26/lazysql/releases/download/v1.2.0/"
 			r := Release{Tag: "v1.2.0", Assets: []Asset{{Name: name, URL: base + name}, {Name: "lazysql_1.2.0_checksums.txt", URL: base + "lazysql_1.2.0_checksums.txt"}}}

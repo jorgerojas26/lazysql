@@ -189,7 +189,7 @@ func newRefreshCallTable(driver drivers.Driver) *ResultsTable {
 			indexes:               [][]string{{"index_name"}, {"orders_id"}},
 			foreignKeyColumns:     map[string]bool{},
 			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
-			fkRawCellValues:       map[string]string{},
+			rawCellValues:         map[*tview.TableCell]string{},
 			markedRows:            map[int]bool{},
 			metadataStates:        newMetadataStates(),
 			metadataErrors:        map[MetadataKind]error{},
@@ -372,7 +372,11 @@ func TestRefreshPreservesUnrelatedPendingMetadata(t *testing.T) {
 	if !table.isForeignKeyColumn("user_id") {
 		t.Fatal("pending Foreign Keys result did not enable Foreign Key Jump")
 	}
-	if table.GetIsLoading() {
+	loading := true
+	App.QueueUpdate(func() {
+		loading = table.GetIsLoading()
+	})
+	if loading {
 		t.Fatal("metadata Refresh left the table loading")
 	}
 	if target, ok := table.getForeignKeyJumpTarget("user_id"); !ok || target.ReferencedTable != "users" || target.ReferencedColumn != "id" {

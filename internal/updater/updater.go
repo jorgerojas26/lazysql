@@ -118,7 +118,7 @@ func (c *Client) get(ctx context.Context, address string, limit int64) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("release request failed: HTTP %d", resp.StatusCode)
 	}
@@ -252,7 +252,7 @@ func replace(ctx context.Context, target string, archive []byte) error {
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
 	for {
 		header, err := tr.Next()
