@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -285,6 +284,8 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 			} else {
 				if len(tree.state.searchFoundNodes) > 0 {
 					tree.FoundNodeCountInput.SetText(fmt.Sprintf("[1/%d]", len(tree.state.searchFoundNodes)))
+				} else {
+					tree.FoundNodeCountInput.SetText("[0/0]")
 				}
 				tree.SetBorderPadding(1, 0, 0, 0)
 			}
@@ -298,9 +299,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 		App.SetFocus(tree)
 	})
 
-	tree.Filter.SetChangedFunc(func(text string) {
-		go tree.search(text)
-	})
+	tree.Filter.SetChangedFunc(tree.search)
 
 	tree.Filter.SetFieldStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.PrimaryTextColor))
 	tree.Filter.SetPlaceholderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.InverseTextColor))
@@ -803,8 +802,9 @@ func parseSearchQuery(lowerSearchText string) (ancestorFilters []string, tableNa
 
 func (tree *Tree) search(searchText string) {
 	rootNode := tree.GetRoot()
-	lowerSearchText := strings.ToLower(searchText)
+	lowerSearchText := strings.ToLower(strings.TrimSpace(searchText))
 	tree.state.searchFoundNodes = []*tview.TreeNode{}
+	tree.state.currentFocusFoundNode = nil
 
 	if lowerSearchText == "" {
 		rootNode.Walk(func(_, parent *tview.TreeNode) bool {
@@ -816,125 +816,62 @@ func (tree *Tree) search(searchText string) {
 		return
 	}
 
-	// ancestorFilters are, in order from outermost to innermost, the
-	// qualifiers that must each match a distinct ancestor of the node
-	// (further qualifiers must match closer ancestors than earlier ones).
-	// tableNameFilter always matches the node itself.
 	ancestorFilters, tableNameFilter := parseSearchQuery(lowerSearchText)
-
-	// Collect nodes with their match ranks
-	type rankedNode struct {
-		node *tview.TreeNode
-		rank int
+	if tableNameFilter == "" {
+		return
 	}
-	var rankedNodes []rankedNode
-
-	// Build parent map while walking so we can walk up the ancestor chain
-	// when a qualified search (e.g. "schema tablename" or "db.schema.table")
-	// needs to match against non-immediate ancestors in deep trees with
-	// section headers.
 	parentMap := make(map[*tview.TreeNode]*tview.TreeNode)
-
+	ranks := make(map[*tview.TreeNode]int)
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
 		parentMap[node] = parent
 		nodeText := strings.ToLower(stripColorTags(node.GetText()))
-
-		if len(ancestorFilters) == 0 {
-			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
-			if rank >= 0 {
-				adjustedRank := prioritizeResult(tableNameFilter, nodeText, rank)
-				rankedNodes = append(rankedNodes, rankedNode{node: node, rank: adjustedRank})
-			}
+		if !strings.Contains(nodeText, tableNameFilter) {
 			return true
 		}
 
-		rank := fuzzy.RankMatch(tableNameFilter, nodeText)
-		if rank < 0 {
-			return true
-		}
-
-		// Walk up the ancestor chain once, matching each ancestor filter
-		// (outermost first) against the closest possible ancestor that is
-		// still further from the node than the previous filter's match.
-		// This lets e.g. "db.schema.table" require the "db" match to be a
-		// stricter (or equal) ancestor than the "schema" match, walking
-		// through section headers (tables/views/functions) in between.
-		ancestorRanks := make([]int, len(ancestorFilters))
-		for i := range ancestorRanks {
-			ancestorRanks[i] = -1
-		}
 		filterIdx := len(ancestorFilters) - 1
-		for e := parentMap[node]; e != nil && e != rootNode && filterIdx >= 0; e = parentMap[e] {
-			eText := strings.ToLower(stripColorTags(e.GetText()))
-			eRank := fuzzy.RankMatch(ancestorFilters[filterIdx], eText)
-			if eRank >= 0 {
-				ancestorRanks[filterIdx] = prioritizeResult(ancestorFilters[filterIdx], eText, eRank)
+		ancestorScore := 0
+		for ancestor := parent; ancestor != nil && ancestor != rootNode && filterIdx >= 0; ancestor = parentMap[ancestor] {
+			ancestorText := strings.ToLower(stripColorTags(ancestor.GetText()))
+			if strings.Contains(ancestorText, ancestorFilters[filterIdx]) {
+				ancestorScore += prioritizeResult(ancestorFilters[filterIdx], ancestorText, 0)
 				filterIdx--
 			}
 		}
-
-		// Every ancestor filter must have matched some ancestor for this
-		// node to be considered a result at all (this is what actually
-		// scopes "dbA.users" to dbA instead of leaking dbB's users table).
-		allMatched := true
-		ancestorScore := 0
-		for _, ar := range ancestorRanks {
-			if ar < 0 {
-				allMatched = false
-				break
+		if filterIdx < 0 {
+			rank := prioritizeResult(tableNameFilter, nodeText, 0)
+			if len(ancestorFilters) > 0 {
+				rank += ancestorScore / (2 * len(ancestorFilters))
 			}
-			ancestorScore += ar
+			ranks[node] = rank
+			tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
 		}
-
-		if allMatched {
-			adjustedTableRank := prioritizeResult(tableNameFilter, nodeText, rank)
-			// Combine ranks: prioritize table match but factor in ancestor matches.
-			combinedRank := adjustedTableRank + (ancestorScore / (2 * len(ancestorFilters)))
-			rankedNodes = append(rankedNodes, rankedNode{node: node, rank: combinedRank})
-		}
-
 		return true
 	})
 
-	// Once the query is qualified (at least one ancestor filter present,
-	// i.e. a dotted or space-separated "db[.schema].table" query), an exact
-	// (case-insensitive) match on the final segment collapses the result
-	// set to just the exact hit(s), dropping near-name fuzzy siblings that
-	// only partially match. This only applies once an exact match actually
-	// exists among the ancestor-scoped candidates — mid-typing queries with
-	// no exact hit yet keep fuzzy-matching normally, so the "narrow as you
-	// type" UX is preserved. Unqualified (single-part) queries are
-	// untouched, keeping their existing fuzzy behavior.
 	if len(ancestorFilters) > 0 {
 		hasExactMatch := false
-		for _, rn := range rankedNodes {
-			nodeText := strings.ToLower(stripColorTags(rn.node.GetText()))
-			if nodeText == tableNameFilter {
+		for _, node := range tree.state.searchFoundNodes {
+			if strings.EqualFold(stripColorTags(node.GetText()), tableNameFilter) {
 				hasExactMatch = true
 				break
 			}
 		}
 		if hasExactMatch {
-			exactNodes := rankedNodes[:0]
-			for _, rn := range rankedNodes {
-				nodeText := strings.ToLower(stripColorTags(rn.node.GetText()))
-				if nodeText == tableNameFilter {
-					exactNodes = append(exactNodes, rn)
+			exactNodes := tree.state.searchFoundNodes[:0]
+			for _, node := range tree.state.searchFoundNodes {
+				if strings.EqualFold(stripColorTags(node.GetText()), tableNameFilter) {
+					exactNodes = append(exactNodes, node)
 				}
 			}
-			rankedNodes = exactNodes
+			tree.state.searchFoundNodes = exactNodes
 		}
 	}
 
-	sort.Slice(rankedNodes, func(i, j int) bool {
-		return rankedNodes[i].rank < rankedNodes[j].rank
+	sort.SliceStable(tree.state.searchFoundNodes, func(i, j int) bool {
+		return ranks[tree.state.searchFoundNodes[i]] < ranks[tree.state.searchFoundNodes[j]]
 	})
 
-	for _, rn := range rankedNodes {
-		tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, rn.node)
-	}
-
-	// Set current node to best match
 	if len(tree.state.searchFoundNodes) > 0 {
 		bestNode := tree.state.searchFoundNodes[0]
 		expandAncestors(bestNode, rootNode)
@@ -1101,43 +1038,50 @@ func (tree *Tree) Highlight() {
 }
 
 func (tree *Tree) goToNextFoundNode() {
-	for i, node := range tree.state.searchFoundNodes {
-		if node == tree.state.currentFocusFoundNode {
-			var newFocusNodeIndex int
-
-			if i+1 < len(tree.state.searchFoundNodes) {
-				newFocusNodeIndex = i + 1
-			} else {
-				newFocusNodeIndex = 0
-			}
-
-			newFocusNode := tree.state.searchFoundNodes[newFocusNodeIndex]
-			tree.SetCurrentNode(newFocusNode)
-			tree.state.currentFocusFoundNode = newFocusNode
-			tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", newFocusNodeIndex+1, len(tree.state.searchFoundNodes)))
-			break
-		}
-	}
+	tree.goToFoundNode(1)
 }
 
 func (tree *Tree) goToPreviousFoundNode() {
-	for i, node := range tree.state.searchFoundNodes {
-		if node == tree.state.currentFocusFoundNode {
-			var newFocusNodeIndex int
+	tree.goToFoundNode(-1)
+}
 
-			if i-1 >= 0 {
-				newFocusNodeIndex = i - 1
-			} else {
-				newFocusNodeIndex = len(tree.state.searchFoundNodes) - 1
-			}
+func (tree *Tree) goToFoundNode(direction int) {
+	found := tree.state.searchFoundNodes
+	if len(found) == 0 {
+		return
+	}
 
-			newFocusNode := tree.state.searchFoundNodes[newFocusNodeIndex]
-			tree.SetCurrentNode(newFocusNode)
-			tree.state.currentFocusFoundNode = newFocusNode
-			tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", newFocusNodeIndex+1, len(tree.state.searchFoundNodes)))
-			break
+	positions := make(map[*tview.TreeNode]int)
+	tree.GetRoot().Walk(func(node, _ *tview.TreeNode) bool {
+		positions[node] = len(positions)
+		return true
+	})
+	currentPosition := positions[tree.GetCurrentNode()]
+	targetIndex := -1
+	bestDistance := len(positions) + 1
+	for i, node := range found {
+		position, exists := positions[node]
+		if !exists {
+			continue
+		}
+		distance := direction * (position - currentPosition)
+		if distance <= 0 {
+			distance += len(positions)
+		}
+		if distance < bestDistance {
+			bestDistance = distance
+			targetIndex = i
 		}
 	}
+	if targetIndex < 0 {
+		return
+	}
+
+	target := found[targetIndex]
+	expandAncestors(target, tree.GetRoot())
+	tree.SetCurrentNode(target)
+	tree.state.currentFocusFoundNode = target
+	tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", targetIndex+1, len(found)))
 }
 
 func (tree *Tree) CollapseAll() {
