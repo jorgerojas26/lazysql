@@ -13,6 +13,8 @@ func TestBinaryDisplayValue(t *testing.T) {
 		{name: "invalid utf8", value: "caf\xe9", want: "0x636166E9", binary: true},
 		{name: "nul byte", value: "a\x00b", want: "0x610062", binary: true},
 		{name: "delete control", value: "a\x7f", want: "0x617F", binary: true},
+		{name: "next line control", value: "a\u0085b", want: "0x61C28562", binary: true},
+		{name: "control sequence introducer", value: "\u009b", want: "0xC29B", binary: true},
 		{name: "plain text", value: "hello", binary: false},
 		{name: "unicode text", value: "héllo 世界", binary: false},
 		{name: "multiline text", value: "line one\nline two\r\n\tindented", binary: false},

@@ -580,7 +580,9 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
-				tableCell.SetText(strings.Replace(cell, "&", "", 1))
+				if i == 0 {
+					table.setCellDisplayValue(tableCell, j, cell)
+				}
 				tableCell.SetStyle(table.GetItalicStyle())
 				tableCell.SetReference(cell)
 			}
