@@ -3,6 +3,7 @@ package helpers
 import (
 	"encoding/hex"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -44,5 +45,5 @@ func isBinaryControlRune(r rune) bool {
 	case '\t', '\n', '\r':
 		return false
 	}
-	return r < 0x20 || r == 0x7f
+	return unicode.IsControl(r)
 }

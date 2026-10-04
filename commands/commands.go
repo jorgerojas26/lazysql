@@ -9,6 +9,7 @@ const (
 	SwitchToEditorView
 	SwitchToConnectionsView
 	HelpPopup
+	CheckForUpdates
 	ThemePicker
 	ToggleQueryHistory
 	ToggleTree
@@ -97,6 +98,8 @@ const (
 
 	// Foreign keys
 	ForeignKeyJump
+
+	ColumnVisibility
 )
 
 func (c Command) String() string {
@@ -110,6 +113,8 @@ func (c Command) String() string {
 		return "SwitchToConnectionsView"
 	case HelpPopup:
 		return "HelpPopup"
+	case CheckForUpdates:
+		return "CheckForUpdates"
 	case ThemePicker:
 		return "ThemePicker"
 	case ToggleQueryHistory:
@@ -261,6 +266,8 @@ func (c Command) String() string {
 		return "ExportCSV"
 	case ForeignKeyJump:
 		return "ForeignKeyJump"
+	case ColumnVisibility:
+		return "ColumnVisibility"
 	}
 
 	return "Unknown"

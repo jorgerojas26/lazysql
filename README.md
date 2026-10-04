@@ -133,6 +133,13 @@ makepkg -si
 
 <!-- USAGE EXAMPLES -->
 
+## Optional telemetry
+
+Configured official releases disclose minimal anonymous aggregate usage counts
+before sending any data. **Keep enabled** is the default; choose **Disable** or
+use `--no-telemetry` to opt out. Source builds send nothing. See [data collected, opt-out, limitations,
+and free self-hosting instructions](docs/telemetry.md).
+
 ## Configuration
 
 If the `XDG_CONFIG_HOME` environment variable is set, the configuration file will be located at:
@@ -206,6 +213,7 @@ The `[application]` section is used to define some app settings. Not all setting
 | SidebarOverlay | false | Show sidebar as overlay instead of side panel |
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+| DisableUpdateCheck | false | Disable automatic GitHub release checks (manual checks remain available) |
 | exact_count_threshold | 50000 | Automatically run an exact count when an unfiltered estimate is at or below this value (0 = never auto-count an estimate) |
 | exact_count_timeout_ms | 200 | Budget for automatic exact counts in milliseconds (0 = disable automatic exact counts; manual `#` remains available) |
 | max_query_rows | 1000 | Maximum rows shown by an interactive SQL-editor result (0 = unlimited) |
@@ -217,6 +225,35 @@ The `[application]` section is used to define some app settings. Not all setting
 visible schemas. `0` keeps all columns lazy; larger schemas still expose table
 names immediately and fetch a requested table on demand. Cached or in-flight
 columns are reused regardless of the threshold.
+
+### Upgrade notices and in-app upgrades
+
+LazySQL checks the official GitHub repository for a newer stable release in the
+background, at most once per day after a successful check. A notice appears in the
+bottom status line without interrupting your work. Development builds do not
+check for updates. Only release metadata is requested; no database or connection
+information is sent.
+
+Press **F10** anywhere to check for updates or open an available upgrade. The
+shortcut can be changed with `CheckForUpdates` in `[keymap.global]`.
+
+- **Standalone macOS/Linux binaries:** choose **Upgrade** to download the matching
+  release, verify its SHA-256 checksum against the official release checksum file,
+  and atomically replace the executable. The installation directory must be
+  writable. LazySQL never runs `sudo` or restarts your active session; restart
+  manually when ready.
+- **Homebrew and other recognized managed installations:** the dialog gives
+  package-manager instructions rather than overwriting managed files.
+- **Windows:** the dialog provides manual/package-manager upgrade instructions;
+  in-place self-upgrade is not supported.
+
+Automatic checks can be disabled with `DisableUpdateCheck = true` under
+`[application]`, or by setting `LAZYSQL_NO_UPDATE_CHECK=1`. Manual checks still work.
+Network failures do not prevent startup; manual checks show errors and can be
+retried. Closing the upgrade dialog lets you keep working while the download
+finishes. Exiting LazySQL cancels an unfinished download and waits for installer
+file operations to finish. Your existing binary is left intact if verification
+or staging fails.
 
 ### Themes
 
@@ -513,6 +550,29 @@ see [`docs/performance.md`](docs/performance.md).
 4. Press `<Enter>` to submit your filter
 
 > To remove the filter, focus the filter input (press `/`) and press `<Esc>`.
+
+### Hide columns
+
+In a table's Records view, press `V` (**visibility**) or click **Columns [V]**
+in the pagination bar. A compact picker lets you choose which columns to show:
+
+- **Space** or click a column to toggle its checkbox.
+- **↑/↓** or **j/k** to move; **/** to find a column by name.
+- **A** or **All** to restore every column, including those outside the search.
+- **Enter** or **Apply** to save; **Esc** or **Cancel** to discard changes.
+- **Tab / Shift+Tab** to move between the list, search, and buttons.
+
+At least one column stays visible. The footer shows how many columns are hidden.
+Choices are remembered across restarts for each connection, database, and table,
+including schema-qualified table names. New columns are visible by default.
+
+This is display-only: queries still fetch all columns, and editing, primary keys,
+the row sidebar, row copies, and CSV exports retain the complete data. SQL editor
+results and metadata views are unaffected.
+
+Preferences are stored under `[hidden_columns]` in the active configuration file
+(the project `.lazysql.toml` when present, otherwise the global config). The
+shortcut can be customized with `ColumnVisibility` in `[keymap.Table]`.
 
 ### Jump to a referenced row (Foreign Key Jump)
 

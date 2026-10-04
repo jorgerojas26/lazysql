@@ -54,6 +54,8 @@ func InitFromArg(connectionString string, readOnly bool) error {
 	if err != nil {
 		return fmt.Errorf("could not connect to database %s: %s", connectionString, err)
 	}
+	initialTelemetryEngine = newDBDriver.GetProvider()
+	initialTelemetryReadOnly = connection.ReadOnly
 	mainPages.AddAndSwitchToPage(connection.URL, NewHomePage(connection, newDBDriver).Flex, true)
 
 	return nil

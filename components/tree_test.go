@@ -1370,16 +1370,13 @@ func TestSearch_DottedThreePartExactMatchCollapsesNearNameSiblings(t *testing.T)
 	}
 }
 
-func TestSearch_DottedThreePartPartialSegmentStillFuzzyMatches(t *testing.T) {
-	// Mid-typing UX guard: when the final segment has no exact match yet,
-	// fuzzy matching across the ancestor-scoped set must still work so the
-	// user sees candidates while still typing.
+func TestSearch_DottedThreePartPartialSegmentMatchesSubstrings(t *testing.T) {
 	tree := buildSchemaTreeWithNearNameTables()
 
 	tree.search("dados.dd.da")
 
 	if len(tree.state.searchFoundNodes) < 2 {
-		t.Fatalf("expected fuzzy matches for partial segment 'da', got %d result(s)", len(tree.state.searchFoundNodes))
+		t.Fatalf("expected substring matches for partial segment 'da', got %d result(s)", len(tree.state.searchFoundNodes))
 	}
 
 	foundNames := map[string]bool{}
@@ -1387,7 +1384,7 @@ func TestSearch_DottedThreePartPartialSegmentStillFuzzyMatches(t *testing.T) {
 		foundNames[n.GetText()] = true
 	}
 	if !foundNames["dad"] || !foundNames["dado"] {
-		t.Errorf("expected both 'dad' and 'dado' in partial-segment fuzzy results, got %v", foundNames)
+		t.Errorf("expected both 'dad' and 'dado' in partial-segment substring results, got %v", foundNames)
 	}
 }
 
@@ -1410,9 +1407,6 @@ func TestSearch_SpaceSeparatedExactMatchCollapsesNearNameSiblings(t *testing.T) 
 }
 
 func TestSearch_SinglePartExactMatchDoesNotCollapseSiblings(t *testing.T) {
-	// Single-part (unqualified) search must keep its existing fuzzy behavior
-	// unchanged: exact-collapse only triggers once the user has qualified
-	// the query with at least one ancestor filter.
 	tree := buildSchemaTreeWithNearNameTables()
 
 	tree.search("dad")
@@ -1424,10 +1418,8 @@ func TestSearch_SinglePartExactMatchDoesNotCollapseSiblings(t *testing.T) {
 	if !foundNames["dad"] {
 		t.Errorf("expected exact match 'dad' to be present, got %v", foundNames)
 	}
-	// "dado" fuzzy-matches "dad" too (prefix match); unqualified search
-	// behavior must remain unchanged by this increment.
 	if !foundNames["dado"] {
-		t.Errorf("expected unqualified search to keep pre-existing fuzzy behavior (should still include 'dado'), got %v", foundNames)
+		t.Errorf("expected unqualified search to include substring match 'dado', got %v", foundNames)
 	}
 }
 

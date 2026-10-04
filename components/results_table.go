@@ -23,6 +23,7 @@ import (
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/internal/history"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/lib"
 	"github.com/jorgerojas26/lazysql/models"
 )
@@ -176,6 +177,7 @@ type ResultsTable struct {
 	activeQuery     *editorQueryRun
 	exportMu        sync.Mutex
 	activeExport    *csvExportRun
+	columnView      *visibleColumnContent
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -236,6 +238,7 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 		metadataCache:        metadataCacheForHome(home),
 	}
 
+	table.initColumnVisibility()
 	sidebar.RawCellValue = func(columnIndex int) string {
 		row, _ := table.GetSelection()
 		return table.getRawCellValue(row, columnIndex)
@@ -577,7 +580,9 @@ func (table *ResultsTable) AddRows(rows [][]string) {
 			tableCell.SetTextColor(app.Styles.PrimaryTextColor)
 
 			if cell == "EMPTY&" || cell == "NULL&" || cell == "DEFAULT&" {
-				tableCell.SetText(strings.Replace(cell, "&", "", 1))
+				if i == 0 {
+					table.setCellDisplayValue(tableCell, j, cell)
+				}
 				tableCell.SetStyle(table.GetItalicStyle())
 				tableCell.SetReference(cell)
 			}
@@ -658,6 +663,11 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 		return nil
 	}
 
+	if command == commands.ColumnVisibility {
+		table.showColumnVisibility()
+		return nil
+	}
+
 	menuCommands := []commands.Command{commands.RecordsMenu, commands.ColumnsMenu, commands.ConstraintsMenu, commands.ForeignKeysMenu, commands.IndexesMenu}
 
 	if helpers.ContainsCommand(menuCommands, command) {
@@ -734,12 +744,12 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 			})
 		}
 	} else if command == commands.GotoNext {
-		if selectedColumnIndex+1 < colCount {
-			table.Select(selectedRowIndex, selectedColumnIndex+1)
+		if next := table.adjacentVisibleColumn(selectedColumnIndex, 1); next >= 0 {
+			table.Select(selectedRowIndex, next)
 		}
 	} else if command == commands.GotoPrev {
-		if selectedColumnIndex > 0 {
-			table.Select(selectedRowIndex, selectedColumnIndex-1)
+		if previous := table.adjacentVisibleColumn(selectedColumnIndex, -1); previous >= 0 {
+			table.Select(selectedRowIndex, previous)
 		}
 	} else if command == commands.GotoEnd {
 		table.Select(selectedRowIndex, colCount-1)
@@ -926,6 +936,7 @@ func (table *ResultsTable) UpdateRows(rows [][]string) {
 	table.clearRowMarks()
 	table.Clear()
 	table.AddRows(rows)
+	table.refreshColumnVisibility()
 	App.ForceDraw()
 	table.Select(1, 0)
 }
@@ -1052,6 +1063,7 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 			if strings.TrimSpace(query) == "" {
 				continue
 			}
+			usage.Feature(telemetry.QueryExecute)
 
 			// Validate before starting a load or recording history. A CTE such as
 			// "WITH ... INSERT" starts with "with" and must still be rejected on
@@ -2216,16 +2228,16 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 
 			switch key {
 			case tcell.KeyTab:
-				nextEditableColumnIndex := col + 1
+				nextEditableColumnIndex := table.adjacentVisibleColumn(col, 1)
 
-				if nextEditableColumnIndex <= table.GetColumnCount()-1 {
+				if nextEditableColumnIndex >= 0 {
 					table.Select(row, nextEditableColumnIndex)
 
 					table.StartEditingCell(row, nextEditableColumnIndex, callback)
 
 				}
 			case tcell.KeyBacktab:
-				nextEditableColumnIndex := col - 1
+				nextEditableColumnIndex := table.adjacentVisibleColumn(col, -1)
 
 				if nextEditableColumnIndex >= 0 {
 					table.Select(row, nextEditableColumnIndex)
@@ -2428,6 +2440,12 @@ func (table *ResultsTable) AppendNewChange(changeType models.DMLType, rowIndex i
 			PrimaryKeyInfo: rowPrimaryKeyInfo,
 		}
 
+		switch changeType {
+		case models.DMLUpdateType:
+			usage.Feature(telemetry.RowUpdate)
+		case models.DMLDeleteType:
+			usage.Feature(telemetry.RowDelete)
+		}
 		*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newDMLChange)
 	}
 
@@ -2634,11 +2652,13 @@ func (table *ResultsTable) appendNewRow() {
 		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: newRowUUID}},
 	}
 
+	usage.Feature(telemetry.RowInsert)
 	*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newInsert)
 
 	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
 
-	table.StartEditingCell(newRowTableIndex, 0, nil)
+	_, firstVisibleColumn := table.GetSelection()
+	table.StartEditingCell(newRowTableIndex, firstVisibleColumn, nil)
 }
 
 func (table *ResultsTable) duplicateRow() {
@@ -2675,13 +2695,15 @@ func (table *ResultsTable) duplicateRow() {
 		PrimaryKeyInfo: []models.PrimaryKeyInfo{{Name: "", Value: newRowUUID}},
 	}
 
+	usage.Feature(telemetry.RowInsert)
 	*table.state.listOfDBChanges = append(*table.state.listOfDBChanges, newInsert)
 
 	table.InsertRow(newRowTableIndex)
 
 	table.AppendNewRow(newRow, newRowTableIndex, newRowUUID)
 
-	table.StartEditingCell(newRowTableIndex, 0, nil)
+	_, firstVisibleColumn := table.GetSelection()
+	table.StartEditingCell(newRowTableIndex, firstVisibleColumn, nil)
 }
 
 func (table *ResultsTable) search() {
@@ -2857,6 +2879,7 @@ func (table *ResultsTable) handleForeignKeyEnter(selectedRowIndex, selectedColum
 	}
 
 	where := table.foreignKeyWhereClause(target.ReferencedColumn, rawValue)
+	usage.Feature(telemetry.ForeignKeyJump)
 	table.Home.ShowTableWithFilter(table.GetDatabaseName(), target.ReferencedTable, where)
 
 	return true
@@ -2970,6 +2993,7 @@ func (table *ResultsTable) handleReverseForeignKeyJump(selectedRowIndex int) {
 		entry := navigableEntries[index]
 		where := table.foreignKeyWhereClause(entry.Column, navigableValues[index])
 
+		usage.Feature(telemetry.ReverseForeignKeyJump)
 		table.Home.ShowTableWithFilter(table.GetDatabaseName(), entry.QualifiedTable(useSchemas), where)
 	}, closePicker)
 
@@ -3757,6 +3781,7 @@ func (table *ResultsTable) showExportSuccessModal(filePath string, rowCount int)
 // openCellInExternalEditor opens the user's preferred editor to edit a cell value.
 // It should be called within app.Suspend() to ensure the TUI is properly restored.
 func openCellInExternalEditor(currentText string) string {
+	usage.Feature(telemetry.ExternalEditor)
 	tmpFile, err := os.CreateTemp("", "lazysql-cell-*.txt")
 	if err != nil {
 		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})

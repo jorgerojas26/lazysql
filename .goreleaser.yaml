@@ -16,7 +16,13 @@ before:
     - go generate ./...
 
 builds:
-  - env:
+  - ldflags:
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+        -X main.distribution=release
+        -X main.telemetryEndpoint={{ if index .Env "TELEMETRY_ENDPOINT" }}{{ .Env.TELEMETRY_ENDPOINT }}{{ end }}
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -37,6 +43,11 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+
+# The in-app updater verifies archives against this SHA-256 manifest.
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
 
 changelog:
   sort: asc
