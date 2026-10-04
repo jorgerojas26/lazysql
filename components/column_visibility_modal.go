@@ -17,6 +17,7 @@ type ColumnVisibilityModal struct {
 	list      *tview.List
 	search    *tview.InputField
 	status    *tview.TextView
+	tableName string
 	columns   []string
 	hidden    map[string]bool
 	filtered  []string
@@ -91,25 +92,23 @@ func NewColumnVisibilityModal(columns, hidden []string, onApply func([]string) e
 		return event
 	})
 
-	all := tview.NewButton("Show all (A)").SetSelectedFunc(picker.showAll)
-	apply := tview.NewButton("Apply").SetSelectedFunc(picker.apply)
-	cancel := tview.NewButton("Cancel").SetSelectedFunc(onCancel)
+	all := tview.NewButton("All (A)").SetSelectedFunc(picker.showAll)
+	apply := tview.NewButton("Apply ↵").SetSelectedFunc(picker.apply)
+	cancel := tview.NewButton("Cancel Esc").SetSelectedFunc(onCancel)
 	buttons := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(all, 14, 0, false).
+		AddItem(all, 9, 0, false).
 		AddItem(nil, 1, 0, false).
 		AddItem(apply, 9, 0, false).
 		AddItem(nil, 1, 0, false).
-		AddItem(cancel, 10, 0, false).
+		AddItem(cancel, 12, 0, false).
 		AddItem(nil, 0, 1, false)
-	hint := tview.NewTextView().SetTextAlign(tview.AlignCenter).SetTextColor(app.Styles.TertiaryTextColor).
-		SetText("Space toggle · / find · ↑/↓ or j/k move\nEnter apply · Esc cancel · A show all")
-	picker.panel.SetBorder(true).SetTitle(" Column visibility ").SetBorderPadding(0, 0, 1, 1)
+	picker.panel.Box = tview.NewBox()
+	picker.panel.SetBorder(true).SetBorderColor(app.Styles.PrimaryTextColor).SetBorderPadding(0, 0, 1, 1)
 	picker.panel.
 		AddItem(picker.search, 1, 0, false).
 		AddItem(picker.list, 0, 1, true).
 		AddItem(picker.status, 1, 0, false).
-		AddItem(hint, 2, 0, false).
 		AddItem(buttons, 1, 0, false)
 	picker.AddItem(picker.panel, 0, 1, true)
 	picker.focusable = []tview.Primitive{picker.list, picker.search, all, apply, cancel}
@@ -137,7 +136,7 @@ func NewColumnVisibilityModal(columns, hidden []string, onApply func([]string) e
 func (picker *ColumnVisibilityModal) Draw(screen tcell.Screen) {
 	x, y, width, height := picker.GetRect()
 	panelWidth := max(1, min(64, width-2))
-	panelHeight := max(1, min(len(picker.columns)+8, 22, height-2))
+	panelHeight := max(1, min(len(picker.columns)+5, 22, height-2))
 	picker.panel.SetRect(x+(width-panelWidth)/2, y+(height-panelHeight)/2, panelWidth, panelHeight)
 	picker.panel.Draw(screen)
 }
@@ -192,8 +191,12 @@ func (picker *ColumnVisibilityModal) visibleCount() int {
 }
 
 func (picker *ColumnVisibilityModal) updateStatus() {
-	picker.status.SetTextColor(app.Styles.SecondaryTextColor).
-		SetText(fmt.Sprintf("%d / %d visible · Enter to save", picker.visibleCount(), len(picker.columns)))
+	title := fmt.Sprintf(" Columns · %d/%d visible", picker.visibleCount(), len(picker.columns))
+	if picker.tableName != "" {
+		title += " · " + picker.tableName
+	}
+	picker.panel.SetTitle(tview.Escape(title + " "))
+	picker.status.SetTextColor(app.Styles.TertiaryTextColor).SetText("Space toggle · / find")
 }
 
 func (picker *ColumnVisibilityModal) toggle(index int) {

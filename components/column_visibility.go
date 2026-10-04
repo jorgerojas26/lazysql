@@ -208,7 +208,8 @@ func (table *ResultsTable) showColumnVisibility() {
 			closeModal()
 			return nil
 		}, closeModal)
-	picker.panel.SetTitle(" Columns · " + tview.Escape(table.GetTableName()) + " ")
+	picker.tableName = table.GetTableName()
+	picker.updateStatus()
 	mainPages.AddPage(page, picker, true, true)
 	app.App.SetFocus(picker.list)
 }

@@ -521,7 +521,7 @@ in the pagination bar. A compact picker lets you choose which columns to show:
 
 - **Space** or click a column to toggle its checkbox.
 - **↑/↓** or **j/k** to move; **/** to find a column by name.
-- **A** or **Show all** to restore every column, including those outside the search.
+- **A** or **All** to restore every column, including those outside the search.
 - **Enter** or **Apply** to save; **Esc** or **Cancel** to discard changes.
 - **Tab / Shift+Tab** to move between the list, search, and buttons.
 

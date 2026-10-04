@@ -133,7 +133,7 @@ func TestColumnVisibilityModalMouseAndCompactLayout(t *testing.T) {
 		picker.SetRect(0, 0, size[0], size[1])
 		picker.Draw(screen)
 		text := simulationText(screen)
-		if !strings.Contains(text, "[✓]") || !strings.Contains(text, "secret[red]name") || !strings.Contains(text, "Show all (A)") || !strings.Contains(text, "Cancel") {
+		if !strings.Contains(text, "[✓]") || !strings.Contains(text, "secret[red]name") || !strings.Contains(text, "All (A)") || !strings.Contains(text, "Cancel") {
 			t.Fatalf("missing modal controls at %v:\n%s", size, text)
 		}
 		x, y, width, height := picker.panel.GetRect()
@@ -162,5 +162,64 @@ func TestColumnVisibilityModalRecoversStalePreferences(t *testing.T) {
 	picker := NewColumnVisibilityModal([]string{"id", "name"}, []string{"id", "name", "removed"}, func(_ []string) error { return nil }, func() {})
 	if picker.visibleCount() != 1 || picker.hidden["id"] {
 		t.Fatal("a stale preference hiding every available column should reveal the first")
+	}
+}
+
+func TestColumnVisibilityModalOpaquePanel(t *testing.T) {
+	previous := app.App.GetFocus()
+	t.Cleanup(func() { app.App.SetFocus(previous) })
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	underlying := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorBlue)
+	for y := 0; y < 24; y++ {
+		for x := 0; x < 80; x++ {
+			screen.SetContent(x, y, '░', nil, underlying)
+		}
+	}
+	picker := NewColumnVisibilityModal([]string{"id", "name", "email"}, nil, func(_ []string) error { return nil }, func() {})
+	app.App.SetFocus(picker.list)
+	picker.SetRect(0, 0, 80, 24)
+	picker.Draw(screen)
+	x, y, width, height := picker.panel.GetRect()
+	for row := y; row < y+height; row++ {
+		for column := x; column < x+width; column++ {
+			character, _, _, _ := screen.GetContent(column, row)
+			if character == '░' {
+				t.Fatalf("underlying content shows through modal panel at (%d, %d)", column, row)
+			}
+		}
+	}
+	if character, _, _, _ := screen.GetContent(x-1, y); character != '░' {
+		t.Fatal("the surrounding backdrop should remain visible")
+	}
+}
+
+func TestColumnVisibilityModalCompactFooter(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	picker := NewColumnVisibilityModal([]string{"id", "name", "email"}, nil, func(_ []string) error { return nil }, func() {})
+	picker.SetRect(0, 0, 80, 24)
+	picker.Draw(screen)
+	_, _, _, height := picker.panel.GetRect()
+	if height > len(picker.columns)+5 {
+		t.Fatalf("modal uses %d rows for %d columns; footer should need only two rows", height, len(picker.columns))
+	}
+	if picker.status.GetText(false) != "Space toggle · / find" {
+		t.Fatalf("expected one short hint line, got %q", picker.status.GetText(false))
+	}
+	if !strings.Contains(picker.panel.GetTitle(), "3/3 visible") {
+		t.Fatal("visible-column count should appear in the title, not the footer")
+	}
+	picker.toggle(0)
+	if !strings.Contains(picker.panel.GetTitle(), "2/3 visible") {
+		t.Fatal("title should reflect draft visibility changes")
 	}
 }
