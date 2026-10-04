@@ -103,7 +103,7 @@ func main() {
 		filepath.Join(filepath.Dir(defaultConfigPath), "telemetry.toml"),
 		*noTelemetry || !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())),
 		startupMode, telemetry.DistributionChannel(distribution))
-	err = app.App.Run(mainPages, *configFile)
+	err = app.App.Run(components.WithUpdates(mainPages, version), *configFile)
 	stopTelemetry()
 	if err != nil {
 		log.Fatalf("Error running app: %v", err)

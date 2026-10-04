@@ -17,6 +17,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/rivo/tview v0.0.0-20241103174730-c76f7879f592
 	github.com/xo/dburl v0.23.2
+	golang.org/x/mod v0.25.0
 	golang.org/x/term v0.33.0
 	modernc.org/sqlite v1.34.1
 )

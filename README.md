@@ -213,6 +213,7 @@ The `[application]` section is used to define some app settings. Not all setting
 | SidebarOverlay | false | Show sidebar as overlay instead of side panel |
 | JSONViewerWordWrap | false | Enable word wrap in JSON viewer |
 | EnterOpensJSONViewer | false | Open JSON viewer when pressing Enter on a cell |
+| DisableUpdateCheck | false | Disable automatic GitHub release checks (manual checks remain available) |
 | exact_count_threshold | 50000 | Automatically run an exact count when an unfiltered estimate is at or below this value (0 = never auto-count an estimate) |
 | exact_count_timeout_ms | 200 | Budget for automatic exact counts in milliseconds (0 = disable automatic exact counts; manual `#` remains available) |
 | max_query_rows | 1000 | Maximum rows shown by an interactive SQL-editor result (0 = unlimited) |
@@ -224,6 +225,35 @@ The `[application]` section is used to define some app settings. Not all setting
 visible schemas. `0` keeps all columns lazy; larger schemas still expose table
 names immediately and fetch a requested table on demand. Cached or in-flight
 columns are reused regardless of the threshold.
+
+### Upgrade notices and in-app upgrades
+
+LazySQL checks the official GitHub repository for a newer stable release in the
+background, at most once per day after a successful check. A notice appears in the
+bottom status line without interrupting your work. Development builds do not
+check for updates. Only release metadata is requested; no database or connection
+information is sent.
+
+Press **F10** anywhere to check for updates or open an available upgrade. The
+shortcut can be changed with `CheckForUpdates` in `[keymap.global]`.
+
+- **Standalone macOS/Linux binaries:** choose **Upgrade** to download the matching
+  release, verify its SHA-256 checksum against the official release checksum file,
+  and atomically replace the executable. The installation directory must be
+  writable. LazySQL never runs `sudo` or restarts your active session; restart
+  manually when ready.
+- **Homebrew and other recognized managed installations:** the dialog gives
+  package-manager instructions rather than overwriting managed files.
+- **Windows:** the dialog provides manual/package-manager upgrade instructions;
+  in-place self-upgrade is not supported.
+
+Automatic checks can be disabled with `DisableUpdateCheck = true` under
+`[application]`, or by setting `LAZYSQL_NO_UPDATE_CHECK=1`. Manual checks still work.
+Network failures do not prevent startup; manual checks show errors and can be
+retried. Closing the upgrade dialog lets you keep working while the download
+finishes. Exiting LazySQL cancels an unfinished download and waits for installer
+file operations to finish. Your existing binary is left intact if verification
+or staging fails.
 
 ### Themes
 

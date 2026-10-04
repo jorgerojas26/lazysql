@@ -60,6 +60,7 @@ const (
 var Keymaps = KeymapSystem{
 	Global: Map{
 		Bind{Key: Key{Code: tcell.KeyCtrlT}, Cmd: cmd.ThemePicker, Description: "Choose color theme"},
+		Bind{Key: Key{Code: tcell.KeyF10}, Cmd: cmd.CheckForUpdates, Description: "Check for updates / upgrade LazySQL"},
 	},
 	Groups: map[string]Map{
 		HomeGroup: {
