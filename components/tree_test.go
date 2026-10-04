@@ -1,9 +1,11 @@
 package components
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rivo/tview"
 
@@ -427,43 +429,100 @@ func TestExpandAncestors_FourLevelTree(t *testing.T) {
 
 var _ drivers.Driver = (*schemaProgrammingMock)(nil)
 
+type progressiveTreeDriver struct {
+	schemaProgrammingMock
+	tablesStarted      chan struct{}
+	programmingStart   chan struct{}
+	releaseProgramming chan struct{}
+}
+
+func (driver *progressiveTreeDriver) GetTables(context.Context, string) (map[string][]string, error) {
+	close(driver.tablesStarted)
+	return map[string][]string{"public": {"users"}}, nil
+}
+
+func (driver *progressiveTreeDriver) GetFunctions(context.Context, string) (map[string][]string, error) {
+	close(driver.programmingStart)
+	<-driver.releaseProgramming
+	return map[string][]string{"mydb": {"public.add_user"}}, nil
+}
+
+func (driver *progressiveTreeDriver) GetProcedures(context.Context, string) (map[string][]string, error) {
+	return map[string][]string{"mydb": {"public.cleanup"}}, nil
+}
+
+func (driver *progressiveTreeDriver) GetViews(context.Context, string) (map[string][]string, error) {
+	return map[string][]string{"mydb": {"public.user_view"}}, nil
+}
+
 type schemaProgrammingMock struct{}
 
-func (m *schemaProgrammingMock) Connect(string) error                               { return nil }
-func (m *schemaProgrammingMock) TestConnection(string) error                        { return nil }
-func (m *schemaProgrammingMock) GetDatabases() ([]string, error)                    { return nil, nil }
-func (m *schemaProgrammingMock) GetTables(string) (map[string][]string, error)      { return nil, nil }
-func (m *schemaProgrammingMock) GetTableColumns(string, string) ([][]string, error) { return nil, nil }
-func (m *schemaProgrammingMock) GetConstraints(string, string) ([][]string, error)  { return nil, nil }
-func (m *schemaProgrammingMock) GetForeignKeys(string, string) ([][]string, error)  { return nil, nil }
-func (m *schemaProgrammingMock) GetReferencingTables(string, string) ([][]string, error) {
+func (m *schemaProgrammingMock) Connect(context.Context, string) error          { return nil }
+func (m *schemaProgrammingMock) TestConnection(context.Context, string) error   { return nil }
+func (m *schemaProgrammingMock) GetDatabases(context.Context) ([]string, error) { return nil, nil }
+func (m *schemaProgrammingMock) GetTables(context.Context, string) (map[string][]string, error) {
 	return nil, nil
 }
-func (m *schemaProgrammingMock) GetIndexes(string, string) ([][]string, error) { return nil, nil }
-func (m *schemaProgrammingMock) GetRecords(string, string, string, string, int, int) ([][]string, int, string, error) {
-	return nil, 0, "", nil
+func (m *schemaProgrammingMock) GetTableColumns(context.Context, string, string) ([][]string, error) {
+	return nil, nil
 }
-func (m *schemaProgrammingMock) UpdateRecord(string, string, string, string, string, string) error {
+func (m *schemaProgrammingMock) GetConstraints(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetForeignKeys(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetIndexes(context.Context, string, string) ([][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
+	return drivers.PageResult{}, nil
+}
+func (m *schemaProgrammingMock) GetEstimatedRowCount(context.Context, string, string) (*int64, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetExactRowCount(context.Context, string, string, string) (int64, error) {
+	return 0, nil
+}
+func (m *schemaProgrammingMock) UpdateRecord(context.Context, string, string, string, string, string, string) error {
 	return nil
 }
-func (m *schemaProgrammingMock) DeleteRecord(string, string, string, string) error { return nil }
-func (m *schemaProgrammingMock) ExecuteDMLStatement(string) (string, error)        { return "", nil }
-func (m *schemaProgrammingMock) ExecuteQuery(string) ([][]string, int, error)      { return nil, 0, nil }
-func (m *schemaProgrammingMock) ExecutePendingChanges([]models.DBDMLChange) error  { return nil }
-func (m *schemaProgrammingMock) GetProvider() string                               { return "mock" }
-func (m *schemaProgrammingMock) GetPrimaryKeyColumnNames(string, string) ([]string, error) {
-	return nil, nil
+func (m *schemaProgrammingMock) DeleteRecord(context.Context, string, string, string, string) error {
+	return nil
 }
-func (m *schemaProgrammingMock) SupportsProgramming() bool                            { return true }
-func (m *schemaProgrammingMock) UseSchemas() bool                                     { return true }
-func (m *schemaProgrammingMock) GetFunctions(string) (map[string][]string, error)     { return nil, nil }
-func (m *schemaProgrammingMock) GetProcedures(string) (map[string][]string, error)    { return nil, nil }
-func (m *schemaProgrammingMock) GetViews(string) (map[string][]string, error)         { return nil, nil }
-func (m *schemaProgrammingMock) GetFunctionDefinition(string, string) (string, error) { return "", nil }
-func (m *schemaProgrammingMock) GetProcedureDefinition(string, string) (string, error) {
+func (m *schemaProgrammingMock) ExecuteDMLStatement(context.Context, string, string) (string, error) {
 	return "", nil
 }
-func (m *schemaProgrammingMock) GetViewDefinition(string, string) (string, error) { return "", nil }
+func (m *schemaProgrammingMock) ExecuteQuery(context.Context, string, string) ([][]string, int, error) {
+	return nil, 0, nil
+}
+func (m *schemaProgrammingMock) ExecutePendingChanges(context.Context, []models.DBDMLChange) error {
+	return nil
+}
+func (m *schemaProgrammingMock) GetProvider() string { return "mock" }
+func (m *schemaProgrammingMock) GetPrimaryKeyColumnNames(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) SupportsProgramming() bool { return true }
+func (m *schemaProgrammingMock) UseSchemas() bool          { return true }
+func (m *schemaProgrammingMock) GetFunctions(context.Context, string) (map[string][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetProcedures(context.Context, string) (map[string][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetViews(context.Context, string) (map[string][]string, error) {
+	return nil, nil
+}
+func (m *schemaProgrammingMock) GetFunctionDefinition(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (m *schemaProgrammingMock) GetProcedureDefinition(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (m *schemaProgrammingMock) GetViewDefinition(context.Context, string, string) (string, error) {
+	return "", nil
+}
 
 func (m *schemaProgrammingMock) FormatArg(arg any, _ models.CellValueType) any {
 	return arg
@@ -483,6 +542,176 @@ func (m *schemaProgrammingMock) DMLChangeToQueryString(models.DBDMLChange) (stri
 func (m *schemaProgrammingMock) SetProvider(string) {}
 
 // ── buildSchemaTree tests ───────────────────────────────────────────────────────
+
+func TestInitializeNodesRendersTablesBeforeProgrammingMetadata(t *testing.T) {
+	driver := &progressiveTreeDriver{
+		tablesStarted:      make(chan struct{}),
+		programmingStart:   make(chan struct{}),
+		releaseProgramming: make(chan struct{}),
+	}
+	root := tview.NewTreeNode("-")
+	enrichmentDone := make(chan struct{})
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+		DBDriver: driver,
+		queueUpdateDraw: func(update func()) {
+			update()
+			children := root.GetChildren()
+			if len(children) == 1 && len(children[0].GetChildren()) == 1 && len(children[0].GetChildren()[0].GetChildren()) == 4 {
+				close(enrichmentDone)
+			}
+		},
+	}
+	root.SetReference("-")
+	tree.SetRoot(root)
+
+	tree.InitializeNodes("mydb")
+	select {
+	case <-driver.programmingStart:
+	case <-time.After(time.Second):
+		t.Fatal("programming metadata did not start")
+	}
+
+	children := root.GetChildren()
+	if len(children) != 1 || len(children[0].GetChildren()) != 1 || children[0].GetChildren()[0].GetText() != "public" {
+		t.Fatalf("tree before programming metadata = %v, want database/public table subtree", treeNodeTexts(children))
+	}
+	if tables := children[0].GetChildren()[0].GetChildren(); len(tables) != 1 || tables[0].GetText() != "tables" {
+		t.Fatalf("table subtree before programming metadata = %v, want tables", treeNodeTexts(tables))
+	}
+
+	close(driver.releaseProgramming)
+	select {
+	case <-enrichmentDone:
+	case <-time.After(time.Second):
+		t.Fatal("programming enrichment did not render")
+	}
+	if got := len(children[0].GetChildren()[0].GetChildren()); got != 4 {
+		t.Fatalf("programming enrichment children = %d, want 4", got)
+	}
+}
+
+func TestTreeRefreshKeepsOtherDatabaseNodesVisible(t *testing.T) {
+	tree := &Tree{
+		TreeView: tview.NewTreeView(),
+		state:    &TreeState{},
+		DBDriver: &schemaProgrammingMock{},
+		queueUpdateDraw: func(update func()) {
+			update()
+		},
+	}
+	root := tview.NewTreeNode("-")
+	root.SetReference("-")
+	for _, database := range []string{"db1", "db2"} {
+		node := tview.NewTreeNode(database)
+		node.SetReference(database)
+		root.AddChild(node)
+	}
+	tree.SetRoot(root)
+
+	tree.Refresh("db1")
+	children := root.GetChildren()
+	if len(children) != 2 {
+		t.Fatalf("refreshed databases = %v, want db1 and db2", treeNodeTexts(children))
+	}
+	seen := map[string]bool{}
+	for _, child := range children {
+		seen[child.GetText()] = true
+	}
+	if !seen["db1"] || !seen["db2"] {
+		t.Fatalf("refreshed databases = %v, lost an unrelated database", treeNodeTexts(children))
+	}
+}
+
+func TestMSSQLTreeFiltersSchemasAndKeepsQualifiedTableReferences(t *testing.T) {
+	tree := &Tree{DBDriver: &drivers.MSSQL{}, Schemas: []string{"dbo"}}
+	dbNode := tview.NewTreeNode("test_db")
+	dbNode.SetReference("test_db")
+
+	tree.addTableNodes("test_db", dbNode, map[string][]string{
+		"audit": {"users"},
+		"dbo":   {"users"},
+	})
+
+	children := dbNode.GetChildren()
+	if len(children) != 1 || children[0].GetText() != "dbo" {
+		t.Fatalf("MSSQL tree schemas = %v, want only dbo", treeNodeTexts(children))
+	}
+	tables := children[0].GetChildren()
+	if len(tables) != 1 || tables[0].GetText() != "tables" {
+		t.Fatalf("MSSQL schema children = %v, want tables section", treeNodeTexts(tables))
+	}
+	if got := tables[0].GetChildren()[0].GetReference(); got != "test_db.dbo.tables.users" {
+		t.Fatalf("MSSQL table reference = %v, want schema-qualified reference", got)
+	}
+}
+
+func TestProgressiveTreeAddsTablesBeforeProgrammingObjects(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tree.addTableNodes("mydb", dbNode, map[string][]string{"public": {"users"}})
+	if children := dbNode.GetChildren(); len(children) != 1 || children[0].GetText() != "public" {
+		t.Fatalf("table-first tree children = %v, want only public schema", treeNodeTexts(dbNode.GetChildren()))
+	}
+	if got := dbNode.GetChildren()[0].GetChildren()[0].GetText(); got != "tables" {
+		t.Fatalf("table-first schema child = %q, want tables", got)
+	}
+
+	tree.enrichProgrammingNodes(
+		"mydb",
+		dbNode,
+		map[string][]string{"mydb": {"public.add_user"}},
+		map[string][]string{"mydb": {"public.cleanup"}},
+		map[string][]string{"mydb": {"public.user_view"}},
+	)
+
+	schemaChildren := dbNode.GetChildren()[0].GetChildren()
+	if len(schemaChildren) != 4 {
+		t.Fatalf("enriched schema children = %v, want tables/functions/procedures/views", treeNodeTexts(schemaChildren))
+	}
+	for i, want := range []string{"tables", "functions", "procedures", "views"} {
+		if got := schemaChildren[i].GetText(); got != want {
+			t.Errorf("enriched child %d = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestProgressiveTreeProgrammingObjectsRespectSchemaFilter(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}, Schemas: []string{"public"}}
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tree.addTableNodes("mydb", dbNode, map[string][]string{"public": {"users"}})
+	tree.enrichProgrammingNodes(
+		"mydb",
+		dbNode,
+		map[string][]string{"mydb": {"private.hidden_fn", "public.visible_fn"}},
+		nil,
+		nil,
+	)
+
+	if len(dbNode.GetChildren()) != 1 || dbNode.GetChildren()[0].GetText() != "public" {
+		t.Fatalf("filtered schemas = %v, want only public", treeNodeTexts(dbNode.GetChildren()))
+	}
+	sections := dbNode.GetChildren()[0].GetChildren()
+	if len(sections) != 2 || sections[1].GetText() != "functions" {
+		t.Fatalf("filtered programming sections = %v, want tables/functions", treeNodeTexts(sections))
+	}
+	if got := sections[1].GetChildren()[0].GetText(); got != "visible_fn" {
+		t.Fatalf("filtered function = %q, want visible_fn", got)
+	}
+}
+
+func treeNodeTexts(nodes []*tview.TreeNode) []string {
+	texts := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		texts = append(texts, node.GetText())
+	}
+	return texts
+}
 
 func TestBuildSchemaTree_BasicStructure(t *testing.T) {
 	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
@@ -1141,16 +1370,13 @@ func TestSearch_DottedThreePartExactMatchCollapsesNearNameSiblings(t *testing.T)
 	}
 }
 
-func TestSearch_DottedThreePartPartialSegmentStillFuzzyMatches(t *testing.T) {
-	// Mid-typing UX guard: when the final segment has no exact match yet,
-	// fuzzy matching across the ancestor-scoped set must still work so the
-	// user sees candidates while still typing.
+func TestSearch_DottedThreePartPartialSegmentMatchesSubstrings(t *testing.T) {
 	tree := buildSchemaTreeWithNearNameTables()
 
 	tree.search("dados.dd.da")
 
 	if len(tree.state.searchFoundNodes) < 2 {
-		t.Fatalf("expected fuzzy matches for partial segment 'da', got %d result(s)", len(tree.state.searchFoundNodes))
+		t.Fatalf("expected substring matches for partial segment 'da', got %d result(s)", len(tree.state.searchFoundNodes))
 	}
 
 	foundNames := map[string]bool{}
@@ -1158,7 +1384,7 @@ func TestSearch_DottedThreePartPartialSegmentStillFuzzyMatches(t *testing.T) {
 		foundNames[n.GetText()] = true
 	}
 	if !foundNames["dad"] || !foundNames["dado"] {
-		t.Errorf("expected both 'dad' and 'dado' in partial-segment fuzzy results, got %v", foundNames)
+		t.Errorf("expected both 'dad' and 'dado' in partial-segment substring results, got %v", foundNames)
 	}
 }
 
@@ -1181,9 +1407,6 @@ func TestSearch_SpaceSeparatedExactMatchCollapsesNearNameSiblings(t *testing.T) 
 }
 
 func TestSearch_SinglePartExactMatchDoesNotCollapseSiblings(t *testing.T) {
-	// Single-part (unqualified) search must keep its existing fuzzy behavior
-	// unchanged: exact-collapse only triggers once the user has qualified
-	// the query with at least one ancestor filter.
 	tree := buildSchemaTreeWithNearNameTables()
 
 	tree.search("dad")
@@ -1195,9 +1418,11 @@ func TestSearch_SinglePartExactMatchDoesNotCollapseSiblings(t *testing.T) {
 	if !foundNames["dad"] {
 		t.Errorf("expected exact match 'dad' to be present, got %v", foundNames)
 	}
-	// "dado" fuzzy-matches "dad" too (prefix match); unqualified search
-	// behavior must remain unchanged by this increment.
 	if !foundNames["dado"] {
-		t.Errorf("expected unqualified search to keep pre-existing fuzzy behavior (should still include 'dado'), got %v", foundNames)
+		t.Errorf("expected unqualified search to include substring match 'dado', got %v", foundNames)
 	}
+}
+
+func (m *schemaProgrammingMock) GetReferencingTables(context.Context, string, string) ([][]string, error) {
+	return nil, nil
 }

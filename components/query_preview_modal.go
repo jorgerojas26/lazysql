@@ -85,7 +85,7 @@ func NewQueryPreviewModal(queries *[]models.DBDMLChange, dbdriver drivers.Driver
 
 			confirmationModal.SetDoneFunc(func(_ int, buttonLabel string) {
 				if buttonLabel == "Yes" {
-					err := dbdriver.ExecutePendingChanges(*queries)
+					err := dbdriver.ExecutePendingChanges(app.App.Context(), *queries)
 					if err != nil {
 						if removeAppliedPendingChanges(queries, err) {
 							r.populateTable()

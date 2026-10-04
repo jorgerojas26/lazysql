@@ -14,6 +14,7 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -109,6 +110,8 @@ type SQLEditor struct {
 	subscribersMu sync.RWMutex
 	subscribers   []chan models.StateChange
 	ConnectionURL string
+	cancelQuery   func() bool
+	loadColumns   func(table string)
 }
 
 // NewSQLEditor creates a new SQL editor.
@@ -231,9 +234,27 @@ func (e *SQLEditor) SetTables(tables []string) {
 	e.completer.SetTables(tables)
 }
 
-// SetColumns passes column names for a table to the autocompleter.
+// SetColumns passes column names for a table to the autocompleter. When a
+// pending table completion is visible, refreshing the suggestions here makes
+// the asynchronously fetched columns available without another keypress.
 func (e *SQLEditor) SetColumns(table string, columns []string) {
 	e.completer.SetColumns(table, columns)
+	if e.acTableHint != "" && strings.EqualFold(e.acTableHint, table) && e.completer.HasColumns(e.acTableHint) {
+		e.triggerAutocomplete()
+	}
+}
+
+// SetColumnCompletionLoader installs the callback used when completion is
+// requested for a known table whose columns are not cached yet.
+func (e *SQLEditor) SetColumnCompletionLoader(load func(table string)) {
+	e.loadColumns = load
+}
+
+// SetQueryCancelFunc installs the contextual Escape action used while an
+// interactive result query is active. Returning true consumes Escape; false
+// preserves the editor's normal vim/focus behavior.
+func (e *SQLEditor) SetQueryCancelFunc(cancel func() bool) {
+	e.cancelQuery = cancel
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +266,9 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 	return func(event *tcell.EventKey, _ func(p tview.Primitive)) {
 		// --- 1. Always handle open-in-external-editor (Ctrl+Space) ---
 		cmd := app.Keymaps.Group(app.EditorGroup).Resolve(event)
+		if (event.Key() == tcell.KeyEscape || cmd == commands.CancelQuery) && e.cancelQuery != nil && e.cancelQuery() {
+			return
+		}
 		if cmd == commands.OpenInExternalEditor {
 			if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 				var newText string
@@ -1100,6 +1124,12 @@ func (e *SQLEditor) triggerAutocomplete() {
 	e.acPrefix = prefix
 	e.acTableHint = tableName
 
+	// A table-qualified completion is the explicit signal that its columns are
+	// needed. The callback is deduplicated by the shared metadata cache.
+	if tableName != "" && !e.completer.HasColumns(tableName) && e.loadColumns != nil {
+		e.loadColumns(tableName)
+	}
+
 	// Show completions when:
 	// - A table is specified (even with empty prefix — the "table." case)
 	// - The user has typed at least 1 character of a word
@@ -1714,6 +1744,7 @@ func itoa(n int) string {
 // openExternalEditor opens the user's preferred editor to edit the query.
 // It should be called within app.Suspend() to ensure the TUI is properly restored.
 func openExternalEditor(currentText string, connectionURL string) string {
+	usage.Feature(telemetry.ExternalEditor)
 	tmpFile, err := os.CreateTemp("", "lazysql-*.sql")
 	if err != nil {
 		logger.Error("Failed to create temporary file", map[string]any{"error": err.Error()})

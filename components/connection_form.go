@@ -10,6 +10,7 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
+	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -178,30 +179,41 @@ func (form *ConnectionForm) inputCapture(connectionPages *models.ConnectionPages
 func (form *ConnectionForm) testConnection(connectionString string) {
 	parsed, err := helpers.ParseConnectionString(connectionString)
 	if err != nil {
+		usage.ConnectionFailed(telemetry.InvalidConnection)
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return
 	}
 
 	form.StatusText.SetText("Connecting...").SetTextColor(app.Styles.TertiaryTextColor)
 
+	poolConfig, err := app.App.Config().EffectiveConnectionPool(models.Connection{Provider: parsed.Driver})
+	if err != nil {
+		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return
+	}
+
 	var db drivers.Driver
 
 	switch parsed.Driver {
 	case drivers.DriverMySQL:
-		db = &drivers.MySQL{}
+		db = &drivers.MySQL{PoolConfig: poolConfig}
 	case drivers.DriverPostgres:
-		db = &drivers.Postgres{}
+		db = &drivers.Postgres{PoolConfig: poolConfig}
 	case drivers.DriverSqlite:
 		db = &drivers.SQLite{}
 	case drivers.DriverMSSQL:
-		db = &drivers.MSSQL{}
+		db = &drivers.MSSQL{PoolConfig: poolConfig}
 	case drivers.DriverClickHouse:
-		db = &drivers.ClickHouse{}
+		db = &drivers.ClickHouse{PoolConfig: poolConfig}
+	default:
+		usage.ConnectionFailed(telemetry.Driver)
+		return
 	}
 
-	err = db.TestConnection(connectionString)
+	err = db.TestConnection(app.App.Context(), connectionString)
 
 	if err != nil {
+		usage.ConnectionFailed(telemetry.ConnectionFailure(err))
 		form.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 	} else {
 		form.StatusText.SetText("Connection success").SetTextColor(app.Styles.TertiaryTextColor)

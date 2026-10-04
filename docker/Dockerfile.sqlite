@@ -1,0 +1,9 @@
+FROM alpine:3.20
+
+RUN apk add --no-cache sqlite
+
+COPY sqlite-entrypoint.sh /usr/local/bin/sqlite-entrypoint.sh
+RUN chmod +x /usr/local/bin/sqlite-entrypoint.sh
+
+WORKDIR /fixture
+ENTRYPOINT ["/usr/local/bin/sqlite-entrypoint.sh"]

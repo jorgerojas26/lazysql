@@ -110,6 +110,7 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Code: tcell.KeyEnter}, Cmd: cmd.CommitTreeFilter, Description: "Commit tree filter search"},
 		},
 		TableGroup: {
+			Bind{Key: Key{Char: 'V'}, Cmd: cmd.ColumnVisibility, Description: "Choose visible columns (saved per table)"},
 			Bind{Key: Key{Char: '/'}, Cmd: cmd.Search, Description: "Search"},
 			Bind{Key: Key{Char: 'c'}, Cmd: cmd.Edit, Description: "Change cell"},
 			Bind{Key: Key{Char: 'd'}, Cmd: cmd.Delete, Description: "Delete row"},
@@ -118,11 +119,14 @@ var Keymaps = KeymapSystem{
 			Bind{Key: Key{Char: '$'}, Cmd: cmd.GotoEnd, Description: "Go to last cell"},
 			Bind{Key: Key{Char: '0'}, Cmd: cmd.GotoStart, Description: "Go to first cell"},
 			Bind{Key: Key{Char: 'y'}, Cmd: cmd.Copy, Description: "Copy cell value to clipboard (or marked rows if any)"},
-			Bind{Key: Key{Char: ' '}, Cmd: cmd.RowSelect, Description: "Toggle row selection"},
+			Bind{Key: Key{Char: 'Y'}, Cmd: cmd.CopyRowsAs, Description: "Copy marked rows (or current row) as SQL, Markdown, JSON, CSV"},
+			Bind{Key: Key{Char: 'v'}, Cmd: cmd.RowRange, Description: "Select a live row range; Esc cancels"},
+			Bind{Key: Key{Char: ' '}, Cmd: cmd.RowSelect, Description: "Toggle row or commit visual range"},
 			Bind{Key: Key{Char: 'o'}, Cmd: cmd.AppendNewRow, Description: "Append new row"},
 			Bind{Key: Key{Char: 'O'}, Cmd: cmd.DuplicateRow, Description: "Duplicate row"},
 			Bind{Key: Key{Char: 'J'}, Cmd: cmd.SortDesc, Description: "Sort descending"},
 			Bind{Key: Key{Char: 'R'}, Cmd: cmd.Refresh, Description: "Refresh the current table"},
+			Bind{Key: Key{Char: '#'}, Cmd: cmd.ExactCount, Description: "Calculate or cancel exact row count"},
 			Bind{Key: Key{Char: 'K'}, Cmd: cmd.SortAsc, Description: "Sort ascending"},
 			Bind{Key: Key{Char: 'C'}, Cmd: cmd.SetValue, Description: "Toggle value menu to put values like NULL, EMPTY or DEFAULT"},
 			// Tabs
@@ -155,7 +159,7 @@ var Keymaps = KeymapSystem{
 		},
 		EditorGroup: {
 			Bind{Key: Key{Code: tcell.KeyCtrlR}, Cmd: cmd.Execute, Description: "Execute query"},
-			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.UnfocusEditor, Description: "Unfocus editor"},
+			Bind{Key: Key{Code: tcell.KeyEscape}, Cmd: cmd.CancelQuery, Description: "Cancel active query; otherwise unfocus editor"},
 			Bind{Key: Key{Code: tcell.KeyCtrlSpace}, Cmd: cmd.OpenInExternalEditor, Description: "Open in external editor"},
 		},
 		SidebarGroup: {

@@ -1,14 +1,16 @@
 package components
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -35,6 +37,11 @@ type Tree struct {
 	FoundNodeCountInput *tview.InputField
 	subscribers         []chan models.StateChange
 	Schemas             []string
+	schemaLoader        *schemaLoader
+	loadMu              sync.Mutex
+	loadGeneration      uint64
+	loadCancel          context.CancelFunc
+	queueUpdateDraw     func(func())
 }
 
 type TreeNodeType int
@@ -134,6 +141,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 		Filter:              tview.NewInputField(),
 		FoundNodeCountInput: tview.NewInputField(),
 		Schemas:             schemas,
+		queueUpdateDraw:     func(update func()) { App.QueueUpdateDraw(update) },
 	}
 
 	tree.SetTopLevel(1)
@@ -276,6 +284,8 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 			} else {
 				if len(tree.state.searchFoundNodes) > 0 {
 					tree.FoundNodeCountInput.SetText(fmt.Sprintf("[1/%d]", len(tree.state.searchFoundNodes)))
+				} else {
+					tree.FoundNodeCountInput.SetText("[0/0]")
 				}
 				tree.SetBorderPadding(1, 0, 0, 0)
 			}
@@ -289,9 +299,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 		App.SetFocus(tree)
 	})
 
-	tree.Filter.SetChangedFunc(func(text string) {
-		go tree.search(text)
-	})
+	tree.Filter.SetChangedFunc(tree.search)
 
 	tree.Filter.SetFieldStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.PrimaryTextColor))
 	tree.Filter.SetPlaceholderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.InverseTextColor))
@@ -510,7 +518,10 @@ func (tree *Tree) addSchemaProgrammingSection(schemaNode *tview.TreeNode, databa
 			items = append(items, strings.TrimPrefix(qualified, prefix))
 		}
 	}
+	tree.addSchemaProgrammingItems(schemaNode, database, schema, section, items)
+}
 
+func (tree *Tree) addSchemaProgrammingItems(schemaNode *tview.TreeNode, database, schema, section string, items []string) {
 	if len(items) == 0 {
 		return
 	}
@@ -530,6 +541,62 @@ func (tree *Tree) addSchemaProgrammingSection(schemaNode *tview.TreeNode, databa
 		itemNode.SetReference(fmt.Sprintf("%s.%s.%s.%s", database, schema, section, item))
 		sectionNode.AddChild(itemNode)
 	}
+}
+
+// addSchemaProgrammingNodes enriches the table-first schema tree. It creates
+// schema nodes that contain only programming objects as needed, while keeping
+// the programming sections in deterministic order.
+func (tree *Tree) addSchemaProgrammingNodes(node *tview.TreeNode, database string, functions, procedures, views map[string][]string) {
+	type programmingGroup struct {
+		section string
+		items   map[string][]string
+	}
+	groups := []programmingGroup{
+		{section: "functions", items: functions},
+		{section: "procedures", items: procedures},
+		{section: "views", items: views},
+	}
+
+	bySchema := make(map[string]map[string][]string)
+	for _, group := range groups {
+		for _, qualified := range group.items[database] {
+			separator := strings.IndexByte(qualified, '.')
+			if separator <= 0 || separator == len(qualified)-1 {
+				continue
+			}
+			schema := qualified[:separator]
+			if len(tree.Schemas) > 0 && !slices.Contains(tree.Schemas, schema) {
+				continue
+			}
+			if bySchema[schema] == nil {
+				bySchema[schema] = make(map[string][]string)
+			}
+			bySchema[schema][group.section] = append(bySchema[schema][group.section], qualified[separator+1:])
+		}
+	}
+
+	for _, schema := range slices.Sorted(maps.Keys(bySchema)) {
+		schemaNode := tree.findTreeChild(node, schema)
+		if schemaNode == nil {
+			schemaNode = tview.NewTreeNode(schema)
+			schemaNode.SetExpanded(false)
+			schemaNode.SetReference(schema)
+			schemaNode.SetColor(app.Styles.PrimaryTextColor)
+			node.AddChild(schemaNode)
+		}
+		for _, group := range groups {
+			tree.addSchemaProgrammingItems(schemaNode, database, schema, group.section, bySchema[schema][group.section])
+		}
+	}
+}
+
+func (tree *Tree) findTreeChild(node *tview.TreeNode, text string) *tview.TreeNode {
+	for _, child := range node.GetChildren() {
+		if child.GetText() == text {
+			return child
+		}
+	}
+	return nil
 }
 
 func (tree *Tree) addProgrammingNodes(functions map[string][]string, procedures map[string][]string, views map[string][]string, node *tview.TreeNode) {
@@ -735,8 +802,9 @@ func parseSearchQuery(lowerSearchText string) (ancestorFilters []string, tableNa
 
 func (tree *Tree) search(searchText string) {
 	rootNode := tree.GetRoot()
-	lowerSearchText := strings.ToLower(searchText)
+	lowerSearchText := strings.ToLower(strings.TrimSpace(searchText))
 	tree.state.searchFoundNodes = []*tview.TreeNode{}
+	tree.state.currentFocusFoundNode = nil
 
 	if lowerSearchText == "" {
 		rootNode.Walk(func(_, parent *tview.TreeNode) bool {
@@ -748,125 +816,62 @@ func (tree *Tree) search(searchText string) {
 		return
 	}
 
-	// ancestorFilters are, in order from outermost to innermost, the
-	// qualifiers that must each match a distinct ancestor of the node
-	// (further qualifiers must match closer ancestors than earlier ones).
-	// tableNameFilter always matches the node itself.
 	ancestorFilters, tableNameFilter := parseSearchQuery(lowerSearchText)
-
-	// Collect nodes with their match ranks
-	type rankedNode struct {
-		node *tview.TreeNode
-		rank int
+	if tableNameFilter == "" {
+		return
 	}
-	var rankedNodes []rankedNode
-
-	// Build parent map while walking so we can walk up the ancestor chain
-	// when a qualified search (e.g. "schema tablename" or "db.schema.table")
-	// needs to match against non-immediate ancestors in deep trees with
-	// section headers.
 	parentMap := make(map[*tview.TreeNode]*tview.TreeNode)
-
+	ranks := make(map[*tview.TreeNode]int)
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
 		parentMap[node] = parent
 		nodeText := strings.ToLower(stripColorTags(node.GetText()))
-
-		if len(ancestorFilters) == 0 {
-			rank := fuzzy.RankMatch(tableNameFilter, nodeText)
-			if rank >= 0 {
-				adjustedRank := prioritizeResult(tableNameFilter, nodeText, rank)
-				rankedNodes = append(rankedNodes, rankedNode{node: node, rank: adjustedRank})
-			}
+		if !strings.Contains(nodeText, tableNameFilter) {
 			return true
 		}
 
-		rank := fuzzy.RankMatch(tableNameFilter, nodeText)
-		if rank < 0 {
-			return true
-		}
-
-		// Walk up the ancestor chain once, matching each ancestor filter
-		// (outermost first) against the closest possible ancestor that is
-		// still further from the node than the previous filter's match.
-		// This lets e.g. "db.schema.table" require the "db" match to be a
-		// stricter (or equal) ancestor than the "schema" match, walking
-		// through section headers (tables/views/functions) in between.
-		ancestorRanks := make([]int, len(ancestorFilters))
-		for i := range ancestorRanks {
-			ancestorRanks[i] = -1
-		}
 		filterIdx := len(ancestorFilters) - 1
-		for e := parentMap[node]; e != nil && e != rootNode && filterIdx >= 0; e = parentMap[e] {
-			eText := strings.ToLower(stripColorTags(e.GetText()))
-			eRank := fuzzy.RankMatch(ancestorFilters[filterIdx], eText)
-			if eRank >= 0 {
-				ancestorRanks[filterIdx] = prioritizeResult(ancestorFilters[filterIdx], eText, eRank)
+		ancestorScore := 0
+		for ancestor := parent; ancestor != nil && ancestor != rootNode && filterIdx >= 0; ancestor = parentMap[ancestor] {
+			ancestorText := strings.ToLower(stripColorTags(ancestor.GetText()))
+			if strings.Contains(ancestorText, ancestorFilters[filterIdx]) {
+				ancestorScore += prioritizeResult(ancestorFilters[filterIdx], ancestorText, 0)
 				filterIdx--
 			}
 		}
-
-		// Every ancestor filter must have matched some ancestor for this
-		// node to be considered a result at all (this is what actually
-		// scopes "dbA.users" to dbA instead of leaking dbB's users table).
-		allMatched := true
-		ancestorScore := 0
-		for _, ar := range ancestorRanks {
-			if ar < 0 {
-				allMatched = false
-				break
+		if filterIdx < 0 {
+			rank := prioritizeResult(tableNameFilter, nodeText, 0)
+			if len(ancestorFilters) > 0 {
+				rank += ancestorScore / (2 * len(ancestorFilters))
 			}
-			ancestorScore += ar
+			ranks[node] = rank
+			tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, node)
 		}
-
-		if allMatched {
-			adjustedTableRank := prioritizeResult(tableNameFilter, nodeText, rank)
-			// Combine ranks: prioritize table match but factor in ancestor matches.
-			combinedRank := adjustedTableRank + (ancestorScore / (2 * len(ancestorFilters)))
-			rankedNodes = append(rankedNodes, rankedNode{node: node, rank: combinedRank})
-		}
-
 		return true
 	})
 
-	// Once the query is qualified (at least one ancestor filter present,
-	// i.e. a dotted or space-separated "db[.schema].table" query), an exact
-	// (case-insensitive) match on the final segment collapses the result
-	// set to just the exact hit(s), dropping near-name fuzzy siblings that
-	// only partially match. This only applies once an exact match actually
-	// exists among the ancestor-scoped candidates — mid-typing queries with
-	// no exact hit yet keep fuzzy-matching normally, so the "narrow as you
-	// type" UX is preserved. Unqualified (single-part) queries are
-	// untouched, keeping their existing fuzzy behavior.
 	if len(ancestorFilters) > 0 {
 		hasExactMatch := false
-		for _, rn := range rankedNodes {
-			nodeText := strings.ToLower(stripColorTags(rn.node.GetText()))
-			if nodeText == tableNameFilter {
+		for _, node := range tree.state.searchFoundNodes {
+			if strings.EqualFold(stripColorTags(node.GetText()), tableNameFilter) {
 				hasExactMatch = true
 				break
 			}
 		}
 		if hasExactMatch {
-			exactNodes := rankedNodes[:0]
-			for _, rn := range rankedNodes {
-				nodeText := strings.ToLower(stripColorTags(rn.node.GetText()))
-				if nodeText == tableNameFilter {
-					exactNodes = append(exactNodes, rn)
+			exactNodes := tree.state.searchFoundNodes[:0]
+			for _, node := range tree.state.searchFoundNodes {
+				if strings.EqualFold(stripColorTags(node.GetText()), tableNameFilter) {
+					exactNodes = append(exactNodes, node)
 				}
 			}
-			rankedNodes = exactNodes
+			tree.state.searchFoundNodes = exactNodes
 		}
 	}
 
-	sort.Slice(rankedNodes, func(i, j int) bool {
-		return rankedNodes[i].rank < rankedNodes[j].rank
+	sort.SliceStable(tree.state.searchFoundNodes, func(i, j int) bool {
+		return ranks[tree.state.searchFoundNodes[i]] < ranks[tree.state.searchFoundNodes[j]]
 	})
 
-	for _, rn := range rankedNodes {
-		tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, rn.node)
-	}
-
-	// Set current node to best match
 	if len(tree.state.searchFoundNodes) > 0 {
 		bestNode := tree.state.searchFoundNodes[0]
 		expandAncestors(bestNode, rootNode)
@@ -1033,43 +1038,50 @@ func (tree *Tree) Highlight() {
 }
 
 func (tree *Tree) goToNextFoundNode() {
-	for i, node := range tree.state.searchFoundNodes {
-		if node == tree.state.currentFocusFoundNode {
-			var newFocusNodeIndex int
-
-			if i+1 < len(tree.state.searchFoundNodes) {
-				newFocusNodeIndex = i + 1
-			} else {
-				newFocusNodeIndex = 0
-			}
-
-			newFocusNode := tree.state.searchFoundNodes[newFocusNodeIndex]
-			tree.SetCurrentNode(newFocusNode)
-			tree.state.currentFocusFoundNode = newFocusNode
-			tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", newFocusNodeIndex+1, len(tree.state.searchFoundNodes)))
-			break
-		}
-	}
+	tree.goToFoundNode(1)
 }
 
 func (tree *Tree) goToPreviousFoundNode() {
-	for i, node := range tree.state.searchFoundNodes {
-		if node == tree.state.currentFocusFoundNode {
-			var newFocusNodeIndex int
+	tree.goToFoundNode(-1)
+}
 
-			if i-1 >= 0 {
-				newFocusNodeIndex = i - 1
-			} else {
-				newFocusNodeIndex = len(tree.state.searchFoundNodes) - 1
-			}
+func (tree *Tree) goToFoundNode(direction int) {
+	found := tree.state.searchFoundNodes
+	if len(found) == 0 {
+		return
+	}
 
-			newFocusNode := tree.state.searchFoundNodes[newFocusNodeIndex]
-			tree.SetCurrentNode(newFocusNode)
-			tree.state.currentFocusFoundNode = newFocusNode
-			tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", newFocusNodeIndex+1, len(tree.state.searchFoundNodes)))
-			break
+	positions := make(map[*tview.TreeNode]int)
+	tree.GetRoot().Walk(func(node, _ *tview.TreeNode) bool {
+		positions[node] = len(positions)
+		return true
+	})
+	currentPosition := positions[tree.GetCurrentNode()]
+	targetIndex := -1
+	bestDistance := len(positions) + 1
+	for i, node := range found {
+		position, exists := positions[node]
+		if !exists {
+			continue
+		}
+		distance := direction * (position - currentPosition)
+		if distance <= 0 {
+			distance += len(positions)
+		}
+		if distance < bestDistance {
+			bestDistance = distance
+			targetIndex = i
 		}
 	}
+	if targetIndex < 0 {
+		return
+	}
+
+	target := found[targetIndex]
+	expandAncestors(target, tree.GetRoot())
+	tree.SetCurrentNode(target)
+	tree.state.currentFocusFoundNode = target
+	tree.FoundNodeCountInput.SetText(fmt.Sprintf("[%d/%d]", targetIndex+1, len(found)))
 }
 
 func (tree *Tree) CollapseAll() {
@@ -1091,6 +1103,38 @@ func (tree *Tree) ExpandAll() {
 }
 
 func (tree *Tree) InitializeNodes(dbName string) {
+	generation, ctx := tree.beginLoad()
+	tree.initializeNodes(ctx, dbName, generation)
+}
+
+func (tree *Tree) beginLoad() (uint64, context.Context) {
+	tree.loadMu.Lock()
+	defer tree.loadMu.Unlock()
+	if tree.loadCancel != nil {
+		tree.loadCancel()
+	}
+
+	parent := context.Background()
+	if app.App != nil {
+		parent = app.App.Context()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	tree.loadCancel = cancel
+	tree.loadGeneration++
+	return tree.loadGeneration, ctx
+}
+
+func (tree *Tree) isCurrentLoad(generation uint64) bool {
+	tree.loadMu.Lock()
+	defer tree.loadMu.Unlock()
+	return tree.loadGeneration == generation
+}
+
+// initializeNodes renders database nodes immediately, then loads each
+// database independently. Tables are applied as soon as their shared schema
+// request completes; programming objects are fetched only after that first
+// paint and enrich the existing table subtree afterward.
+func (tree *Tree) initializeNodes(ctx context.Context, dbName string, generation uint64) {
 	rootNode := tree.GetRoot()
 	if rootNode == nil {
 		panic("Internal Error: No tree root")
@@ -1099,7 +1143,9 @@ func (tree *Tree) InitializeNodes(dbName string) {
 	var databases []string
 
 	if dbName == "" {
-		dbs, err := tree.DBDriver.GetDatabases()
+		started := time.Now()
+		dbs, err := tree.DBDriver.GetDatabases(ctx)
+		logDatabaseOperation(ctx, "get_databases", started, nil, err)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -1120,56 +1166,157 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		childNode.SetColor(app.Styles.PrimaryTextColor)
 		rootNode.AddChild(childNode)
 
-		go func(database string, node *tview.TreeNode) {
-			tables, err := tree.DBDriver.GetTables(database)
-			if err != nil {
-				logger.Error(err.Error(), nil)
-				return
-			}
-
-			supportsProgramming := tree.DBDriver.SupportsProgramming()
-			useSchemas := tree.DBDriver.UseSchemas()
-
-			var functions, procedures, views map[string][]string
-			if supportsProgramming {
-				functions, err = tree.DBDriver.GetFunctions(database)
-				if err != nil {
-					logger.Error(err.Error(), nil)
-					return
-				}
-
-				procedures, err = tree.DBDriver.GetProcedures(database)
-				if err != nil {
-					logger.Error(err.Error(), nil)
-					return
-				}
-
-				views, err = tree.DBDriver.GetViews(database)
-				if err != nil {
-					logger.Error(err.Error(), nil)
-					return
-				}
-			}
-
-			if useSchemas {
-				tree.buildSchemaTree(database, node, tables, functions, procedures, views)
-			} else {
-				tree.databasesToNodes(tables, node, true)
-				if supportsProgramming {
-					tree.addProgrammingNodes(functions, procedures, views, node)
-				}
-			}
-
-			App.Draw()
-		}(database, childNode)
+		go tree.loadDatabaseNodes(ctx, generation, database, childNode)
 	}
 }
 
+func (tree *Tree) loadDatabaseNodes(ctx context.Context, generation uint64, database string, node *tview.TreeNode) {
+	var tables map[string][]string
+	var err error
+	if tree.schemaLoader != nil {
+		tables, err = tree.schemaLoader.loadTables(ctx, database)
+	} else {
+		started := time.Now()
+		tables, err = tree.DBDriver.GetTables(ctx, database)
+		logDatabaseOperation(ctx, "get_tables", started, map[string]any{
+			"database":  database,
+			"cache_hit": false,
+		}, err)
+	}
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	if !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	// Render the primary table catalog before asking for any programming
+	// objects. This is the progressive tree's first useful paint.
+	tree.renderLoadUpdate(generation, func() {
+		tree.addTableNodes(database, node, tables)
+	})
+
+	if !tree.DBDriver.SupportsProgramming() || !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	functionsStarted := time.Now()
+	functions, err := tree.DBDriver.GetFunctions(ctx, database)
+	logDatabaseOperation(ctx, "get_functions", functionsStarted, map[string]any{
+		"database": database,
+	}, err)
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	proceduresStarted := time.Now()
+	procedures, err := tree.DBDriver.GetProcedures(ctx, database)
+	logDatabaseOperation(ctx, "get_procedures", proceduresStarted, map[string]any{
+		"database": database,
+	}, err)
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	viewsStarted := time.Now()
+	views, err := tree.DBDriver.GetViews(ctx, database)
+	logDatabaseOperation(ctx, "get_views", viewsStarted, map[string]any{
+		"database": database,
+	}, err)
+	if err != nil {
+		logger.Error(err.Error(), nil)
+		return
+	}
+	if !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	tree.renderLoadUpdate(generation, func() {
+		tree.enrichProgrammingNodes(database, node, functions, procedures, views)
+	})
+}
+
+func (tree *Tree) renderLoadUpdate(generation uint64, update func()) {
+	if !tree.isCurrentLoad(generation) {
+		return
+	}
+
+	if tree.queueUpdateDraw != nil {
+		tree.queueUpdateDraw(func() {
+			if tree.isCurrentLoad(generation) {
+				update()
+			}
+		})
+		return
+	}
+
+	// Minimal trees in unit tests do not have an application event loop. Keep
+	// that seam synchronous while production trees serialize node mutations on
+	// tview's UI loop through queueUpdateDraw above.
+	if tree.isCurrentLoad(generation) {
+		update()
+	}
+	if App != nil {
+		App.Draw()
+	}
+}
+
+func (tree *Tree) addTableNodes(database string, node *tview.TreeNode, tables map[string][]string) {
+	if tree.DBDriver.UseSchemas() {
+		tree.buildSchemaTree(database, node, tables, nil, nil, nil)
+		return
+	}
+	tree.databasesToNodes(tables, node, true)
+}
+
+func (tree *Tree) enrichProgrammingNodes(database string, node *tview.TreeNode, functions, procedures, views map[string][]string) {
+	if tree.DBDriver.UseSchemas() {
+		tree.addSchemaProgrammingNodes(node, database, functions, procedures, views)
+		return
+	}
+	tree.addProgrammingNodes(functions, procedures, views, node)
+}
+
 func (tree *Tree) Refresh(dbName string) {
+	if tree.schemaLoader != nil {
+		tree.schemaLoader.invalidateAll()
+	}
+	tree.refreshNodes(dbName)
+}
+
+// RefreshAsync is used by background SQL completion paths. The visible tree
+// mutation is queued on tview's UI loop, while catalog work remains in the
+// per-database goroutines started by refreshNodes.
+func (tree *Tree) RefreshAsync(dbName string) {
+	if tree.queueUpdateDraw == nil {
+		go tree.Refresh(dbName)
+		return
+	}
+	go tree.queueUpdateDraw(func() {
+		tree.Refresh(dbName)
+	})
+}
+
+func (tree *Tree) refreshNodes(dbName string) {
+	generation, ctx := tree.beginLoad()
 	rootNode := tree.GetRoot()
-	rootNode.ClearChildren()
-	// re-add nodes
-	tree.InitializeNodes(dbName)
+	if dbName != "" {
+		// A connection without a fixed database shows several database nodes.
+		// Refresh only the selected database so DDL does not make unrelated
+		// visible databases disappear.
+		sanitizedName := sanitizeDBName(dbName)
+		for _, child := range rootNode.GetChildren() {
+			if reference, ok := child.GetReference().(string); ok && reference == sanitizedName {
+				rootNode.RemoveChild(child)
+				break
+			}
+		}
+	} else {
+		rootNode.ClearChildren()
+	}
+	// Re-add the requested scope. Per-database work remains asynchronous.
+	tree.initializeNodes(ctx, dbName, generation)
 }
 
 func (tree *Tree) ClearSearch() {

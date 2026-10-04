@@ -1,6 +1,8 @@
 package components
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -207,6 +209,75 @@ func TestSetLoadingIsSynchronous(t *testing.T) {
 	}
 }
 
+func TestStartingRecordsLoadCancelsPreviousContext(t *testing.T) {
+	table := &ResultsTable{
+		Table:      tview.NewTable(),
+		state:      &ResultsTableState{},
+		Pagination: NewPagination(),
+	}
+
+	firstContext, firstGeneration := table.startLoad()
+	secondContext, secondGeneration := table.startLoad()
+	defer table.CancelLoading()
+
+	select {
+	case <-firstContext.Done():
+	default:
+		t.Fatal("starting a newer load did not cancel the previous context")
+	}
+
+	if table.isCurrentLoad(firstContext, firstGeneration) {
+		t.Fatal("canceled load is still considered current")
+	}
+	if !table.isCurrentLoad(secondContext, secondGeneration) {
+		t.Fatal("newer load is not considered current")
+	}
+}
+
+func TestPaginationUsesLookaheadForNavigation(t *testing.T) {
+	pagination := NewPagination()
+	pagination.SetLimit(2)
+	pagination.SetPageInfo(2, true)
+
+	if !pagination.GetIsFirstPage() {
+		t.Fatal("expected offset zero to be the first page")
+	}
+	if pagination.GetIsLastPage() {
+		t.Fatal("expected lookahead row to enable the next page")
+	}
+	if !pagination.GetHasNextPage() {
+		t.Fatal("expected HasNextPage to be exposed")
+	}
+
+	pagination.SetOffset(2)
+	pagination.SetPageInfo(1, false)
+
+	if pagination.GetIsFirstPage() {
+		t.Fatal("expected non-zero offset not to be the first page")
+	}
+	if !pagination.GetIsLastPage() {
+		t.Fatal("expected missing lookahead row to mark the last page")
+	}
+	if pagination.GetTotalRecords() != 3 {
+		t.Fatalf("expected inferred total 3, got %d", pagination.GetTotalRecords())
+	}
+}
+
+func TestTrimRecordsToPage(t *testing.T) {
+	rows := [][]string{{"id"}, {"1"}, {"2"}, {"3"}}
+	got := trimRecordsToPage(rows, 2)
+	want := [][]string{{"id"}, {"1"}, {"2"}}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d rows, got %d", len(want), len(got))
+	}
+	for i := range want {
+		if len(got[i]) != len(want[i]) || got[i][0] != want[i][0] {
+			t.Fatalf("expected rows %v, got %v", want, got)
+		}
+	}
+}
+
 func TestRebuildForeignKeyJumpMetadataPostgresSkipsComposite(t *testing.T) {
 	changes := []models.DBDMLChange{}
 
@@ -408,6 +479,274 @@ func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *te
 	}
 }
 
+// ── Records loading ────────────────────────────────────────────────────────────
+
+type recordsFirstPaintMock struct {
+	schemaProgrammingMock
+
+	mu            sync.Mutex
+	pageCalls     int
+	metadataCalls int
+}
+
+func (m *recordsFirstPaintMock) GetRecords(context.Context, string, string, string, string, int, int) (drivers.PageResult, error) {
+	m.mu.Lock()
+	m.pageCalls++
+	m.mu.Unlock()
+
+	return drivers.PageResult{
+		Rows: [][]string{{"id"}, {"1"}, {"2"}},
+	}, nil
+}
+
+func (m *recordsFirstPaintMock) GetTableColumns(context.Context, string, string) ([][]string, error) {
+	m.mu.Lock()
+	m.metadataCalls++
+	m.mu.Unlock()
+	return nil, errors.New("metadata intentionally deferred")
+}
+
+func (m *recordsFirstPaintMock) counts() (pageCalls, metadataCalls int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pageCalls, m.metadataCalls
+}
+
+func newRecordsFetchTestTable(driver drivers.Driver) *ResultsTable {
+	changes := []models.DBDMLChange{}
+	table := &ResultsTable{
+		Table: tview.NewTable(),
+		state: &ResultsTableState{
+			records:               [][]string{},
+			columns:               [][]string{},
+			constraints:           [][]string{},
+			foreignKeys:           [][]string{},
+			indexes:               [][]string{},
+			foreignKeyColumns:     map[string]bool{},
+			foreignKeyJumpTargets: map[string]foreignKeyJumpTarget{},
+			fkRawCellValues:       map[string]string{},
+			markedRows:            map[int]bool{},
+			listOfDBChanges:       &changes,
+		},
+		Pagination: NewPagination(),
+		DBDriver:   driver,
+	}
+	table.SetDatabaseName("database")
+	table.SetTableName("table")
+	return table
+}
+
+func TestFetchRecordsRendersBeforeMetadata(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init simulation screen: %v", err)
+	}
+	App.SetScreen(screen)
+
+	driver := &recordsFirstPaintMock{}
+	table := newRecordsFetchTestTable(driver)
+	root := tview.NewPages()
+	root.AddPage(pageNameTable, table, true, true)
+	appDone := make(chan struct{})
+	go func() {
+		defer close(appDone)
+		_ = App.Run(root, "")
+	}()
+	App.QueueUpdate(func() {})
+
+	rendered := make(chan struct{})
+	table.FetchRecords(nil, func() {
+		pageCalls, metadataCalls := driver.counts()
+		if pageCalls != 1 {
+			t.Errorf("expected one page fetch before first paint, got %d", pageCalls)
+		}
+		if metadataCalls != 0 {
+			t.Errorf("metadata ran before first paint: %d calls", metadataCalls)
+		}
+		close(rendered)
+	})
+	<-rendered
+
+	App.QueueUpdate(func() { table.CancelLoading() })
+	App.Application.Stop()
+	<-appDone
+}
+
+type slowForeignKeyFirstPaintMock struct {
+	recordsFirstPaintMock
+	started chan struct{}
+	once    sync.Once
+}
+
+func (m *slowForeignKeyFirstPaintMock) GetForeignKeys(ctx context.Context, _, _ string) ([][]string, error) {
+	m.once.Do(func() { close(m.started) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestFetchRecordsRendersBeforeSlowForeignKeys(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init simulation screen: %v", err)
+	}
+	App.SetScreen(screen)
+
+	driver := &slowForeignKeyFirstPaintMock{started: make(chan struct{})}
+	table := newRecordsFetchTestTable(driver)
+	root := tview.NewPages()
+	root.AddPage(pageNameTable, table, true, true)
+	appDone := make(chan struct{})
+	go func() {
+		defer close(appDone)
+		_ = App.Run(root, "")
+	}()
+	App.QueueUpdate(func() {})
+
+	rendered := make(chan struct{})
+	table.FetchRecords(nil, func() {
+		pageCalls, _ := driver.counts()
+		if pageCalls != 1 {
+			t.Errorf("expected one page fetch before first paint, got %d", pageCalls)
+		}
+		select {
+		case <-driver.started:
+			t.Errorf("slow Foreign Keys lookup started before Records first paint")
+		default:
+		}
+		close(rendered)
+	})
+
+	select {
+	case <-rendered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Records first paint was blocked by Foreign Keys metadata")
+	}
+	select {
+	case <-driver.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Foreign Keys metadata lookup did not start in the background")
+	}
+
+	App.QueueUpdate(func() { table.CancelLoading() })
+	App.Application.Stop()
+	<-appDone
+}
+
+type staleRecordsLoadMock struct {
+	schemaProgrammingMock
+
+	firstStarted  chan struct{}
+	firstCanceled chan struct{}
+	mu            sync.Mutex
+	calls         int
+}
+
+func newStaleRecordsLoadMock() *staleRecordsLoadMock {
+	return &staleRecordsLoadMock{
+		firstStarted:  make(chan struct{}),
+		firstCanceled: make(chan struct{}),
+	}
+}
+
+func (m *staleRecordsLoadMock) GetRecords(ctx context.Context, _ string, _ string, _ string, _ string, _ int, _ int) (drivers.PageResult, error) {
+	m.mu.Lock()
+	m.calls++
+	call := m.calls
+	m.mu.Unlock()
+
+	if call == 1 {
+		close(m.firstStarted)
+		<-ctx.Done()
+		close(m.firstCanceled)
+		return drivers.PageResult{}, ctx.Err()
+	}
+
+	return drivers.PageResult{Rows: [][]string{{"id"}, {"new"}}}, nil
+}
+
+func (m *staleRecordsLoadMock) GetTableColumns(context.Context, string, string) ([][]string, error) {
+	return nil, errors.New("metadata intentionally deferred")
+}
+
+func TestStaleRecordsLoadCannotOverwriteNewerPage(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init simulation screen: %v", err)
+	}
+	App.SetScreen(screen)
+
+	driver := newStaleRecordsLoadMock()
+	table := newRecordsFetchTestTable(driver)
+	root := tview.NewPages()
+	root.AddPage(pageNameTable, table, true, true)
+	appDone := make(chan struct{})
+	go func() {
+		defer close(appDone)
+		_ = App.Run(root, "")
+	}()
+	App.QueueUpdate(func() {})
+
+	table.FetchRecords(nil, nil)
+	<-driver.firstStarted
+
+	newerRendered := make(chan struct{})
+	table.FetchRecords(nil, func() {
+		close(newerRendered)
+	})
+
+	<-driver.firstCanceled
+	<-newerRendered
+
+	records := table.GetRecords()
+	if len(records) != 2 || records[1][0] != "new" {
+		t.Fatalf("stale page overwrote newer page: %v", records)
+	}
+
+	App.QueueUpdate(func() { table.CancelLoading() })
+	App.Application.Stop()
+	<-appDone
+}
+
+// ── result-set routing ─────────────────────────────────────────────────────────
+
+// TestQueryReturnsRows covers editor queries that produce rows but used to be
+// sent to ExecuteDMLStatement, which only shows "N rows affected".
+func TestQueryReturnsRows(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		expected bool
+	}{
+		{"select", "SELECT * FROM users", true},
+		{"cte", "WITH cte AS (SELECT 1) SELECT * FROM cte", true},
+		{"explain", "EXPLAIN SELECT 1", true},
+		{"show", "SHOW TABLES", true},
+		{"describe", "DESCRIBE users", true},
+		{"select after line comment", "-- list users\nSELECT * FROM users", true},
+		{"select after block comment", "/* all users */ SELECT * FROM users", true},
+		{"values", "VALUES (1, 'x'), (2, 'y')", true},
+		{"pragma", "PRAGMA table_info(users)", true},
+		{"insert returning", "INSERT INTO users(name) VALUES ('c') RETURNING id", true},
+		{"update returning", "UPDATE users SET name = 'd' WHERE id = 1\nRETURNING *", true},
+		{"delete returning", "delete from users where id = 1 returning id", true},
+
+		{"insert", "INSERT INTO users(name) VALUES ('c')", false},
+		{"update", "UPDATE users SET returning_at = NOW()", false},
+		{"delete", "DELETE FROM users WHERE id = 1", false},
+		{"create table", "CREATE TABLE t (id INT)", false},
+		{"insert after comment", "-- seed\nINSERT INTO users(name) VALUES ('c')", false},
+		{"returning only in a comment", "DELETE FROM users -- returning nothing", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := queryReturnsRows(tt.query, drivers.DriverSqlite); got != tt.expected {
+				t.Errorf("queryReturnsRows(%q) = %v, want %v", tt.query, got, tt.expected)
+			}
+		})
+	}
+}
+
 // ── read-only routing ──────────────────────────────────────────────────────────
 
 // readOnlyRoutingMock records every query the editor pipeline sends to the
@@ -415,14 +754,16 @@ func TestRebuildForeignKeyJumpMetadataPostgresUsesForeignTableSchemaColumn(t *te
 type readOnlyRoutingMock struct {
 	schemaProgrammingMock
 
-	mu       sync.Mutex
-	executed []string
+	mu        sync.Mutex
+	executed  []string
+	databases []string
 }
 
-func (m *readOnlyRoutingMock) record(query string) {
+func (m *readOnlyRoutingMock) record(database, query string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.executed = append(m.executed, query)
+	m.databases = append(m.databases, database)
 }
 
 func (m *readOnlyRoutingMock) queries() []string {
@@ -431,13 +772,13 @@ func (m *readOnlyRoutingMock) queries() []string {
 	return append([]string(nil), m.executed...)
 }
 
-func (m *readOnlyRoutingMock) ExecuteQuery(query string) ([][]string, int, error) {
-	m.record(query)
+func (m *readOnlyRoutingMock) ExecuteQuery(_ context.Context, database, query string) ([][]string, int, error) {
+	m.record(database, query)
 	return [][]string{{"col"}}, 0, nil
 }
 
-func (m *readOnlyRoutingMock) ExecuteDMLStatement(query string) (string, error) {
-	m.record(query)
+func (m *readOnlyRoutingMock) ExecuteDMLStatement(_ context.Context, database, query string) (string, error) {
+	m.record(database, query)
 	return "", nil
 }
 
@@ -468,6 +809,7 @@ func runEditorQuery(t *testing.T, readOnly bool, query string) []string {
 		Table: tview.NewTable(),
 		state: &ResultsTableState{
 			records:         [][]string{},
+			databaseName:    "selected_database",
 			listOfDBChanges: &changes,
 		},
 		Page:        pages,
@@ -498,7 +840,39 @@ func runEditorQuery(t *testing.T, readOnly bool, query string) []string {
 	App.Application.Stop()
 	<-appDone
 
+	driver.mu.Lock()
+	for _, database := range driver.databases {
+		if database != "selected_database" {
+			t.Errorf("editor targeted %q instead of selected database", database)
+		}
+	}
+	driver.mu.Unlock()
 	return driver.queries()
+}
+
+func TestSchemaMutatingQueryClassification(t *testing.T) {
+	for _, query := range []string{
+		"CREATE TABLE users (id INTEGER)",
+		"-- alter a table\nALTER TABLE users ADD COLUMN name TEXT",
+		"/* drop is intentional */ DROP VIEW users_view",
+		"TRUNCATE TABLE users",
+	} {
+		if !isSchemaMutatingQuery(query) {
+			t.Errorf("isSchemaMutatingQuery(%q) = false, want true", query)
+		}
+	}
+
+	for _, query := range []string{
+		"INSERT INTO users (id) VALUES (1)",
+		"UPDATE users SET name = 'new'",
+		"DELETE FROM users WHERE id = 1",
+		"WITH changed AS (SELECT 1) UPDATE users SET id = 1",
+		"SELECT * FROM users",
+	} {
+		if isSchemaMutatingQuery(query) {
+			t.Errorf("isSchemaMutatingQuery(%q) = true, want false", query)
+		}
+	}
 }
 
 // TestReadOnlyBlocksMultiLineCTEMutation covers the routing bug: a mutation
@@ -575,5 +949,12 @@ func TestAddRowsRendersBracketValuesLiterally(t *testing.T) {
 		if !strings.Contains(line.String(), want) {
 			t.Errorf("rendered row %q does not contain %q", line.String(), want)
 		}
+	}
+}
+
+func TestEditorRoutesWritesToSelectedDatabase(t *testing.T) {
+	query := "UPDATE items SET value = 2"
+	if executed := runEditorQuery(t, false, query); len(executed) != 1 || executed[0] != query {
+		t.Fatalf("expected editor write, got %q", executed)
 	}
 }
