@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -16,9 +18,13 @@ const pageNameUpdate = "application-update"
 
 // updateUI state is owned exclusively by the tview event loop.
 type updateUI struct {
+	*tview.Flex
 	client        *updater.Client
 	current       string
 	footer        *tview.TextView
+	pages         *tview.Pages
+	toast         *tview.TextView
+	toastUntil    time.Time
 	release       *updater.Release
 	busy          bool
 	installed     bool
@@ -26,16 +32,17 @@ type updateUI struct {
 	previousFocus tview.Primitive
 }
 
-// WithUpdates adds a non-disruptive status line in both the picker and editor.
-// Automatic checks never open a dialog or take focus from database work.
 func WithUpdates(pages *tview.Pages, version string) *tview.Pages {
-	u := &updateUI{client: updater.New(), current: version, footer: tview.NewTextView()}
+	u := &updateUI{client: updater.New(), current: version, footer: tview.NewTextView(), pages: pages}
 	u.footer.SetTextColor(app.Styles.TertiaryTextColor).SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	u.status("LazySQL " + version)
 	app.App.OnUpdateRequest = u.open
+	u.Flex = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(pages, 0, 1, true).AddItem(u.footer, 1, 0, false)
+	pages.SetChangedFunc(u.syncLayout)
+	u.syncLayout()
 	root := tview.NewPages()
-	root.AddPage("application", tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(pages, 0, 1, true).AddItem(u.footer, 1, 0, false), true, true)
+	root.AddPage("application", u, true, true)
 	if !app.App.Config().DisableUpdateCheck && os.Getenv("LAZYSQL_NO_UPDATE_CHECK") == "" && updater.ValidVersion(version) {
 		u.check(false)
 	}
@@ -51,6 +58,69 @@ func (u *updateUI) status(message string) {
 		}
 	}
 	u.footer.SetText(fmt.Sprintf(" %s | %s", message, key))
+}
+
+func (u *updateUI) syncLayout() {
+	footerHeight := 0
+	for _, name := range u.pages.GetPageNames(true) {
+		if name == pageNameConnections {
+			footerHeight = 1
+			break
+		}
+	}
+	u.ResizeItem(u.footer, footerHeight, 0)
+	_, front := u.pages.GetFrontPage()
+	if home, ok := front.(*Home); ok {
+		home.RightWrapper.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+			if width > 2 && height > 1 {
+				tview.Print(screen, tview.Escape(" LazySQL "+u.current+" "), x+1, y+height-1, width-2, tview.AlignRight, app.Styles.TertiaryTextColor)
+			}
+			return home.RightWrapper.GetInnerRect()
+		})
+	}
+}
+
+func (u *updateUI) Draw(screen tcell.Screen) {
+	u.Flex.Draw(screen)
+	if u.toast == nil || !time.Now().Before(u.toastUntil) {
+		return
+	}
+	name, front := u.pages.GetFrontPage()
+	if _, home := front.(*Home); !home && name != pageNameConnections {
+		return
+	}
+	x, y, width, height := u.GetRect()
+	if width < 4 || height < 4 {
+		return
+	}
+	toastWidth := min(width-2, tview.TaggedStringWidth(u.toast.GetText(false))+2)
+	u.toast.SetRect(x+width-toastWidth-1, y+height-4, toastWidth, 3)
+	u.toast.Draw(screen)
+}
+
+func (u *updateUI) showUpgradeToast() {
+	u.toast = tview.NewTextView().SetText(u.footer.GetText(false) + " ").SetTextColor(app.Styles.PrimaryTextColor)
+	u.toast.SetBorder(true).SetBorderColor(app.Styles.TertiaryTextColor).SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	u.toastUntil = time.Now().Add(8 * time.Second)
+	toast := u.toast
+	ctx := app.App.Context()
+	go func() {
+		timer := time.NewTimer(8 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		app.App.QueueUpdateDraw(func() {
+			if u.toast == toast {
+				u.toast = nil
+			}
+		})
+	}()
 }
 
 func (u *updateUI) close() {
@@ -113,6 +183,9 @@ func (u *updateUI) check(manual bool) {
 			u.release = release
 			if release != nil {
 				u.status("LazySQL " + release.Tag + " available")
+				if u.modal == nil {
+					u.showUpgradeToast()
+				}
 			}
 			if u.modal == nil {
 				return
