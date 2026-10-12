@@ -16,6 +16,108 @@ func newTreeSearchTestTree() *Tree {
 	return tree
 }
 
+func TestTreeSearchFuzzyObjectName(t *testing.T) {
+	for _, query := range []string{"uspo", "USPO", "UsPo", " uspo "} {
+		t.Run(query, func(t *testing.T) {
+			tree := NewTree("", nil, nil)
+			tree.SetFocusFunc(nil)
+			posts := tview.NewTreeNode("[green]user_posts").SetReference("db.tables.user_posts")
+			tree.GetRoot().AddChild(posts)
+			tree.GetRoot().AddChild(tview.NewTreeNode("orders"))
+
+			tree.Filter.SetText(query)
+			if len(tree.state.searchFoundNodes) != 1 || tree.state.searchFoundNodes[0] != posts {
+				t.Fatalf("query %q: expected user_posts, got %d results", query, len(tree.state.searchFoundNodes))
+			}
+			tree.Filter.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, 0), func(tview.Primitive) {})
+			if tree.GetCurrentNode() != posts || tree.FoundNodeCountInput.GetText() != "[1/1]" {
+				t.Fatal("fuzzy search did not select user_posts with counter [1/1]")
+			}
+		})
+	}
+}
+
+func TestTreeSearchFuzzyRankingPreservesTreeOrderForTies(t *testing.T) {
+	tree := NewTree("", nil, nil)
+	tree.SetFocusFunc(nil)
+	nodes := []*tview.TreeNode{
+		tview.NewTreeNode("user_posts_archive"),
+		tview.NewTreeNode("user_posts"),
+		tview.NewTreeNode("user_ports"),
+	}
+	tree.GetRoot().SetChildren(nodes)
+	tree.Filter.SetText("uspo")
+	want := []*tview.TreeNode{nodes[1], nodes[2], nodes[0]}
+	if len(tree.state.searchFoundNodes) != len(want) {
+		t.Fatalf("got %d results, want %d fuzzy matches", len(tree.state.searchFoundNodes), len(want))
+	}
+	for i, node := range want {
+		if tree.state.searchFoundNodes[i] != node {
+			t.Fatalf("result %d does not preserve fuzzy relevance and tree order for ties", i)
+		}
+	}
+	if tree.GetCurrentNode() != want[0] {
+		t.Fatal("initial focus is not on the best fuzzy match")
+	}
+}
+
+func TestTreeSearchQualifiedFuzzyObjectNames(t *testing.T) {
+	for _, testCase := range []struct {
+		query string
+		count int
+	}{
+		{query: "dbA.auth.uspo", count: 8},
+		{query: "DBA.AUTH.USPO", count: 8},
+		{query: "dbA.uspo", count: 16},
+		{query: "auth uspo", count: 16},
+		{query: "dbA.auth.user_posts", count: 4},
+	} {
+		t.Run(testCase.query, func(t *testing.T) {
+			tree := NewTree("", nil, nil)
+			tree.SetFocusFunc(nil)
+			var want []*tview.TreeNode
+			for _, dbName := range []string{"dbA", "dbB"} {
+				database := tview.NewTreeNode(dbName)
+				tree.GetRoot().AddChild(database)
+				for _, schemaName := range []string{"auth", "billing"} {
+					schema := tview.NewTreeNode(schemaName)
+					database.AddChild(schema)
+					for _, sectionName := range []string{"tables", "views", "functions", "procedures"} {
+						section := tview.NewTreeNode(sectionName)
+						schema.AddChild(section)
+						for _, name := range []string{"user_posts", "user_posts_archive", "orders"} {
+							node := tview.NewTreeNode(name).SetReference(fmt.Sprintf("%s.%s.%s.%s", dbName, schemaName, sectionName, name))
+							section.AddChild(node)
+							matchesDatabase := dbName == "dbA" || testCase.query == "auth uspo"
+							matchesSchema := schemaName == "auth" || testCase.query == "dbA.uspo"
+							matchesName := name == "user_posts" || (name == "user_posts_archive" && testCase.query != "dbA.auth.user_posts")
+							if matchesDatabase && matchesSchema && matchesName {
+								want = append(want, node)
+							}
+						}
+					}
+				}
+			}
+			tree.Filter.SetText(testCase.query)
+			if len(tree.state.searchFoundNodes) != testCase.count {
+				t.Fatalf("got %d results, want %d", len(tree.state.searchFoundNodes), testCase.count)
+			}
+			found := make(map[*tview.TreeNode]bool)
+			for _, node := range tree.state.searchFoundNodes {
+				if found[node] {
+					t.Fatalf("duplicate result %s", node.GetReference())
+				}
+				found[node] = true
+			}
+			for _, node := range want {
+				if !found[node] {
+					t.Errorf("missing result %s", node.GetReference())
+				}
+			}
+		})
+	}
+}
+
 func TestTreeSearchFilterUsesLatestQuery(t *testing.T) {
 	tree := newTreeSearchTestTree()
 	for range 20 {
@@ -200,13 +302,13 @@ func TestTreeSearchRankingPreservesTreeOrderForTies(t *testing.T) {
 	}
 }
 
-func TestTreeSearchUserDoesNotMatchBusinessProgram(t *testing.T) {
+func TestTreeSearchFuzzyCharactersMustBeInOrder(t *testing.T) {
 	tree := NewTree("", nil, nil)
 	tree.SetFocusFunc(nil)
-	tree.GetRoot().AddChild(tview.NewTreeNode("BusinessProgram"))
-	tree.Filter.SetText("user")
+	tree.GetRoot().AddChild(tview.NewTreeNode("user_posts"))
+	tree.Filter.SetText("upso")
 	if len(tree.state.searchFoundNodes) != 0 {
-		t.Fatalf("user matched BusinessProgram: got %d results, want 0", len(tree.state.searchFoundNodes))
+		t.Fatalf("upso matched user_posts: got %d results, want 0", len(tree.state.searchFoundNodes))
 	}
 }
 
@@ -320,7 +422,7 @@ func TestTreeSearchNavigationStartsAtActualCursor(t *testing.T) {
 	}
 }
 
-func TestTreeSearchMatchesOnlyContiguousText(t *testing.T) {
+func TestTreeSearchRanksContiguousMatchesAheadOfFuzzy(t *testing.T) {
 	for _, query := range []string{"user", "USER", "UsEr", " user "} {
 		t.Run(query, func(t *testing.T) {
 			tree := NewTree("", nil, nil)
@@ -329,10 +431,10 @@ func TestTreeSearchMatchesOnlyContiguousText(t *testing.T) {
 				tree.GetRoot().AddChild(tview.NewTreeNode(name))
 			}
 			nodes := tree.GetRoot().GetChildren()
-			want := []*tview.TreeNode{nodes[4], nodes[0], nodes[3], nodes[2]}
+			want := []*tview.TreeNode{nodes[4], nodes[0], nodes[3], nodes[2], nodes[5], nodes[1]}
 			tree.Filter.SetText(query)
 			if len(tree.state.searchFoundNodes) != len(want) {
-				t.Fatalf("got %d results, want %d contiguous matches", len(tree.state.searchFoundNodes), len(want))
+				t.Fatalf("got %d results, want %d contiguous and fuzzy matches", len(tree.state.searchFoundNodes), len(want))
 			}
 			for i, node := range want {
 				if tree.state.searchFoundNodes[i] != node {
