@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -825,7 +826,8 @@ func (tree *Tree) search(searchText string) {
 	rootNode.Walk(func(node, parent *tview.TreeNode) bool {
 		parentMap[node] = parent
 		nodeText := strings.ToLower(stripColorTags(node.GetText()))
-		if !strings.Contains(nodeText, tableNameFilter) {
+		fuzzyRank := fuzzy.RankMatch(tableNameFilter, nodeText)
+		if fuzzyRank < 0 {
 			return true
 		}
 
@@ -839,7 +841,7 @@ func (tree *Tree) search(searchText string) {
 			}
 		}
 		if filterIdx < 0 {
-			rank := prioritizeResult(tableNameFilter, nodeText, 0)
+			rank := prioritizeResult(tableNameFilter, nodeText, fuzzyRank)
 			if len(ancestorFilters) > 0 {
 				rank += ancestorScore / (2 * len(ancestorFilters))
 			}
