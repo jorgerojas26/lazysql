@@ -20,11 +20,11 @@ func TestColumnVisibilityModalKeyboard(t *testing.T) {
 	previous := app.App.GetFocus()
 	t.Cleanup(func() { app.App.SetFocus(previous) })
 	var applied []string
-	cancelled := false
+	canceled := false
 	picker := NewColumnVisibilityModal([]string{"id", "name", "secret"}, []string{"secret"}, func(hidden []string) error {
 		applied = hidden
 		return nil
-	}, func() { cancelled = true })
+	}, func() { canceled = true })
 	app.App.SetFocus(picker.list)
 	modalKey(picker, tcell.KeyRune, ' ')
 	if !picker.hidden["id"] || applied != nil {
@@ -57,7 +57,7 @@ func TestColumnVisibilityModalKeyboard(t *testing.T) {
 		t.Fatal("Show all should include columns outside the search")
 	}
 	modalKey(picker, tcell.KeyEscape, 0)
-	if !cancelled {
+	if !canceled {
 		t.Fatal("Esc should cancel")
 	}
 }
@@ -65,13 +65,13 @@ func TestColumnVisibilityModalKeyboard(t *testing.T) {
 func TestColumnVisibilityModalSearchFocusAndFailure(t *testing.T) {
 	previous := app.App.GetFocus()
 	t.Cleanup(func() { app.App.SetFocus(previous) })
-	cancelled := false
+	canceled := false
 	picker := NewColumnVisibilityModal([]string{"id", "name"}, nil, func(_ []string) error {
 		return errors.New("permission denied")
-	}, func() { cancelled = true })
+	}, func() { canceled = true })
 	app.App.SetFocus(picker.list)
 	modalKey(picker, tcell.KeyEnter, 0)
-	if !strings.Contains(picker.status.GetText(false), "Could not save: permission denied") || cancelled {
+	if !strings.Contains(picker.status.GetText(false), "Could not save: permission denied") || canceled {
 		t.Fatal("failed save should keep the modal open with an error")
 	}
 	modalKey(picker, tcell.KeyTab, 0)
@@ -89,13 +89,13 @@ func TestColumnVisibilityModalSearchFocusAndFailure(t *testing.T) {
 		t.Fatal("Shift+Tab from list should wrap to Cancel")
 	}
 	modalKey(picker, tcell.KeyEnter, 0)
-	if !cancelled {
+	if !canceled {
 		t.Fatal("Cancel button should work from keyboard")
 	}
 	app.App.SetFocus(picker.search)
-	cancelled = false
+	canceled = false
 	modalKey(picker, tcell.KeyEscape, 0)
-	if !cancelled {
+	if !canceled {
 		t.Fatal("Esc from search should dismiss the modal")
 	}
 }
