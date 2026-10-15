@@ -29,6 +29,7 @@ type Sidebar struct {
 	FieldParameters []*SidebarFieldParameters
 	subscribers     []chan models.StateChange
 	ReadOnly        bool
+	RawCellValue    func(columnIndex int) string
 }
 
 func NewSidebar(dbProvider string, readOnly bool) *Sidebar {
@@ -252,7 +253,11 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 					sidebar.SetDisabledStyles(item)
 				} else {
 					sidebar.SetEditedStyles(item)
+				}
+				if text != newText {
 					sidebar.Publish(models.StateChange{Key: eventSidebarCommitEditing, Value: models.SidebarEditingCommitParams{ColumnName: columnName, Type: models.String, NewValue: newText}})
+				} else {
+					sidebar.Publish(models.StateChange{Key: eventSidebarEditing, Value: false})
 				}
 
 				return nil
@@ -298,9 +303,7 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 		return nil
 	case commands.Copy:
-		currentItemIndex := sidebar.GetCurrentFieldIndex()
-		item := sidebar.Flex.GetItem(currentItemIndex).(*tview.TextArea)
-		text := item.GetText()
+		text := sidebar.currentFieldValue()
 
 		clipboard := lib.NewClipboard()
 
@@ -310,6 +313,14 @@ func (sidebar *Sidebar) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 	return event
+}
+
+func (sidebar *Sidebar) currentFieldValue() string {
+	index := sidebar.GetCurrentFieldIndex()
+	if sidebar.RawCellValue != nil {
+		return sidebar.RawCellValue(index)
+	}
+	return sidebar.Flex.GetItem(index).(*tview.TextArea).GetText()
 }
 
 func (sidebar *Sidebar) SetEditingStyles(item *tview.TextArea) {
