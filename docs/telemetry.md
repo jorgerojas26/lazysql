@@ -97,6 +97,39 @@ this estimate. These are not unique users, sessions or devices. Public ingestion
 can be spoofed; embedded API keys would not prevent it in an open-source app.
 Edge rate limits can reduce abuse but can also cause missing counts.
 
+### Authenticated historical ranges
+
+`GET /stats?from=<unix-seconds>&to=<unix-seconds>` returns aggregate counts
+for a half-open receipt-time range `[from, to)`. Both parameters are required,
+minute-aligned integers; other parameters, duplicates and URL credentials are
+rejected. The same private bearer token is required. Plain `/stats` remains
+backward-compatible with the live last-hour response.
+
+Ranges can request at most 32 days and start no earlier than 32 days before
+the snapshot minute, allowing a 31-day calendar month with timezone offsets.
+The end cannot exceed the current receipt minute's end. The query always excludes
+records older than the current 30-day cutoff, even if hourly cleanup is delayed.
+Retention is unchanged: older/deleted history cannot be recovered.
+
+Historical SQL sums each independent version/metric/value counter into at most
+12 time buckets anchored to `from`. The response includes `from`, `to`,
+`bucket_seconds`, `retention_cutoff`, and `retention_truncated`; metric `minute`
+values identify bucket starts, not original receipt minutes. `window_minutes`
+describes the requested range. Historical `estimated_running_instances` fields
+are `null`, not misleading estimates from period-wide heartbeat totals.
+
+The sibling `../lazysql-pulse` dashboard offers Live, Today, Yesterday, This week
+(Monday start), and This month. Calendar boundaries use the computer's local
+timezone and account for daylight-saving changes; requests carry UTC epoch
+boundaries, not timezone or identity metadata. A partial-retention period is
+explicitly flagged. Zero retained counts do not prove that no older activity
+occurred, or that collection was complete.
+
+History responses are compact, but D1 still reads the source rows in the requested
+range. Avoid aggressive polling of long periods and monitor D1 read quotas.
+Pulse refreshes history no faster than once every five minutes; use pause/manual
+refresh when reviewing a fixed historical period.
+
 ## Current owner deployment
 
 The collector is deployed at

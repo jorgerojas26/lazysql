@@ -3,6 +3,8 @@ const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosnif
 const releasePattern = /^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$/;
 const HEARTBEAT_INTERVAL_MINUTES = 5;
 const HEARTBEAT_WINDOW_SECONDS = 2 * HEARTBEAT_INTERVAL_MINUTES * 60;
+const RETENTION_SECONDS = 30 * 24 * 60 * 60;
+const MAX_RANGE_SECONDS = 32 * 24 * 60 * 60;
 const minuteNow = () => Math.floor(Date.now() / 60000) * 60;
 
 function reply(status, data) {
@@ -144,11 +146,57 @@ async function stats(env, minute) {
   };
 }
 
+function historyRange(params, minute) {
+  if ([...params].length !== 2 || !params.has("from") || !params.has("to")) return null;
+  const fromText = params.get("from");
+  const toText = params.get("to");
+  if (!/^[1-9][0-9]{0,10}$/.test(fromText) || !/^[1-9][0-9]{0,10}$/.test(toText)) return null;
+  const from = Number(fromText);
+  const to = Number(toText);
+  if (String(from) !== fromText || String(to) !== toText ||
+      from % 60 || to % 60 || from >= to || to > minute + 60 ||
+      from < minute - MAX_RANGE_SECONDS || to - from > MAX_RANGE_SECONDS) return null;
+  return { from, to, bucket: Math.ceil((to - from) / (12 * 60)) * 60 };
+}
+
+async function historyStats(env, minute, range) {
+  const cutoff = minute - RETENTION_SECONDS;
+  const { from, to, bucket } = range;
+  const { results } = await env.DB.prepare(
+    `SELECT ? + CAST((minute - ?) / ? AS INTEGER) * ? AS minute,
+       version, metric, value, SUM(count) AS count FROM counts
+     WHERE minute >= ? AND minute < ?
+     GROUP BY 1, version, metric, value ORDER BY minute, version, metric, value`
+  ).bind(from, from, bucket, bucket, Math.max(from, cutoff), to).all();
+  const versions = new Map();
+  let starts = 0;
+  for (const row of results) {
+    const entry = versions.get(row.version) ?? {
+      version: row.version, starts: 0, heartbeats: 0, estimated_running_instances: null,
+    };
+    if (row.metric === "start") {
+      entry.starts += row.count;
+      starts += row.count;
+    }
+    if (row.metric === "heartbeat") entry.heartbeats += row.count;
+    versions.set(row.version, entry);
+  }
+  return {
+    minute, window_minutes: (to - from) / 60, starts,
+    heartbeat_interval_minutes: HEARTBEAT_INTERVAL_MINUTES,
+    heartbeat_window_minutes: HEARTBEAT_WINDOW_SECONDS / 60,
+    estimated_running_instances: null,
+    from, to, bucket_seconds: bucket, retention_cutoff: cutoff,
+    retention_truncated: from < cutoff,
+    versions: [...versions.values()], metrics: results,
+  };
+}
+
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
-      if (url.search) return reply(400);
+      if (url.search && url.pathname !== "/stats") return reply(400);
       if (url.pathname === "/v1/events") {
         if (request.method !== "POST") return reply(405);
         const event = await readEvent(request);
@@ -163,9 +211,12 @@ export default {
       }
       if (url.pathname === "/stats") {
         if (request.method !== "GET") return reply(405);
+        const minute = minuteNow();
+        const range = url.search ? historyRange(url.searchParams, minute) : null;
+        if (url.search && !range) return reply(400);
         if (!env.STATS_TOKEN || env.STATS_TOKEN.length < 32) return reply(503);
         if (!authorized(request, env.STATS_TOKEN)) return reply(401);
-        return reply(200, await stats(env, minuteNow()));
+        return reply(200, range ? await historyStats(env, minute, range) : await stats(env, minute));
       }
       return reply(404);
     } catch {
@@ -178,6 +229,6 @@ export default {
     // Hourly cleanup: minute-level aggregates retained for at most ~30d + 1h
     // when scheduled jobs and D1 are available. No raw event table exists.
     await env.DB.prepare("DELETE FROM counts WHERE minute < ?")
-      .bind(minuteNow() - 30 * 24 * 60 * 60).run();
+      .bind(minuteNow() - RETENTION_SECONDS).run();
   },
 };

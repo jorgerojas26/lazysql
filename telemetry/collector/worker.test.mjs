@@ -245,3 +245,97 @@ test("migration preserves old aggregate counts and old clients still aggregate",
     assert.equal((await worker.fetch(eventRequest({ schema: 1, event: kind, version: "0.5.8" }), env)).status, 204);
   }
 });
+
+async function history(env, from, to, auth = `Bearer ${token}`) {
+  return worker.fetch(new Request(`https://example.com/stats?from=${from}&to=${to}`, {
+    headers: { Authorization: auth },
+  }), env);
+}
+
+test("history keeps auth private and rejects invalid ranges and URL credentials", async t => {
+  const { env } = fixture(t);
+  const now = minuteNow();
+  assert.equal((await history(env, now - 86400, now, "")).status, 401);
+  assert.equal((await history({ ...env, STATS_TOKEN: undefined }, now - 86400, now)).status, 503);
+  for (const query of [
+    `from=${now}`, `to=${now}`, `from=${now}&to=${now}`, `from=${now}&to=${now - 60}`,
+    `from=${now - 86400}&to=${now + 120}`, `from=${now - 33 * 86400}&to=${now}`,
+    `from=${now - 86400 + 1}&to=${now}`, `from=-60&to=${now}`, `from=1e9&to=${now}`,
+    `from=0${now - 86400}&to=${now}`, `from=${now - 86400}%0A&to=${now}`,
+    `from=${now - 86400}&to=${now}&token=${token}`, `from=${now - 86400}&from=${now - 86400}&to=${now}`,
+    `from=${now - 86400}&to=${now}&unknown=1`,
+  ]) {
+    const response = await worker.fetch(new Request(`https://example.com/stats?${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }), env);
+    assert.equal(response.status, 400, query);
+  }
+  assert.equal((await worker.fetch(new Request(`https://example.com/v1/events?from=${now}`), env)).status, 400);
+});
+
+test("history sums bounded buckets and independent dimensions using half-open ranges", async t => {
+  const { db, env } = fixture(t);
+  const now = minuteNow();
+  const from = now - 86400;
+  const to = now - 3600;
+  const insert = db.prepare("INSERT INTO counts VALUES (?, ?, ?, ?, ?)");
+  insert.run(from - 60, "0.5.8", "start", "total", 100);
+  insert.run(from, "0.5.8", "start", "total", 2);
+  insert.run(from + 60, "0.5.8", "start", "total", 3);
+  insert.run(to - 60, "dev", "feature", "query_execute", 8);
+  insert.run(to - 60, "dev", "connection_engine", "sqlite3", 4);
+  insert.run(to - 60, "dev", "read_only", "true", 4);
+  insert.run(to - 60, "dev", "heartbeat", "total", 10);
+  insert.run(to, "0.5.8", "start", "total", 100);
+  insert.run(now, "0.5.8", "heartbeat", "total", 200);
+  const response = await history(env, from, to);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+  const result = await response.json();
+  assert.equal(result.from, from);
+  assert.equal(result.to, to);
+  assert.equal(result.starts, 5);
+  assert.equal(result.estimated_running_instances, null);
+  assert.equal(result.retention_truncated, false);
+  assert.equal(result.window_minutes, (to - from) / 60);
+  assert.equal(result.metrics.length, 5);
+  assert.deepEqual(result.metrics.find(r => r.metric === "start"), {
+    minute: from, version: "0.5.8", metric: "start", value: "total", count: 5,
+  });
+  assert.equal(result.versions.find(v => v.version === "dev").heartbeats, 10);
+  assert.ok(result.versions.every(v => v.estimated_running_instances === null));
+  for (const row of result.metrics) {
+    assert.ok((row.minute - from) % result.bucket_seconds === 0);
+    assert.ok((row.minute - from) / result.bucket_seconds < 12);
+  }
+});
+
+test("history enforces retention before cleanup and labels incomplete periods", async t => {
+  const { db, env } = fixture(t);
+  const now = minuteNow();
+  const cutoff = now - 30 * 86400;
+  const insert = db.prepare("INSERT INTO counts VALUES (?, 'dev', 'start', 'total', ?)");
+  insert.run(cutoff - 60, 100);
+  insert.run(cutoff, 2);
+  insert.run(now, 3);
+  const result = await (await history(env, now - 31 * 86400, now + 60)).json();
+  assert.equal(result.retention_cutoff, cutoff);
+  assert.equal(result.retention_truncated, true);
+  assert.equal(result.starts, 5);
+  const empty = await (await history(env, now - 32 * 86400, cutoff)).json();
+  assert.equal(empty.retention_truncated, true);
+  assert.deepEqual(empty.metrics, []);
+});
+
+test("history keeps month-sized results bounded and preserves all counts", async t => {
+  const { db, env } = fixture(t);
+  const now = minuteNow();
+  const insert = db.prepare("INSERT INTO counts VALUES (?, 'dev', 'feature', 'query_execute', 1)");
+  db.exec("BEGIN");
+  for (let i = 0; i < 30 * 24 * 60; i++) insert.run(now - i * 60);
+  db.exec("COMMIT");
+  const result = await (await history(env, now - 30 * 86400, now + 60)).json();
+  assert.ok(result.metrics.length <= 12);
+  assert.equal(result.metrics.reduce((sum, r) => sum + r.count, 0), 30 * 24 * 60);
+  assert.equal(result.estimated_running_instances, null);
+});
