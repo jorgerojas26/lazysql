@@ -8,6 +8,10 @@ import (
 )
 
 func (prompt *aiPrompt) Draw(screen tcell.Screen) {
+	_, _, inputWidth, inputHeight := prompt.GetInnerRect()
+	if inputHeight > 0 && prompt.wrappedRows(inputWidth, inputHeight+1) <= inputHeight {
+		prompt.SetOffset(0, 0)
+	}
 	prompt.TextArea.Draw(screen)
 	prompt.modelWidth, prompt.thinkingWidth = 0, 0
 	x, y, width, height := prompt.GetRect()

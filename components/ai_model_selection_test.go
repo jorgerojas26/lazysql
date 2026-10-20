@@ -375,6 +375,7 @@ func TestAIContextWarningCanSendFullHistoryWithExplicitConfirmation(t *testing.T
 	session.history = []ai.ChatMessage{{Role: "user", Text: strings.Repeat("Earlier request ", 4000)}, {Role: "assistant", Text: "Earlier answer"}}
 	session.historyVersion++
 	session.contextWindow = 100
+	session.input.SetText("First line\nSecond line\nThird line")
 	requests := make(chan ai.Request, 1)
 	session.client = aiSelectionStep(func(_ context.Context, _ string, messages []ai.Message, _ []ai.Tool) (ai.Turn, error) {
 		var request ai.Request
@@ -405,6 +406,9 @@ func TestAIContextWarningCanSendFullHistoryWithExplicitConfirmation(t *testing.T
 	})
 	select {
 	case request := <-requests:
+		if request.Prompt != "First line\nSecond line\nThird line" {
+			t.Error("sending a multiline draft lost its line breaks")
+		}
 		if len(request.History) != 2 || len(request.History[0].Text) != len(strings.Repeat("Earlier request ", 4000)) || request.HistoryTruncated {
 			t.Error("context confirmation silently pruned history")
 		}

@@ -35,6 +35,21 @@ func (prompt *aiPrompt) SetText(text string) *aiPrompt {
 	return prompt
 }
 
+func (prompt *aiPrompt) wrappedRows(width, limit int) int {
+	rows := 0
+	for _, line := range strings.Split(prompt.GetText(), "\n") {
+		rows += max(1, len(tview.WordWrap(tview.Escape(line), max(1, width))))
+		if rows >= limit {
+			return limit
+		}
+	}
+	return rows
+}
+
+func (prompt *aiPrompt) preferredHeight(width, maximum int) int {
+	return min(maximum, max(4, prompt.wrappedRows(width, maximum)+2))
+}
+
 type aiModal struct {
 	*tview.Flex
 	panel   *tview.Flex
@@ -47,11 +62,11 @@ func (modal *aiModal) Draw(screen tcell.Screen) {
 	w, h := min(92, width), min(modal.height, height)
 	minimal := modal.session.minimalChat()
 	if minimal {
-		h = min(4, height)
+		h = modal.session.input.preferredHeight(w-6, min(10, height))
 	}
 	modal.panel.SetBorder(!minimal)
 	modal.session.layoutControls(max(1, w-4))
-	inputHeight := min(4, max(2, h/4))
+	inputHeight := modal.session.input.preferredHeight(w-8, min(10, max(2, h-8)))
 	if name, _ := modal.session.content.GetFrontPage(); name == "context" {
 		inputHeight = 0
 	}
@@ -464,9 +479,13 @@ func (session *aiSession) capture(event *tcell.EventKey) *tcell.EventKey {
 		}
 		session.focus(session.focusable[index%len(session.focusable)])
 		return nil
+	case tcell.KeyCtrlJ:
+		if app.App.GetFocus() == session.input {
+			return tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)
+		}
 	case tcell.KeyEnter:
 		if app.App.GetFocus() == session.input {
-			if event.Modifiers()&tcell.ModCtrl != 0 {
+			if event.Modifiers()&(tcell.ModCtrl|tcell.ModAlt|tcell.ModShift) != 0 {
 				return tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)
 			}
 			session.generate()

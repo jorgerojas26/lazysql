@@ -741,7 +741,7 @@ Note: Undefined environment variables will be replaced with an empty string.
 
 AI is disabled by default. Run `lazysql ai login` to connect ChatGPT or an OpenCode Go subscription, choose a model, and explicitly enable AI. Use `lazysql ai logout` to manage saved authentication; both commands accept `--config path`.
 
-Press **Ctrl-G** from a database workspace to open AI chat. Fresh chats start with a compact input and expand after sending. Responses stream into a persistent conversation with syntax-highlighted SQL. **Use query** inserts SQL into an editor; it never executes it automatically.
+Press **Ctrl-G** from a database workspace to open AI chat. Fresh chats start with a compact input and expand after sending. The input grows with typed or pasted multiline drafts, then scrolls when it reaches its height limit. Responses stream into a persistent conversation with syntax-highlighted SQL. **Use query** inserts SQL into an editor; it never executes it automatically.
 
 The model and thinking controls in the input border are clickable. Selections are saved, thinking preferences are remembered per model, and selectors are locked during generation. Context details include a concise usage summary and the full last outbound request body, including instructions, conversation, and schema/tool context, without authentication headers. Oversized context produces a warning rather than silently trimming it to fit a selected model.
 
@@ -751,7 +751,7 @@ The model and thinking controls in the input border are clickable. Selections ar
 | --- | --- |
 | Ctrl-G | Open/hide chat without discarding the conversation or draft |
 | Enter | Send the message |
-| Ctrl-Enter | Insert a newline in the message |
+| Alt-Enter / Ctrl-J | Insert a newline; Shift-Enter and Ctrl-Enter also work when distinguished by the terminal |
 | Ctrl-U / Ctrl-D | Scroll the chat or selected context tab up/down half a page, without moving input focus |
 | Ctrl-Y | Use the latest completed SQL query without executing it |
 | Ctrl-X | Stop generation |
