@@ -25,6 +25,9 @@ func (service *chatGPTService) request(ctx context.Context, method, path string,
 	var input io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
+		if path == "/responses" {
+			recordWireBytes(ctx, len(data))
+		}
 		if err != nil {
 			return nil, errors.New("cannot prepare ChatGPT request")
 		}
@@ -72,9 +75,10 @@ func (service *chatGPTService) models(ctx context.Context) ([]Model, error) {
 	}
 	var catalog struct {
 		Models []struct {
-			Slug       string `json:"slug"`
-			Name       string `json:"display_name"`
-			Visibility string `json:"visibility"`
+			Slug          string `json:"slug"`
+			ContextWindow int    `json:"context_window"`
+			Name          string `json:"display_name"`
+			Visibility    string `json:"visibility"`
 		} `json:"models"`
 	}
 	if json.Unmarshal(data, &catalog) != nil {
@@ -91,7 +95,7 @@ func (service *chatGPTService) models(ctx context.Context) ([]Model, error) {
 		if name == "" {
 			name = model.Slug
 		}
-		models = append(models, Model{ID: model.Slug, Name: name})
+		models = append(models, Model{ID: model.Slug, Name: name, ContextWindow: model.ContextWindow})
 	}
 	if len(models) == 0 {
 		return nil, errors.New("no ChatGPT models available for this account; check plan access")
@@ -301,6 +305,7 @@ func readResponsesStream(reader io.Reader, provider string, delta func(string)) 
 				return false, errors.New("invalid " + provider + " completion")
 			}
 			response := envelope.Response
+			usage := decodeUsage("responses", response)
 			if event.Response.Status == "" {
 				fields := map[string]json.RawMessage{}
 				if len(response) > 0 && string(response) != "null" {
@@ -339,6 +344,8 @@ func readResponsesStream(reader io.Reader, provider string, delta func(string)) 
 				response, _ = json.Marshal(map[string]any{"status": "completed", "output": assembled})
 			}
 			parsed, parseErr := decodeToolTurn("responses", response)
+			parsed.Usage = usage
+			turn.Usage = usage
 			if parseErr == nil {
 				turn = parsed
 				if len(turn.Calls) > 0 {

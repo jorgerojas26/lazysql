@@ -9,7 +9,9 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"sync"
 
+	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
 	"github.com/jorgerojas26/lazysql/internal/ai"
 )
@@ -39,11 +41,23 @@ func aiMetadata(ctx context.Context, cache *metadataCache, key metadataKey, load
 	return value, nil
 }
 
+func aiLoad(ctx context.Context, loader *schemaLoader, key metadataKey, load func(context.Context) (any, error)) (any, error) {
+	return aiMetadata(ctx, loader.cache, key, func(work context.Context) (any, error) {
+		select {
+		case loader.aiLimit <- struct{}{}:
+		case <-work.Done():
+			return nil, work.Err()
+		}
+		defer func() { <-loader.aiLimit }()
+		return load(work)
+	})
+}
+
 func aiCatalog(ctx context.Context, loader *schemaLoader, database string, schemas []string) ([]string, error) {
 	if database == "" {
 		return nil, errors.New("no database selected; open a database in the tree and retry")
 	}
-	value, err := aiMetadata(ctx, loader.cache, newMetadataKey(database, "", MetadataTables), func(work context.Context) (any, error) { return loader.driver.GetTables(work, database) })
+	value, err := aiLoad(ctx, loader, newMetadataKey(database, "", MetadataTables), func(work context.Context) (any, error) { return loader.driver.GetTables(work, database) })
 	if err != nil {
 		return nil, err
 	}
@@ -107,45 +121,100 @@ func aiRelationships(value any, table string, reverse, schemas bool) []ai.Relati
 	return result
 }
 
+func aiColumns(columns any) []ai.Column {
+	var result []ai.Column
+	for _, row := range aiRows(columns) {
+		column := ai.Column{Name: aiField(row, "column_name", "field", "name"), Type: aiField(row, "data_type", "type"), Nullable: aiField(row, "is_nullable", "null"), Key: aiField(row, "key"), Comment: aiField(row, "comment")}
+		if value, ok := row["notnull"]; ok {
+			column.Nullable = map[string]string{"0": "YES", "1": "NO"}[value]
+		}
+		if column.Name != "" {
+			result = append(result, column)
+		}
+	}
+	return result
+}
+
 func loadAIContext(ctx context.Context, loader *schemaLoader, database string, names, catalog []string) ([]ai.Table, error) {
 	allowed := map[string]bool{}
 	for _, name := range catalog {
 		allowed[name] = true
 	}
-	var result []ai.Table
 	for _, name := range names {
 		if !allowed[name] {
 			return nil, errors.New("table is not available in this connection scope")
 		}
-		columns, err := aiMetadata(ctx, loader.cache, newMetadataKey(database, name, MetadataColumns), func(work context.Context) (any, error) { return loader.driver.GetTableColumns(work, database, name) })
-		if err != nil {
-			return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if _, bulk := loader.driver.(drivers.BulkTableColumnLoader); bulk && len(names) > 1 {
+		descriptors := make([]editorSchemaTable, 0, len(names))
+		for _, name := range names {
+			_, bare := splitMetadataTableName(name)
+			descriptors = append(descriptors, editorSchemaTable{qualifiedName: name, bareName: bare})
 		}
-		item := ai.Table{Name: name, Database: database}
-		for _, row := range aiRows(columns) {
-			column := ai.Column{Name: aiField(row, "column_name", "field", "name"), Type: aiField(row, "data_type", "type"), Nullable: aiField(row, "is_nullable", "null"), Key: aiField(row, "key"), Comment: aiField(row, "comment")}
-			if value, ok := row["notnull"]; ok {
-				column.Nullable = map[string]string{"0": "YES", "1": "NO"}[value]
+		select {
+		case loader.aiLimit <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		loader.preloadEditorColumns(ctx, database, descriptors, len(names), nil)
+		<-loader.aiLimit
+	}
+	result := make([]ai.Table, len(names))
+	failures := make([]error, len(names))
+	var wait sync.WaitGroup
+	for index, name := range names {
+		wait.Add(1)
+		go func(index int, name string) {
+			defer wait.Done()
+			var columns, keys any
+			var relationships []ai.Relationship
+			var columnError, keyError, relationError error
+			var parts sync.WaitGroup
+			parts.Add(3)
+			go func() {
+				defer parts.Done()
+				columns, columnError = aiLoad(ctx, loader, newMetadataKey(database, name, MetadataColumns), func(work context.Context) (any, error) { return loader.driver.GetTableColumns(work, database, name) })
+			}()
+			go func() {
+				defer parts.Done()
+				keys, keyError = aiLoad(ctx, loader, newMetadataKey(database, name, MetadataPrimaryKeys), func(work context.Context) (any, error) {
+					return loader.driver.GetPrimaryKeyColumnNames(work, database, name)
+				})
+			}()
+			go func() {
+				defer parts.Done()
+				relationships, relationError = loadAIRelationships(ctx, loader, database, name, allowed)
+			}()
+			parts.Wait()
+			if columnError != nil {
+				failures[index] = columnError
+				return
 			}
-			if column.Name != "" {
-				item.Columns = append(item.Columns, column)
+			if keyError != nil {
+				failures[index] = keyError
+				return
 			}
-		}
-		if len(item.Columns) == 0 {
-			return nil, fmt.Errorf("no column metadata for %s; refresh the schema", name)
-		}
-		keys, err := aiMetadata(ctx, loader.cache, newMetadataKey(database, name, MetadataPrimaryKeys), func(work context.Context) (any, error) {
-			return loader.driver.GetPrimaryKeyColumnNames(work, database, name)
-		})
+			if relationError != nil {
+				failures[index] = relationError
+				return
+			}
+			item := ai.Table{Name: name, Database: database, Columns: aiColumns(columns), Relationships: relationships}
+			item.PrimaryKeys, _ = keys.([]string)
+			if len(item.Columns) == 0 {
+				failures[index] = fmt.Errorf("no column metadata for %s; refresh the schema", name)
+				return
+			}
+			result[index] = item
+		}(index, name)
+	}
+	wait.Wait()
+	for _, err := range failures {
 		if err != nil {
 			return nil, err
 		}
-		item.PrimaryKeys, _ = keys.([]string)
-		item.Relationships, err = loadAIRelationships(ctx, loader, database, name, allowed)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, item)
 	}
 	return result, nil
 }
@@ -159,18 +228,28 @@ func loadAIRelationships(ctx context.Context, loader *schemaLoader, database, na
 		kind = MetadataKind("ai_outgoing_foreign_keys")
 		getForeignKeys = outgoing.GetOutgoingForeignKeys
 	}
-	foreign, err := aiMetadata(ctx, loader.cache, newMetadataKey(database, name, kind), func(work context.Context) (any, error) { return getForeignKeys(work, database, name) })
-	if err != nil {
-		return nil, err
+	var foreign, incoming any
+	var foreignError, incomingError error
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go func() {
+		defer wait.Done()
+		foreign, foreignError = aiLoad(ctx, loader, newMetadataKey(database, name, kind), func(work context.Context) (any, error) { return getForeignKeys(work, database, name) })
+	}()
+	go func() {
+		defer wait.Done()
+		incoming, incomingError = aiLoad(ctx, loader, newMetadataKey(database, name, MetadataReferencingTables), func(work context.Context) (any, error) {
+			return loader.driver.GetReferencingTables(work, database, name)
+		})
+	}()
+	wait.Wait()
+	if foreignError != nil {
+		return nil, foreignError
 	}
-	relationships := aiRelationships(foreign, name, false, loader.driver.UseSchemas())
-	incoming, err := aiMetadata(ctx, loader.cache, newMetadataKey(database, name, MetadataReferencingTables), func(work context.Context) (any, error) {
-		return loader.driver.GetReferencingTables(work, database, name)
-	})
-	if err != nil {
-		return nil, err
+	if incomingError != nil {
+		return nil, incomingError
 	}
-	relationships = append(relationships, aiRelationships(incoming, name, true, loader.driver.UseSchemas())...)
+	relationships := append(aiRelationships(foreign, name, false, loader.driver.UseSchemas()), aiRelationships(incoming, name, true, loader.driver.UseSchemas())...)
 
 	filtered := relationships[:0]
 	for _, relation := range relationships {
@@ -220,7 +299,7 @@ func decodeAIArguments(raw json.RawMessage, target any) error {
 }
 
 func (tools *aiSchemaTools) databases(ctx context.Context) ([]string, error) {
-	value, err := aiMetadata(ctx, tools.loader.cache, newMetadataKey("", "", MetadataKind("ai_databases")), func(work context.Context) (any, error) { return tools.loader.driver.GetDatabases(work) })
+	value, err := aiLoad(ctx, tools.loader, newMetadataKey("", "", MetadataDatabases), func(work context.Context) (any, error) { return tools.loader.driver.GetDatabases(work) })
 	if err != nil {
 		return nil, err
 	}

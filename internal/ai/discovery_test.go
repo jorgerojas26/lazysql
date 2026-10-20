@@ -61,7 +61,7 @@ func TestDiscoveryFollowsMetadataWithoutPreloadingSchema(t *testing.T) {
 			return []Table{{Name: "public.orders", Columns: []Column{{Name: "id", Type: "bigint"}}}}, nil
 		}
 	}
-	result, err := DiscoverSQL(context.Background(), client, Request{Dialect: "postgres", Schemas: []string{"public"}, Prompt: "Order items", Tables: []Table{{Name: "hidden_metadata"}}}, execute)
+	result, err := DiscoverSQL(context.Background(), client, Request{Dialect: "postgres", Schemas: []string{"public"}, Prompt: "Order items"}, execute)
 	if err != nil || result.SQL == "" || round != 4 || calls.Load() != 4 {
 		t.Fatalf("discovery = %+v, %v, %d rounds, %d calls", result, err, round, calls.Load())
 	}
@@ -86,7 +86,7 @@ func TestDiscoveryRejectsForbiddenOrMalformedCallsBeforeExecution(t *testing.T) 
 	}
 }
 
-func TestDiscoveryBoundsRoundsContextAndToolOutput(t *testing.T) {
+func TestDiscoveryBoundsRoundsAndToolOutput(t *testing.T) {
 	rounds := 0
 	client := stepFunc(func(_ context.Context, _ string, messages []Message, _ []Tool) (Turn, error) {
 		rounds++
@@ -101,12 +101,14 @@ func TestDiscoveryBoundsRoundsContextAndToolOutput(t *testing.T) {
 	if err == nil || rounds != MaxDiscoveryRounds {
 		t.Fatalf("unbounded rounds: %d %v", rounds, err)
 	}
-	client = stepFunc(func(context.Context, string, []Message, []Tool) (Turn, error) {
-		t.Fatal("oversized input sent to provider")
-		return Turn{}, nil
+	client = stepFunc(func(_ context.Context, _ string, messages []Message, _ []Tool) (Turn, error) {
+		if len(messages[0].Text) < 120000 {
+			t.Fatal("large input was truncated")
+		}
+		return Turn{Text: generatedResult}, nil
 	})
-	if _, err := DiscoverSQL(context.Background(), client, Request{Prompt: strings.Repeat("x", MaxContextBytes)}, nil); err == nil {
-		t.Fatal("unbounded context accepted")
+	if _, err := DiscoverSQL(context.Background(), client, Request{Prompt: strings.Repeat("x", 120000)}, nil); err != nil {
+		t.Fatalf("large context rejected: %v", err)
 	}
 }
 
@@ -208,7 +210,7 @@ func TestDiscoveryCarriesConversationForRefinementAndExplanation(t *testing.T) {
 	}
 }
 
-func TestDiscoveryTrimsOldHistoryWithoutLosingLatestQuery(t *testing.T) {
+func TestDiscoveryPreservesLargeHistory(t *testing.T) {
 	history := []ChatMessage{}
 	for i := 0; i < 12; i++ {
 		history = append(history, ChatMessage{Role: "user", Text: strings.Repeat("old conversation ", 1000)}, ChatMessage{Role: "assistant", SQL: "SELECT 1;"})
@@ -219,8 +221,8 @@ func TestDiscoveryTrimsOldHistoryWithoutLosingLatestQuery(t *testing.T) {
 		if err := json.Unmarshal([]byte(messages[0].Text), &request); err != nil {
 			t.Fatal(err)
 		}
-		if !request.HistoryTruncated || len(request.History) >= len(history) || request.History[len(request.History)-1].SQL != "SELECT email FROM Users;" {
-			t.Fatal("context pruning lost the latest query")
+		if request.HistoryTruncated || len(request.History) != len(history) || request.History[len(request.History)-1].SQL != "SELECT email FROM Users;" {
+			t.Fatal("large history was trimmed")
 		}
 		return Turn{Text: generatedResult}, nil
 	})

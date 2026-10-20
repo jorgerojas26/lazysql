@@ -20,6 +20,7 @@ const (
 	// MetadataTables is the shared schema-list cache entry. It is deliberately
 	// not part of metadataKinds because Records only loads per-table metadata.
 	MetadataTables            MetadataKind = "tables"
+	MetadataDatabases         MetadataKind = "databases"
 	MetadataColumns           MetadataKind = "columns"
 	MetadataPrimaryKeys       MetadataKind = "primary_keys"
 	MetadataForeignKeys       MetadataKind = "foreign_keys"

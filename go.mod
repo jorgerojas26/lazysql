@@ -19,6 +19,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/rivo/tview v0.0.0-20241103174730-c76f7879f592
 	github.com/rivo/uniseg v0.4.7
+	github.com/tiktoken-go/tokenizer v0.3.0
 	github.com/xo/dburl v0.23.2
 	golang.org/x/mod v0.25.0
 	golang.org/x/term v0.33.0
@@ -33,6 +34,7 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
 	github.com/ClickHouse/ch-go v0.67.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
+	github.com/dlclark/regexp2 v1.9.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/go-faster/city v1.0.1 // indirect

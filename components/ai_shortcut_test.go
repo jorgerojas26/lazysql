@@ -64,10 +64,8 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 			App.QueueUpdate(func() {})
 			t.Cleanup(func() {
 				App.QueueUpdate(func() {
-					for tab := home.TabbedPane.state.FirstTab; tab != nil; tab = tab.NextTab {
-						if table, ok := tab.Content.(*ResultsTable); ok && table.aiSession != nil {
-							table.aiSession.close()
-						}
+					if home.aiChat != nil {
+						home.aiChat.close()
 					}
 				})
 				App.Application.Stop()
@@ -88,13 +86,16 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 				default:
 					App.SetFocus(records)
 				}
+				originalTab, originalLength := home.TabbedPane.GetCurrentTab(), home.TabbedPane.GetLength()
 				mainPages.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone), func(p tview.Primitive) { App.SetFocus(p) })
-				tab := home.TabbedPane.GetCurrentTab()
-				if tab == nil {
-					t.Error("global shortcut did not create an editor")
+				if home.TabbedPane.GetCurrentTab() != originalTab || home.TabbedPane.GetLength() != originalLength {
+					t.Error("opening chat changed workspace tabs")
+				}
+				if home.aiChat == nil {
+					t.Error("global shortcut did not open chat")
 					return
 				}
-				source = tab.Content.(*ResultsTable)
+				source = home.aiChat.table
 				if source.Editor == nil || source.aiSession == nil {
 					t.Error("global shortcut did not open AI prompt")
 					return
@@ -126,13 +127,14 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 			for time.Now().Before(deadline) {
 				ready := false
 				App.QueueUpdate(func() {
-					ready = source.aiSession != nil && !source.aiSession.busy && (scenario == "reuse draft" || scenario == "existing editor" || scenario == "empty editor context" || len(source.Editor.completer.tables) > 0)
+					ready = source.aiSession != nil && !source.aiSession.busy
 				})
 				if ready {
 					break
 				}
 				time.Sleep(time.Millisecond)
 			}
+			var target *ResultsTable
 			App.QueueUpdateDraw(func() {
 				session := source.aiSession
 				if session == nil || session.busy {
@@ -145,11 +147,12 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 					t.Error(err)
 					return
 				}
+				target = home.TabbedPane.GetCurrentTab().Content.(*ResultsTable)
 				if draft == nil {
-					if home.TabbedPane.GetLength() != before || source.Editor.GetText() != "SELECT id FROM public.orders;" {
-						t.Error("empty editor was not filled in place")
+					if home.TabbedPane.GetLength() != before+1 || target.Editor.GetText() != "SELECT id FROM public.orders;" {
+						t.Error("using SQL did not open its editor")
 					}
-					if App.GetFocus() != source.Editor {
+					if App.GetFocus() != target.Editor {
 						t.Error("accepted SQL did not focus editor")
 					}
 				} else if scenario == "reuse draft" {
@@ -161,6 +164,17 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 					t.Error("global shortcut executed SQL")
 				}
 			})
+			if target != nil && target != source {
+				deadline := time.Now().Add(3 * time.Second)
+				for time.Now().Before(deadline) {
+					ready := false
+					App.QueueUpdate(func() { ready = len(target.Editor.completer.tables) > 0 })
+					if ready {
+						break
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
 		})
 	}
 }

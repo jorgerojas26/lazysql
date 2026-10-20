@@ -46,16 +46,16 @@ func TestGenerateIncludesGroundedContextAndExplicitSQLOnly(t *testing.T) {
 	}
 }
 
-func TestGenerateBoundsAndClarification(t *testing.T) {
+func TestGenerateValidationAndClarification(t *testing.T) {
 	calls := 0
 	client := completionFunc(func(context.Context, string) (string, error) {
 		calls++
 		return `{"sql":"","clarification":"What defines active?","missing":"","warning":""}`, nil
 	})
-	if _, err := Generate(context.Background(), client, Request{Prompt: strings.Repeat("x", MaxContextBytes)}); err == nil || calls != 0 {
-		t.Fatal("oversize context must fail before sending")
+	if _, err := Generate(context.Background(), client, Request{Prompt: strings.Repeat("x", 120000)}); err != nil || calls != 1 {
+		t.Fatal("large context must reach the provider")
 	}
-	if _, err := Generate(context.Background(), client, Request{}); err == nil || calls != 0 {
+	if _, err := Generate(context.Background(), client, Request{}); err == nil || calls != 1 {
 		t.Fatal("empty requests must fail before sending")
 	}
 	first, err := Generate(context.Background(), client, Request{Prompt: "Active users"})

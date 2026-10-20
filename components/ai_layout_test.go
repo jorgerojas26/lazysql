@@ -216,3 +216,24 @@ func TestAIChatCtrlHDoesNotHideAndToggleStillWorks(t *testing.T) {
 		t.Fatal("global shortcut no longer toggles chat without clearing it")
 	}
 }
+
+func TestAIContextMeterBelowUnboundedInput(t *testing.T) {
+	session := newAILayoutSession(t)
+	session.input.SetText(strings.Repeat("x", 100000))
+	if len(session.input.GetText()) != 100000 {
+		t.Fatal("chat input still has a byte-based length cap")
+	}
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(120, 40)
+	mainPages.SetRect(0, 0, 120, 40)
+	mainPages.Draw(screen)
+	_, inputY, _, inputHeight := session.input.GetRect()
+	_, meterY, _, _ := session.contextMeter.GetRect()
+	if meterY != inputY+inputHeight {
+		t.Fatal("context indicator is not directly below the chat input")
+	}
+}

@@ -38,6 +38,9 @@ func (modal *aiModal) Draw(screen tcell.Screen) {
 		modal.session.chatWidth = chatWidth
 		modal.session.renderChat()
 	}
+	if theme := chatTheme(); theme != modal.session.cachedTheme {
+		modal.session.renderChat()
+	}
 	modal.panel.Draw(screen)
 }
 
@@ -65,7 +68,7 @@ func (session *aiSession) showPanel(panel *tview.Flex, height int) {
 
 func (session *aiSession) buildUI() {
 	session.surface.Box = tview.NewFlex().Box
-	session.input = &aiPrompt{TextArea: tview.NewTextArea().SetPlaceholder("Ask for a query…").SetWrap(true).SetWordWrap(true).SetMaxLength(ai.MaxContextBytes / 4)}
+	session.input = &aiPrompt{TextArea: tview.NewTextArea().SetPlaceholder("Ask for a query…").SetWrap(true).SetWordWrap(true)}
 	session.input.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor).Background(app.Styles.PrimitiveBackgroundColor))
 	session.input.SetBorder(true).SetTitle(" Message ").SetBorderPadding(0, 0, 1, 1)
 	session.transcript = tview.NewTextView().SetWrap(true).SetWordWrap(true).SetScrollable(true).SetDynamicColors(true).SetRegions(true)
@@ -86,12 +89,20 @@ func (session *aiSession) buildUI() {
 		}
 		session.useResult(ai.Result{SQL: message.SQL, Database: message.Database, Message: message.Text, Warning: message.Warning})
 	})
+	session.startStreamUI()
 	session.status = tview.NewTextView().SetWrap(false).SetTextColor(app.Styles.SecondaryTextColor)
 	session.useButton = tview.NewButton("Ctrl+U Use query").SetSelectedFunc(session.useQuery)
 	session.stopButton = tview.NewButton("Ctrl+X Stop").SetSelectedFunc(session.stop)
 	session.newButton = tview.NewButton("Ctrl+N New chat").SetSelectedFunc(session.newChat)
+	session.contextButton = tview.NewButton("Ctrl+K Context").SetSelectedFunc(session.toggleContext)
+	session.contextMeter = tview.NewTextView().SetWrap(false).SetText("Context: measuring…")
+	session.contextDetails = tview.NewTextView().SetWrap(true).SetWordWrap(true).SetScrollable(true)
+	session.contextDetails.SetBorderPadding(0, 0, 1, 1)
+	session.content = tview.NewPages().AddPage("chat", session.transcript, true, true).AddPage("context", session.contextDetails, true, false)
+	config := app.App.AIConfig()
+	session.model, session.contextWindow = config.Model, config.ContextWindow
 	session.buttons = tview.NewFlex().SetDirection(tview.FlexRow)
-	session.panel = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(session.transcript, 0, 1, false).AddItem(session.status, 1, 0, false).AddItem(session.input, 4, 0, true).AddItem(session.buttons, 1, 0, false)
+	session.panel = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(session.content, 0, 1, false).AddItem(session.status, 1, 0, false).AddItem(session.input, 4, 0, true).AddItem(session.contextMeter, 1, 0, false).AddItem(session.buttons, 1, 0, false)
 	title := " AI SQL "
 	if session.owner != nil && session.owner.ConnectionIdentifier != "" {
 		title = " AI SQL · " + tview.Escape(session.owner.ConnectionIdentifier) + " "
@@ -99,7 +110,9 @@ func (session *aiSession) buildUI() {
 	session.panel.Box = tview.NewBox().SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	session.panel.SetBorder(true).SetTitle(title).SetBorderPadding(0, 0, 1, 1)
 	session.panel.SetInputCapture(session.capture)
+	session.input.SetChangedFunc(session.scheduleContext)
 	session.refreshControls()
+	session.scheduleContext()
 }
 
 func (session *aiSession) actions() []*tview.Button {
@@ -110,7 +123,7 @@ func (session *aiSession) actions() []*tview.Button {
 	if session.busy {
 		buttons = append(buttons, session.stopButton)
 	}
-	return append(buttons, session.newButton)
+	return append(buttons, session.newButton, session.contextButton)
 }
 
 func (session *aiSession) layoutControls(width int) {
@@ -142,7 +155,11 @@ func (session *aiSession) layoutControls(width int) {
 
 func (session *aiSession) refreshControls() {
 	session.useButton.SetDisabled(session.busy || session.result.SQL == "")
-	session.focusable = []tview.Primitive{session.input, session.transcript}
+	name, content := session.content.GetFrontPage()
+	if name == "chat" {
+		content = session.transcript
+	}
+	session.focusable = []tview.Primitive{session.input, content}
 	for _, button := range session.actions() {
 		if !button.IsDisabled() {
 			session.focusable = append(session.focusable, button)
@@ -158,58 +175,93 @@ func (session *aiSession) refreshControls() {
 
 func (session *aiSession) appendMessage(message ai.ChatMessage) {
 	session.history = append(session.history, message)
+	session.historyVersion++
 	if len(session.history) > 64 {
+		session.historyOmitted = true
 		session.history = slices.Clone(session.history[len(session.history)-64:])
 	}
 	session.renderChat()
+	session.scheduleContext()
+}
+
+func chatTheme() [13]tcell.Color {
+	styles := app.Styles
+	return [13]tcell.Color{styles.PrimaryTextColor, styles.SecondaryTextColor, styles.ErrorColor, styles.SQLKeywordColor, styles.SQLStringColor, styles.SQLNumberColor, styles.SQLCommentColor, styles.SQLFunctionColor, styles.SQLOperatorColor, styles.SQLTypeColor, styles.SQLBooleanColor, styles.SQLParameterColor, styles.PrimitiveBackgroundColor}
+}
+
+func (session *aiSession) messageMarkup(message ai.ChatMessage, index, width int) string {
+	var text strings.Builder
+	label := "AI"
+	color := app.Styles.SecondaryTextColor
+	if message.Role == "user" {
+		label = "You"
+		color = app.Styles.PrimaryTextColor
+	}
+	if message.Error {
+		color = app.Styles.ErrorColor
+	}
+	if message.Database != "" && message.SQL != "" {
+		label += " · " + message.Database
+	}
+	fmt.Fprintf(&text, "[%s::b]%s[-:-:-]\n", color, tview.Escape(label))
+	if message.Text != "" {
+		text.WriteString(tview.Escape(message.Text))
+		text.WriteByte('\n')
+	}
+	if message.SQL != "" {
+		clickable := index >= 0 && message.Role == "assistant" && !message.Error
+		if clickable {
+			fmt.Fprintf(&text, `["sql-%d"]`, index)
+		}
+		block := ""
+		if index >= 0 {
+			block = session.sqlBlocks[message.SQL]
+		}
+		if block == "" {
+			block = chatSQLBlock(message.SQL, width)
+			if index >= 0 {
+				if session.sqlBlocks == nil {
+					session.sqlBlocks = map[string]string{}
+				}
+				session.sqlBlocks[message.SQL] = block
+			}
+		}
+		text.WriteString(block)
+		if clickable {
+			text.WriteString(`[""]`)
+		}
+		text.WriteByte('\n')
+	}
+	if message.Warning != "" {
+		text.WriteString(tview.Escape("Note: " + message.Warning))
+		text.WriteByte('\n')
+	}
+	text.WriteByte('\n')
+	return text.String()
 }
 
 func (session *aiSession) renderChat() {
-	row, column := session.transcript.GetScrollOffset()
-	_, _, _, height := session.transcript.GetInnerRect()
-	following := row+height >= session.transcript.GetWrappedLineCount()-1
 	width := session.chatWidth
 	if width < 1 {
 		width = 84
 	}
-	var text strings.Builder
-	render := func(message ai.ChatMessage, index int) {
-		label := "AI"
-		color := app.Styles.SecondaryTextColor
-		if message.Role == "user" {
-			label = "You"
-			color = app.Styles.PrimaryTextColor
-		}
-		if message.Error {
-			color = app.Styles.ErrorColor
-		}
-		if message.Database != "" && message.SQL != "" {
-			label += " · " + message.Database
-		}
-		fmt.Fprintf(&text, "[%s::b]%s[-:-:-]\n", color, tview.Escape(label))
-		if message.Text != "" {
-			text.WriteString(tview.Escape(message.Text))
-			text.WriteByte('\n')
-		}
-		if message.SQL != "" {
-			clickable := index >= 0 && message.Role == "assistant" && !message.Error
-			if clickable {
-				fmt.Fprintf(&text, `["sql-%d"]`, index)
-			}
-			text.WriteString(chatSQLBlock(message.SQL, width))
-			if clickable {
-				text.WriteString(`[""]`)
-			}
-			text.WriteByte('\n')
-		}
-		if message.Warning != "" {
-			text.WriteString(tview.Escape("Note: " + message.Warning))
-			text.WriteByte('\n')
-		}
-		text.WriteByte('\n')
+	row, column := session.transcript.GetScrollOffset()
+	_, _, _, height := session.transcript.GetInnerRect()
+	following := row+height >= session.transcript.GetWrappedLineCount()-1
+	theme := chatTheme()
+	changed := session.cachedWidth != width || session.cachedTheme != theme
+	if changed {
+		session.sqlBlocks = nil
+		session.cachedWidth = width
+		session.cachedTheme = theme
 	}
-	for index, message := range session.history {
-		render(message, index)
+	if changed || session.renderedVersion != session.historyVersion || (session.cachedHistory == "" && len(session.history) > 0) {
+		var text strings.Builder
+		for index, message := range session.history {
+			text.WriteString(session.messageMarkup(message, index, width))
+		}
+		session.cachedHistory = text.String()
+		session.renderedVersion = session.historyVersion
 	}
 	partial := session.streaming
 	content := partial.Message
@@ -219,10 +271,14 @@ func (session *aiSession) renderChat() {
 	if content == "" {
 		content = partial.Missing
 	}
+	text := session.cachedHistory
 	if content != "" || partial.SQL != "" {
-		render(ai.ChatMessage{Role: "assistant", Text: content, SQL: partial.SQL, Database: partial.Database, Warning: partial.Warning}, -1)
+		text += session.messageMarkup(ai.ChatMessage{Role: "assistant", Text: content, SQL: partial.SQL, Database: partial.Database, Warning: partial.Warning}, -1, width)
 	}
-	session.transcript.SetText(text.String())
+	if text == session.transcript.GetText(false) {
+		return
+	}
+	session.transcript.SetText(text)
 	if following {
 		session.transcript.ScrollToEnd()
 	} else {
@@ -269,6 +325,9 @@ func (session *aiSession) capture(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyCtrlU:
 		session.useQuery()
+		return nil
+	case tcell.KeyCtrlK:
+		session.toggleContext()
 		return nil
 	case tcell.KeyCtrlN:
 		session.newChat()

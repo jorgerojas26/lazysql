@@ -87,13 +87,22 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 		if json.NewDecoder(request.Body).Decode(&body) != nil || body["stream"] != true || body["store"] != false || body["tools"] == nil || request.Header.Get("Authorization") != "Bearer fixture-key" {
 			t.Error("end-to-end request bypassed native streaming protocol")
 		}
+		if number == 5 {
+			inputs, _ := body["input"].([]any)
+			first, _ := inputs[0].(map[string]any)
+			content, _ := first["content"].(string)
+			var context ai.Request
+			if json.Unmarshal([]byte(content), &context) != nil || len(context.Tables) == 0 || len(context.Tables[0].Columns) < 4 {
+				t.Error("refinement did not reuse verified schema")
+			}
+		}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		event := func(value any) { data, _ := json.Marshal(value); fmt.Fprintf(writer, "data: %s\n\n", data) }
 		if number <= 3 {
 			names := []string{"list_databases", "list_tables", "describe_tables"}
 			args := []string{`{}`, `{"database":"app"}`, `{"database":"app","names":["users"]}`}
 			event(map[string]any{"type": "response.output_item.done", "output_index": 0, "item": map[string]any{"type": "function_call", "id": fmt.Sprintf("fc%d", number), "call_id": fmt.Sprintf("call%d", number), "name": names[number-1], "arguments": args[number-1]}})
-			event(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed"}})
+			event(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "usage": map[string]any{"input_tokens": 100 * number, "output_tokens": 5, "input_tokens_details": map[string]int{"cached_tokens": 20}}}})
 			return
 		}
 		if number == 4 {
@@ -130,7 +139,7 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 				return
 			}
 			event(map[string]any{"type": "response.output_text.delta", "delta": string(output[cut:])})
-			event(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed"}})
+			event(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "usage": map[string]any{"input_tokens": 400, "output_tokens": 40, "input_tokens_details": map[string]int{"cached_tokens": 100}}}})
 		} else {
 			<-request.Context().Done()
 			canceled <- number
@@ -247,6 +256,18 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 			t.Error("visible streamed SQL was not syntax highlighted")
 		}
 	})
+	press(tcell.KeyCtrlK)
+	wait("context details", func() bool { name, _ := session.content.GetFrontPage(); return name == "context" })
+	App.QueueUpdate(func() {
+		if !strings.Contains(session.contextDetails.GetText(false), "300 tokens") || session.metricTotals.Calls != 4 || session.metricTotals.Input != 600 {
+			t.Error("context details did not report actual planning usage")
+		}
+		if session.currentMetrics.Round == 0 || session.contextMeter.GetText(false) == "" {
+			t.Error("active request context is not visible")
+		}
+	})
+	press(tcell.KeyCtrlK)
+	wait("return to chat", func() bool { name, _ := session.content.GetFrontPage(); return name == "chat" })
 	typeDraft("Only include verified users")
 	press(tcell.KeyCtrlG)
 	wait("hide while thinking", func() bool { return !session.visible })
@@ -266,6 +287,11 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 	})
 	release()
 	wait("completed reply", func() bool { return !session.busy && session.result.SQL == query && len(session.history) == 2 })
+	App.QueueUpdate(func() {
+		if session.metricTotals.Calls != 4 || session.metricTotals.Reports != 4 || session.metricTotals.Input != 1000 || session.metricTotals.Output != 55 || session.metricTotals.Cached != 160 {
+			t.Errorf("usage totals counted tool updates incorrectly: %+v", session.metricTotals)
+		}
+	})
 	App.QueueUpdate(func() {
 		if session.input.GetText() != "Only include verified users" {
 			t.Error("completed response overwrote the next draft")

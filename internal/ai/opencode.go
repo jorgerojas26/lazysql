@@ -136,6 +136,7 @@ func (client *openCodeClient) send(ctx context.Context, payload map[string]any) 
 
 func (client *openCodeClient) post(ctx context.Context, payload map[string]any, endpoint string) (*http.Response, error) {
 	body, err := json.Marshal(payload)
+	recordWireBytes(ctx, len(body))
 	if err != nil {
 		return nil, err
 	}

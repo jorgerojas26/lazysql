@@ -1152,7 +1152,13 @@ func (tree *Tree) initializeNodes(ctx context.Context, dbName string, generation
 
 	if dbName == "" {
 		started := time.Now()
-		dbs, err := tree.DBDriver.GetDatabases(ctx)
+		var dbs []string
+		var err error
+		if tree.schemaLoader != nil {
+			dbs, err = tree.schemaLoader.loadDatabases(ctx)
+		} else {
+			dbs, err = tree.DBDriver.GetDatabases(ctx)
+		}
 		logDatabaseOperation(ctx, "get_databases", started, nil, err)
 		if err != nil {
 			panic(err.Error())

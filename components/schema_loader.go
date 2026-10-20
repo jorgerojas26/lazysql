@@ -3,6 +3,7 @@ package components
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -23,15 +24,16 @@ type editorSchemaTable struct {
 // cache is shared with ResultsTable metadata so the tree, Records, and SQL
 // autocomplete can reuse the same table/column results.
 type schemaLoader struct {
-	driver drivers.Driver
-	cache  *metadataCache
+	driver  drivers.Driver
+	cache   *metadataCache
+	aiLimit chan struct{}
 }
 
 func newSchemaLoader(driver drivers.Driver, cache *metadataCache) *schemaLoader {
 	if cache == nil {
 		cache = newMetadataCache()
 	}
-	return &schemaLoader{driver: driver, cache: cache}
+	return &schemaLoader{driver: driver, cache: cache, aiLimit: make(chan struct{}, 4)}
 }
 
 // EditorSchemaLoadResult contains the observable results of loading the SQL
@@ -106,6 +108,29 @@ func LoadEditorSchema(
 	}
 	result.ColumnNames[tableList[0].qualifiedName] = editorColumnNames(value)
 	return result, nil
+}
+
+func (loader *schemaLoader) loadDatabases(ctx context.Context) ([]string, error) {
+	work, cancel := context.WithCancel(ctx)
+	defer cancel()
+	key := newMetadataKey("", "", MetadataDatabases)
+	done := loader.cache.requestWithContext(work, key, cancel, func() (any, error) { return loader.driver.GetDatabases(work) })
+	if done != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-done:
+		}
+	}
+	state, value, err := loader.cache.result(key)
+	if err != nil {
+		return nil, err
+	}
+	names, ok := value.([]string)
+	if state != MetadataReady || !ok {
+		return nil, fmt.Errorf("database catalog changed; retry")
+	}
+	return names, nil
 }
 
 func (loader *schemaLoader) requestTables(ctx context.Context, database string) (metadataKey, <-chan struct{}) {

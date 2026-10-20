@@ -56,7 +56,6 @@ func (home *Home) openAIPrompt() {
 	if !app.App.AIConfig().Enabled || home.TabbedPane == nil || home.Tree == nil {
 		return
 	}
-	home.FocusedWrapper = focusedWrapperRight
 	if home.aiChat != nil && home.aiChat.active() {
 		home.aiChat.show()
 		return
@@ -82,23 +81,19 @@ func (home *Home) openAIPrompt() {
 		candidate, ok := tab.Content.(*ResultsTable)
 		if ok && candidate.Editor != nil && candidate.GetDatabaseName() == database {
 			table = candidate
-			home.TabbedPane.SwitchToTabByReference(tab.Reference)
 			break
 		}
 	}
+	detached := table == nil
 	if table == nil {
 		table = NewResultsTable(&home.ListOfDBChanges, home.Tree, home.DBDriver, home, home.ConnectionIdentifier, home.ConnectionURL, home.ReadOnly)
 		table.SetDatabaseName(database)
 		table.WithEditor()
-		home.TabbedPane.AppendTab(tabNameEditor, table, home.TabbedPane.NextAvailableReference(tabNameEditor))
-		if database != "" {
-			go table.loadEditorSchema()
-		}
 	}
-	table.SetIsFiltering(true)
 	table.openAIPrompt()
 	if table.aiSession != nil {
 		table.aiSession.selection = aiSelection{original: table.Editor.GetText()}
+		table.aiSession.sourceClosed = detached
 	}
 }
 
@@ -144,40 +139,63 @@ func (selection aiSelection) apply(editor *SQLEditor, sql string) error {
 }
 
 type aiSession struct {
-	streaming     ai.Result
-	chatWidth     int
-	lastSent      string
-	table         *ResultsTable
-	owner         *Home
-	surface       *tview.Pages
-	visible       bool
-	sourceClosed  bool
-	previousFocus tview.Primitive
-	client        ai.ToolCompleter
-	ctx           context.Context
-	cancel        context.CancelFunc
-	runCancel     context.CancelFunc
-	run           uint64
-	busy          bool
-	database      string
-	current       string
-	schemas       []string
-	selection     aiSelection
-	input         *aiPrompt
-	transcript    *tview.TextView
-	status        *tview.TextView
-	panel         *tview.Flex
-	buttons       *tview.Flex
-	useButton     *tview.Button
-	stopButton    *tview.Button
-	newButton     *tview.Button
-	controlsWidth int
-	focusable     []tview.Primitive
-	history       []ai.ChatMessage
-	request       string
-	question      string
-	answer        string
-	result        ai.Result
+	previousTab     *Tab
+	startedRound    int
+	streamQueue     chan aiStreamUpdate
+	historyVersion  uint64
+	renderedVersion uint64
+	cachedHistory   string
+	cachedWidth     int
+	cachedTheme     [13]tcell.Color
+	sqlBlocks       map[string]string
+	model           string
+	contextWindow   int
+	contextMeter    *tview.TextView
+	contextDetails  *tview.TextView
+	content         *tview.Pages
+	contextButton   *tview.Button
+	contextTimer    *time.Timer
+	contextVersion  uint64
+	nextContext     ai.ContextSize
+	currentMetrics  ai.RequestMetrics
+	lastMetrics     ai.RequestMetrics
+	metricTotals    aiMetricTotals
+	measuredRound   int
+	historyOmitted  bool
+	streaming       ai.Result
+	chatWidth       int
+	lastSent        string
+	table           *ResultsTable
+	owner           *Home
+	surface         *tview.Pages
+	visible         bool
+	sourceClosed    bool
+	previousFocus   tview.Primitive
+	client          ai.ToolCompleter
+	ctx             context.Context
+	cancel          context.CancelFunc
+	runCancel       context.CancelFunc
+	run             uint64
+	busy            bool
+	database        string
+	current         string
+	schemas         []string
+	selection       aiSelection
+	input           *aiPrompt
+	transcript      *tview.TextView
+	status          *tview.TextView
+	panel           *tview.Flex
+	buttons         *tview.Flex
+	useButton       *tview.Button
+	stopButton      *tview.Button
+	newButton       *tview.Button
+	controlsWidth   int
+	focusable       []tview.Primitive
+	history         []ai.ChatMessage
+	request         string
+	question        string
+	answer          string
+	result          ai.Result
 }
 
 func (table *ResultsTable) openAIPrompt() {
@@ -237,6 +255,10 @@ func (session *aiSession) focus(primitive tview.Primitive) {
 func (session *aiSession) show() {
 	if !session.visible {
 		session.previousFocus = app.App.GetFocus()
+		session.previousTab = nil
+		if session.owner != nil {
+			session.previousTab = session.owner.TabbedPane.GetCurrentTab()
+		}
 	}
 	session.showPanel(session.panel, 26)
 	session.focus(session.input)
@@ -248,7 +270,11 @@ func (session *aiSession) hide() {
 		return
 	}
 	mainPages.RemovePage("ai-modal")
-	if session.previousFocus != nil && !session.sourceClosed {
+	restoreFocus := session.previousFocus != nil
+	if restoreFocus && session.owner != nil && session.previousTab != nil && session.owner.TabbedPane.GetTabByReference(session.previousTab.Reference) != session.previousTab {
+		restoreFocus = session.previousFocus == session.owner.Tree || session.previousFocus == session.owner.Tree.Filter
+	}
+	if restoreFocus {
 		app.App.SetFocus(session.previousFocus)
 	} else if session.owner != nil {
 		if tab := session.owner.TabbedPane.GetCurrentTab(); tab != nil {
@@ -261,6 +287,9 @@ func (session *aiSession) hide() {
 
 func (session *aiSession) close() {
 	session.cancel()
+	if session.contextTimer != nil {
+		session.contextTimer.Stop()
+	}
 	if session.runCancel != nil {
 		session.runCancel()
 	}
@@ -302,6 +331,18 @@ func (session *aiSession) newChat() {
 	session.runCancel = nil
 	session.busy = false
 	session.history = nil
+	session.historyVersion++
+	session.cachedHistory = ""
+	session.sqlBlocks = nil
+	session.historyOmitted = false
+	session.metricTotals = aiMetricTotals{}
+	session.currentMetrics = ai.RequestMetrics{}
+	session.lastMetrics = ai.RequestMetrics{}
+	session.nextContext = ai.ContextSize{}
+	session.content.SwitchToPage("chat")
+	session.contextButton.SetLabel("Ctrl+K Context")
+	session.measuredRound = 0
+	session.startedRound = 0
 	session.result = ai.Result{}
 	session.streaming = ai.Result{}
 	session.question, session.answer, session.request, session.lastSent = "", "", "", ""
@@ -333,6 +374,7 @@ func (session *aiSession) newChat() {
 	session.selection = aiSelection{original: session.table.Editor.GetText()}
 	session.renderChat()
 	session.refreshControls()
+	session.scheduleContext()
 	session.focus(session.input)
 }
 
@@ -350,54 +392,42 @@ func (session *aiSession) generate() {
 	}
 	session.streaming = ai.Result{}
 	session.lastSent = text
-	history := slices.Clone(session.history)
-	prompt := text
+	request := session.makeRequest(text)
 	if session.question == "" {
 		session.request = text
 		session.answer = ""
 	} else {
 		session.answer = text
-		prompt = session.request
 	}
-	request := ai.Request{History: history, Dialect: session.table.DBDriver.GetProvider(), Database: session.database, CurrentTable: session.current, Prompt: prompt, Clarification: session.question, Answer: session.answer, SelectedSQL: session.selection.text, EditorSQL: session.selection.original}
 	session.appendMessage(ai.ChatMessage{Role: "user", Text: text})
 	ctx, cancel := context.WithTimeout(session.ctx, 120*time.Second)
 	session.runCancel = cancel
 	session.run++
 	run := session.run
 	session.busy = true
+	session.measuredRound = 0
+	session.startedRound = 0
+	session.currentMetrics = ai.RequestMetrics{}
 	session.input.SetText("")
 	session.showResponse("Discovering", "Finding relevant schema…", false)
 	session.refreshControls()
-	schemas := slices.Clone(session.schemas)
+	schemas := slices.Clone(request.Schemas)
 	loader := session.table.schemaMetadataLoader()
+	generation := request.SchemaGeneration
 	client := session.client
 	go func() {
 		defer cancel()
 		metadata := &aiSchemaTools{loader: loader, database: request.Database, schemasFilter: schemas}
 		request.Schemas = schemas
-		result, err := ai.DiscoverSQLStream(ctx, client, request, metadata.execute, func(update ai.Result) { session.stream(run, update) })
+		result, err := ai.DiscoverSQLStream(ctx, client, request, metadata.execute, func(update ai.Result) { session.stream(run, update) }, ai.DiscoveryOptions{Model: session.model, Observe: func(metrics ai.RequestMetrics) { session.observeMetrics(run, metrics) }})
+		if err == nil && loader.cache.generationValue() != generation {
+			err = errors.New("schema changed during generation; retry")
+		}
 		if err == nil && result.SQL != "" {
 			result.Database, err = metadata.resolveDatabase(ctx, result.Database)
 		}
 		session.finish(run, result, err)
 	}()
-}
-
-func (session *aiSession) stream(run uint64, result ai.Result) {
-	if session.ctx.Err() != nil {
-		return
-	}
-	app.App.QueueUpdateDraw(func() {
-		if !session.active() || session.run != run || !session.busy {
-			return
-		}
-		session.streaming = result
-		if result.SQL != "" || result.Message != "" || result.Clarification != "" || result.Missing != "" {
-			session.status.SetText("Responding…")
-		}
-		session.renderChat()
-	})
 }
 
 func (session *aiSession) finish(run uint64, result ai.Result, err error) {
@@ -439,6 +469,7 @@ func (session *aiSession) finish(run uint64, result ai.Result, err error) {
 			session.input.SetPlaceholder("Ask a follow-up…")
 		}
 		session.refreshControls()
+		session.scheduleContext()
 		session.focus(session.input)
 	})
 }
@@ -452,6 +483,16 @@ func (session *aiSession) usedQuery(table *ResultsTable, sql string, start int) 
 	session.sourceClosed = false
 	session.database = table.GetDatabaseName()
 	session.selection = aiSelection{original: table.Editor.GetText(), text: sql, start: start, end: start + len(sql)}
+	table.SetIsFiltering(true)
+	if session.owner != nil {
+		session.owner.FocusedWrapper = focusedWrapperRight
+		for tab := session.owner.TabbedPane.state.FirstTab; tab != nil; tab = tab.NextTab {
+			if tab.Content == table {
+				session.owner.TabbedPane.SwitchToTabByReference(tab.Reference)
+				break
+			}
+		}
+	}
 	session.hide()
 	app.App.SetFocus(table.Editor)
 }

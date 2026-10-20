@@ -50,7 +50,8 @@ func fetchOpenCodeModels(ctx context.Context, client *http.Client, modelsURL, me
 	}
 	var live struct {
 		Data []struct {
-			ID string `json:"id"`
+			ID            string `json:"id"`
+			ContextWindow int    `json:"context_window"`
 		} `json:"data"`
 	}
 	if json.Unmarshal(data, &live) != nil || len(live.Data) == 0 {
@@ -114,7 +115,7 @@ func fetchOpenCodeModels(ctx context.Context, client *http.Client, modelsURL, me
 		if name == "" {
 			name = item.ID
 		}
-		models = append(models, Model{ID: item.ID, Name: name, Format: format})
+		models = append(models, Model{ID: item.ID, Name: name, Format: format, ContextWindow: item.ContextWindow})
 	}
 	if len(models) == 0 {
 		return nil, errors.New("OpenCode Go returned no available models")

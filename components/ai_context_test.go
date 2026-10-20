@@ -321,3 +321,142 @@ func TestAIDiscoveryFindsUsersOutsideStartingDatabase(t *testing.T) {
 		t.Fatal("unavailable database accepted")
 	}
 }
+
+func TestAIVerifiedSchemaSeedEnablesOneRequestRefinement(t *testing.T) {
+	driver := &aiMultiDatabaseDriver{}
+	loader := newSchemaLoader(driver, newMetadataCache())
+	tools := &aiSchemaTools{loader: loader, database: "acl"}
+	for _, call := range []struct{ name, args string }{{"list_databases", `{}`}, {"list_tables", `{"database":"app"}`}, {"describe_tables", `{"database":"app","names":["Users"]}`}} {
+		if _, err := tools.execute(context.Background(), call.name, json.RawMessage(call.args)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	databases, complete, catalog, tables := cachedAIContext(loader, "app", nil)
+	if !complete || len(databases) != 2 || len(catalog) == 0 || len(tables) != 1 || tables[0].Name != "Users" {
+		t.Fatalf("verified seed: %v %v %v %+v", databases, complete, catalog, tables)
+	}
+	requests := 0
+	model := aiDiscoveryFunc(func(_ context.Context, instructions string, messages []ai.Message, _ []ai.Tool) (ai.Turn, error) {
+		requests++
+		var request ai.Request
+		if json.Unmarshal([]byte(messages[0].Text), &request) != nil || len(request.Tables) != 1 || request.Tables[0].Columns[2].Name != "created_at" {
+			t.Fatal("model did not receive verified columns")
+		}
+		if !strings.Contains(instructions, "generate directly without rediscovery") {
+			t.Fatal("fast path is not instructed")
+		}
+		return ai.Turn{Text: `{"sql":"SELECT id, email FROM Users ORDER BY created_at DESC LIMIT 10;","database":"app"}`}, nil
+	})
+	result, err := ai.DiscoverSQL(context.Background(), model, ai.Request{Prompt: "Include email", Databases: databases, DatabaseCatalogComplete: complete, Catalog: catalog, Tables: tables}, func(context.Context, string, json.RawMessage) (any, error) {
+		t.Fatal("warm refinement made unnecessary tool calls")
+		return nil, nil
+	})
+	if err != nil || result.SQL == "" || requests != 1 || driver.columnCalls.Load() != 1 {
+		t.Fatalf("warm refinement: %+v %v (%d requests)", result, err, requests)
+	}
+	loader.invalidateAll()
+	_, _, _, tables = cachedAIContext(loader, "app", nil)
+	if len(tables) != 0 {
+		t.Fatal("schema refresh left stale verified tables in context")
+	}
+}
+
+func TestAICachedSchemaStillAppliesVisibilityScope(t *testing.T) {
+	loader := newSchemaLoader(&aiSchemaDriver{}, newMetadataCache())
+	catalog, err := aiCatalog(context.Background(), loader, "shop", []string{"public"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadAIContext(context.Background(), loader, "shop", catalog, catalog); err != nil {
+		t.Fatal(err)
+	}
+	_, _, public, tables := cachedAIContext(loader, "shop", []string{"public"})
+	if len(tables) != 3 || len(public) == 0 {
+		t.Fatal("verified schema was not retained")
+	}
+	_, _, private, hidden := cachedAIContext(loader, "shop", []string{"private"})
+	data, _ := json.Marshal(struct {
+		Catalog []ai.TableCatalog
+		Tables  []ai.Table
+	}{private, hidden})
+	if strings.Contains(string(data), "public.") || len(hidden) != 0 {
+		t.Fatalf("cached context leaked hidden schema: %s", data)
+	}
+}
+
+type aiConcurrentDriver struct {
+	aiSchemaDriver
+	active  atomic.Int32
+	peak    atomic.Int32
+	started chan struct{}
+	release chan struct{}
+}
+
+func (driver *aiConcurrentDriver) load(ctx context.Context) error {
+	active := driver.active.Add(1)
+	defer driver.active.Add(-1)
+	for {
+		peak := driver.peak.Load()
+		if active <= peak || driver.peak.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+	driver.started <- struct{}{}
+	select {
+	case <-driver.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func (driver *aiConcurrentDriver) GetTableColumns(ctx context.Context, database, table string) ([][]string, error) {
+	if err := driver.load(ctx); err != nil {
+		return nil, err
+	}
+	return driver.aiSchemaDriver.GetTableColumns(ctx, database, table)
+}
+func (driver *aiConcurrentDriver) GetPrimaryKeyColumnNames(ctx context.Context, database, table string) ([]string, error) {
+	if err := driver.load(ctx); err != nil {
+		return nil, err
+	}
+	return []string{"id"}, nil
+}
+func (driver *aiConcurrentDriver) GetForeignKeys(ctx context.Context, database, table string) ([][]string, error) {
+	if err := driver.load(ctx); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+func (driver *aiConcurrentDriver) GetReferencingTables(ctx context.Context, database, table string) ([][]string, error) {
+	if err := driver.load(ctx); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func TestAIMetadataReadsAreParallelAndBounded(t *testing.T) {
+	driver := &aiConcurrentDriver{started: make(chan struct{}, 16), release: make(chan struct{})}
+	loader := newSchemaLoader(driver, newMetadataCache())
+	done := make(chan error, 1)
+	go func() {
+		_, err := loadAIContext(context.Background(), loader, "shop", []string{"one", "two"}, []string{"one", "two"})
+		done <- err
+	}()
+	for i := 0; i < 4; i++ {
+		select {
+		case <-driver.started:
+		case <-time.After(time.Second):
+			t.Fatal("metadata reads were serialized")
+		}
+	}
+	if driver.peak.Load() > 4 {
+		t.Fatal("metadata concurrency exceeded connection-scoped bound")
+	}
+	close(driver.release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if driver.peak.Load() != 4 {
+		t.Fatalf("metadata parallelism = %d, want 4", driver.peak.Load())
+	}
+}

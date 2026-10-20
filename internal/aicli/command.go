@@ -195,6 +195,10 @@ func (flow *command) configure(ctx context.Context, provider string) error {
 				continue
 			}
 			changes["model"] = model.ID
+			changes["context_window"] = nil
+			if model.ContextWindow > 0 {
+				changes["context_window"] = model.ContextWindow
+			}
 			changes["api_format"] = nil
 			if provider == "opencode-go" {
 				changes["api_format"] = model.Format

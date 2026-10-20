@@ -1,7 +1,8 @@
 package ai
 
 type Model struct {
-	ID     string
-	Name   string
-	Format string
+	ContextWindow int
+	ID            string
+	Name          string
+	Format        string
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func readSSE(reader io.Reader, event func([]byte) (bool, error)) error {
+func readSSE(reader io.Reader, event func([]byte) (bool, error), completed ...func() bool) error {
 	scanner := bufio.NewScanner(io.LimitReader(reader, 4*1024*1024))
 	scanner.Buffer(make([]byte, 4096), 512*1024)
 	var data strings.Builder
@@ -50,6 +50,9 @@ func readSSE(reader io.Reader, event func([]byte) (bool, error)) error {
 			return nil
 		}
 	}
+	if scanner.Err() == nil && len(completed) > 0 && completed[0]() {
+		return nil
+	}
 	return errors.New("AI stream ended before completion; partial output was discarded")
 }
 
@@ -71,6 +74,8 @@ func readOpenCodeStream(reader io.Reader, format string, delta func(string)) (Tu
 	var parts []json.RawMessage
 	var reasoning strings.Builder
 	finish := ""
+	finished := false
+	usage := Usage{}
 	var result Turn
 	assemble := func() error {
 		indexes := make([]int, 0, len(blocks))
@@ -124,18 +129,23 @@ func readOpenCodeStream(reader io.Reader, format string, delta func(string)) (Tu
 	}
 	err := readSSE(reader, func(raw []byte) (bool, error) {
 		if string(raw) == "[DONE]" {
+			if finished {
+				return true, nil
+			}
 			return false, errors.New("AI stream ended without a completed response")
 		}
 		if len(raw) > MaxResponseBytes*2 {
 			return false, errors.New("AI stream event is too large")
 		}
+		usage.Merge(decodeUsage(format, raw))
 		switch format {
 		case "anthropic":
 			var event struct {
-				Type  string         `json:"type"`
-				Index int            `json:"index"`
-				Block map[string]any `json:"content_block"`
-				Delta struct {
+				Message json.RawMessage `json:"message"`
+				Type    string          `json:"type"`
+				Index   int             `json:"index"`
+				Block   map[string]any  `json:"content_block"`
+				Delta   struct {
 					Type      string `json:"type"`
 					Text      string `json:"text"`
 					JSON      string `json:"partial_json"`
@@ -149,6 +159,9 @@ func readOpenCodeStream(reader io.Reader, format string, delta func(string)) (Tu
 			}
 			if event.Index < 0 || event.Index > 63 {
 				return false, errors.New("too many AI content blocks")
+			}
+			if event.Type == "message_start" {
+				usage.Merge(decodeUsage("anthropic", event.Message))
 			}
 			switch event.Type {
 			case "error":
@@ -203,7 +216,9 @@ func readOpenCodeStream(reader io.Reader, format string, delta func(string)) (Tu
 			case "content_block_stop":
 				complete[event.Index] = true
 			case "message_delta":
-				finish = event.Delta.Stop
+				if event.Delta.Stop != "" {
+					finish = event.Delta.Stop
+				}
 			case "message_stop":
 				return true, assemble()
 			}
@@ -266,7 +281,9 @@ func readOpenCodeStream(reader io.Reader, format string, delta func(string)) (Tu
 			}
 			if candidate.Finish != "" {
 				finish = candidate.Finish
-				return true, assemble()
+				err := assemble()
+				finished = err == nil
+				return false, err
 			}
 		default:
 			var chunk struct {
@@ -323,13 +340,16 @@ func readOpenCodeStream(reader io.Reader, format string, delta func(string)) (Tu
 			}
 			if choice.Finish != "" {
 				finish = choice.Finish
-				return true, assemble()
+				err := assemble()
+				finished = err == nil
+				return false, err
 			}
 		}
 		return false, nil
-	})
+	}, func() bool { return finished })
 	if err != nil {
 		return Turn{}, err
 	}
+	result.Usage = usage
 	return result, nil
 }

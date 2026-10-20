@@ -35,11 +35,12 @@ type AppConfig struct {
 }
 
 type AIConfig struct {
-	Enabled   bool   `toml:"enabled"`
-	Provider  string `toml:"provider"`
-	Model     string `toml:"model"`
-	APIKeyEnv string `toml:"api_key_env"`
-	APIFormat string `toml:"api_format,omitempty"`
+	ContextWindow int    `toml:"context_window,omitempty"`
+	Enabled       bool   `toml:"enabled"`
+	Provider      string `toml:"provider"`
+	Model         string `toml:"model"`
+	APIKeyEnv     string `toml:"api_key_env"`
+	APIFormat     string `toml:"api_format,omitempty"`
 }
 
 type ConnectionPoolConfig struct {

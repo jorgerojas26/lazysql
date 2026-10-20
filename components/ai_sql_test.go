@@ -356,6 +356,7 @@ func TestAIGenerationRetriesCatalogFailureWithoutReopeningPrompt(t *testing.T) {
 	session := newAILayoutSession(t)
 	driver := &aiRetryCatalogDriver{}
 	session.table.DBDriver = driver
+	session.table.schemaLoader = nil
 	session.schemas = []string{"public"}
 	session.client = aiCompletionFunc(func(context.Context, string) (string, error) {
 		return `{"sql":"SELECT id FROM public.orders;","clarification":"","missing":"","warning":""}`, nil
@@ -435,6 +436,7 @@ func TestAIAcceptUsesDiscoveredDatabaseWithoutChangingSourceDraft(t *testing.T) 
 	home.aiChat = session
 	source := session.table
 	session.table.DBDriver = driver
+	session.table.schemaLoader = nil
 	session.table.SetDatabaseName("acl")
 	session.database = "acl"
 	session.selection = captureAISelection(session.table.Editor)

@@ -108,7 +108,7 @@ func decodeToolTurn(format string, data []byte) (Turn, error) {
 	if len(data) > MaxResponseBytes*2 {
 		return Turn{}, invalid
 	}
-	var turn Turn
+	turn := Turn{Usage: decodeUsage(format, data)}
 	var texts []string
 	switch format {
 	case "responses":
