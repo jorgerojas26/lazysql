@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"maps"
 	"os"
 	"os/signal"
 	"sync"
@@ -71,9 +70,7 @@ func (a *Application) Config() *models.AppConfig {
 }
 
 func (a *Application) AIConfig() models.AIConfig {
-	config := a.config.AI
-	config.ThinkingPreferences = maps.Clone(config.ThinkingPreferences)
-	return config
+	return a.config.AI
 }
 
 // Connections returns the database connections.

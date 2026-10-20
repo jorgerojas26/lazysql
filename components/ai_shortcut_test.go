@@ -96,7 +96,7 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 					return
 				}
 				source = home.aiChat.table
-				if source.Editor == nil || source.aiSession == nil {
+				if source.Editor == nil || source.Home.aiChat == nil {
 					t.Error("global shortcut did not open AI prompt")
 					return
 				}
@@ -110,13 +110,13 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 				if source.GetDatabaseName() != expected {
 					t.Errorf("wrong database: %q", source.GetDatabaseName())
 				}
-				if App.GetFocus() != source.aiSession.input {
+				if App.GetFocus() != source.Home.aiChat.input {
 					t.Error("prompt input is not focused")
 				}
 				if draft != nil && source != draft {
 					t.Error("existing SQL editor was not reused")
 				}
-				if scenario == "reuse draft" && source.aiSession.selection.text != "" {
+				if scenario == "reuse draft" && source.Home.aiChat.selection.text != "" {
 					t.Error("background selection was treated as replacement request")
 				}
 			})
@@ -127,7 +127,7 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 			for time.Now().Before(deadline) {
 				ready := false
 				App.QueueUpdate(func() {
-					ready = source.aiSession != nil && !source.aiSession.busy
+					ready = source.Home.aiChat != nil && !source.Home.aiChat.busy
 				})
 				if ready {
 					break
@@ -136,7 +136,7 @@ func TestAIGlobalShortcutOpensEditorFromWorkspace(t *testing.T) {
 			}
 			var target *ResultsTable
 			App.QueueUpdateDraw(func() {
-				session := source.aiSession
+				session := source.Home.aiChat
 				if session == nil || session.busy {
 					t.Error("AI prompt did not load")
 					return

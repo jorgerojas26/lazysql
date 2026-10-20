@@ -65,7 +65,7 @@ func TestAIQueryBlockClickUsesExactHistoricalQuery(t *testing.T) {
 	}
 	session.show()
 	draw()
-	click("SELECT 1;")
+	click("│ SELECT 1;")
 	if session.visible || session.table.Editor.GetText() != "SELECT 1;" {
 		t.Fatal("repeated click on the same SQL block did not work")
 	}

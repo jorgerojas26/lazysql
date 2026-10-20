@@ -135,6 +135,36 @@ func aiColumns(columns any) []ai.Column {
 	return result
 }
 
+func aiForeignKeys(driver drivers.Driver) (MetadataKind, func(context.Context, string, string) ([][]string, error)) {
+	if outgoing, ok := driver.(interface {
+		GetOutgoingForeignKeys(context.Context, string, string) ([][]string, error)
+	}); ok {
+		return MetadataKind("ai_outgoing_foreign_keys"), outgoing.GetOutgoingForeignKeys
+	}
+	return MetadataForeignKeys, driver.GetForeignKeys
+}
+
+func aiScopedRelationships(foreign, incoming any, name string, schemas bool, allowed map[string]bool) []ai.Relationship {
+	relationships := append(aiRelationships(foreign, name, false, schemas), aiRelationships(incoming, name, true, schemas)...)
+	filtered := relationships[:0]
+	for _, relation := range relationships {
+		if allowed[relation.FromTable] && allowed[relation.ToTable] {
+			filtered = append(filtered, relation)
+		}
+	}
+	return filtered
+}
+
+func aiTable(database, name string, columns, keys any, relationships []ai.Relationship) (ai.Table, error) {
+	item := ai.Table{Database: database, Name: name, Columns: aiColumns(columns), Relationships: relationships}
+	var ok bool
+	item.PrimaryKeys, ok = keys.([]string)
+	if !ok || len(item.Columns) == 0 {
+		return ai.Table{}, fmt.Errorf("incomplete column or primary key metadata for %s; refresh the schema", name)
+	}
+	return item, nil
+}
+
 func loadAIContext(ctx context.Context, loader *schemaLoader, database string, names, catalog []string) ([]ai.Table, error) {
 	allowed := map[string]bool{}
 	for _, name := range catalog {
@@ -162,103 +192,73 @@ func loadAIContext(ctx context.Context, loader *schemaLoader, database string, n
 		loader.preloadEditorColumns(ctx, database, descriptors, len(names), nil)
 		<-loader.aiLimit
 	}
-	result := make([]ai.Table, len(names))
-	failures := make([]error, len(names))
+	values := make([]struct{ columns, keys, foreign, incoming any }, len(names))
+	failures := make([][4]error, len(names))
+	kind, getForeignKeys := aiForeignKeys(loader.driver)
 	var wait sync.WaitGroup
 	for index, name := range names {
-		wait.Add(1)
-		go func(index int, name string) {
-			defer wait.Done()
-			var columns, keys any
-			var relationships []ai.Relationship
-			var columnError, keyError, relationError error
-			var parts sync.WaitGroup
-			parts.Add(3)
+		reads := []struct {
+			kind   MetadataKind
+			load   func(context.Context, string, string) (any, error)
+			target *any
+		}{
+			{MetadataColumns, func(ctx context.Context, database, name string) (any, error) {
+				return loader.driver.GetTableColumns(ctx, database, name)
+			}, &values[index].columns},
+			{MetadataPrimaryKeys, func(ctx context.Context, database, name string) (any, error) {
+				return loader.driver.GetPrimaryKeyColumnNames(ctx, database, name)
+			}, &values[index].keys},
+			{kind, func(ctx context.Context, database, name string) (any, error) {
+				return getForeignKeys(ctx, database, name)
+			}, &values[index].foreign},
+			{MetadataReferencingTables, func(ctx context.Context, database, name string) (any, error) {
+				return loader.driver.GetReferencingTables(ctx, database, name)
+			}, &values[index].incoming},
+		}
+		for part, read := range reads {
+			wait.Add(1)
 			go func() {
-				defer parts.Done()
-				columns, columnError = aiLoad(ctx, loader, newMetadataKey(database, name, MetadataColumns), func(work context.Context) (any, error) { return loader.driver.GetTableColumns(work, database, name) })
-			}()
-			go func() {
-				defer parts.Done()
-				keys, keyError = aiLoad(ctx, loader, newMetadataKey(database, name, MetadataPrimaryKeys), func(work context.Context) (any, error) {
-					return loader.driver.GetPrimaryKeyColumnNames(work, database, name)
+				defer wait.Done()
+				*read.target, failures[index][part] = aiLoad(ctx, loader, newMetadataKey(database, name, read.kind), func(work context.Context) (any, error) {
+					return read.load(work, database, name)
 				})
 			}()
-			go func() {
-				defer parts.Done()
-				relationships, relationError = loadAIRelationships(ctx, loader, database, name, allowed)
-			}()
-			parts.Wait()
-			if columnError != nil {
-				failures[index] = columnError
-				return
-			}
-			if keyError != nil {
-				failures[index] = keyError
-				return
-			}
-			if relationError != nil {
-				failures[index] = relationError
-				return
-			}
-			item := ai.Table{Name: name, Database: database, Columns: aiColumns(columns), Relationships: relationships}
-			item.PrimaryKeys, _ = keys.([]string)
-			if len(item.Columns) == 0 {
-				failures[index] = fmt.Errorf("no column metadata for %s; refresh the schema", name)
-				return
-			}
-			result[index] = item
-		}(index, name)
+		}
 	}
 	wait.Wait()
-	for _, err := range failures {
+	result := make([]ai.Table, len(names))
+	for index, name := range names {
+		for _, err := range failures[index] {
+			if err != nil {
+				return nil, err
+			}
+		}
+		parts := values[index]
+		relationships := aiScopedRelationships(parts.foreign, parts.incoming, name, loader.driver.UseSchemas(), allowed)
+		item, err := aiTable(database, name, parts.columns, parts.keys, relationships)
 		if err != nil {
 			return nil, err
 		}
+		result[index] = item
 	}
 	return result, nil
 }
 
 func loadAIRelationships(ctx context.Context, loader *schemaLoader, database, name string, allowed map[string]bool) ([]ai.Relationship, error) {
-	kind := MetadataForeignKeys
-	getForeignKeys := loader.driver.GetForeignKeys
-	if outgoing, ok := loader.driver.(interface {
-		GetOutgoingForeignKeys(context.Context, string, string) ([][]string, error)
-	}); ok {
-		kind = MetadataKind("ai_outgoing_foreign_keys")
-		getForeignKeys = outgoing.GetOutgoingForeignKeys
+	kind, getForeignKeys := aiForeignKeys(loader.driver)
+	foreign, err := aiLoad(ctx, loader, newMetadataKey(database, name, kind), func(work context.Context) (any, error) {
+		return getForeignKeys(work, database, name)
+	})
+	if err != nil {
+		return nil, err
 	}
-	var foreign, incoming any
-	var foreignError, incomingError error
-	var wait sync.WaitGroup
-	wait.Add(2)
-	go func() {
-		defer wait.Done()
-		foreign, foreignError = aiLoad(ctx, loader, newMetadataKey(database, name, kind), func(work context.Context) (any, error) { return getForeignKeys(work, database, name) })
-	}()
-	go func() {
-		defer wait.Done()
-		incoming, incomingError = aiLoad(ctx, loader, newMetadataKey(database, name, MetadataReferencingTables), func(work context.Context) (any, error) {
-			return loader.driver.GetReferencingTables(work, database, name)
-		})
-	}()
-	wait.Wait()
-	if foreignError != nil {
-		return nil, foreignError
+	incoming, err := aiLoad(ctx, loader, newMetadataKey(database, name, MetadataReferencingTables), func(work context.Context) (any, error) {
+		return loader.driver.GetReferencingTables(work, database, name)
+	})
+	if err != nil {
+		return nil, err
 	}
-	if incomingError != nil {
-		return nil, incomingError
-	}
-	relationships := append(aiRelationships(foreign, name, false, loader.driver.UseSchemas()), aiRelationships(incoming, name, true, loader.driver.UseSchemas())...)
-
-	filtered := relationships[:0]
-	for _, relation := range relationships {
-		if allowed[relation.FromTable] && allowed[relation.ToTable] {
-			filtered = append(filtered, relation)
-		}
-	}
-	relationships = filtered
-	return relationships, nil
+	return aiScopedRelationships(foreign, incoming, name, loader.driver.UseSchemas(), allowed), nil
 }
 
 type aiSchemaTools struct {

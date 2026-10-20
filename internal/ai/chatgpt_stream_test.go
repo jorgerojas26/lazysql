@@ -23,12 +23,12 @@ func TestChatGPTStreamRequiresCompletionAndDiscardsFailedPartialSQL(t *testing.T
 		"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n",
 		"data: {\"type\":\"error\",\"code\":\"subscription_sharing_usage_unavailable\"}\n\n",
 	} {
-		output, err := readChatGPTStream(strings.NewReader(partial + ending))
-		if err == nil || output != "" {
-			t.Fatalf("partial SQL escaped after failure: %q %v", output, err)
+		output, err := readResponsesStream(strings.NewReader(partial+ending), "ChatGPT", nil)
+		if err == nil || output.Text != "" {
+			t.Fatalf("partial SQL escaped after failure: %q %v", output.Text, err)
 		}
 	}
-	_, err := readChatGPTStream(strings.NewReader(partial + "data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n"))
+	_, err := readResponsesStream(strings.NewReader(partial+"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n"), "ChatGPT", nil)
 	if !strings.Contains(err.Error(), ChatGPTUsageURL) {
 		t.Fatal("usage limit must link to ChatGPT usage settings")
 	}
@@ -39,13 +39,13 @@ func TestChatGPTStreamMultilineEventsFinalOutputAndBounds(t *testing.T) {
 		": heartbeat\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\ndata: \"delta\":\"SELECT 1;\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
 		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"SELECT 1;\"}]}]}}\n\n",
 	} {
-		output, err := readChatGPTStream(strings.NewReader(stream))
-		if err != nil || output != "SELECT 1;" {
-			t.Fatalf("stream = %q %v", output, err)
+		output, err := readResponsesStream(strings.NewReader(stream), "ChatGPT", nil)
+		if err != nil || output.Text != "SELECT 1;" {
+			t.Fatalf("stream = %q %v", output.Text, err)
 		}
 	}
 	oversized := fmt.Sprintf("data: {\"type\":\"response.output_text.delta\",\"delta\":\"%s\"}\n\n", strings.Repeat("x", MaxResponseBytes+1))
-	if output, err := readChatGPTStream(strings.NewReader(oversized)); err == nil || output != "" {
+	if output, err := readResponsesStream(strings.NewReader(oversized), "ChatGPT", nil); err == nil || output.Text != "" {
 		t.Fatal("unbounded stream output accepted")
 	}
 }
@@ -72,7 +72,7 @@ func TestNativeChatGPTHTTPFailuresAreSanitizedAndNeverChangeBilling(t *testing.T
 			io.WriteString(writer, test.body)
 		}))
 		fixture.service.api = server.URL
-		_, err := (&chatGPTClient{model: "model", service: fixture.service}).Complete(context.Background(), "private prompt")
+		_, err := (&chatGPTClient{model: "model", service: fixture.service}).Step(context.Background(), discoveryInstructions, []Message{{Role: "user", Text: "private prompt"}}, metadataTools())
 		server.Close()
 		var failure *chatGPTError
 		if !errors.As(err, &failure) || failure.Status != test.status || failure.RequestID != "request-fixture" || calls != 1 || strings.Contains(err.Error(), "private") {

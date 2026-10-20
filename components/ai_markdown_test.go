@@ -16,14 +16,14 @@ func markdownPlain(source string, width int) string {
 }
 
 func TestAIMessageMarkdownFormatsStructuredExplanation(t *testing.T) {
-	source := "## Registered users\n\n- **App accounts:** `core_app.User`\n- **Profiles:** `core_app.UserProfile`\n\n## Breathing exercises\n\n1. **Catalog:** `tila.Breathe`\n2. **Sessions:** `core_app.BreatheHistory`\n\n**In short:** definitions live in *tila*; usage in core_app."
+	source := "## Registered users\n\n- **App accounts:** `core_app.User`\n- **Profiles:** `core_app.UserProfile`\n\n## Breathing exercises\n\n1. **Catalog:** `tila.Breathe`\n2. **Sessions:** `core_app.BreatheHistory`\n\n**In short:** definitions live in tila; usage in core_app."
 	plain := markdownPlain(source, 80)
 	for _, expected := range []string{"Registered users\n\n", "• App accounts: core_app.User", "• Profiles: core_app.UserProfile", "Breathing exercises\n\n", "1. Catalog: tila.Breathe", "2. Sessions: core_app.BreatheHistory", "In short: definitions live in tila; usage in core_app."} {
 		if !strings.Contains(plain, expected) {
 			t.Fatalf("formatted explanation omitted %q:\n%s", expected, plain)
 		}
 	}
-	for _, delimiter := range []string{"##", "**", "`", "*tila*"} {
+	for _, delimiter := range []string{"##", "**", "`"} {
 		if strings.Contains(plain, delimiter) {
 			t.Fatalf("Markdown delimiter %q is still visible", delimiter)
 		}
@@ -54,12 +54,12 @@ func TestAIMessageMarkdownFormatsStructuredExplanation(t *testing.T) {
 	}
 }
 
-func TestAIMarkdownKeepsIdentifiersLiteralsAndNestedStyles(t *testing.T) {
+func TestAIMarkdownKeepsIdentifiersAndUnsupportedFormattingLiteral(t *testing.T) {
 	for _, test := range []struct{ source, expected string }{
 		{"core_app.UserProfile.user_id → core_app.User.id", "core_app.UserProfile.user_id → core_app.User.id"},
-		{"`a*b_c` and ``a`b``", "a*b_c and a`b"},
+		{"`a*b_c` and ``a`b``", "a*b_c and ``a`b``"},
 		{"**bold with `inline_code`**", "bold with inline_code"},
-		{"***bold italic*** and _italic_", "bold italic and italic"},
+		{"***bold italic*** and _italic_", "***bold italic*** and _italic_"},
 		{"\\*literal\\* and \\`backticks\\`", "*literal* and `backticks`"},
 		{"SELECT * FROM users WHERE count > 2 * 3;", "SELECT * FROM users WHERE count > 2 * 3;"},
 		{"**unfinished bold", "**unfinished bold"},
@@ -119,7 +119,7 @@ func TestAIMarkdownFencesAndStreamingPrefixesAreSafe(t *testing.T) {
 		}
 	}
 	plain := markdownPlain(source, 60)
-	for _, expected := range []string{"╭─ SQL", "SELECT id FROM users;", "│ [red] literal"} {
+	for _, expected := range []string{"```sql", "SELECT id FROM users;", "[red] literal"} {
 		if !strings.Contains(plain, expected) {
 			t.Fatalf("fenced output omitted %q: %s", expected, plain)
 		}

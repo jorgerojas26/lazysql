@@ -2,11 +2,11 @@ package components
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-	"maps"
 	"strconv"
 	"strings"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/internal/ai"
@@ -85,7 +85,7 @@ func (session *aiSession) openModelPicker() {
 	picker := newAIPicker(session, "models", "Select model · Ctrl+O", func(key string) {
 		for _, model := range session.modelCatalog {
 			if model.Key() == key {
-				level := app.App.AIConfig().ThinkingPreferences[key]
+				level := session.config.Thinking
 				config := session.config
 				if model.ConfigureThinking(&config, level) != nil {
 					level = ""
@@ -198,15 +198,15 @@ func (session *aiSession) loadModelCatalog() {
 			}
 			for _, model := range catalog {
 				if model.Key() == session.selectedModel.Key() {
-					session.selectedModel = model
-					if model.ContextWindow > 0 {
-						session.contextWindow = model.ContextWindow
+					if model.ContextWindow == 0 {
+						model.ContextWindow = session.selectedModel.ContextWindow
 					}
+					session.selectedModel = model
 					break
 				}
 			}
 			session.refreshModelPicker()
-			session.scheduleContext()
+			session.measureContext()
 		})
 	}()
 }
@@ -223,14 +223,6 @@ func (session *aiSession) selectModel(model ai.Model, level string) {
 		}
 		return
 	}
-	config.ThinkingPreferences = maps.Clone(app.App.AIConfig().ThinkingPreferences)
-	if config.ThinkingPreferences == nil {
-		config.ThinkingPreferences = map[string]string{}
-	}
-	if session.selectedModel.ID != "" {
-		config.ThinkingPreferences[session.selectedModel.Key()] = session.config.Thinking
-	}
-	config.ThinkingPreferences[model.Key()] = config.Thinking
 	client, err := ai.New(config)
 	if err == nil {
 		err = app.App.SaveAISelection(config)
@@ -242,10 +234,7 @@ func (session *aiSession) selectModel(model ai.Model, level string) {
 		return
 	}
 	session.config, session.selectedModel, session.client = config, model, client
-	session.model, session.contextWindow = model.ID, model.ContextWindow
-	session.nextContext = ai.MeasureContext(model.ID, session.makeRequest(session.input.GetText()))
-	session.refreshContext()
-	session.scheduleContext()
+	session.measureContext()
 	session.closePicker()
 }
 
@@ -260,7 +249,7 @@ func (session *aiSession) confirmContext(text string, request ai.Request, estima
 			session.sendRequest(text, request)
 		}
 	})
-	picker.setOptions([]aiPickerOption{{Key: "model", Label: "Choose another model"}, {Key: "send", Label: "Send anyway", Detail: "Nothing will be trimmed"}}, "model", fmt.Sprintf("~%s input + output room / %s window", compactCount(estimate), modelWindow(session.contextWindow)))
+	picker.setOptions([]aiPickerOption{{Key: "model", Label: "Choose another model"}, {Key: "send", Label: "Send anyway", Detail: "Nothing will be trimmed"}}, "model", fmt.Sprintf("~%s input + output room / %s window", compactCount(estimate), modelWindow(session.selectedModel.ContextWindow)))
 	session.showPicker(picker)
 }
 

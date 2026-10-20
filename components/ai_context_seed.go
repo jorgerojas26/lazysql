@@ -1,7 +1,6 @@
 package components
 
 import (
-	"context"
 	"encoding/json"
 	"slices"
 
@@ -55,28 +54,17 @@ func cachedAIContext(loader *schemaLoader, preferred string, schemas []string) (
 			name := table.qualifiedName
 			columns, columnsReady := read(database, name, MetadataColumns)
 			keys, keysReady := read(database, name, MetadataPrimaryKeys)
-			kind := MetadataForeignKeys
-			if _, outgoing := loader.driver.(interface {
-				GetOutgoingForeignKeys(context.Context, string, string) ([][]string, error)
-			}); outgoing {
-				kind = MetadataKind("ai_outgoing_foreign_keys")
-			}
+			kind, _ := aiForeignKeys(loader.driver)
 			foreign, foreignReady := read(database, name, kind)
 			incoming, incomingReady := read(database, name, MetadataReferencingTables)
 			_, keysValid := keys.([]string)
 			if !columnsReady || !keysReady || !keysValid || !foreignReady || !incomingReady {
 				continue
 			}
-			item := ai.Table{Database: database, Name: name, Columns: aiColumns(columns)}
-			item.PrimaryKeys, _ = keys.([]string)
-			if len(item.Columns) == 0 {
+			relationships := aiScopedRelationships(foreign, incoming, name, loader.driver.UseSchemas(), allowed)
+			item, err := aiTable(database, name, columns, keys, relationships)
+			if err != nil {
 				continue
-			}
-			relationships := append(aiRelationships(foreign, name, false, loader.driver.UseSchemas()), aiRelationships(incoming, name, true, loader.driver.UseSchemas())...)
-			for _, relationship := range relationships {
-				if allowed[relationship.FromTable] && allowed[relationship.ToTable] {
-					item.Relationships = append(item.Relationships, relationship)
-				}
 			}
 			candidate := append(tables, item)
 			encoded, _ := json.Marshal(candidate)

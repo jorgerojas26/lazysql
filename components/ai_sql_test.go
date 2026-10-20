@@ -22,10 +22,6 @@ import (
 
 type aiCompletionFunc func(context.Context, string) (string, error)
 
-func (complete aiCompletionFunc) Complete(ctx context.Context, prompt string) (string, error) {
-	return complete(ctx, prompt)
-}
-
 func (complete aiCompletionFunc) Step(ctx context.Context, instructions string, messages []ai.Message, tools []ai.Tool) (ai.Turn, error) {
 	if len(messages) == 1 {
 		return ai.Turn{Calls: []ai.ToolCall{{ID: "list", Name: "list_tables", Arguments: json.RawMessage(`{}`)}}}, nil
@@ -97,7 +93,7 @@ func TestAIDisabledDoesNotInitializeUIOrInterceptShortcut(t *testing.T) {
 	}
 	table.Editor.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone), func(tview.Primitive) {})
 	table.openAIPrompt()
-	if table.aiSession != nil {
+	if table.Home != nil && table.Home.aiChat != nil {
 		t.Fatal("disabled AI intercepted a shortcut or opened a prompt")
 	}
 }
@@ -162,7 +158,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 	App.QueueUpdate(func() {})
 	t.Cleanup(func() {
 		App.QueueUpdate(func() {
-			if table.Home.aiChat != nil {
+			if table.Home != nil && table.Home.aiChat != nil {
 				table.Home.aiChat.close()
 			}
 		})
@@ -189,7 +185,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 	var session *aiSession
 	App.QueueUpdateDraw(func() {
 		mainPages.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone), func(p tview.Primitive) { App.SetFocus(p) })
-		session = table.aiSession
+		session = table.Home.aiChat
 	})
 	if session == nil {
 		t.Fatal("shortcut did not open prompt")
@@ -251,7 +247,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 	App.QueueUpdateDraw(func() {
 		_, preview := table.aiSurface.GetFrontPage()
 		preview.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone), func(p tview.Primitive) { App.SetFocus(p) })
-		if table.aiSession != session || session.visible || table.Editor.GetText() != "SELECT id FROM public.orders;" {
+		if table.Home.aiChat != session || session.visible || table.Editor.GetText() != "SELECT id FROM public.orders;" {
 			t.Error("accept did not replace selection and close preview")
 		}
 		table.Editor.undo()
@@ -259,7 +255,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 			t.Error("accept was not undoable")
 		}
 		table.openAIPrompt()
-		session = table.aiSession
+		session = table.Home.aiChat
 		session.newChat()
 	})
 	wait(func() bool { return !session.busy })
@@ -291,7 +287,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 			t.Error("cancellation lost prompt or existing SQL")
 		}
 		session.capture(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
-		if session.visible || table.aiSession != session {
+		if session.visible || table.Home.aiChat != session {
 			t.Error("Escape did not hide chat persistently")
 		}
 	})
@@ -300,7 +296,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 		tree.state.selectedTable = ""
 		table.Editor.selecting = false
 		table.openAIPrompt()
-		session = table.aiSession
+		session = table.Home.aiChat
 		session.newChat()
 	})
 	wait(func() bool { return !session.busy })
@@ -415,7 +411,7 @@ func TestAIGenerationRetriesCatalogFailureWithoutReopeningPrompt(t *testing.T) {
 		if driver.catalogCalls.Load() != 2 {
 			t.Errorf("catalog was not retried: %d calls", driver.catalogCalls.Load())
 		}
-		if session.table.aiSession != session || len(session.history) != 4 || session.history[0].Text != "Last 10 registered users" || session.input.GetText() != "" {
+		if session.table.Home.aiChat != session || len(session.history) != 4 || session.history[0].Text != "Last 10 registered users" || session.input.GetText() != "" {
 			t.Error("retry replaced the session or prompt")
 		}
 		if driver.executions.Load() != 0 {
@@ -497,7 +493,7 @@ func TestAIAcceptUsesDiscoveredDatabaseWithoutChangingSourceDraft(t *testing.T) 
 		}
 	})
 	if generated != nil {
-		wait(func() bool { return len(generated.Editor.completer.tables) > 0 })
+		wait(func() bool { return generated.Editor.completer.HasColumns("Users") })
 	}
 	if driver.executions.Load() != 0 {
 		t.Fatal("generated SQL executed automatically")

@@ -124,28 +124,6 @@ func ChatGPTModels(ctx context.Context) ([]Model, error) {
 	return service.models(ctx)
 }
 
-func (client *chatGPTClient) Complete(ctx context.Context, prompt string) (string, error) {
-	if client.model == "" {
-		return "", errors.New("select a ChatGPT model with lazysql ai login")
-	}
-	body := map[string]any{
-		"model": client.model, "instructions": sqlAssistant,
-		"input": []map[string]string{{"role": "user", "content": prompt}},
-		"store": false, "stream": true,
-	}
-	applyThinking(body, "responses", client.thinking, "effort", 0)
-	response, err := client.service.request(ctx, http.MethodPost, "/responses", body)
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	output, err := readChatGPTStream(response.Body)
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	return output, err
-}
-
 func (client *chatGPTClient) Step(ctx context.Context, instructions string, messages []Message, tools []Tool) (Turn, error) {
 	return client.StreamStep(ctx, instructions, messages, tools, nil)
 }
@@ -168,21 +146,6 @@ func (client *chatGPTClient) StreamStep(ctx context.Context, instructions string
 		return Turn{}, ctx.Err()
 	}
 	return turn, err
-}
-
-func readChatGPTStream(reader io.Reader) (string, error) {
-	turn, err := readChatGPTTurn(reader)
-	if err != nil {
-		return "", err
-	}
-	if len(turn.Calls) > 0 {
-		return "", errors.New("unexpected ChatGPT tool call")
-	}
-	return turn.Text, nil
-}
-
-func readChatGPTTurn(reader io.Reader) (Turn, error) {
-	return readResponsesStream(reader, "ChatGPT", nil)
 }
 
 func readResponsesStream(reader io.Reader, provider string, delta func(string)) (Turn, error) {

@@ -71,8 +71,8 @@ func TestAIModelPickerSearchSelectionAndThinkingPersistence(t *testing.T) {
 		t.Fatal("model search did not filter")
 	}
 	session.picker.search.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) { app.App.SetFocus(p) })
-	if session.picker != nil || session.model != "second" || session.contextWindow != 400000 || app.App.GetFocus() != session.input {
-		t.Fatalf("selecting model failed: model=%s window=%d picker=%v status=%s config=%+v", session.model, session.contextWindow, session.picker, session.picker.status.GetText(false), session.config)
+	if session.picker != nil || session.selectedModel.ID != "second" || session.selectedModel.ContextWindow != 400000 || app.App.GetFocus() != session.input {
+		t.Fatalf("selecting model failed: model=%s window=%d picker=%v status=%s config=%+v", session.selectedModel.ID, session.selectedModel.ContextWindow, session.picker, session.picker.status.GetText(false), session.config)
 	}
 	if session.input.GetText() != "My draft request" || len(session.history) != 1 {
 		t.Fatal("model selection discarded draft or conversation")
@@ -94,7 +94,7 @@ func TestAIModelPickerSearchSelectionAndThinkingPersistence(t *testing.T) {
 		t.Fatal("thinking selection was not applied")
 	}
 	stored, err := app.ReadAISettings(path)
-	if err != nil || stored.Model != "second" || stored.Thinking != "high" || stored.ThinkingPreferences["opencode-go/second"] != "high" {
+	if err != nil || stored.Model != "second" || stored.Thinking != "high" {
 		t.Fatalf("model preferences were not saved: %+v %v", stored, err)
 	}
 	content, _ := os.ReadFile(path)
@@ -103,13 +103,13 @@ func TestAIModelPickerSearchSelectionAndThinkingPersistence(t *testing.T) {
 	}
 	session.openModelPicker()
 	session.picker.selected(session.modelCatalog[0].Key())
-	if session.config.Thinking != "low" {
-		t.Fatal("the original model's thinking preference was not restored")
+	if session.config.Thinking != "high" {
+		t.Fatal("switching models did not retain the current supported thinking level")
 	}
 	session.openModelPicker()
 	session.picker.selected(session.modelCatalog[1].Key())
 	if session.config.Thinking != "high" {
-		t.Fatal("per-model thinking preference was not restored")
+		t.Fatal("switching models changed the current thinking level")
 	}
 	previous := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = previous })
@@ -147,14 +147,14 @@ func TestAIModelPickerCancelLockingAndUnavailableThinking(t *testing.T) {
 		t.Fatal("Enter on empty results changed selection")
 	}
 	picker.frame.InputHandler()(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone), func(tview.Primitive) {})
-	if session.picker != nil || app.App.GetFocus() != session.input || session.model != "first" || session.input.GetText() != "My draft request" {
+	if session.picker != nil || app.App.GetFocus() != session.input || session.selectedModel.ID != "first" || session.input.GetText() != "My draft request" {
 		t.Fatal("cancel did not preserve selection/draft/focus")
 	}
 	session.busy = true
 	session.openModelPicker()
 	session.openThinkingPicker()
 	session.selectModel(session.modelCatalog[1], "high")
-	if session.picker != nil || session.model != "first" {
+	if session.picker != nil || session.selectedModel.ID != "first" {
 		t.Fatal("selectors changed an active request")
 	}
 	session.busy = false
@@ -204,7 +204,7 @@ func TestAIContextOverflowRequiresExplicitConfirmationWithoutTrimming(t *testing
 	session, _ := newAIModelSelectionSession(t)
 	calls := 0
 	session.client = aiCompletionFunc(func(context.Context, string) (string, error) { calls++; return `{"sql":"SELECT 1;"}`, nil })
-	session.contextWindow = 100
+	session.selectedModel.ContextWindow = 100
 	session.generate()
 	if calls != 0 || session.busy || len(session.history) != 0 || session.picker == nil || session.picker.kind != "context-warning" {
 		t.Fatal("oversized context was sent without warning")
@@ -301,7 +301,7 @@ func TestAISelectionSaveFailurePreservesCurrentModel(t *testing.T) {
 	}
 	session.openModelPicker()
 	session.picker.selected(session.modelCatalog[1].Key())
-	if session.model != "first" || session.picker == nil || !strings.Contains(session.picker.status.GetText(false), "Selection not changed") {
+	if session.selectedModel.ID != "first" || session.picker == nil || !strings.Contains(session.picker.status.GetText(false), "Selection not changed") {
 		t.Fatal("failed persistence silently changed the active model")
 	}
 	if app.App.AIConfig().Model != "first" {
@@ -374,7 +374,7 @@ func TestAIContextWarningCanSendFullHistoryWithExplicitConfirmation(t *testing.T
 	session, _ := newAIModelSelectionSession(t)
 	session.history = []ai.ChatMessage{{Role: "user", Text: strings.Repeat("Earlier request ", 4000)}, {Role: "assistant", Text: "Earlier answer"}}
 	session.historyVersion++
-	session.contextWindow = 100
+	session.selectedModel.ContextWindow = 100
 	session.input.SetText("First line\nSecond line\nThird line")
 	requests := make(chan ai.Request, 1)
 	session.client = aiSelectionStep(func(_ context.Context, _ string, messages []ai.Message, _ []ai.Tool) (ai.Turn, error) {
@@ -448,7 +448,7 @@ func TestAISelectorShortcutsToggleAndSwitchPickers(t *testing.T) {
 			if session.picker != nil || session.surface.HasPage("ai-picker") || app.App.GetFocus() != session.input {
 				t.Fatal("repeated shortcut did not close picker and restore composer")
 			}
-			if session.model != "first" || session.config.Thinking != "low" || session.input.GetText() != "My draft request" {
+			if session.selectedModel.ID != "first" || session.config.Thinking != "low" || session.input.GetText() != "My draft request" {
 				t.Fatal("toggle changed selection or draft")
 			}
 			session.capture(tcell.NewEventKey(target.key, 0, tcell.ModNone))
@@ -497,10 +497,31 @@ func TestAIPickerCtrlNPNavigatesWithoutTogglingOrClearingChat(t *testing.T) {
 				if row, _ := picker.table.GetSelection(); row != first {
 					t.Fatal("Ctrl+P did not move to the previous item")
 				}
-				if session.picker != picker || app.App.GetFocus() != focus || len(session.history) != 1 || session.input.GetText() != "My draft request" || session.model != "first" || session.config.Thinking != "low" {
+				if session.picker != picker || app.App.GetFocus() != focus || len(session.history) != 1 || session.input.GetText() != "My draft request" || session.selectedModel.ID != "first" || session.config.Thinking != "low" {
 					t.Fatal("list navigation changed focus, closed picker, or changed chat/selection")
 				}
 			}
 		})
+	}
+}
+
+func TestAIModelSwitchFallsBackToAutoForUnsupportedThinking(t *testing.T) {
+	session, path := newAIModelSelectionSession(t)
+	session.openModelPicker()
+	session.picker.selected(session.modelCatalog[2].Key())
+	if session.config.Model != "fixed" || session.config.Thinking != "" || session.config.ThinkingMode != "" || session.config.ThinkingBudget != 0 {
+		t.Fatalf("unsupported thinking was retained: %+v", session.config)
+	}
+	session.openModelPicker()
+	session.picker.selected(session.modelCatalog[0].Key())
+	if session.config.Thinking != "" {
+		t.Fatal("switching back restored an obsolete per-model preference")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "thinking_preferences") {
+		t.Fatal("per-model preferences were persisted")
 	}
 }

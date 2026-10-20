@@ -33,8 +33,8 @@ func TestOpenCodeGoRequestAndSession(t *testing.T) {
 		if body["model"] != "test-model" || body["stream"] != false {
 			t.Errorf("unexpected request: %v", body)
 		}
-		if _, ok := body["tools"]; ok {
-			t.Error("SQL generation must not expose tools")
+		if tools, ok := body["tools"].([]any); !ok || len(tools) != len(metadataTools()) {
+			t.Error("missing metadata tools")
 		}
 		io.WriteString(writer, `{"choices":[{"message":{"content":"[\"orders\"]"},"finish_reason":"stop"}]}`)
 	}))
@@ -46,8 +46,8 @@ func TestOpenCodeGoRequestAndSession(t *testing.T) {
 	}
 	client.endpoint = server.URL
 	for i := 0; i < 2; i++ {
-		if output, err := client.Complete(context.Background(), "generate SQL"); err != nil || output != `["orders"]` {
-			t.Fatalf("complete = %q %v", output, err)
+		if output, err := client.Step(context.Background(), discoveryInstructions, []Message{{Role: "user", Text: "generate SQL"}}, metadataTools()); err != nil || output.Text != `["orders"]` {
+			t.Fatalf("complete = %q %v", output.Text, err)
 		}
 	}
 	if calls != 2 {
@@ -66,7 +66,7 @@ func TestOpenCodeFailureDoesNotLeakResponseOrRetryBilling(t *testing.T) {
 			}))
 			defer server.Close()
 			client := &openCodeClient{endpoint: server.URL, http: server.Client()}
-			_, err := client.Complete(context.Background(), "request")
+			_, err := client.Step(context.Background(), discoveryInstructions, []Message{{Role: "user", Text: "request"}}, metadataTools())
 			if err == nil || strings.Contains(err.Error(), "private") || strings.Contains(err.Error(), "secret") || calls != 1 {
 				t.Fatalf("unsafe failure: calls=%d err=%v", calls, err)
 			}
@@ -91,11 +91,11 @@ func TestOpenCodeCancellationAndTruncation(t *testing.T) {
 	client := &openCodeClient{endpoint: server.URL, http: server.Client()}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if _, err := client.Complete(ctx, "request"); err == nil {
+	if _, err := client.Step(ctx, discoveryInstructions, []Message{{Role: "user", Text: "request"}}, metadataTools()); err == nil {
 		t.Fatal("canceled request should fail")
 	}
 	client.endpoint = server.URL + "/truncated"
-	if _, err := client.Complete(context.Background(), "request"); err == nil {
+	if _, err := client.Step(context.Background(), discoveryInstructions, []Message{{Role: "user", Text: "request"}}, metadataTools()); err == nil {
 		t.Fatal("truncated response should fail")
 	}
 }

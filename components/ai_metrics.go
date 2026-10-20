@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
@@ -19,12 +17,7 @@ type aiMetricTotals struct {
 }
 
 func (session *aiSession) makeRequest(text string) ai.Request {
-	prompt, answer := text, ""
-	if session.question != "" {
-		prompt = session.request
-		answer = text
-	}
-	request := ai.Request{History: append([]ai.ChatMessage(nil), session.history...), HistoryTruncated: session.historyOmitted, Dialect: session.table.DBDriver.GetProvider(), Database: session.database, CurrentTable: session.current, Prompt: prompt, Clarification: session.question, Answer: answer, SelectedSQL: session.selection.text, EditorSQL: session.selection.original, Schemas: append([]string(nil), session.schemas...)}
+	request := ai.Request{History: append([]ai.ChatMessage(nil), session.history...), HistoryTruncated: session.historyOmitted, Dialect: session.table.DBDriver.GetProvider(), Database: session.database, CurrentTable: session.current, Prompt: text, SelectedSQL: session.selection.text, EditorSQL: session.selection.original, Schemas: append([]string(nil), session.schemas...)}
 	if request.SelectedSQL == request.EditorSQL {
 		request.EditorSQL = ""
 	}
@@ -63,34 +56,12 @@ func (session *aiSession) makeRequest(text string) ai.Request {
 	return request
 }
 
-func (session *aiSession) scheduleContext() {
+func (session *aiSession) measureContext() {
 	if session.contextMeter == nil {
 		return
 	}
-	if session.contextTimer != nil {
-		session.contextTimer.Stop()
-	}
-	session.contextVersion++
-	version := session.contextVersion
-	request := session.makeRequest(session.input.GetText())
-	model := session.model
-	application := app.App.Application
-	session.contextTimer = time.AfterFunc(100*time.Millisecond, func() {
-		if session.ctx.Err() != nil {
-			return
-		}
-		size := ai.MeasureContext(model, request)
-		if session.ctx.Err() != nil {
-			return
-		}
-		application.QueueUpdateDraw(func() {
-			if !session.active() || session.contextVersion != version {
-				return
-			}
-			session.nextContext = size
-			session.refreshContext()
-		})
-	})
+	session.nextContext = ai.MeasureContext(session.selectedModel.ID, session.makeRequest(session.input.GetText()))
+	session.refreshContext()
 }
 
 func (session *aiSession) observeMetrics(run uint64, metrics ai.RequestMetrics) {
@@ -156,25 +127,22 @@ func (session *aiSession) refreshContext() {
 		size = session.currentMetrics.Context
 	}
 	text := "~" + compactCount(size.Tokens) + " tokens"
-	if session.contextWindow > 0 {
-		window := strconv.Itoa(session.contextWindow)
-		if session.contextWindow >= 1000 {
-			window = strconv.FormatFloat(float64(session.contextWindow)/1000, 'f', -1, 64) + "k"
-		}
-		text = fmt.Sprintf("%.0f%%/%s", 100*float64(size.Tokens)/float64(session.contextWindow), window)
+	if session.selectedModel.ContextWindow > 0 {
+		window := modelWindow(session.selectedModel.ContextWindow)
+		text = fmt.Sprintf("%.0f%%/%s", 100*float64(size.Tokens)/float64(session.selectedModel.ContextWindow), window)
 	}
 	if size.HistoryOmitted || session.historyOmitted {
 		text += " · history trimmed"
 	}
 	session.contextMeter.SetText(text)
 	color := app.Styles.SecondaryTextColor
-	if session.contextWindow > 0 && size.Tokens*10 >= session.contextWindow*9 {
+	if session.selectedModel.ContextWindow > 0 && size.Tokens*10 >= session.selectedModel.ContextWindow*9 {
 		color = app.Styles.ErrorColor
 	}
 	session.contextMeter.SetTextColor(color)
 	var detail strings.Builder
 	fmt.Fprintf(&detail, "Estimated context: ~%s tokens", compactCount(size.Tokens))
-	if session.contextWindow > 0 {
+	if session.selectedModel.ContextWindow > 0 {
 		fmt.Fprintf(&detail, " (%s)", text)
 	}
 	detail.WriteString("\n\n")
@@ -195,7 +163,7 @@ func (session *aiSession) toggleContext() {
 		session.contextButton.SetLabel("Ctrl+K Context")
 		session.focus(session.input)
 	} else {
-		session.refreshContext()
+		session.measureContext()
 		session.content.SwitchToPage("context")
 		session.contextButton.SetLabel("Ctrl+K Chat")
 		_, view := session.contextTabs.GetFrontPage()

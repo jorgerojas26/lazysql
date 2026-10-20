@@ -10,22 +10,12 @@ import (
 func TestContextMeasurementsIncludeAllSuppliedContext(t *testing.T) {
 	request := Request{Dialect: "mysql", Database: "app", Prompt: "Last ten users", EditorSQL: "SELECT id FROM users;", SelectedSQL: "id", Schemas: []string{"public"}, Tables: []Table{{Name: "users", Columns: []Column{{Name: "id", Type: "bigint"}}}}, History: []ChatMessage{{Role: "user", Text: "Users"}, {Role: "assistant", SQL: "SELECT id FROM users;"}}}
 	size := MeasureContext("unknown-model", request)
-	if size.Bytes <= len(request.Prompt) || size.Tokens == 0 || !strings.Contains(size.Method, "byte estimate") {
-		t.Fatalf("context size: %+v", size)
-	}
-	parts := map[string]bool{}
-	total := 0
-	for _, part := range size.Parts {
-		parts[part.Name] = true
-		total += part.Bytes
-	}
-	for _, name := range []string{"Instructions + tools", "Conversation", "Schema context", "Current message", "Editor context", "Encoding / discovery state"} {
-		if !parts[name] {
-			t.Fatalf("missing context component %q", name)
-		}
-	}
-	if total != size.Bytes {
-		t.Fatalf("breakdown bytes %d != budget bytes %d", total, size.Bytes)
+	encoded, _ := json.Marshal(request)
+	messages, _ := json.Marshal([]Message{{Role: "user", Text: string(encoded)}})
+	tools, _ := json.Marshal(metadataTools())
+	expected := len(discoveryInstructions) + len(messages) + len(tools)
+	if size.Bytes != expected || size.Tokens != (expected+3)/4 {
+		t.Fatalf("whole context estimate: %+v, expected %d bytes", size, expected)
 	}
 	shorter := request
 	shorter.Prompt = "x"
@@ -35,13 +25,13 @@ func TestContextMeasurementsIncludeAllSuppliedContext(t *testing.T) {
 }
 
 func TestLocalTokenizerDoesNotRequireNetwork(t *testing.T) {
-	tokens, method := countLocal("gpt-4o", "SELECT id FROM users;")
-	if tokens <= 0 || !strings.Contains(method, "o200k_base") {
-		t.Fatalf("local tokenizer: %d %q", tokens, method)
+	tokens := countLocal("gpt-4o", "SELECT id FROM users;")
+	if tokens != 5 {
+		t.Fatalf("local tokenizer: %d", tokens)
 	}
-	tokens, method = countLocal("unknown-provider-model", "abcd")
-	if tokens != 1 || !strings.Contains(method, "byte estimate") {
-		t.Fatalf("unknown model fallback: %d %q", tokens, method)
+	tokens = countLocal("unknown-provider-model", "abcd")
+	if tokens != 1 {
+		t.Fatalf("unknown model fallback: %d", tokens)
 	}
 }
 
@@ -85,7 +75,7 @@ func TestStreamingUsageAfterTerminalTextIsRetained(t *testing.T) {
 	response := map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "usage": map[string]int{"input_tokens": 77, "output_tokens": 12}, "output": []any{map[string]any{"type": "message", "content": []any{map[string]string{"type": "output_text", "text": generatedResult}}}}}}
 	stream.Reset()
 	writeSSE(&stream, response)
-	turn, err = readChatGPTTurn(strings.NewReader(stream.String()))
+	turn, err = readResponsesStream(strings.NewReader(stream.String()), "ChatGPT", nil)
 	if err != nil || turn.Usage.Input != 77 || turn.Usage.Output != 12 {
 		t.Fatalf("Responses usage: %+v %v", turn.Usage, err)
 	}

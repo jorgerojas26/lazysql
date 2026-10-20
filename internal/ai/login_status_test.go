@@ -16,7 +16,7 @@ func TestProviderStatusDoesNotInitializeCredentialsOrExposeSecrets(t *testing.T)
 	t.Setenv("XDG_CONFIG_HOME", directory)
 	t.Setenv("OPENCODE_API_KEY", "")
 	status := ProviderLoginStatus(context.Background(), models.AIConfig{})
-	if status["chatgpt"] != "Not logged in" || status["opencode-go"] != "Not logged in" {
+	if status["chatgpt"].Label != "Not logged in" || status["opencode-go"].Label != "Not logged in" {
 		t.Fatalf("empty provider status=%v", status)
 	}
 	entries, err := os.ReadDir(directory)
@@ -27,16 +27,16 @@ func TestProviderStatusDoesNotInitializeCredentialsOrExposeSecrets(t *testing.T)
 		t.Fatal(err)
 	}
 	status = ProviderLoginStatus(context.Background(), models.AIConfig{})
-	if status["opencode-go"] != "Logged in" {
+	if status["opencode-go"].Label != "Logged in" {
 		t.Fatal("saved subscription key status missing")
 	}
 	t.Setenv("OPENCODE_API_KEY", "private-environment-key")
 	status = ProviderLoginStatus(context.Background(), models.AIConfig{})
-	if status["opencode-go"] != "Logged in" {
+	if status["opencode-go"].Label != "Logged in" {
 		t.Fatal("environment credential status missing")
 	}
 	for _, value := range status {
-		if strings.Contains(value, "private-") {
+		if strings.Contains(value.Label, "private-") {
 			t.Fatal("credential leaked in status")
 		}
 	}
@@ -44,7 +44,7 @@ func TestProviderStatusDoesNotInitializeCredentialsOrExposeSecrets(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Setenv("OPENCODE_API_KEY", "")
-	if status := ProviderLoginStatus(context.Background(), models.AIConfig{}); status["opencode-go"] != "Not logged in" {
+	if status := ProviderLoginStatus(context.Background(), models.AIConfig{}); status["opencode-go"].Label != "Not logged in" {
 		t.Fatal("status did not reflect logout")
 	}
 }
@@ -57,15 +57,15 @@ func TestProviderStatusRespectsExplicitEnvironmentSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := models.AIConfig{APIKeyEnv: "CUSTOM_GO_KEY"}
-	if status := ProviderLoginStatus(context.Background(), config); status["opencode-go"] != "Not logged in" {
+	if status := ProviderLoginStatus(context.Background(), config); status["opencode-go"].Label != "Not logged in" {
 		t.Fatal("missing custom environment source showed a different account as logged in")
 	}
 	t.Setenv("CUSTOM_GO_KEY", "configured-key")
-	if status := ProviderLoginStatus(context.Background(), config); status["opencode-go"] != "Logged in" {
+	if status := ProviderLoginStatus(context.Background(), config); status["opencode-go"].Label != "Logged in" {
 		t.Fatal("custom environment key was ignored")
 	}
 	t.Setenv("CUSTOM_GO_KEY", "bad key")
-	if status := ProviderLoginStatus(context.Background(), config); status["opencode-go"] != "Check key" {
+	if status := ProviderLoginStatus(context.Background(), config); status["opencode-go"].Label != "Check key" {
 		t.Fatal("invalid configured key shown as connected")
 	}
 }
@@ -92,8 +92,8 @@ func TestChatGPTStatusIsReadOnlyAndRecognizesRefreshableSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status := service.loginStatus(context.Background()); status != "Logged in" {
-		t.Fatalf("valid session status=%q", status)
+	if status := service.loginStatus(context.Background()); status.Label != "Logged in" {
+		t.Fatalf("valid session status=%q", status.Label)
 	}
 	after, _ := os.ReadFile(service.path)
 	if string(before) != string(after) {
@@ -101,28 +101,28 @@ func TestChatGPTStatusIsReadOnlyAndRecognizesRefreshableSessions(t *testing.T) {
 	}
 	account.ExpiresAt = time.Now().Add(-time.Hour)
 	set(account, account.ClientID)
-	if status := service.loginStatus(context.Background()); status != "Logged in" {
+	if status := service.loginStatus(context.Background()); status.Label != "Logged in" {
 		t.Fatal("refreshable session shown as logged out")
 	}
 	account.RefreshToken = ""
 	set(account, account.ClientID)
-	if status := service.loginStatus(context.Background()); status != "Sign in again" {
+	if status := service.loginStatus(context.Background()); status.Label != "Sign in again" {
 		t.Fatal("expired nonrenewable session shown as logged in")
 	}
 	account.ExpiresAt = time.Now().Add(time.Hour)
 	account.Scopes = nil
 	set(account, account.ClientID)
-	if status := service.loginStatus(context.Background()); status != "Plan access needed" {
+	if status := service.loginStatus(context.Background()); status.Label != "Plan access needed" {
 		t.Fatal("missing plan grant not reflected in status")
 	}
 	account.Scopes = strings.Fields(chatGPTScopes)
 	set(account, "")
-	if status := service.loginStatus(context.Background()); status != "Account saved" {
+	if status := service.loginStatus(context.Background()); status.Label != "Account saved" {
 		t.Fatal("inactive but saved account was not distinguished")
 	}
 	clearChatGPTTokens(&account)
 	set(account, "")
-	if status := service.loginStatus(context.Background()); status != "Not logged in" {
+	if status := service.loginStatus(context.Background()); status.Label != "Not logged in" {
 		t.Fatal("signed-out registration shown as connected")
 	}
 }
@@ -145,7 +145,7 @@ func TestBrokenCredentialsDoNotHideTheProviderPicker(t *testing.T) {
 		t.Fatal(err)
 	}
 	status := ProviderLoginStatus(context.Background(), models.AIConfig{})
-	if status["chatgpt"] != "Check credentials" || status["opencode-go"] != "Check key" {
+	if status["chatgpt"].Label != "Check credentials" || status["opencode-go"].Label != "Check key" {
 		t.Fatalf("damaged credentials status=%v", status)
 	}
 }

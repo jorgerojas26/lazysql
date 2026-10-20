@@ -150,13 +150,8 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 
 	if currentTab != nil {
 		if table, ok := currentTab.Content.(*ResultsTable); ok {
-			if table.aiSession != nil {
-				if table.aiSession.owner != nil {
-					table.aiSession.sourceClosed = true
-					table.aiSession = nil
-				} else {
-					table.aiSession.close()
-				}
+			if table.Home != nil && table.Home.aiChat != nil && table.Home.aiChat.table == table {
+				table.Home.aiChat.sourceClosed = true
 			}
 			table.CancelExactCount()
 			table.cancelMetadataContext()

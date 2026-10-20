@@ -19,7 +19,7 @@ func AvailableModels(ctx context.Context, config models.AIConfig) ([]Model, erro
 	})
 }
 
-func availableModels(ctx context.Context, status map[string]string, load func(context.Context, string) ([]Model, error)) ([]Model, error) {
+func availableModels(ctx context.Context, status map[string]ProviderStatus, load func(context.Context, string) ([]Model, error)) ([]Model, error) {
 	type result struct {
 		models []Model
 		err    error
@@ -28,7 +28,7 @@ func availableModels(ctx context.Context, status map[string]string, load func(co
 	results := make([]result, len(providers))
 	var wait sync.WaitGroup
 	for index, provider := range providers {
-		if status[provider] != "Logged in" {
+		if !status[provider].Ready {
 			continue
 		}
 		wait.Add(1)

@@ -45,11 +45,6 @@ type Turn struct {
 	Replay json.RawMessage
 }
 
-type Client interface {
-	Completer
-	ToolCompleter
-}
-
 type ToolCompleter interface {
 	Step(context.Context, string, []Message, []Tool) (Turn, error)
 }
@@ -83,7 +78,7 @@ func discoverSQL(ctx context.Context, client ToolCompleter, request Request, exe
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	request, data, err := prepareRequest(request)
+	data, err := json.Marshal(request)
 	if err != nil {
 		return Result{}, err
 	}
@@ -103,7 +98,6 @@ func discoverSQL(ctx context.Context, client ToolCompleter, request Request, exe
 		contextSize := measureMessages(settings.Model, request, messages)
 		metrics := RequestMetrics{Round: round + 1, Context: contextSize}
 		notify := func() {
-			metrics.Elapsed = time.Since(began)
 			if settings.Observe != nil {
 				settings.Observe(metrics)
 			}
@@ -188,7 +182,6 @@ func discoverSQL(ctx context.Context, client ToolCompleter, request Request, exe
 			}
 		}
 		messages = append(messages, Message{Role: "assistant", Text: turn.Text, Replay: turn.Replay})
-		toolsStarted := time.Now()
 		results := make([]Message, len(turn.Calls))
 		var wait sync.WaitGroup
 		for index, call := range turn.Calls {
@@ -210,8 +203,6 @@ func discoverSQL(ctx context.Context, client ToolCompleter, request Request, exe
 			}(index, call)
 		}
 		wait.Wait()
-		metrics.Tools = time.Since(toolsStarted)
-		notify()
 		messages = append(messages, results...)
 	}
 	return Result{}, errors.New("schema discovery reached its limit; narrow the request")

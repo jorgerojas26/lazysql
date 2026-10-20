@@ -178,7 +178,6 @@ func (session *aiSession) buildUI() {
 	config := app.App.AIConfig()
 	session.config = config
 	session.selectedModel = ai.Model{ID: config.Model, Name: config.Model, Provider: config.Provider, Format: config.APIFormat, ContextWindow: config.ContextWindow}
-	session.model, session.contextWindow = config.Model, config.ContextWindow
 	session.buttons = tview.NewFlex().SetDirection(tview.FlexRow)
 	session.panel = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(session.content, 0, 1, false).AddItem(session.status, 1, 0, false).AddItem(session.input, 4, 0, true).AddItem(session.contextMeter, 1, 0, false).AddItem(session.buttons, 1, 0, false)
 	title := " AI SQL "
@@ -188,9 +187,7 @@ func (session *aiSession) buildUI() {
 	session.panel.Box = tview.NewBox().SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	session.panel.SetBorder(true).SetTitle(title).SetBorderPadding(0, 0, 1, 1)
 	session.panel.SetInputCapture(session.capture)
-	session.input.SetChangedFunc(session.scheduleContext)
 	session.refreshControls()
-	session.scheduleContext()
 }
 
 func (session *aiSession) minimalChat() bool {
@@ -278,7 +275,6 @@ func (session *aiSession) appendMessage(message ai.ChatMessage) {
 		session.history = slices.Clone(session.history[len(session.history)-64:])
 	}
 	session.renderChat()
-	session.scheduleContext()
 }
 
 func chatTheme() [13]tcell.Color {

@@ -470,10 +470,8 @@ func (home *Home) isCurrentTabFiltering() bool {
 }
 
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
-	if tab := home.TabbedPane.GetCurrentTab(); tab != nil {
-		if table, ok := tab.Content.(*ResultsTable); ok && table.aiSession != nil && table.aiSession.visible {
-			return event
-		}
+	if home.aiChat != nil && home.aiChat.visible {
+		return event
 	}
 	var tab *Tab
 
@@ -602,7 +600,7 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		table = tab.Content.(*ResultsTable)
 	}
 
-	if table != nil && table.aiSession != nil && table.aiSession.visible {
+	if home.aiChat != nil && home.aiChat.visible {
 		return event
 	}
 	command := app.Keymaps.Group(app.HomeGroup).Resolve(event)

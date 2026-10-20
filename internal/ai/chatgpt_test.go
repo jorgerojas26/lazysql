@@ -142,7 +142,7 @@ func (fixture *chatGPTFixture) handle(writer http.ResponseWriter, request *http.
 		fixture.requests.Add(1)
 		var body map[string]any
 		json.NewDecoder(request.Body).Decode(&body)
-		if body["stream"] != true || body["store"] != false || body["model"] != "account-first" || body["max_output_tokens"] != nil || body["temperature"] != nil || body["tools"] != nil {
+		if body["stream"] != true || body["store"] != false || body["model"] != "account-first" || body["max_output_tokens"] != nil || body["temperature"] != nil || body["tools"] == nil {
 			writer.WriteHeader(400)
 			return
 		}
@@ -221,9 +221,9 @@ func TestNativeChatGPTLoginModelsInferenceAndIndependentLogout(t *testing.T) {
 	if err != nil || len(models) != 2 || models[0].ID != "account-first" || models[1].ID != "account-second" {
 		t.Fatalf("model list=%v err=%v", models, err)
 	}
-	output, err := (&chatGPTClient{model: models[0].ID, service: fixture.service}).Complete(context.Background(), "Generate SQL")
-	if err != nil || output != "SELECT 1;" {
-		t.Fatalf("inference=%q %v", output, err)
+	output, err := (&chatGPTClient{model: models[0].ID, service: fixture.service}).Step(context.Background(), discoveryInstructions, []Message{{Role: "user", Text: "Generate SQL"}}, metadataTools())
+	if err != nil || output.Text != "SELECT 1;" {
+		t.Fatalf("inference=%q %v", output.Text, err)
 	}
 	if err := fixture.service.logout(context.Background()); err != nil {
 		t.Fatal(err)

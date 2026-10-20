@@ -26,7 +26,7 @@ func screenText(screen tcell.SimulationScreen) string {
 
 func TestProviderSelectorKeyboardAndCompactLayout(t *testing.T) {
 	selected := ""
-	view := providerDialog("login", map[string]string{"chatgpt": "Logged in", "opencode-go": "Logged in"}, func(value string) { selected = value })
+	view := providerDialog("login", map[string]ai.ProviderStatus{"chatgpt": {Label: "Logged in", Ready: true}, "opencode-go": {Label: "Logged in", Ready: true}}, func(value string) { selected = value })
 	application := tview.NewApplication()
 	application.SetFocus(view)
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -332,7 +332,7 @@ func TestProviderStatusColorsRespectThemeAndSelection(t *testing.T) {
 	screen.SetSize(80, 16)
 	application := tview.NewApplication()
 	for _, test := range cases {
-		view := providerDialog("login", map[string]string{"chatgpt": test.state}, func(string) {})
+		view := providerDialog("login", map[string]ai.ProviderStatus{"chatgpt": {Label: test.state}}, func(string) {})
 		application.SetFocus(view)
 		for _, selected := range []int{0, 1} {
 			view.options.SetCurrentItem(selected)

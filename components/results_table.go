@@ -179,7 +179,6 @@ type ResultsTable struct {
 	activeExport    *csvExportRun
 	columnView      *visibleColumnContent
 	aiSurface       *tview.Pages
-	aiSession       *aiSession
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {

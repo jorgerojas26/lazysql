@@ -1,6 +1,7 @@
 package components
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestAIContextUsageSummaryIsConciseAndDistinguishesEstimates(t *testing.T) {
 	if strings.Contains(meter, "%") {
 		t.Fatal("unknown model limit was shown as a percentage")
 	}
-	session.contextWindow = 128000
+	session.selectedModel.ContextWindow = 128000
 	session.refreshContext()
 	if !strings.Contains(session.contextMeter.GetText(false), "/128k") || !strings.Contains(session.contextDetails.GetText(false), "/128k") {
 		t.Fatal("known model limit is not distinguished from input estimate")
@@ -75,7 +76,7 @@ func TestAIContextMeterUsesActiveRequestWithoutLosingNextDraft(t *testing.T) {
 
 func TestAIContextMeterShowsModelPercentageAndWindow(t *testing.T) {
 	session := newAILayoutSession(t)
-	session.contextWindow = 500000
+	session.selectedModel.ContextWindow = 500000
 	session.nextContext = ai.ContextSize{Bytes: 120000, Tokens: 25000}
 	session.refreshContext()
 	if text := session.contextMeter.GetText(false); text != "5%/500k" {
@@ -88,5 +89,36 @@ func TestAIContextMeterShowsModelPercentageAndWindow(t *testing.T) {
 	}
 	if strings.Contains(session.contextDetails.GetText(false), "96000") {
 		t.Fatal("details still show a byte limit")
+	}
+}
+
+func TestAIClarificationReplyUsesConversationHistory(t *testing.T) {
+	session := newAILayoutSession(t)
+	session.appendMessage(ai.ChatMessage{Role: "user", Text: "Find active users"})
+	session.appendMessage(ai.ChatMessage{Role: "assistant", Text: "What counts as active?"})
+	request := session.makeRequest("Logged in during the last month")
+	if request.Prompt != "Logged in during the last month" || len(request.History) != 2 || request.History[0].Text != "Find active users" || request.History[1].Text != "What counts as active?" {
+		t.Fatalf("clarification lost its conversation: %+v", request)
+	}
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "clarification_question") || strings.Contains(string(encoded), "clarification_answer") {
+		t.Fatal("clarification was duplicated outside conversation history")
+	}
+}
+
+func TestAIContextIsMeasuredOnDemand(t *testing.T) {
+	session := newAILayoutSession(t)
+	session.measureContext()
+	before := session.nextContext
+	session.input.SetText(strings.Repeat("long draft ", 1000))
+	if session.nextContext.Bytes != before.Bytes {
+		t.Fatal("typing measured context eagerly")
+	}
+	session.toggleContext()
+	if session.nextContext.Bytes <= before.Bytes {
+		t.Fatal("opening Context did not measure the latest draft")
 	}
 }

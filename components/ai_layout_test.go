@@ -26,10 +26,9 @@ func newAILayoutSession(t *testing.T) *aiSession {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	session := &aiSession{table: table, surface: table.aiSurface, ctx: ctx, cancel: cancel, database: "database"}
-	table.aiSession = session
 	session.buildUI()
 	session.input.SetText("My draft request")
-	session.show()
+	attachAIChatHome(session)
 	return session
 }
 
@@ -107,7 +106,7 @@ func TestAIChatMnemonicsPreserveAndClearSession(t *testing.T) {
 		t.Fatal("chat did not reopen at composer")
 	}
 	key(tcell.KeyCtrlN)
-	if len(session.history) != 0 || session.result.SQL != "" || session.input.GetText() != "" || session.question != "" {
+	if len(session.history) != 0 || session.result.SQL != "" || session.input.GetText() != "" {
 		t.Fatal("New chat did not clear conversation")
 	}
 	session.input.SetText("Line one")

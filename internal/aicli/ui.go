@@ -197,10 +197,10 @@ func (ui *terminalUI) run(build func(func(), *tview.Application) tview.Primitive
 	return nil
 }
 
-func providerDialog(action string, status map[string]string, selected func(string)) *dialog {
+func providerDialog(action string, status map[string]ai.ProviderStatus, selected func(string)) *dialog {
 	choices := []choice{{name: "ChatGPT", value: "chatgpt"}, {name: "OpenCode Go", value: "opencode-go"}}
 	for index := range choices {
-		value := status[choices[index].value]
+		value := status[choices[index].value].Label
 		if value == "" {
 			value = "Not logged in"
 		}

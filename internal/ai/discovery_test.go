@@ -154,7 +154,8 @@ func TestDiscoveryPreservesClarificationRulesAndProviderFailures(t *testing.T) {
 	if result, err := DiscoverSQL(context.Background(), client, request, nil); err != nil || result.Clarification == "" {
 		t.Fatalf("clarification: %+v %v", result, err)
 	}
-	request.Answer = "Last month"
+	request.History = []ChatMessage{{Role: "user", Text: request.Prompt}, {Role: "assistant", Text: "What counts as active?"}}
+	request.Prompt = "Last month"
 	if result, err := DiscoverSQL(context.Background(), client, request, nil); err != nil || result.Clarification == "" {
 		t.Fatal("chat clarification was not preserved")
 	}

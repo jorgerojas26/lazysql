@@ -41,21 +41,13 @@ func (usage *Usage) Merge(next Usage) {
 	}
 }
 
-type ContextPart struct {
-	Name   string
-	Bytes  int
-	Tokens int
-}
 type ContextSize struct {
 	Bytes          int
 	Tokens         int
-	Method         string
-	Parts          []ContextPart
 	HistoryOmitted bool
 }
 
 type RequestMetrics struct {
-	Elapsed    time.Duration
 	Round      int
 	Complete   bool
 	Context    ContextSize
@@ -64,7 +56,6 @@ type RequestMetrics struct {
 	Duration   time.Duration
 	FirstToken time.Duration
 	FirstSQL   time.Duration
-	Tools      time.Duration
 	Failed     bool
 }
 
@@ -96,7 +87,7 @@ type localCounter struct {
 
 var localCounters sync.Map
 
-func countLocal(model, text string) (int, string) {
+func countLocal(model, text string) int {
 	value, ok := localCounters.Load(model)
 	if !ok {
 		codec, _ := tokenizer.ForModel(tokenizer.Model(model))
@@ -108,19 +99,14 @@ func countLocal(model, text string) (int, string) {
 		tokens, _, err := counter.codec.Encode(text)
 		counter.mu.Unlock()
 		if err == nil {
-			return len(tokens), counter.codec.GetName() + " estimate"
+			return len(tokens)
 		}
 	}
-	return (len(text) + 3) / 4, "byte estimate (bytes / 4)"
-}
-
-func prepareRequest(request Request) (Request, []byte, error) {
-	data, err := json.Marshal(request)
-	return request, data, err
+	return (len(text) + 3) / 4
 }
 
 func MeasureContext(model string, request Request) ContextSize {
-	request, data, err := prepareRequest(request)
+	data, err := json.Marshal(request)
 	if err != nil {
 		return ContextSize{}
 	}
@@ -131,53 +117,7 @@ func measureMessages(model string, request Request, messages []Message) ContextS
 	encoded, _ := json.Marshal(messages)
 	definitions, _ := json.Marshal(metadataTools())
 	size := ContextSize{Bytes: len(encoded) + len(definitions) + len(discoveryInstructions), HistoryOmitted: request.HistoryTruncated}
-	add := func(name string, data []byte) {
-		if len(data) == 0 {
-			return
-		}
-		tokens, method := countLocal(model, string(data))
-		size.Method = method
-		size.Parts = append(size.Parts, ContextPart{Name: name, Bytes: len(data), Tokens: tokens})
-	}
-	encode := func(value any) []byte { data, _ := json.Marshal(value); return data }
-	add("Instructions + tools", append([]byte(discoveryInstructions), definitions...))
-	if len(request.History) > 0 {
-		add("Conversation", encode(request.History))
-	}
-	schema := []byte{}
-	if len(request.Tables) > 0 {
-		schema = append(schema, encode(request.Tables)...)
-	}
-	if len(request.Databases) > 0 {
-		schema = append(schema, encode(request.Databases)...)
-	}
-	if len(request.Catalog) > 0 {
-		schema = append(schema, encode(request.Catalog)...)
-	}
-	if len(request.Schemas) > 0 {
-		schema = append(schema, encode(request.Schemas)...)
-	}
-	for _, message := range messages {
-		if message.Role == "tool" {
-			schema = append(schema, encode(message.Text)...)
-		}
-	}
-	add("Schema context", schema)
-	add("Current message", encode(struct{ Prompt, Question, Answer string }{request.Prompt, request.Clarification, request.Answer}))
-	if request.SelectedSQL != "" || request.EditorSQL != "" {
-		add("Editor context", encode(struct{ Selected, Editor string }{request.SelectedSQL, request.EditorSQL}))
-	}
-	counted := 0
-	for _, part := range size.Parts {
-		counted += part.Bytes
-	}
-	overhead := max(0, size.Bytes-counted)
-	if overhead > 0 {
-		size.Parts = append(size.Parts, ContextPart{Name: "Encoding / discovery state", Bytes: overhead, Tokens: (overhead + 3) / 4})
-	}
-	for _, part := range size.Parts {
-		size.Tokens += part.Tokens
-	}
+	size.Tokens = countLocal(model, discoveryInstructions+string(definitions)+string(encoded))
 	return size
 }
 

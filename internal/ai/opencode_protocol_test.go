@@ -37,16 +37,16 @@ func TestGoProtocolsUseCorrectRequestAndResponseFormats(t *testing.T) {
 				if !strings.Contains(string(data), "user request") {
 					t.Error("missing request context")
 				}
-				if _, ok := body["tools"]; ok {
-					t.Error("SQL generation must not expose tools")
+				if body["tools"] == nil {
+					t.Error("missing metadata tools")
 				}
 				switch test.format {
 				case "responses":
-					if body["store"] != false || body["input"] != "user request" {
+					if body["store"] != false || body["input"] == nil {
 						t.Error("invalid Responses request")
 					}
 				case "anthropic":
-					if body["system"] != sqlAssistant || body["messages"] == nil {
+					if body["system"] != discoveryInstructions || body["messages"] == nil {
 						t.Error("invalid Messages request")
 					}
 				case "gemini":
@@ -58,9 +58,9 @@ func TestGoProtocolsUseCorrectRequestAndResponseFormats(t *testing.T) {
 			}))
 			defer server.Close()
 			client := &openCodeClient{format: test.format, model: "model", key: "subscription-key", session: "session", endpoint: server.URL, http: server.Client()}
-			output, err := client.Complete(context.Background(), "user request")
-			if err != nil || output != "SELECT 1;" {
-				t.Fatalf("response=%q err=%v", output, err)
+			output, err := client.Step(context.Background(), discoveryInstructions, []Message{{Role: "user", Text: "user request"}}, metadataTools())
+			if err != nil || output.Text != "SELECT 1;" {
+				t.Fatalf("response=%q err=%v", output.Text, err)
 			}
 		})
 	}
@@ -75,7 +75,7 @@ func TestGoProtocolsRejectPartialResponsesAndUnsupportedFormats(t *testing.T) {
 		{"responses", `{"status":"completed","output":[]}`},
 		{"anthropic", `{"stop_reason":"tool_use","content":[]}`},
 	} {
-		if _, err := decodeOpenCodeResponse(test.format, []byte(test.response)); err == nil {
+		if _, err := decodeToolTurn(test.format, []byte(test.response)); err == nil {
 			t.Fatalf("accepted partial %s response", test.format)
 		}
 	}

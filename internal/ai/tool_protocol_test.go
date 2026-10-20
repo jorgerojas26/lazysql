@@ -88,13 +88,13 @@ func TestNativeToolProtocolsRejectIncompleteResponses(t *testing.T) {
 func TestChatGPTToolStreamRequiresCompletedResponseAndPreservesCalls(t *testing.T) {
 	reply := `{"status":"completed","output":[{"type":"reasoning","encrypted_content":"encrypted","summary":[]},{"type":"function_call","call_id":"call1","name":"describe_tables","arguments":"{\"names\":[\"public.orders\"]}"}]}`
 	stream := "data: {\"type\":\"response.completed\",\"response\":" + reply + "}\n\n"
-	turn, err := readChatGPTTurn(strings.NewReader(stream))
+	turn, err := readResponsesStream(strings.NewReader(stream), "ChatGPT", nil)
 	if err != nil || len(turn.Calls) != 1 || turn.Calls[0].Name != "describe_tables" || !strings.Contains(string(turn.Replay), "encrypted") {
 		t.Fatalf("stream turn: %+v %v", turn, err)
 	}
 	for _, ending := range []string{"", "data: [DONE]\n\n", "data: {\"type\":\"response.incomplete\"}\n\n"} {
 		partial := "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"name\":\"list_tables\"}}\n\n"
-		if _, err := readChatGPTTurn(strings.NewReader(partial + ending)); err == nil {
+		if _, err := readResponsesStream(strings.NewReader(partial+ending), "ChatGPT", nil); err == nil {
 			t.Fatal("partial tool call accepted")
 		}
 	}
@@ -178,7 +178,7 @@ data: {"type":"response.output_item.done","output_index":1,"item":{"id":"fc1","t
 data: {"type":"response.completed","response":{"status":"completed"}}
 
 `
-	turn, err := readChatGPTTurn(strings.NewReader(stream))
+	turn, err := readResponsesStream(strings.NewReader(stream), "ChatGPT", nil)
 	if err != nil || len(turn.Calls) != 1 || turn.Calls[0].Name != "list_tables" || string(turn.Calls[0].Arguments) != `{"search":"users"}` || !strings.Contains(string(turn.Replay), "keep-encrypted") {
 		t.Fatalf("sparse tool completion: %+v %v", turn, err)
 	}
@@ -218,7 +218,7 @@ data: {"type":"response.completed","response":{"status":"incomplete"}}
 `, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			turn, err := readChatGPTTurn(strings.NewReader(test.stream))
+			turn, err := readResponsesStream(strings.NewReader(test.stream), "ChatGPT", nil)
 			if test.wantErr {
 				if err == nil || len(turn.Calls) != 0 {
 					t.Fatal("incomplete tool call escaped")
@@ -240,9 +240,9 @@ func TestChatGPTSparseTextCompletionAndParallelToolOrdering(t *testing.T) {
 		"data: {\"type\":\"response.output_text.done\",\"text\":\"SELECT 1;\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
 		"data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"SELECT 1;\"}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
 	} {
-		output, err := readChatGPTStream(strings.NewReader(stream))
-		if err != nil || output != "SELECT 1;" {
-			t.Fatalf("sparse SQL text: %q %v", output, err)
+		output, err := readResponsesStream(strings.NewReader(stream), "ChatGPT", nil)
+		if err != nil || output.Text != "SELECT 1;" {
+			t.Fatalf("sparse SQL text: %q %v", output.Text, err)
 		}
 	}
 	stream := `data: {"type":"response.output_item.done","output_index":2,"item":{"type":"function_call","call_id":"second","name":"describe_tables","arguments":"{\"names\":[\"public.users\"]}"}}
@@ -252,7 +252,7 @@ data: {"type":"response.output_item.done","output_index":1,"item":{"type":"funct
 data: {"type":"response.completed","response":{"status":"completed"}}
 
 `
-	turn, err := readChatGPTTurn(strings.NewReader(stream))
+	turn, err := readResponsesStream(strings.NewReader(stream), "ChatGPT", nil)
 	if err != nil || len(turn.Calls) != 2 || turn.Calls[0].ID != "first" || turn.Calls[1].ID != "second" {
 		t.Fatalf("parallel call order: %+v %v", turn, err)
 	}

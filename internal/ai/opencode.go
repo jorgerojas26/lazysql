@@ -62,14 +62,6 @@ func newOpenCode(config models.AIConfig) (*openCodeClient, error) {
 	}}, nil
 }
 
-func (client *openCodeClient) Complete(ctx context.Context, prompt string) (string, error) {
-	data, err := client.send(ctx, client.requestBody(prompt))
-	if err != nil {
-		return "", err
-	}
-	return decodeOpenCodeResponse(client.format, data)
-}
-
 func (client *openCodeClient) Step(ctx context.Context, instructions string, messages []Message, tools []Tool) (Turn, error) {
 	data, err := client.send(ctx, toolRequestBody(client.format, client.model, instructions, messages, tools))
 	if err != nil {
@@ -181,5 +173,20 @@ func (client *openCodeClient) post(ctx context.Context, payload map[string]any, 
 		return nil, errors.New("OpenCode Go subscription limit reached; check your plan and retry later (no billing fallback)")
 	default:
 		return nil, fmt.Errorf("OpenCode Go request failed (HTTP %d); check model availability and retry", response.StatusCode)
+	}
+}
+
+func openCodeEndpointFor(model, format string) (string, error) {
+	switch format {
+	case "", "chat-completions":
+		return openCodeEndpoint, nil
+	case "responses":
+		return "https://opencode.ai/inference/go/openai/v1/responses", nil
+	case "anthropic":
+		return "https://opencode.ai/inference/go/anthropic/v1/messages", nil
+	case "gemini":
+		return "https://opencode.ai/inference/go/google/v1beta/models/" + url.PathEscape(model) + ":generateContent", nil
+	default:
+		return "", errors.New("unknown OpenCode Go api_format; choose a model with lazysql ai login")
 	}
 }

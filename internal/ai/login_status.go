@@ -8,11 +8,16 @@ import (
 	"github.com/jorgerojas26/lazysql/models"
 )
 
-func ProviderLoginStatus(ctx context.Context, config models.AIConfig) map[string]string {
-	status := map[string]string{"chatgpt": "Not logged in", "opencode-go": "Not logged in"}
+type ProviderStatus struct {
+	Label string
+	Ready bool
+}
+
+func ProviderLoginStatus(ctx context.Context, config models.AIConfig) map[string]ProviderStatus {
+	status := map[string]ProviderStatus{"chatgpt": {Label: "Not logged in"}, "opencode-go": {Label: "Not logged in"}}
 	service, err := newChatGPTService()
 	if err != nil {
-		status["chatgpt"] = "Check credentials"
+		status["chatgpt"] = ProviderStatus{Label: "Check credentials"}
 	} else {
 		status["chatgpt"] = service.loginStatus(ctx)
 	}
@@ -22,36 +27,36 @@ func ProviderLoginStatus(ctx context.Context, config models.AIConfig) map[string
 	}
 	if key := os.Getenv(env); key != "" {
 		if _, err := validateOpenCodeKey(key); err != nil {
-			status["opencode-go"] = "Check key"
+			status["opencode-go"] = ProviderStatus{Label: "Check key"}
 		} else {
-			status["opencode-go"] = "Logged in"
+			status["opencode-go"] = ProviderStatus{Label: "Logged in", Ready: true}
 		}
 	} else if config.APIKeyEnv == "" || config.APIKeyEnv == "OPENCODE_API_KEY" {
 		key, err := LoadOpenCodeKey()
 		if err != nil {
-			status["opencode-go"] = "Check key"
+			status["opencode-go"] = ProviderStatus{Label: "Check key"}
 		} else if key != "" {
-			status["opencode-go"] = "Logged in"
+			status["opencode-go"] = ProviderStatus{Label: "Logged in", Ready: true}
 		}
 	}
 	return status
 }
 
-func (service *chatGPTService) loginStatus(parent context.Context) string {
+func (service *chatGPTService) loginStatus(parent context.Context) ProviderStatus {
 	if _, err := os.Lstat(service.path); os.IsNotExist(err) {
-		return "Not logged in"
+		return ProviderStatus{Label: "Not logged in"}
 	} else if err != nil {
-		return "Check credentials"
+		return ProviderStatus{Label: "Check credentials"}
 	}
 	ctx, cancel := context.WithTimeout(parent, 200*time.Millisecond)
 	defer cancel()
-	status := "Not logged in"
+	status := ProviderStatus{Label: "Not logged in"}
 	err := withChatGPTStore(ctx, service.path, func(store *chatGPTStore) (bool, error) {
 		account := store.account(store.Active)
 		if account == nil || account.AccessToken == "" {
 			for _, saved := range store.Accounts {
 				if saved.AccessToken != "" && (saved.ExpiresAt.After(time.Now()) || saved.RefreshToken != "") {
-					status = "Account saved"
+					status = ProviderStatus{Label: "Account saved"}
 					break
 				}
 			}
@@ -59,21 +64,21 @@ func (service *chatGPTService) loginStatus(parent context.Context) string {
 		}
 		switch {
 		case account.Issuer != service.issuer:
-			status = "Check credentials"
+			status = ProviderStatus{Label: "Check credentials"}
 		case !hasChatGPTPlan(*account):
-			status = "Plan access needed"
+			status = ProviderStatus{Label: "Plan access needed"}
 		case account.ExpiresAt.After(time.Now()) || account.RefreshToken != "":
-			status = "Logged in"
+			status = ProviderStatus{Label: "Logged in", Ready: true}
 		default:
-			status = "Sign in again"
+			status = ProviderStatus{Label: "Sign in again"}
 		}
 		return false, nil
 	})
 	if ctx.Err() != nil {
-		return "Unavailable"
+		return ProviderStatus{Label: "Unavailable"}
 	}
 	if err != nil {
-		return "Check credentials"
+		return ProviderStatus{Label: "Check credentials"}
 	}
 	return status
 }

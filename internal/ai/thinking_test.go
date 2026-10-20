@@ -79,7 +79,7 @@ func TestThinkingLevelsUseAdvertisedCapabilitiesOnly(t *testing.T) {
 
 func TestAvailableModelsOnlyLoadsAuthenticatedProvidersAndKeepsPartialResults(t *testing.T) {
 	calls := 0
-	catalog, err := availableModels(context.Background(), map[string]string{"chatgpt": "Logged in", "opencode-go": "Not logged in"}, func(_ context.Context, provider string) ([]Model, error) {
+	catalog, err := availableModels(context.Background(), map[string]ProviderStatus{"chatgpt": {Label: "Connected", Ready: true}}, func(_ context.Context, provider string) ([]Model, error) {
 		calls++
 		if provider != "chatgpt" {
 			t.Fatal("queried an unauthenticated provider")
@@ -89,7 +89,7 @@ func TestAvailableModelsOnlyLoadsAuthenticatedProvidersAndKeepsPartialResults(t 
 	if err != nil || calls != 1 || len(catalog) != 1 || catalog[0].Provider != "chatgpt" {
 		t.Fatalf("authenticated catalog: %+v %v", catalog, err)
 	}
-	catalog, err = availableModels(context.Background(), map[string]string{"chatgpt": "Logged in", "opencode-go": "Logged in"}, func(_ context.Context, provider string) ([]Model, error) {
+	catalog, err = availableModels(context.Background(), map[string]ProviderStatus{"chatgpt": {Ready: true}, "opencode-go": {Ready: true}}, func(_ context.Context, provider string) ([]Model, error) {
 		if provider == "chatgpt" {
 			return nil, errors.New("private backend error")
 		}
@@ -139,7 +139,7 @@ func TestChatGPTCatalogAdvertisesThinkingAndClientSendsSelection(t *testing.T) {
 	if _, err := client.Step(context.Background(), "instructions", []Message{{Role: "user", Text: "Prompt"}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Complete(context.Background(), "Prompt"); err != nil {
+	if _, err := client.Step(context.Background(), discoveryInstructions, []Message{{Role: "user", Text: "Prompt"}}, metadataTools()); err != nil {
 		t.Fatal(err)
 	}
 }

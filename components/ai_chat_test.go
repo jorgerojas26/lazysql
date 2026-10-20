@@ -39,6 +39,9 @@ func TestAIChatSurvivesTabChangesAndSourceTabClosure(t *testing.T) {
 	other := newRecordsFetchTestTable(home.DBDriver)
 	other.Page = tview.NewPages().AddPage("other", tview.NewBox(), true, true)
 	home.TabbedPane.AppendTab("other", other, "other")
+	if session.sourceClosed {
+		t.Fatal("switching tabs detached the source editor")
+	}
 	home.openAIPrompt()
 	if home.aiChat != session || !session.visible || len(session.history) != 2 || session.input.GetText() != "Include email addresses" {
 		t.Fatal("tab change discarded chat or composer")
@@ -209,7 +212,6 @@ func TestAIChatSessionsAreIsolatedPerConnection(t *testing.T) {
 	defer cancel()
 	second := &aiSession{table: secondTable, surface: tview.NewPages(), ctx: ctx, cancel: cancel, database: "other"}
 	secondTable.Editor = NewSQLEditor("")
-	secondTable.aiSession = second
 	second.buildUI()
 	secondHome := attachAIChatHome(second)
 	second.appendMessage(ai.ChatMessage{Role: "user", Text: "Second connection prompt"})
