@@ -302,7 +302,11 @@ func (session *aiSession) messageMarkup(message ai.ChatMessage, index, width int
 	}
 	fmt.Fprintf(&text, "[%s::b]%s[-:-:-]\n", color, tview.Escape(label))
 	if message.Text != "" {
-		text.WriteString(tview.Escape(message.Text))
+		if message.Role == "assistant" && !message.Error {
+			text.WriteString(chatMarkdown(message.Text, width))
+		} else {
+			text.WriteString(tview.Escape(message.Text))
+		}
 		text.WriteByte('\n')
 	}
 	if message.SQL != "" {
