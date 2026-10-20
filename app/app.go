@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"maps"
 	"os"
 	"os/signal"
 	"sync"
@@ -29,6 +30,7 @@ type Application struct {
 
 	// Set before Run; invoked only on the UI event loop.
 	OnUpdateRequest func()
+	OnModalInput    func(*tcell.EventKey) bool
 
 	onQuitRequestMu sync.RWMutex
 	onQuitRequest   func()
@@ -69,7 +71,9 @@ func (a *Application) Config() *models.AppConfig {
 }
 
 func (a *Application) AIConfig() models.AIConfig {
-	return a.config.AI
+	config := a.config.AI
+	config.ThinkingPreferences = maps.Clone(config.ThinkingPreferences)
+	return config
 }
 
 // Connections returns the database connections.
@@ -179,6 +183,9 @@ func (a *Application) register() {
 		if event.Key() == tcell.KeyCtrlC {
 			// We're already on the UI event loop here; queuing an update can deadlock.
 			requestQuit()
+			return nil
+		}
+		if a.OnModalInput != nil && a.OnModalInput(event) {
 			return nil
 		}
 		if Keymaps.Resolve(event) == commands.CheckForUpdates {

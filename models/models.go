@@ -35,12 +35,16 @@ type AppConfig struct {
 }
 
 type AIConfig struct {
-	ContextWindow int    `toml:"context_window,omitempty"`
-	Enabled       bool   `toml:"enabled"`
-	Provider      string `toml:"provider"`
-	Model         string `toml:"model"`
-	APIKeyEnv     string `toml:"api_key_env"`
-	APIFormat     string `toml:"api_format,omitempty"`
+	Thinking            string            `toml:"thinking,omitempty"`
+	ThinkingMode        string            `toml:"thinking_mode,omitempty"`
+	ThinkingBudget      int               `toml:"thinking_budget,omitempty"`
+	ThinkingPreferences map[string]string `toml:"thinking_preferences,omitempty"`
+	ContextWindow       int               `toml:"context_window,omitempty"`
+	Enabled             bool              `toml:"enabled"`
+	Provider            string            `toml:"provider"`
+	Model               string            `toml:"model"`
+	APIKeyEnv           string            `toml:"api_key_env"`
+	APIFormat           string            `toml:"api_format,omitempty"`
 }
 
 type ConnectionPoolConfig struct {

@@ -195,6 +195,9 @@ func (flow *command) configure(ctx context.Context, provider string) error {
 				continue
 			}
 			changes["model"] = model.ID
+			changes["thinking"] = nil
+			changes["thinking_mode"] = nil
+			changes["thinking_budget"] = nil
 			changes["context_window"] = nil
 			if model.ContextWindow > 0 {
 				changes["context_window"] = model.ContextWindow

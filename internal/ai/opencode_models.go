@@ -64,7 +64,12 @@ func fetchOpenCodeModels(ctx context.Context, client *http.Client, modelsURL, me
 	type providerCatalog struct {
 		NPM    string `json:"npm"`
 		Models map[string]struct {
-			Name     string `json:"name"`
+			Name             string            `json:"name"`
+			ReasoningOptions []ReasoningOption `json:"reasoning_options"`
+			Limit            struct {
+				Context int `json:"context"`
+				Output  int `json:"output"`
+			} `json:"limit"`
 			Provider struct {
 				NPM string `json:"npm"`
 			} `json:"provider"`
@@ -115,7 +120,13 @@ func fetchOpenCodeModels(ctx context.Context, client *http.Client, modelsURL, me
 		if name == "" {
 			name = item.ID
 		}
-		models = append(models, Model{ID: item.ID, Name: name, Format: format, ContextWindow: item.ContextWindow})
+		window := item.ContextWindow
+		if window == 0 {
+			window = details.Limit.Context
+		}
+		model := Model{ID: item.ID, Name: name, Format: format, Provider: "opencode-go", ContextWindow: window}
+		model.setThinking(details.ReasoningOptions, details.Limit.Output)
+		models = append(models, model)
 	}
 	if len(models) == 0 {
 		return nil, errors.New("OpenCode Go returned no available models")

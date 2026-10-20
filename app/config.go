@@ -225,6 +225,8 @@ func LoadConfig(configFile string) error {
 	if err := ApplyTheme(themeConfig); err != nil {
 		return err
 	}
+	App.config.ConfigFile = configFile
+	App.config.LocalConfigFile = localConfigPath
 
 	return nil
 }

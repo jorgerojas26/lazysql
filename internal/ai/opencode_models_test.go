@@ -11,7 +11,7 @@ import (
 
 func TestGoModelCatalogIncludesEveryLiveModelAndItsProtocol(t *testing.T) {
 	models := `{"data":[{"id":"chat"},{"id":"anthropic"},{"id":"responses"},{"id":"gemini"},{"id":"new-model"},{"id":"chat"}]}`
-	metadata := `{"opencode-go":{"npm":"@ai-sdk/openai-compatible","models":{"chat":{"name":"Chat model"},"anthropic":{"name":"Anthropic model","provider":{"npm":"@ai-sdk/anthropic"}},"responses":{"name":"Responses model","provider":{"npm":"@ai-sdk/openai"}},"gemini":{"name":"Gemini model","provider":{"npm":"@ai-sdk/google"}},"retired":{"name":"Not available"}}}}`
+	metadata := `{"opencode-go":{"npm":"@ai-sdk/openai-compatible","models":{"chat":{"name":"Chat model","reasoning_options":[{"type":"effort","values":["low","high"]}],"limit":{"context":200000,"output":32000}},"anthropic":{"name":"Anthropic model","provider":{"npm":"@ai-sdk/anthropic"}},"responses":{"name":"Responses model","provider":{"npm":"@ai-sdk/openai"}},"gemini":{"name":"Gemini model","provider":{"npm":"@ai-sdk/google"}},"retired":{"name":"Not available"}}}}`
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls++
@@ -35,6 +35,9 @@ func TestGoModelCatalogIncludesEveryLiveModelAndItsProtocol(t *testing.T) {
 	formats := map[string]string{}
 	for _, model := range result {
 		formats[model.ID] = model.Format
+		if model.ID == "chat" && (model.ContextWindow != 200000 || len(model.ThinkingLevels) != 2 || model.ThinkingLevels[1].ID != "high") {
+			t.Fatalf("catalog lost context or thinking metadata: %+v", model)
+		}
 	}
 	for id, format := range map[string]string{"chat": "chat-completions", "new-model": "chat-completions", "anthropic": "anthropic", "responses": "responses", "gemini": "gemini"} {
 		if formats[id] != format {

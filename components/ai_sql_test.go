@@ -199,7 +199,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 		mainPages.Draw(screen)
 		x, y, width, height := session.panel.GetRect()
 		rootX, rootY, rootWidth, rootHeight := mainPages.GetRect()
-		if x != rootX+(rootWidth-width)/2 || y != rootY+(rootHeight-height)/2 || width != min(92, rootWidth) || height != min(26, rootHeight) {
+		if x != rootX+(rootWidth-width)/2 || y != rootY+(rootHeight-height)/2 || width != min(92, rootWidth) || height != min(4, rootHeight) {
 			t.Errorf("prompt is not centered on screen: %d,%d %dx%d", x, y, width, height)
 		}
 		text := simulationText(screen)
@@ -250,7 +250,7 @@ func TestAISQLPromptAutomaticContextAndCancellation(t *testing.T) {
 	}
 	App.QueueUpdateDraw(func() {
 		_, preview := table.aiSurface.GetFrontPage()
-		preview.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone), func(p tview.Primitive) { App.SetFocus(p) })
+		preview.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone), func(p tview.Primitive) { App.SetFocus(p) })
 		if table.aiSession != session || session.visible || table.Editor.GetText() != "SELECT id FROM public.orders;" {
 			t.Error("accept did not replace selection and close preview")
 		}

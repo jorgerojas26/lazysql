@@ -101,7 +101,7 @@ func New(config models.AIConfig) (Client, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &chatGPTClient{model: config.Model, service: service}, nil
+		return &chatGPTClient{model: config.Model, thinking: config.Thinking, service: service}, nil
 	default:
 		return nil, errors.New("set ai.provider to opencode-go or chatgpt")
 	}

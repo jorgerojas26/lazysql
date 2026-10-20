@@ -177,7 +177,7 @@ func TestAIChatRefinementMnemonicsAndClearRejectLateReplies(t *testing.T) {
 	var generated *ResultsTable
 	var tabCount int
 	App.QueueUpdateDraw(func() {
-		session.capture(tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone))
+		session.capture(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone))
 		generated = session.table
 		tabCount = session.owner.TabbedPane.GetLength()
 		if generated == source || source.Editor.GetText() != "existing work" || session.visible || !session.active() {
@@ -189,7 +189,7 @@ func TestAIChatRefinementMnemonicsAndClearRejectLateReplies(t *testing.T) {
 	send("Include email addresses")
 	wait(func() bool { return !session.busy && len(session.history) == 4 })
 	App.QueueUpdateDraw(func() {
-		session.capture(tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone))
+		session.capture(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone))
 		if session.table != generated || session.owner.TabbedPane.GetLength() != tabCount || !strings.Contains(generated.Editor.GetText(), "email") {
 			t.Error("refined SQL was not applied to its existing editor")
 		}

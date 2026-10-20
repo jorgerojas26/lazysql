@@ -49,7 +49,7 @@ func TestAIChatLayoutAndScroll(t *testing.T) {
 		mainPages.SetRect(0, 0, width, 28)
 		mainPages.Draw(screen)
 		text := simulationText(screen)
-		for _, expected := range []string{"AI SQL", "You", "Last ten users", "AI · app", "SELECT", "Ctrl+U Use query", "Ctrl+N New chat"} {
+		for _, expected := range []string{"AI SQL", "You", "Last ten users", "AI · app", "SELECT", "Ctrl+Y Use query", "Ctrl+N New chat"} {
 			if !strings.Contains(text, expected) {
 				t.Fatalf("missing %q at width %d:\n%s", expected, width, text)
 			}
@@ -72,6 +72,7 @@ func TestAIChatLayoutAndScroll(t *testing.T) {
 
 func TestAIChatCenteredAndResponsive(t *testing.T) {
 	session := newAILayoutSession(t)
+	session.appendMessage(ai.ChatMessage{Role: "user", Text: "A sent request"})
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if err := screen.Init(); err != nil {
 		t.Fatal(err)
@@ -136,6 +137,7 @@ func TestAIReadOnlyEditorDoesNotPublishExecution(t *testing.T) {
 
 func TestAIChatOverlayPreservesWorkspaceBackdrop(t *testing.T) {
 	session := newAILayoutSession(t)
+	session.appendMessage(ai.ChatMessage{Role: "user", Text: "A sent request"})
 	session.hide()
 	backdrop := tview.NewTextView().SetText(strings.Repeat(strings.Repeat("W", 120)+"\n", 38))
 	backdrop.SetTextColor(tcell.ColorGreen).SetBackgroundColor(tcell.ColorNavy)
@@ -219,6 +221,7 @@ func TestAIChatCtrlHDoesNotHideAndToggleStillWorks(t *testing.T) {
 
 func TestAIContextMeterBelowUnboundedInput(t *testing.T) {
 	session := newAILayoutSession(t)
+	session.appendMessage(ai.ChatMessage{Role: "user", Text: "A sent request"})
 	session.input.SetText(strings.Repeat("x", 100000))
 	if len(session.input.GetText()) != 100000 {
 		t.Fatal("chat input still has a byte-based length cap")

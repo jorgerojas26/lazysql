@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -59,7 +60,7 @@ func TestReadThemeConfigDoesNotLoadUnrelatedApplicationSettings(t *testing.T) {
 	if err != nil || config.Preset != "dracula" {
 		t.Fatalf("theme-only loading validated unrelated settings: %+v %v", config, err)
 	}
-	if App.AIConfig() != beforeAI || Styles != beforeTheme {
+	if !reflect.DeepEqual(App.AIConfig(), beforeAI) || Styles != beforeTheme {
 		t.Fatal("reading a theme initialized application configuration or changed runtime state")
 	}
 }

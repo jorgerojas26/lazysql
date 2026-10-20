@@ -13,8 +13,9 @@ import (
 )
 
 type chatGPTClient struct {
-	model   string
-	service *chatGPTService
+	model    string
+	thinking string
+	service  *chatGPTService
 }
 
 func (service *chatGPTService) request(ctx context.Context, method, path string, body any) (*http.Response, error) {
@@ -75,10 +76,13 @@ func (service *chatGPTService) models(ctx context.Context) ([]Model, error) {
 	}
 	var catalog struct {
 		Models []struct {
-			Slug          string `json:"slug"`
-			ContextWindow int    `json:"context_window"`
-			Name          string `json:"display_name"`
-			Visibility    string `json:"visibility"`
+			Slug            string `json:"slug"`
+			ContextWindow   int    `json:"context_window"`
+			Name            string `json:"display_name"`
+			Visibility      string `json:"visibility"`
+			ReasoningLevels []struct {
+				Effort string `json:"effort"`
+			} `json:"supported_reasoning_levels"`
 		} `json:"models"`
 	}
 	if json.Unmarshal(data, &catalog) != nil {
@@ -95,7 +99,16 @@ func (service *chatGPTService) models(ctx context.Context) ([]Model, error) {
 		if name == "" {
 			name = model.Slug
 		}
-		models = append(models, Model{ID: model.Slug, Name: name, ContextWindow: model.ContextWindow})
+		item := Model{ID: model.Slug, Name: name, Provider: "chatgpt", Format: "responses", ContextWindow: model.ContextWindow}
+		for _, level := range model.ReasoningLevels {
+			if level.Effort != "" {
+				item.ThinkingLevels = append(item.ThinkingLevels, ThinkingLevel{ID: level.Effort})
+			}
+		}
+		if len(item.ThinkingLevels) > 0 {
+			item.ThinkingMode = "effort"
+		}
+		models = append(models, item)
 	}
 	if len(models) == 0 {
 		return nil, errors.New("no ChatGPT models available for this account; check plan access")
@@ -115,11 +128,13 @@ func (client *chatGPTClient) Complete(ctx context.Context, prompt string) (strin
 	if client.model == "" {
 		return "", errors.New("select a ChatGPT model with lazysql ai login")
 	}
-	response, err := client.service.request(ctx, http.MethodPost, "/responses", map[string]any{
+	body := map[string]any{
 		"model": client.model, "instructions": sqlAssistant,
 		"input": []map[string]string{{"role": "user", "content": prompt}},
 		"store": false, "stream": true,
-	})
+	}
+	applyThinking(body, "responses", client.thinking, "effort", 0)
+	response, err := client.service.request(ctx, http.MethodPost, "/responses", body)
 	if err != nil {
 		return "", err
 	}
@@ -140,6 +155,7 @@ func (client *chatGPTClient) StreamStep(ctx context.Context, instructions string
 		return Turn{}, errors.New("select a ChatGPT model with lazysql ai login")
 	}
 	body := toolRequestBody("responses", client.model, instructions, messages, tools)
+	applyThinking(body, "responses", client.thinking, "effort", 0)
 	body["stream"] = true
 	delete(body, "max_output_tokens")
 	response, err := client.service.request(ctx, http.MethodPost, "/responses", body)

@@ -217,6 +217,13 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 	press(tcell.KeyCtrlG)
 	wait("open chat", func() bool { return home.aiChat != nil && home.aiChat.visible })
 	session := home.aiChat
+	App.QueueUpdateDraw(func() {
+		mainPages.Draw(screen)
+		_, _, _, height := session.panel.GetRect()
+		if height != 4 || strings.Contains(simulationText(screen), "Ctrl+N New chat") {
+			t.Error("fresh chat did not open as a compact input")
+		}
+	})
 	send("Give me the last 10 registered users")
 	select {
 	case number := <-started:
@@ -232,6 +239,10 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 		return strings.Contains(text, "Here are the latest users.") && strings.Contains(text, "╭─ SQL") && strings.Contains(text, "SELECT id, email") && session.streaming.SQL != ""
 	})
 	App.QueueUpdate(func() {
+		_, _, _, height := session.panel.GetRect()
+		if height != 26 {
+			t.Error("sending did not expand the compact input into full chat")
+		}
 		if !session.busy || session.result.SQL != "" || len(session.history) != 1 || !session.useButton.IsDisabled() {
 			t.Error("partial SQL became a completed usable answer")
 		}
@@ -295,7 +306,7 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 		}
 	})
 	App.QueueUpdateDraw(func() {
-		mainPages.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone), func(p tview.Primitive) { App.SetFocus(p) })
+		mainPages.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone), func(p tview.Primitive) { App.SetFocus(p) })
 		if session.table.Editor.GetText() != "" {
 			t.Error("partial SQL was applied")
 		}
@@ -377,6 +388,13 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 	press(tcell.KeyCtrlN)
 	wait("New chat", func() bool {
 		return !session.busy && len(session.history) == 0 && session.streaming.SQL == "" && session.result.SQL == ""
+	})
+	App.QueueUpdateDraw(func() {
+		mainPages.Draw(screen)
+		_, _, _, height := session.panel.GetRect()
+		if height != 4 || strings.Contains(simulationText(screen), "Ctrl+N New chat") {
+			t.Error("New chat did not collapse to a compact input")
+		}
 	})
 	select {
 	case number := <-canceled:

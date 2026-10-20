@@ -20,7 +20,15 @@ func (tab aiContextTab) GetPrimitive() tview.Primitive {
 	return tab.Primitive
 }
 
-type aiPrompt struct{ *tview.TextArea }
+type aiPrompt struct {
+	*tview.TextArea
+	session       *aiSession
+	footerY       int
+	modelX        int
+	modelWidth    int
+	thinkingX     int
+	thinkingWidth int
+}
 
 func (prompt *aiPrompt) SetText(text string) *aiPrompt {
 	prompt.TextArea.SetText(text, true)
@@ -37,10 +45,27 @@ type aiModal struct {
 func (modal *aiModal) Draw(screen tcell.Screen) {
 	x, y, width, height := modal.GetRect()
 	w, h := min(92, width), min(modal.height, height)
+	minimal := modal.session.minimalChat()
+	if minimal {
+		h = min(4, height)
+	}
+	modal.panel.SetBorder(!minimal)
 	modal.session.layoutControls(max(1, w-4))
 	inputHeight := min(4, max(2, h/4))
 	if name, _ := modal.session.content.GetFrontPage(); name == "context" {
 		inputHeight = 0
+	}
+	if minimal {
+		inputHeight = h
+		modal.panel.ResizeItem(modal.session.content, 0, 0)
+		modal.panel.ResizeItem(modal.session.status, 0, 0)
+		modal.panel.ResizeItem(modal.session.contextMeter, 0, 0)
+		modal.panel.ResizeItem(modal.session.buttons, 0, 0)
+	} else {
+		modal.panel.ResizeItem(modal.session.content, 0, 1)
+		modal.panel.ResizeItem(modal.session.status, 1, 0)
+		modal.panel.ResizeItem(modal.session.contextMeter, 1, 0)
+		modal.panel.ResizeItem(modal.session.buttons, modal.session.buttons.GetItemCount(), 0)
 	}
 	modal.session.panel.ResizeItem(modal.session.input, inputHeight, 0)
 	modal.panel.SetRect(x+(width-w)/2, y+(height-h)/2, w, h)
@@ -78,7 +103,7 @@ func (session *aiSession) showPanel(panel *tview.Flex, height int) {
 
 func (session *aiSession) buildUI() {
 	session.surface.Box = tview.NewFlex().Box
-	session.input = &aiPrompt{TextArea: tview.NewTextArea().SetPlaceholder("Ask for a query…").SetWrap(true).SetWordWrap(true)}
+	session.input = &aiPrompt{session: session, TextArea: tview.NewTextArea().SetPlaceholder("Ask for a query…").SetWrap(true).SetWordWrap(true)}
 	session.input.SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.PrimaryTextColor).Background(app.Styles.PrimitiveBackgroundColor))
 	session.input.SetBorder(true).SetTitle(" Message ").SetBorderPadding(0, 0, 1, 1)
 	session.transcript = tview.NewTextView().SetWrap(true).SetWordWrap(true).SetScrollable(true).SetDynamicColors(true).SetRegions(true)
@@ -101,7 +126,7 @@ func (session *aiSession) buildUI() {
 	})
 	session.startStreamUI()
 	session.status = tview.NewTextView().SetWrap(false).SetTextColor(app.Styles.SecondaryTextColor)
-	session.useButton = tview.NewButton("Ctrl+U Use query").SetSelectedFunc(session.useQuery)
+	session.useButton = tview.NewButton("Ctrl+Y Use query").SetSelectedFunc(session.useQuery)
 	session.stopButton = tview.NewButton("Ctrl+X Stop").SetSelectedFunc(session.stop)
 	session.newButton = tview.NewButton("Ctrl+N New chat").SetSelectedFunc(session.newChat)
 	session.contextButton = tview.NewButton("Ctrl+K Context").SetSelectedFunc(session.toggleContext)
@@ -136,6 +161,8 @@ func (session *aiSession) buildUI() {
 	session.content = tview.NewPages().AddPage("chat", session.transcript, true, true).AddPage("context", contextPanel, true, false)
 	session.refreshRequest()
 	config := app.App.AIConfig()
+	session.config = config
+	session.selectedModel = ai.Model{ID: config.Model, Name: config.Model, Provider: config.Provider, Format: config.APIFormat, ContextWindow: config.ContextWindow}
 	session.model, session.contextWindow = config.Model, config.ContextWindow
 	session.buttons = tview.NewFlex().SetDirection(tview.FlexRow)
 	session.panel = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(session.content, 0, 1, false).AddItem(session.status, 1, 0, false).AddItem(session.input, 4, 0, true).AddItem(session.contextMeter, 1, 0, false).AddItem(session.buttons, 1, 0, false)
@@ -151,7 +178,15 @@ func (session *aiSession) buildUI() {
 	session.scheduleContext()
 }
 
+func (session *aiSession) minimalChat() bool {
+	name, _ := session.content.GetFrontPage()
+	return name == "chat" && len(session.history) == 0 && !session.busy
+}
+
 func (session *aiSession) actions() []*tview.Button {
+	if session.minimalChat() {
+		return nil
+	}
 	buttons := []*tview.Button{}
 	if session.result.SQL != "" {
 		buttons = append(buttons, session.useButton)
@@ -197,7 +232,10 @@ func (session *aiSession) refreshControls() {
 	}
 	session.focusable = []tview.Primitive{content}
 	if name == "chat" {
-		session.focusable = append([]tview.Primitive{session.input}, session.focusable...)
+		session.focusable = []tview.Primitive{session.input}
+		if !session.minimalChat() {
+			session.focusable = append(session.focusable, content)
+		}
 	}
 	if name == "context" {
 		for tab := session.contextTabs.state.FirstTab; tab != nil; tab = tab.NextTab {
@@ -389,7 +427,20 @@ func (session *aiSession) capture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 	switch event.Key() {
-	case tcell.KeyCtrlU:
+	case tcell.KeyCtrlP:
+		session.openModelPicker()
+		return nil
+	case tcell.KeyCtrlT:
+		session.openThinkingPicker()
+		return nil
+	case tcell.KeyCtrlU, tcell.KeyCtrlD:
+		direction := -1
+		if event.Key() == tcell.KeyCtrlD {
+			direction = 1
+		}
+		session.scrollChat(direction)
+		return nil
+	case tcell.KeyCtrlY:
 		session.useQuery()
 		return nil
 	case tcell.KeyCtrlK:
@@ -423,4 +474,26 @@ func (session *aiSession) capture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 	return event
+}
+
+func (session *aiSession) scrollChat(direction int) {
+	if session.minimalChat() {
+		return
+	}
+	view := session.transcript
+	if name, _ := session.content.GetFrontPage(); name == "context" {
+		view = session.contextDetails
+		if tab := session.contextTabs.GetCurrentTab(); tab.Reference == "conversation" {
+			view = session.requestDetails
+		}
+	}
+	row, column := view.GetScrollOffset()
+	_, _, _, height := view.GetInnerRect()
+	last := max(0, view.GetWrappedLineCount()-height)
+	row = min(last, max(0, row+direction*max(1, height/2)))
+	if direction > 0 && row == last {
+		view.ScrollToEnd()
+	} else {
+		view.ScrollTo(row, column)
+	}
 }

@@ -59,3 +59,34 @@ func TestMissingAISettingsRemainDisabled(t *testing.T) {
 		t.Fatal("provider-only setup enabled AI")
 	}
 }
+
+func TestSaveAISelectionPersistsOnlySelectionAndLocalPreferences(t *testing.T) {
+	global, local := loadProjectConfig(t, "[ai]\nenabled = true\nprovider = 'chatgpt'\nmodel = 'global'\n[ai.thinking_preferences]\n'chatgpt/global' = 'high'\n", "[ai]\nmodel = 'local'\nfuture_option = 'keep'\n[ai.thinking_preferences]\n'chatgpt/local' = 'low'\n")
+	beforeGlobal := readFile(t, global)
+	config := App.AIConfig()
+	config.Provider, config.Model, config.APIFormat = "opencode-go", "selected", "responses"
+	config.Thinking, config.ThinkingMode, config.ContextWindow = "low", "effort", 400000
+	config.ThinkingPreferences["opencode-go/selected"] = "low"
+	if err := App.SaveAISelection(config); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, global) != beforeGlobal {
+		t.Fatal("selection modified global config while project config is active")
+	}
+	text := readFile(t, local)
+	if !strings.Contains(text, "future_option = 'keep'") && !strings.Contains(text, "future_option = \"keep\"") {
+		t.Fatal("selection removed unrelated AI settings")
+	}
+	stored, err := ReadAISettings(local)
+	if err != nil || stored.Model != "selected" || stored.Thinking != "low" || stored.ThinkingPreferences["chatgpt/local"] != "low" || stored.ThinkingPreferences["opencode-go/selected"] != "low" {
+		t.Fatalf("saved selection: %+v %v", stored, err)
+	}
+	if _, exists := stored.ThinkingPreferences["chatgpt/global"]; exists {
+		t.Fatal("copied a merged global preference into local config")
+	}
+	copy := App.AIConfig()
+	copy.ThinkingPreferences["opencode-go/selected"] = "high"
+	if App.AIConfig().ThinkingPreferences["opencode-go/selected"] != "low" {
+		t.Fatal("AI config getter exposed mutable preference state")
+	}
+}

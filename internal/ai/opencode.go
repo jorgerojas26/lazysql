@@ -20,12 +20,15 @@ import (
 const openCodeEndpoint = "https://opencode.ai/inference/go/openai/v1/chat/completions"
 
 type openCodeClient struct {
-	model    string
-	format   string
-	key      string
-	session  string
-	endpoint string
-	http     *http.Client
+	thinking       string
+	thinkingMode   string
+	thinkingBudget int
+	model          string
+	format         string
+	key            string
+	session        string
+	endpoint       string
+	http           *http.Client
 }
 
 func newOpenCode(config models.AIConfig) (*openCodeClient, error) {
@@ -51,7 +54,7 @@ func newOpenCode(config models.AIConfig) (*openCodeClient, error) {
 	if key == "" {
 		return nil, fmt.Errorf("run lazysql ai login or set %s to your OpenCode Go subscription API key", env)
 	}
-	return &openCodeClient{model: config.Model, format: config.APIFormat, key: key, session: uuid.NewString(), endpoint: endpoint, http: &http.Client{
+	return &openCodeClient{thinking: config.Thinking, thinkingMode: config.ThinkingMode, thinkingBudget: config.ThinkingBudget, model: config.Model, format: config.APIFormat, key: key, session: uuid.NewString(), endpoint: endpoint, http: &http.Client{
 		Timeout: 90 * time.Second,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return errors.New("AI endpoint redirects are not allowed")
@@ -135,6 +138,7 @@ func (client *openCodeClient) send(ctx context.Context, payload map[string]any) 
 }
 
 func (client *openCodeClient) post(ctx context.Context, payload map[string]any, endpoint string) (*http.Response, error) {
+	applyThinking(payload, client.format, client.thinking, client.thinkingMode, client.thinkingBudget)
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err

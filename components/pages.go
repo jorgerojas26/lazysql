@@ -90,6 +90,7 @@ func showThemePicker() {
 func MainPages() *tview.Pages {
 	mainPages = tview.NewPages()
 	mainPages.SetInputCapture(captureAIShortcut)
+	app.App.OnModalInput = captureAIModalShortcut
 	mainPages.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	mainPages.AddPage(pageNameConnections, NewConnectionPages().Grid, true, true)
 

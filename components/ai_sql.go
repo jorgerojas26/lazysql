@@ -14,6 +14,7 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/internal/ai"
+	"github.com/jorgerojas26/lazysql/models"
 )
 
 func captureAIShortcut(event *tcell.EventKey) *tcell.EventKey {
@@ -139,6 +140,14 @@ func (selection aiSelection) apply(editor *SQLEditor, sql string) error {
 }
 
 type aiSession struct {
+	config          models.AIConfig
+	selectedModel   ai.Model
+	modelCatalog    []ai.Model
+	catalogLoading  bool
+	catalogLoaded   bool
+	catalogError    string
+	modelLoader     func(context.Context, models.AIConfig) ([]ai.Model, error)
+	picker          *aiPicker
 	previousTab     *Tab
 	startedRound    int
 	streamQueue     chan aiStreamUpdate
@@ -274,6 +283,7 @@ func (session *aiSession) show() {
 }
 
 func (session *aiSession) hide() {
+	session.closePicker()
 	session.visible = false
 	if _, page := mainPages.GetFrontPage(); page != session.surface {
 		return
@@ -333,6 +343,7 @@ func (session *aiSession) stop() {
 }
 
 func (session *aiSession) newChat() {
+	session.closePicker()
 	if session.runCancel != nil {
 		session.runCancel()
 	}
@@ -400,12 +411,22 @@ func (session *aiSession) generate() {
 	}
 	text := strings.TrimSpace(session.input.GetText())
 	if text == "" {
-		session.showResponse("Request", "Describe the query you need.", false)
 		return
 	}
+	request := session.makeRequest(text)
+	if session.contextWindow > 0 {
+		size := ai.MeasureContext(session.model, request)
+		if size.Tokens+max(8192, session.config.ThinkingBudget+8192) > session.contextWindow {
+			session.confirmContext(text, request, size.Tokens)
+			return
+		}
+	}
+	session.sendRequest(text, request)
+}
+
+func (session *aiSession) sendRequest(text string, request ai.Request) {
 	session.streaming = ai.Result{}
 	session.lastSent = text
-	request := session.makeRequest(text)
 	if session.question == "" {
 		session.request = text
 		session.answer = ""

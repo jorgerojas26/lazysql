@@ -33,7 +33,7 @@ func modelDialog(provider string, models []ai.Model, current string, selected fu
 		list.Clear()
 		index := 0
 		for _, model := range models {
-			if !strings.Contains(strings.ToLower(model.Name+" "+model.ID+" "+model.Format), query) {
+			if !ai.ModelMatches(model, query) {
 				continue
 			}
 			if model.ID == highlighted {
