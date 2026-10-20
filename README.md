@@ -737,6 +737,37 @@ lazysql
 
 Note: Undefined environment variables will be replaced with an empty string.
 
+## AI SQL chat
+
+AI is disabled by default. Run `lazysql ai login` to connect ChatGPT or an OpenCode Go subscription, choose a model, and explicitly enable AI. Use `lazysql ai logout` to manage saved authentication; both commands accept `--config path`.
+
+Press **Ctrl-G** from a database workspace to open AI chat. Fresh chats start with a compact input and expand after sending. Responses stream into a persistent conversation with syntax-highlighted SQL. **Use query** inserts SQL into an editor; it never executes it automatically.
+
+The model and thinking controls in the input border are clickable. Selections are saved, thinking preferences are remembered per model, and selectors are locked during generation. Context details include a concise usage summary and the full last outbound request body, including instructions, conversation, and schema/tool context, without authentication headers. Oversized context produces a warning rather than silently trimming it to fit a selected model.
+
+### AI chat keybindings
+
+| Key | Action |
+| --- | --- |
+| Ctrl-G | Open/hide chat without discarding the conversation or draft |
+| Enter | Send the message |
+| Ctrl-Enter | Insert a newline in the message |
+| Ctrl-U / Ctrl-D | Scroll the chat or selected context tab up/down half a page, without moving input focus |
+| Ctrl-Y | Use the latest completed SQL query without executing it |
+| Ctrl-X | Stop generation |
+| Ctrl-N | Start a new chat; while a picker is open, move to its next item instead |
+| Ctrl-O | Toggle the model picker |
+| Ctrl-T | Toggle the thinking picker; outside AI chat, this remains the theme-picker shortcut |
+| Ctrl-K | Toggle chat/context screens |
+| Tab / Shift-Tab | Move between visible controls; in the model picker, switch between search and list |
+| Esc | Cancel the picker, or hide chat when no picker is open |
+
+In either picker, **Up/Down** or **Ctrl-P/Ctrl-N** navigate and **Enter** selects. Pressing its opening shortcut again closes the picker without changing the selection; the other selector shortcut switches pickers. Only the model picker has search. **Ctrl-R** retries catalog loading if it fails.
+
+On the context screen, **1/2** select Usage/Conversation, and **[/]** switch tabs (using the configured table previous/next-tab bindings). The message input is hidden there. Click a completed SQL block to use that specific query; partial SQL cannot be used.
+
+The global chat shortcut is configurable with `[keymap.Global] GenerateSQL = "Ctrl-G"`. The modal-specific shortcuts above are fixed. As with other Ctrl-key shortcuts, terminal support matters: **Ctrl-M is Enter**, so Models uses **Ctrl-O** instead.
+
 <!-- KEYBINDINGS -->
 
 ## Keybindings

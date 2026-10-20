@@ -58,9 +58,9 @@ func TestAIModelPickerSearchSelectionAndThinkingPersistence(t *testing.T) {
 	mainPages.Draw(screen)
 	session.transcript.ScrollTo(5, 0)
 	mainPages.Draw(screen)
-	session.capture(tcell.NewEventKey(tcell.KeyCtrlP, 0, tcell.ModNone))
+	session.capture(tcell.NewEventKey(tcell.KeyCtrlO, 0, tcell.ModNone))
 	if session.picker == nil || app.App.GetFocus() != session.picker.search {
-		t.Fatal("Ctrl+P did not focus model search")
+		t.Fatal("Ctrl+O did not focus model search")
 	}
 	mainPages.Draw(screen)
 	if !strings.Contains(simulationText(screen), "Select model") || !strings.Contains(simulationText(screen), "First Model") {
@@ -429,7 +429,7 @@ func TestAISelectorShortcutsToggleAndSwitchPickers(t *testing.T) {
 	for _, target := range []struct {
 		kind string
 		key  tcell.Key
-	}{{"models", tcell.KeyCtrlP}, {"thinking", tcell.KeyCtrlT}} {
+	}{{"models", tcell.KeyCtrlO}, {"thinking", tcell.KeyCtrlT}} {
 		t.Run(target.kind, func(t *testing.T) {
 			session, _ := newAIModelSelectionSession(t)
 			session.capture(tcell.NewEventKey(target.key, 0, tcell.ModNone))
@@ -453,11 +453,49 @@ func TestAISelectorShortcutsToggleAndSwitchPickers(t *testing.T) {
 			}
 			otherKey, otherKind := tcell.KeyCtrlT, "thinking"
 			if target.kind == "thinking" {
-				otherKey, otherKind = tcell.KeyCtrlP, "models"
+				otherKey, otherKind = tcell.KeyCtrlO, "models"
 			}
 			session.picker.frame.InputHandler()(tcell.NewEventKey(otherKey, 0, tcell.ModNone), func(p tview.Primitive) { app.App.SetFocus(p) })
 			if session.picker == nil || session.picker.kind != otherKind {
 				t.Fatal("other selector shortcut did not switch pickers")
+			}
+		})
+	}
+}
+
+func TestAIPickerCtrlNPNavigatesWithoutTogglingOrClearingChat(t *testing.T) {
+	for _, kind := range []string{"models", "thinking"} {
+		t.Run(kind, func(t *testing.T) {
+			session, _ := newAIModelSelectionSession(t)
+			session.appendMessage(ai.ChatMessage{Role: "user", Text: "Keep this conversation"})
+			if kind == "models" {
+				session.openModelPicker()
+			} else {
+				session.openThinkingPicker()
+			}
+			picker := session.picker
+			focuses := []tview.Primitive{picker.table}
+			if picker.searchable {
+				focuses = append(focuses, picker.search)
+			}
+			for _, focus := range focuses {
+				session.focus(focus)
+				first := 0
+				if kind == "models" {
+					first = 1
+				}
+				picker.table.Select(first, 0)
+				picker.frame.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlN, 0, tcell.ModNone), func(p tview.Primitive) { app.App.SetFocus(p) })
+				if row, _ := picker.table.GetSelection(); row != first+1 {
+					t.Fatal("Ctrl+N did not move to the next item")
+				}
+				picker.frame.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlP, 0, tcell.ModNone), func(p tview.Primitive) { app.App.SetFocus(p) })
+				if row, _ := picker.table.GetSelection(); row != first {
+					t.Fatal("Ctrl+P did not move to the previous item")
+				}
+				if session.picker != picker || app.App.GetFocus() != focus || len(session.history) != 1 || session.input.GetText() != "My draft request" || session.model != "first" || session.config.Thinking != "low" {
+					t.Fatal("list navigation changed focus, closed picker, or changed chat/selection")
+				}
 			}
 		})
 	}

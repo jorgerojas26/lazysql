@@ -427,7 +427,7 @@ func (session *aiSession) capture(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 	switch event.Key() {
-	case tcell.KeyCtrlP:
+	case tcell.KeyCtrlO:
 		session.openModelPicker()
 		return nil
 	case tcell.KeyCtrlT:

@@ -41,7 +41,7 @@ func newAIPicker(session *aiSession, kind, title string, selected func(string)) 
 	picker.table = tview.NewTable().SetSelectable(true, false)
 	picker.table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(app.Styles.ContrastSecondaryTextColor))
 	picker.status = tview.NewTextView().SetWrap(false).SetTextColor(app.Styles.SecondaryTextColor)
-	footer := tview.NewTextView().SetWrap(false).SetText("↑↓ Navigate · Enter Select · Esc Back").SetTextColor(app.Styles.SecondaryTextColor)
+	footer := tview.NewTextView().SetWrap(false).SetText("↑↓ / Ctrl+N/P · Enter Select · Esc Back").SetTextColor(app.Styles.SecondaryTextColor)
 	picker.frame = tview.NewFlex().SetDirection(tview.FlexRow)
 	picker.frame.Box = tview.NewBox().SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	if picker.searchable {
@@ -65,7 +65,7 @@ func newAIPicker(session *aiSession, kind, title string, selected func(string)) 
 	})
 	picker.search.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
-		case tcell.KeyDown, tcell.KeyCtrlN:
+		case tcell.KeyDown:
 			picker.table.InputHandler()(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), func(tview.Primitive) {})
 			return nil
 		case tcell.KeyUp:
@@ -81,11 +81,18 @@ func newAIPicker(session *aiSession, kind, title string, selected func(string)) 
 			return nil
 		}
 		switch event.Key() {
-		case tcell.KeyCtrlP:
+		case tcell.KeyCtrlO:
 			session.openModelPicker()
 			return nil
 		case tcell.KeyCtrlT:
 			session.openThinkingPicker()
+			return nil
+		case tcell.KeyCtrlN, tcell.KeyCtrlP:
+			key := tcell.KeyDown
+			if event.Key() == tcell.KeyCtrlP {
+				key = tcell.KeyUp
+			}
+			picker.table.InputHandler()(tcell.NewEventKey(key, 0, tcell.ModNone), func(tview.Primitive) {})
 			return nil
 		case tcell.KeyEscape:
 			session.closePicker()

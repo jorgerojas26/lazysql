@@ -82,7 +82,7 @@ func (session *aiSession) openModelPicker() {
 		session.closePicker()
 		return
 	}
-	picker := newAIPicker(session, "models", "Select model · Ctrl+P", func(key string) {
+	picker := newAIPicker(session, "models", "Select model · Ctrl+O", func(key string) {
 		for _, model := range session.modelCatalog {
 			if model.Key() == key {
 				level := app.App.AIConfig().ThinkingPreferences[key]
