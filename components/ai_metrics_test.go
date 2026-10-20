@@ -10,14 +10,14 @@ import (
 	"github.com/jorgerojas26/lazysql/internal/ai"
 )
 
-func TestAIContextDetailsDistinguishEstimatesUsageAndHistoryOmission(t *testing.T) {
+func TestAIContextUsageSummaryIsConciseAndDistinguishesEstimates(t *testing.T) {
 	session := newAILayoutSession(t)
 	request := session.makeRequest("Include email")
 	request.HistoryTruncated = true
 	request.History = []ai.ChatMessage{{Role: "user", Text: strings.Repeat("old", 15000)}, {Role: "assistant", SQL: "SELECT 1;"}, {Role: "user", Text: "Latest"}, {Role: "assistant", SQL: "SELECT id FROM users;"}}
 	session.nextContext = ai.MeasureContext("unknown-model", request)
 	session.lastMetrics = ai.RequestMetrics{Complete: true, WireBytes: 1234, Usage: ai.Usage{Input: 100, Output: 20, Cached: 80, InputKnown: true, OutputKnown: true, CachedKnown: true}}
-	session.metricTotals = aiMetricTotals{Calls: 4, Reports: 2, Input: 200, Output: 40, Cached: 160}
+	session.metricTotals = aiMetricTotals{Calls: 4, Reports: 2, Input: 200, Output: 40, Cached: 160, InputKnown: true, OutputKnown: true, CachedKnown: true}
 	session.refreshContext()
 	meter := session.contextMeter.GetText(false)
 	detail := session.contextDetails.GetText(false)
@@ -26,17 +26,25 @@ func TestAIContextDetailsDistinguishEstimatesUsageAndHistoryOmission(t *testing.
 			t.Fatalf("context indicator omitted %q: %s", text, meter)
 		}
 	}
-	for _, text := range []string{"Model context window: unknown", "Input: 100 tokens", "Cached input: 80 tokens (included in input)", "Usage reports: 2/4", "Earlier conversation omitted: true", "headers excluded", "byte estimate"} {
+	for _, text := range []string{"Estimated context: ~", "Input: 100 tokens", "Output: 20 tokens", "Cached input: 80 tokens", "Session (2/4 requests reported)", "Input: 200 tokens"} {
 		if !strings.Contains(detail, text) {
 			t.Fatalf("context details omitted %q: %s", text, detail)
 		}
+	}
+	for _, removed := range []string{"bytes", "Estimate method", "First SQL", "Turn elapsed", "Schema tools", "Counting never", "Encoding / discovery"} {
+		if strings.Contains(detail, removed) {
+			t.Fatalf("usage summary still contains diagnostics: %q", removed)
+		}
+	}
+	if strings.Count(detail, "\n") > 12 {
+		t.Fatalf("usage summary is too long: %s", detail)
 	}
 	if strings.Contains(meter, "%") {
 		t.Fatal("unknown model limit was shown as a percentage")
 	}
 	session.contextWindow = 128000
 	session.refreshContext()
-	if !strings.Contains(session.contextMeter.GetText(false), "/128k") || !strings.Contains(session.contextDetails.GetText(false), "future output also needs room") {
+	if !strings.Contains(session.contextMeter.GetText(false), "/128k") || !strings.Contains(session.contextDetails.GetText(false), "/128k") {
 		t.Fatal("known model limit is not distinguished from input estimate")
 	}
 	session.capture(tcell.NewEventKey(tcell.KeyCtrlK, 0, tcell.ModNone))

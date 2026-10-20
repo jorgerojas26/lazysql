@@ -1,6 +1,8 @@
 package components
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,7 +13,10 @@ import (
 	"github.com/jorgerojas26/lazysql/internal/ai"
 )
 
-type aiMetricTotals struct{ Calls, Reports, Input, Output, Cached int }
+type aiMetricTotals struct {
+	Calls, Reports, Input, Output, Cached int
+	InputKnown, OutputKnown, CachedKnown  bool
+}
 
 func (session *aiSession) makeRequest(text string) ai.Request {
 	prompt, answer := text, ""
@@ -112,12 +117,15 @@ func (session *aiSession) observeMetrics(run uint64, metrics ai.RequestMetrics) 
 				}
 				if usage.InputKnown {
 					session.metricTotals.Input += usage.Input
+					session.metricTotals.InputKnown = true
 				}
 				if usage.OutputKnown {
 					session.metricTotals.Output += usage.Output
+					session.metricTotals.OutputKnown = true
 				}
 				if usage.CachedKnown {
 					session.metricTotals.Cached += usage.Cached
+					session.metricTotals.CachedKnown = true
 				}
 			}
 		}
@@ -130,13 +138,6 @@ func compactCount(value int) string {
 		return fmt.Sprintf("%.1fk", float64(value)/1000)
 	}
 	return fmt.Sprint(value)
-}
-
-func observedDuration(value time.Duration) string {
-	if value == 0 {
-		return "not observed"
-	}
-	return value.Round(time.Millisecond).String()
 }
 
 func reportedCount(value int, known bool) string {
@@ -172,37 +173,18 @@ func (session *aiSession) refreshContext() {
 	}
 	session.contextMeter.SetTextColor(color)
 	var detail strings.Builder
-	fmt.Fprintf(&detail, "Next request — estimated input\n\n")
-	for _, part := range session.nextContext.Parts {
-		fmt.Fprintf(&detail, "%-27s ~%s tokens (%d bytes)\n", part.Name, compactCount(part.Tokens), part.Bytes)
-	}
-	fmt.Fprintf(&detail, "\nEstimate method: %s\nApplication context: %d bytes (exact)\n", session.nextContext.Method, session.nextContext.Bytes)
+	fmt.Fprintf(&detail, "Estimated context: ~%s tokens", compactCount(size.Tokens))
 	if session.contextWindow > 0 {
-		fmt.Fprintf(&detail, "Model context window: %d tokens\nPercentages estimate input only; future output also needs room.\n", session.contextWindow)
-	} else {
-		detail.WriteString("Model context window: unknown (no assumed limit)\n")
+		fmt.Fprintf(&detail, " (%s)", text)
 	}
-	if session.busy && session.currentMetrics.Round > 0 {
-		fmt.Fprintf(&detail, "\nActive request: round %d · %d bytes · ~%d tokens\n", session.currentMetrics.Round, session.currentMetrics.Context.Bytes, session.currentMetrics.Context.Tokens)
-	}
-	last := session.lastMetrics
-	fmt.Fprintf(&detail, "\nLast finished model request\n\nInput: %s\nOutput: %s\nCached input: %s (included in input)\n", reportedCount(last.Usage.Input, last.Usage.InputKnown), reportedCount(last.Usage.Output, last.Usage.OutputKnown), reportedCount(last.Usage.Cached, last.Usage.CachedKnown))
-	if last.Usage.ReasoningKnown {
-		fmt.Fprintf(&detail, "Reasoning: %d tokens (included in output)\n", last.Usage.Reasoning)
-	}
-	if last.WireBytes > 0 {
-		fmt.Fprintf(&detail, "JSON request body: %d bytes (headers excluded)\n", last.WireBytes)
-	}
-	if last.Complete {
-		fmt.Fprintf(&detail, "Turn elapsed: %s\nModel request: %s\nFirst text token: %s\nFirst SQL from send: %s\nSchema tools: %s\n", last.Elapsed.Round(time.Millisecond), last.Duration.Round(time.Millisecond), observedDuration(last.FirstToken), observedDuration(last.FirstSQL), last.Tools.Round(time.Millisecond))
+	detail.WriteString("\n\n")
+	last := session.lastMetrics.Usage
+	fmt.Fprintf(&detail, "Last request\nInput: %s\nOutput: %s\nCached input: %s\n", reportedCount(last.Input, last.InputKnown), reportedCount(last.Output, last.OutputKnown), reportedCount(last.Cached, last.CachedKnown))
+	if last.ReasoningKnown {
+		fmt.Fprintf(&detail, "Reasoning: %d tokens\n", last.Reasoning)
 	}
 	totals := session.metricTotals
-	fmt.Fprintf(&detail, "\nSession totals — reported usage only\n\nModel requests: %d\nUsage reports: %d/%d requests\nInput: %d tokens\nOutput: %d tokens\nCached input: %d tokens\n", totals.Calls, totals.Reports, totals.Calls, totals.Input, totals.Output, totals.Cached)
-	omitted := session.nextContext.HistoryOmitted || session.historyOmitted
-	if session.currentMetrics.Context.HistoryOmitted && session.busy {
-		omitted = true
-	}
-	fmt.Fprintf(&detail, "\nEarlier conversation omitted: %t\n\nContext percentages and token counts prefixed ~ are estimates, not provider counts.\nCached tokens still occupy context. Session totals are not context size.\nCounting never sends an extra network request.", omitted)
+	fmt.Fprintf(&detail, "\nSession (%d/%d requests reported)\nInput: %s\nOutput: %s\nCached input: %s", totals.Reports, totals.Calls, reportedCount(totals.Input, totals.InputKnown), reportedCount(totals.Output, totals.OutputKnown), reportedCount(totals.Cached, totals.CachedKnown))
 	session.contextDetails.SetText(detail.String())
 }
 
@@ -216,7 +198,42 @@ func (session *aiSession) toggleContext() {
 		session.refreshContext()
 		session.content.SwitchToPage("context")
 		session.contextButton.SetLabel("Ctrl+K Chat")
-		session.focus(session.contextDetails)
+		_, view := session.contextTabs.GetFrontPage()
+		session.focus(view)
 	}
 	session.refreshControls()
+}
+
+func (session *aiSession) switchContextTab(name string) {
+	session.contextTabs.SwitchToTabByReference(name)
+	session.refreshControls()
+	_, view := session.contextTabs.GetFrontPage()
+	session.focus(view)
+}
+
+func (session *aiSession) observeRequest(run uint64, round int, body []byte) {
+	if session.ctx.Err() != nil {
+		return
+	}
+	var formatted bytes.Buffer
+	if json.Indent(&formatted, body, "", "  ") != nil {
+		return
+	}
+	text := formatted.String()
+	app.App.QueueUpdateDraw(func() {
+		if !session.active() || session.run != run {
+			return
+		}
+		session.requestBody = text
+		session.requestRound = round
+		session.refreshRequest()
+	})
+}
+
+func (session *aiSession) refreshRequest() {
+	text := "No model request yet. Send a message to inspect its full context."
+	if session.requestBody != "" {
+		text = fmt.Sprintf("Last sent request · round %d\n\n%s", session.requestRound, session.requestBody)
+	}
+	session.requestDetails.SetText(text).ScrollToBeginning()
 }

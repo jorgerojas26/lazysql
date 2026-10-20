@@ -109,7 +109,11 @@ func discoverSQL(ctx context.Context, client ToolCompleter, request Request, exe
 			}
 		}
 		notify()
-		observation := &wireObservation{}
+		observation := &wireObservation{request: func(body []byte) {
+			if settings.ObserveRequest != nil {
+				settings.ObserveRequest(round+1, body)
+			}
+		}}
 		stepContext := context.WithValue(ctx, observationKey{}, observation)
 		started := time.Now()
 		var turn Turn

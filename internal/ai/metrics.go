@@ -69,16 +69,23 @@ type RequestMetrics struct {
 }
 
 type DiscoveryOptions struct {
-	Model   string
-	Observe func(RequestMetrics)
+	Model          string
+	Observe        func(RequestMetrics)
+	ObserveRequest func(int, []byte)
 }
 
-type wireObservation struct{ bytes int }
+type wireObservation struct {
+	bytes   int
+	request func([]byte)
+}
 type observationKey struct{}
 
-func recordWireBytes(ctx context.Context, size int) {
+func recordRequest(ctx context.Context, body []byte) {
 	if observation, ok := ctx.Value(observationKey{}).(*wireObservation); ok {
-		observation.bytes = size
+		observation.bytes = len(body)
+		if observation.request != nil {
+			observation.request(body)
+		}
 	}
 }
 

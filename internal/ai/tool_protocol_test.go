@@ -20,9 +20,12 @@ func TestNativeToolProtocolsRoundTripDiscoveryAndPreserveReplay(t *testing.T) {
 	} {
 		t.Run(test.format, func(t *testing.T) {
 			calls := 0
+			bodies := make(chan string, 2)
+			var captured []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				data, _ := io.ReadAll(r.Body)
+				bodies <- string(data)
 				var body map[string]any
 				if json.Unmarshal(data, &body) != nil || body["tools"] == nil {
 					t.Error("missing native tool definitions")
@@ -42,11 +45,27 @@ func TestNativeToolProtocolsRoundTripDiscoveryAndPreserveReplay(t *testing.T) {
 			}))
 			defer server.Close()
 			client := &openCodeClient{format: test.format, model: "model", key: "key", endpoint: server.URL, http: server.Client()}
-			result, err := DiscoverSQL(context.Background(), client, Request{Prompt: "Orders"}, func(context.Context, string, json.RawMessage) (any, error) {
+			result, err := DiscoverSQLStream(context.Background(), client, Request{Prompt: "Orders"}, func(context.Context, string, json.RawMessage) (any, error) {
 				return map[string]any{"tables": []string{"public.orders"}}, nil
-			})
+			}, nil, DiscoveryOptions{ObserveRequest: func(round int, body []byte) {
+				if round != len(captured)+1 {
+					t.Errorf("wrong captured request round: %d", round)
+				}
+				captured = append(captured, string(body))
+			}})
 			if err != nil || result.SQL == "" || calls != 2 {
 				t.Fatalf("native discovery: %+v %v (%d calls)", result, err, calls)
+			}
+			if len(captured) != 2 {
+				t.Fatalf("captured %d request bodies", len(captured))
+			}
+			for _, body := range captured {
+				if body != <-bodies {
+					t.Fatal("captured request differs from provider payload")
+				}
+				if strings.Contains(body, "Bearer") || strings.Contains(body, "x-api-key") {
+					t.Fatal("request inspection includes authentication headers")
+				}
 			}
 		})
 	}
@@ -87,12 +106,15 @@ func TestChatGPTNativeDiscoveryUsesStreamingToolProtocolAndSavedCredentials(t *t
 		t.Fatal(err)
 	}
 	calls := 0
+	bodies := make(chan string, 2)
+	var captured []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if r.URL.Path != "/responses" || r.Header.Get("Authorization") != "Bearer access-one" {
 			t.Error("wrong native endpoint or OAuth credentials")
 		}
 		data, _ := io.ReadAll(r.Body)
+		bodies <- string(data)
 		var body map[string]any
 		if json.Unmarshal(data, &body) != nil || body["stream"] != true || body["store"] != false || body["tools"] == nil || body["max_output_tokens"] != nil {
 			t.Error("invalid native streaming tool request")
@@ -117,11 +139,24 @@ data: {"type":"response.completed","response":{"status":"completed"}}
 	defer server.Close()
 	fixture.service.api = server.URL
 	client := &chatGPTClient{model: "account-first", service: fixture.service}
-	result, err := DiscoverSQL(context.Background(), client, Request{Prompt: "Orders"}, func(context.Context, string, json.RawMessage) (any, error) {
+	result, err := DiscoverSQLStream(context.Background(), client, Request{Prompt: "Orders"}, func(context.Context, string, json.RawMessage) (any, error) {
 		return map[string]any{"tables": []string{"public.orders"}}, nil
-	})
+	}, nil, DiscoveryOptions{ObserveRequest: func(round int, body []byte) {
+		if round != len(captured)+1 {
+			t.Errorf("wrong ChatGPT request round: %d", round)
+		}
+		captured = append(captured, string(body))
+	}})
 	if err != nil || result.SQL == "" || calls != 2 {
 		t.Fatalf("ChatGPT native discovery: %+v %v (%d calls)", result, err, calls)
+	}
+	if len(captured) != 2 {
+		t.Fatalf("captured %d ChatGPT requests", len(captured))
+	}
+	for _, body := range captured {
+		if body != <-bodies || strings.Contains(body, "access-one") {
+			t.Fatal("ChatGPT request inspection differs from wire payload or includes credentials")
+		}
 	}
 }
 

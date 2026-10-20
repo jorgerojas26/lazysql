@@ -265,6 +265,21 @@ func TestAIChatStreamingEndToEnd(t *testing.T) {
 		if session.currentMetrics.Round == 0 || session.contextMeter.GetText(false) == "" {
 			t.Error("active request context is not visible")
 		}
+		session.capture(tcell.NewEventKey(tcell.KeyRune, '2', tcell.ModNone))
+		if name, _ := session.contextTabs.GetFrontPage(); name != "conversation" || App.GetFocus() != session.requestDetails {
+			t.Error("conversation tab did not open")
+		}
+		if !json.Valid([]byte(session.requestBody)) || session.requestRound != 4 {
+			t.Error("active request body was not captured")
+		}
+		for _, text := range []string{"instructions", "Give me the last 10 registered users", "describe_tables", "function_call_output", "verified"} {
+			if !strings.Contains(session.requestDetails.GetText(false), text) {
+				t.Errorf("request inspection omitted %q", text)
+			}
+		}
+		if strings.Contains(session.requestDetails.GetText(false), "fixture-key") {
+			t.Error("request inspection exposed credentials")
+		}
 	})
 	press(tcell.KeyCtrlK)
 	wait("return to chat", func() bool { name, _ := session.content.GetFrontPage(); return name == "chat" })

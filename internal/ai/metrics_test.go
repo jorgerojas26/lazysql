@@ -94,7 +94,7 @@ func TestStreamingUsageAfterTerminalTextIsRetained(t *testing.T) {
 func TestDiscoveryReportsEachRequestWithoutTrimmingHistory(t *testing.T) {
 	events := []RequestMetrics{}
 	client := stepFunc(func(ctx context.Context, _ string, _ []Message, _ []Tool) (Turn, error) {
-		recordWireBytes(ctx, 1234)
+		recordRequest(ctx, make([]byte, 1234))
 		return Turn{Text: generatedResult, Usage: Usage{Input: 100, Output: 20, InputKnown: true, OutputKnown: true}}, nil
 	})
 	request := Request{Prompt: "Users", History: []ChatMessage{{Role: "user", Text: strings.Repeat("x", 40000)}, {Role: "assistant", SQL: "SELECT 1;"}, {Role: "user", Text: "Latest"}, {Role: "assistant", SQL: "SELECT id FROM users;"}}}

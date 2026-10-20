@@ -25,11 +25,11 @@ func (service *chatGPTService) request(ctx context.Context, method, path string,
 	var input io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
-		if path == "/responses" {
-			recordWireBytes(ctx, len(data))
-		}
 		if err != nil {
 			return nil, errors.New("cannot prepare ChatGPT request")
+		}
+		if path == "/responses" {
+			recordRequest(ctx, data)
 		}
 		input = bytes.NewReader(data)
 	}

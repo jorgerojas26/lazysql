@@ -14,6 +14,12 @@ import (
 	"github.com/jorgerojas26/lazysql/internal/ai"
 )
 
+type aiContextTab struct{ tview.Primitive }
+
+func (tab aiContextTab) GetPrimitive() tview.Primitive {
+	return tab.Primitive
+}
+
 type aiPrompt struct{ *tview.TextArea }
 
 func (prompt *aiPrompt) SetText(text string) *aiPrompt {
@@ -32,7 +38,11 @@ func (modal *aiModal) Draw(screen tcell.Screen) {
 	x, y, width, height := modal.GetRect()
 	w, h := min(92, width), min(modal.height, height)
 	modal.session.layoutControls(max(1, w-4))
-	modal.session.panel.ResizeItem(modal.session.input, min(4, max(2, h/4)), 0)
+	inputHeight := min(4, max(2, h/4))
+	if name, _ := modal.session.content.GetFrontPage(); name == "context" {
+		inputHeight = 0
+	}
+	modal.session.panel.ResizeItem(modal.session.input, inputHeight, 0)
 	modal.panel.SetRect(x+(width-w)/2, y+(height-h)/2, w, h)
 	if chatWidth := max(1, w-6); chatWidth != modal.session.chatWidth {
 		modal.session.chatWidth = chatWidth
@@ -98,7 +108,33 @@ func (session *aiSession) buildUI() {
 	session.contextMeter = tview.NewTextView().SetWrap(false).SetText("Context: measuring…")
 	session.contextDetails = tview.NewTextView().SetWrap(true).SetWordWrap(true).SetScrollable(true)
 	session.contextDetails.SetBorderPadding(0, 0, 1, 1)
-	session.content = tview.NewPages().AddPage("chat", session.transcript, true, true).AddPage("context", session.contextDetails, true, false)
+	session.requestDetails = tview.NewTextView().SetWrap(true).SetWordWrap(true).SetScrollable(true)
+	session.requestDetails.SetBorderPadding(0, 0, 1, 1)
+	session.contextTabs = NewTabbedPane()
+	session.contextTabs.AppendTab("Usage", aiContextTab{session.contextDetails}, "usage")
+	session.contextTabs.AppendTab("Conversation", aiContextTab{session.requestDetails}, "conversation")
+	previousFocus := app.App.GetFocus()
+	session.contextTabs.SwitchToTabByReference("usage")
+	app.App.SetFocus(previousFocus)
+	for tab := session.contextTabs.state.FirstTab; tab != nil; tab = tab.NextTab {
+		tab.Header.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+			if action == tview.MouseLeftClick && tab.Header.InRect(event.Position()) {
+				session.switchContextTab(tab.Reference)
+				return tview.MouseConsumed, nil
+			}
+			return action, event
+		})
+		tab.Header.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEnter || (event.Key() == tcell.KeyRune && event.Rune() == ' ') {
+				session.switchContextTab(tab.Reference)
+				return nil
+			}
+			return event
+		})
+	}
+	contextPanel := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(session.contextTabs.HeaderContainer, 1, 0, false).AddItem(session.contextTabs.Pages, 0, 1, false)
+	session.content = tview.NewPages().AddPage("chat", session.transcript, true, true).AddPage("context", contextPanel, true, false)
+	session.refreshRequest()
 	config := app.App.AIConfig()
 	session.model, session.contextWindow = config.Model, config.ContextWindow
 	session.buttons = tview.NewFlex().SetDirection(tview.FlexRow)
@@ -156,10 +192,18 @@ func (session *aiSession) layoutControls(width int) {
 func (session *aiSession) refreshControls() {
 	session.useButton.SetDisabled(session.busy || session.result.SQL == "")
 	name, content := session.content.GetFrontPage()
-	if name == "chat" {
-		content = session.transcript
+	if name == "context" {
+		_, content = session.contextTabs.GetFrontPage()
 	}
-	session.focusable = []tview.Primitive{session.input, content}
+	session.focusable = []tview.Primitive{content}
+	if name == "chat" {
+		session.focusable = append([]tview.Primitive{session.input}, session.focusable...)
+	}
+	if name == "context" {
+		for tab := session.contextTabs.state.FirstTab; tab != nil; tab = tab.NextTab {
+			session.focusable = append(session.focusable, tab.Header)
+		}
+	}
 	for _, button := range session.actions() {
 		if !button.IsDisabled() {
 			session.focusable = append(session.focusable, button)
@@ -321,6 +365,28 @@ func (session *aiSession) capture(event *tcell.EventKey) *tcell.EventKey {
 	if app.Keymaps.Resolve(event) == commands.GenerateSQL {
 		session.hide()
 		return nil
+	}
+	if name, _ := session.content.GetFrontPage(); name == "context" && app.App.GetFocus() != session.input {
+		if event.Key() == tcell.KeyRune && event.Modifiers() == tcell.ModNone {
+			switch event.Rune() {
+			case '1':
+				session.switchContextTab("usage")
+				return nil
+			case '2':
+				session.switchContextTab("conversation")
+				return nil
+			}
+		}
+		switch app.Keymaps.Group(app.TableGroup).Resolve(event) {
+		case commands.TabPrev:
+			session.contextTabs.SwitchToPreviousTab()
+			session.refreshControls()
+			return nil
+		case commands.TabNext:
+			session.contextTabs.SwitchToNextTab()
+			session.refreshControls()
+			return nil
+		}
 	}
 	switch event.Key() {
 	case tcell.KeyCtrlU:

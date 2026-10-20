@@ -151,6 +151,10 @@ type aiSession struct {
 	model           string
 	contextWindow   int
 	contextMeter    *tview.TextView
+	contextTabs     *TabbedPane
+	requestDetails  *tview.TextView
+	requestBody     string
+	requestRound    int
 	contextDetails  *tview.TextView
 	content         *tview.Pages
 	contextButton   *tview.Button
@@ -249,6 +253,11 @@ func (session *aiSession) focus(primitive tview.Primitive) {
 	if _, page := mainPages.GetFrontPage(); page != session.surface {
 		return
 	}
+	if primitive == session.input {
+		if name, _ := session.content.GetFrontPage(); name == "context" {
+			_, primitive = session.contextTabs.GetFrontPage()
+		}
+	}
 	app.App.SetFocus(primitive)
 }
 
@@ -341,6 +350,10 @@ func (session *aiSession) newChat() {
 	session.nextContext = ai.ContextSize{}
 	session.content.SwitchToPage("chat")
 	session.contextButton.SetLabel("Ctrl+K Context")
+	session.switchContextTab("usage")
+	session.requestBody = ""
+	session.requestRound = 0
+	session.refreshRequest()
 	session.measuredRound = 0
 	session.startedRound = 0
 	session.result = ai.Result{}
@@ -419,7 +432,7 @@ func (session *aiSession) generate() {
 		defer cancel()
 		metadata := &aiSchemaTools{loader: loader, database: request.Database, schemasFilter: schemas}
 		request.Schemas = schemas
-		result, err := ai.DiscoverSQLStream(ctx, client, request, metadata.execute, func(update ai.Result) { session.stream(run, update) }, ai.DiscoveryOptions{Model: session.model, Observe: func(metrics ai.RequestMetrics) { session.observeMetrics(run, metrics) }})
+		result, err := ai.DiscoverSQLStream(ctx, client, request, metadata.execute, func(update ai.Result) { session.stream(run, update) }, ai.DiscoveryOptions{Model: session.model, Observe: func(metrics ai.RequestMetrics) { session.observeMetrics(run, metrics) }, ObserveRequest: func(round int, body []byte) { session.observeRequest(run, round, body) }})
 		if err == nil && loader.cache.generationValue() != generation {
 			err = errors.New("schema changed during generation; retry")
 		}
