@@ -61,6 +61,7 @@ var Keymaps = KeymapSystem{
 	Global: Map{
 		Bind{Key: Key{Code: tcell.KeyCtrlT}, Cmd: cmd.ThemePicker, Description: "Choose color theme"},
 		Bind{Key: Key{Code: tcell.KeyF10}, Cmd: cmd.CheckForUpdates, Description: "Check for updates / upgrade LazySQL"},
+		Bind{Key: Key{Code: tcell.KeyCtrlG}, Cmd: cmd.GenerateSQL, Description: "Generate SQL with AI (opt-in)"},
 	},
 	Groups: map[string]Map{
 		HomeGroup: {

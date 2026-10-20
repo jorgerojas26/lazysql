@@ -178,6 +178,7 @@ type ResultsTable struct {
 	exportMu        sync.Mutex
 	activeExport    *csvExportRun
 	columnView      *visibleColumnContent
+	aiSurface       *tview.Pages
 }
 
 func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver drivers.Driver, home *Home, connectionIdentifier string, connectionURL string, readOnly bool) *ResultsTable {
@@ -317,7 +318,12 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 
 	table.Wrapper.Clear()
 
-	table.Wrapper.AddItem(editor, 12, 0, true)
+	if app.App.AIConfig().Enabled {
+		table.aiSurface = tview.NewPages()
+		table.Wrapper.AddItem(editor, 12, 0, true)
+	} else {
+		table.Wrapper.AddItem(editor, 12, 0, true)
+	}
 	table.SetBorder(true)
 
 	tableWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)

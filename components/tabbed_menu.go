@@ -150,6 +150,9 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 
 	if currentTab != nil {
 		if table, ok := currentTab.Content.(*ResultsTable); ok {
+			if table.Home != nil && table.Home.aiChat != nil && table.Home.aiChat.table == table {
+				table.Home.aiChat.sourceClosed = true
+			}
 			table.CancelExactCount()
 			table.cancelMetadataContext()
 		}

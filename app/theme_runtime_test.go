@@ -54,3 +54,20 @@ func TestRuntimeThemeRendererRecolorsForegroundAndBackground(t *testing.T) {
 		t.Errorf("background = %v, want %v", background, target.PrimitiveBackgroundColor)
 	}
 }
+
+func TestModalInputCanOverrideGlobalThemeShortcut(t *testing.T) {
+	previous := App.OnModalInput
+	t.Cleanup(func() { App.OnModalInput = previous; App.SetOnThemePickerRequest(nil) })
+	theme := false
+	App.SetOnThemePickerRequest(func() { theme = true })
+	App.OnModalInput = func(event *tcell.EventKey) bool { return event.Key() == tcell.KeyCtrlT }
+	event := tcell.NewEventKey(tcell.KeyCtrlT, 0, tcell.ModNone)
+	if App.GetInputCapture()(event) != nil || theme {
+		t.Fatal("global theme shortcut bypassed modal input")
+	}
+	App.OnModalInput = nil
+	App.GetInputCapture()(event)
+	if !theme {
+		t.Fatal("theme shortcut was not restored outside the modal")
+	}
+}

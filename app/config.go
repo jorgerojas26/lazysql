@@ -15,6 +15,7 @@ import (
 )
 
 type Config struct {
+	AI models.AIConfig `toml:"ai"`
 	// ConfigFile and LocalConfigFile are runtime state, never read from or
 	// written to a config file.
 	ConfigFile      string                                    `toml:"-"`
@@ -224,6 +225,8 @@ func LoadConfig(configFile string) error {
 	if err := ApplyTheme(themeConfig); err != nil {
 		return err
 	}
+	App.config.ConfigFile = configFile
+	App.config.LocalConfigFile = localConfigPath
 
 	return nil
 }

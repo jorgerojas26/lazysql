@@ -34,6 +34,18 @@ type AppConfig struct {
 	SchemaBulkLoadThreshold      int `toml:"schema_bulk_load_threshold"`
 }
 
+type AIConfig struct {
+	Thinking       string `toml:"thinking,omitempty"`
+	ThinkingMode   string `toml:"thinking_mode,omitempty"`
+	ThinkingBudget int    `toml:"thinking_budget,omitempty"`
+	ContextWindow  int    `toml:"context_window,omitempty"`
+	Enabled        bool   `toml:"enabled"`
+	Provider       string `toml:"provider"`
+	Model          string `toml:"model"`
+	APIKeyEnv      string `toml:"api_key_env"`
+	APIFormat      string `toml:"api_format,omitempty"`
+}
+
 type ConnectionPoolConfig struct {
 	MaxOpenConnections int
 	MaxIdleConnections int

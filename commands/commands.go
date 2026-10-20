@@ -100,6 +100,7 @@ const (
 	ForeignKeyJump
 
 	ColumnVisibility
+	GenerateSQL
 )
 
 func (c Command) String() string {
@@ -266,6 +267,8 @@ func (c Command) String() string {
 		return "ExportCSV"
 	case ForeignKeyJump:
 		return "ForeignKeyJump"
+	case GenerateSQL:
+		return "GenerateSQL"
 	case ColumnVisibility:
 		return "ColumnVisibility"
 	}

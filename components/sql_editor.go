@@ -111,6 +111,7 @@ type SQLEditor struct {
 	subscribers   []chan models.StateChange
 	ConnectionURL string
 	cancelQuery   func() bool
+	readOnly      bool
 	loadColumns   func(table string)
 }
 
@@ -264,6 +265,9 @@ func (e *SQLEditor) SetQueryCancelFunc(cancel func() bool) {
 // InputHandler returns the event handler for this widget.
 func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 	return func(event *tcell.EventKey, _ func(p tview.Primitive)) {
+		if e.readOnly {
+			return
+		}
 		// --- 1. Always handle open-in-external-editor (Ctrl+Space) ---
 		cmd := app.Keymaps.Group(app.EditorGroup).Resolve(event)
 		if (event.Key() == tcell.KeyEscape || cmd == commands.CancelQuery) && e.cancelQuery != nil && e.cancelQuery() {
@@ -1229,7 +1233,9 @@ func (e *SQLEditor) Draw(screen tcell.Screen) {
 	}
 
 	// Ensure cursor is visible
-	e.scrollToCursor()
+	if !e.readOnly {
+		e.scrollToCursor()
+	}
 
 	// Default colors
 	defaultFg := app.Styles.PrimaryTextColor
@@ -1293,7 +1299,7 @@ func (e *SQLEditor) Draw(screen tcell.Screen) {
 	}
 
 	// Draw cursor
-	if e.state.isFocused {
+	if e.state.isFocused && !e.readOnly {
 		cursorScreenX := x - e.ox + visibleLen(e.lines[e.cy][:min(e.cx, len(e.lines[e.cy]))], e.tabWidth)
 		cursorScreenY := y + e.cy - e.oy
 		if cursorScreenY >= y && cursorScreenY < statusY && cursorScreenX >= x && cursorScreenX < x+width {
@@ -1418,6 +1424,10 @@ func (e *SQLEditor) drawSelection(screen tcell.Screen, x, y, width int, lineText
 func (e *SQLEditor) drawStatusBar(screen tcell.Screen, x, y, width int, _, _ tcell.Color) {
 	modeText := e.vimMode.String()
 	posText := "Ln " + itoa(e.cy+1) + ", Col " + itoa(cursorDisplayCol(e.lines, e.cy, e.cx, e.tabWidth)+1)
+	if e.readOnly {
+		modeText = "PREVIEW"
+		posText = "Line " + itoa(e.oy+1) + "/" + itoa(len(e.lines))
+	}
 
 	statusBg := app.Styles.EditorStatusBarBackgroundColor
 	statusFg := app.Styles.EditorStatusBarTextColor
