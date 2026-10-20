@@ -34,6 +34,14 @@ type AppConfig struct {
 	SchemaBulkLoadThreshold      int `toml:"schema_bulk_load_threshold"`
 }
 
+type AIConfig struct {
+	Enabled   bool   `toml:"enabled"`
+	Provider  string `toml:"provider"`
+	Model     string `toml:"model"`
+	APIKeyEnv string `toml:"api_key_env"`
+	APIFormat string `toml:"api_format,omitempty"`
+}
+
 type ConnectionPoolConfig struct {
 	MaxOpenConnections int
 	MaxIdleConnections int

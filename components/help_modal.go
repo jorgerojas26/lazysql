@@ -130,6 +130,9 @@ func (modal *HelpModal) fillTable(filter string) {
 	for _, group := range modal.KeybindGroups {
 		var groupBinds []keymap.Bind
 		for _, bind := range group.Binds {
+			if bind.Cmd == commands.GenerateSQL && !app.App.AIConfig().Enabled {
+				continue
+			}
 			if filter != "" &&
 				!strings.Contains(strings.ReplaceAll(strings.ToLower(bind.Description), " ", ""), strings.ReplaceAll(strings.ToLower(filter), " ", "")) &&
 				!strings.Contains(strings.ReplaceAll(strings.ToLower(bind.Key.String()), " ", ""), strings.ReplaceAll(strings.ToLower(filter), " ", "")) {

@@ -7,8 +7,10 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.39.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/atotto/clipboard v0.1.4
+	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/go-sql-driver/mysql v1.8.1
+	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
 	github.com/lithammer/fuzzysearch v1.1.8
@@ -16,6 +18,7 @@ require (
 	github.com/mitchellh/go-linereader v0.0.0-20190213213312-1b945b3263eb
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/rivo/tview v0.0.0-20241103174730-c76f7879f592
+	github.com/rivo/uniseg v0.4.7
 	github.com/xo/dburl v0.23.2
 	golang.org/x/mod v0.25.0
 	golang.org/x/term v0.33.0
@@ -34,6 +37,7 @@ require (
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
@@ -55,7 +59,6 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	go.opentelemetry.io/otel v1.37.0 // indirect
@@ -63,6 +66,7 @@ require (
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
 	golang.org/x/net v0.42.0 // indirect
+	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

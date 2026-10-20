@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/go-sql-driver/mysql"
 	"golang.org/x/term"
@@ -14,6 +17,7 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/components"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
+	"github.com/jorgerojas26/lazysql/internal/aicli"
 	"github.com/jorgerojas26/lazysql/internal/telemetry"
 )
 
@@ -39,6 +43,8 @@ func main() {
 		fmt.Fprintln(f, "  connection_url")
 		fmt.Fprintln(f, "        database URL to connect to. Omit to start in picker mode")
 		fmt.Fprintln(f, "")
+		fmt.Fprintln(f, "AI authentication: lazysql ai <login|logout> [--config path]")
+		fmt.Fprintln(f, "")
 		fmt.Fprintln(f, "Options:")
 		flag.PrintDefaults()
 	}
@@ -53,6 +59,16 @@ func main() {
 	if *printVersion {
 		println("LazySQL version: ", version)
 		os.Exit(0)
+	}
+
+	if args := flag.Args(); len(args) > 0 && args[0] == "ai" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := aicli.Run(ctx, args[1:], *configFile, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	slogLevel, err := logger.ParseLogLevel(*logLevel)

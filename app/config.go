@@ -15,6 +15,7 @@ import (
 )
 
 type Config struct {
+	AI models.AIConfig `toml:"ai"`
 	// ConfigFile and LocalConfigFile are runtime state, never read from or
 	// written to a config file.
 	ConfigFile      string                                    `toml:"-"`

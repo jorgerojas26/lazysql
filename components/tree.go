@@ -36,6 +36,7 @@ type Tree struct {
 	Filter              *tview.InputField
 	Wrapper             *tview.Flex
 	FoundNodeCountInput *tview.InputField
+	subscribersMu       sync.Mutex
 	subscribers         []chan models.StateChange
 	Schemas             []string
 	schemaLoader        *schemaLoader
@@ -885,13 +886,18 @@ func (tree *Tree) search(searchText string) {
 // Subscribe to changes in the tree state
 func (tree *Tree) Subscribe() chan models.StateChange {
 	subscriber := make(chan models.StateChange)
+	tree.subscribersMu.Lock()
 	tree.subscribers = append(tree.subscribers, subscriber)
+	tree.subscribersMu.Unlock()
 	return subscriber
 }
 
 // Publish subscribers of changes in the tree state
 func (tree *Tree) Publish(change models.StateChange) {
-	for _, subscriber := range tree.subscribers {
+	tree.subscribersMu.Lock()
+	subscribers := append([]chan models.StateChange(nil), tree.subscribers...)
+	tree.subscribersMu.Unlock()
+	for _, subscriber := range subscribers {
 		subscriber <- change
 	}
 }

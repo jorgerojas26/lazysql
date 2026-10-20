@@ -40,6 +40,7 @@ type Home struct {
 	metadataCache        *metadataCache
 	metadataCacheMu      sync.Mutex
 	schemaLoader         *schemaLoader
+	aiChat               *aiSession
 }
 
 func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
@@ -413,18 +414,15 @@ func (home *Home) focusTab(tab *Tab) {
 		table.HighlightAll()
 
 		if table.GetIsFiltering() {
-			go func() {
-				if table.Filter != nil {
-					app.App.SetFocus(table.Filter.Input)
-					table.Filter.HighlightLocal()
-				} else if table.Editor != nil {
-					app.App.SetFocus(table.Editor)
-					table.Editor.Highlight()
-				}
+			if table.Filter != nil {
+				app.App.SetFocus(table.Filter.Input)
+				table.Filter.HighlightLocal()
+			} else if table.Editor != nil {
+				app.App.SetFocus(table.Editor)
+				table.Editor.Highlight()
+			}
 
-				table.RemoveHighlightTable()
-				app.App.Draw()
-			}()
+			table.RemoveHighlightTable()
 		} else {
 			table.SetInputCapture(table.tableInputCapture)
 			app.App.SetFocus(table)
@@ -472,6 +470,11 @@ func (home *Home) isCurrentTabFiltering() bool {
 }
 
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
+	if tab := home.TabbedPane.GetCurrentTab(); tab != nil {
+		if table, ok := tab.Content.(*ResultsTable); ok && table.aiSession != nil && table.aiSession.visible {
+			return event
+		}
+	}
 	var tab *Tab
 
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
@@ -599,6 +602,9 @@ func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		table = tab.Content.(*ResultsTable)
 	}
 
+	if table != nil && table.aiSession != nil && table.aiSession.visible {
+		return event
+	}
 	command := app.Keymaps.Group(app.HomeGroup).Resolve(event)
 
 	switch command {

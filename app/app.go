@@ -68,6 +68,10 @@ func (a *Application) Config() *models.AppConfig {
 	return a.config.AppConfig
 }
 
+func (a *Application) AIConfig() models.AIConfig {
+	return a.config.AI
+}
+
 // Connections returns the database connections.
 func (a *Application) Connections() []models.Connection {
 	return a.config.Connections
