@@ -32,9 +32,14 @@ func TestColumnVisibilityModalKeyboard(t *testing.T) {
 	}
 	modalKey(picker, tcell.KeyRune, 'j')
 	modalKey(picker, tcell.KeyRune, ' ')
-	if picker.hidden["name"] || !strings.Contains(picker.status.GetText(false), "at least one") {
-		t.Fatal("last visible column must remain checked")
+	if picker.visibleCount() != 0 {
+		t.Fatal("last visible column should be uncheckable in the draft")
 	}
+	modalKey(picker, tcell.KeyEnter, 0)
+	if applied != nil || !strings.Contains(picker.status.GetText(false), "at least one") {
+		t.Fatal("Apply must require at least one visible column")
+	}
+	modalKey(picker, tcell.KeyRune, ' ')
 	modalKey(picker, tcell.KeyRune, '/')
 	if app.App.GetFocus() != picker.search {
 		t.Fatal("/ should focus search")
@@ -55,6 +60,18 @@ func TestColumnVisibilityModalKeyboard(t *testing.T) {
 	modalKey(picker, tcell.KeyRune, 'A')
 	if picker.visibleCount() != 3 || len(picker.hidden) != 0 {
 		t.Fatal("Show all should include columns outside the search")
+	}
+	for _, key := range []rune{'n', 'N'} {
+		picker.showAll()
+		modalKey(picker, tcell.KeyRune, key)
+		if picker.visibleCount() != 0 || !reflect.DeepEqual(applied, []string{"id"}) {
+			t.Fatal("None should deselect all columns outside the search without applying")
+		}
+	}
+	modalKey(picker, tcell.KeyRune, ' ')
+	modalKey(picker, tcell.KeyEnter, 0)
+	if !reflect.DeepEqual(applied, []string{"id", "name"}) {
+		t.Fatalf("Apply after None = %v, want [id name]", applied)
 	}
 	modalKey(picker, tcell.KeyEscape, 0)
 	if !canceled {
@@ -133,7 +150,7 @@ func TestColumnVisibilityModalMouseAndCompactLayout(t *testing.T) {
 		picker.SetRect(0, 0, size[0], size[1])
 		picker.Draw(screen)
 		text := simulationText(screen)
-		if !strings.Contains(text, "[✓]") || !strings.Contains(text, "secret[red]name") || !strings.Contains(text, "All (A)") || !strings.Contains(text, "Cancel") {
+		if !strings.Contains(text, "[✓]") || !strings.Contains(text, "secret[red]name") || !strings.Contains(text, "All (A)") || !strings.Contains(text, "None (N)") || !strings.Contains(text, "Cancel") {
 			t.Fatalf("missing modal controls at %v:\n%s", size, text)
 		}
 		x, y, width, height := picker.panel.GetRect()
@@ -150,7 +167,7 @@ func TestColumnVisibilityModalMouseAndCompactLayout(t *testing.T) {
 	if !picker.hidden["secret[red]name"] || applied {
 		t.Fatal("clicking a checkbox should toggle draft visibility")
 	}
-	apply := picker.focusable[3]
+	apply := picker.focusable[4]
 	x, y, _, _ = apply.GetRect()
 	picker.MouseHandler()(tview.MouseLeftClick, tcell.NewEventMouse(x+1, y, tcell.Button1, tcell.ModNone), func(p tview.Primitive) { app.App.SetFocus(p) })
 	if !applied {

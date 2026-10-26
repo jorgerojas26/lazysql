@@ -83,6 +83,9 @@ func NewColumnVisibilityModal(columns, hidden []string, onApply func([]string) e
 			case 'a', 'A':
 				picker.showAll()
 				return nil
+			case 'n', 'N':
+				picker.hideAll()
+				return nil
 			case 'j':
 				return tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
 			case 'k':
@@ -93,11 +96,14 @@ func NewColumnVisibilityModal(columns, hidden []string, onApply func([]string) e
 	})
 
 	all := tview.NewButton("All (A)").SetSelectedFunc(picker.showAll)
+	none := tview.NewButton("None (N)").SetSelectedFunc(picker.hideAll)
 	apply := tview.NewButton("Apply ↵").SetSelectedFunc(picker.apply)
 	cancel := tview.NewButton("Cancel Esc").SetSelectedFunc(onCancel)
 	buttons := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
 		AddItem(all, 9, 0, false).
+		AddItem(nil, 1, 0, false).
+		AddItem(none, 10, 0, false).
 		AddItem(nil, 1, 0, false).
 		AddItem(apply, 9, 0, false).
 		AddItem(nil, 1, 0, false).
@@ -111,7 +117,7 @@ func NewColumnVisibilityModal(columns, hidden []string, onApply func([]string) e
 		AddItem(picker.status, 1, 0, false).
 		AddItem(buttons, 1, 0, false)
 	picker.AddItem(picker.panel, 0, 1, true)
-	picker.focusable = []tview.Primitive{picker.list, picker.search, all, apply, cancel}
+	picker.focusable = []tview.Primitive{picker.list, picker.search, all, none, apply, cancel}
 	picker.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEscape:
@@ -204,10 +210,6 @@ func (picker *ColumnVisibilityModal) toggle(index int) {
 		return
 	}
 	name := picker.filtered[index]
-	if !picker.hidden[name] && picker.visibleCount() <= 1 {
-		picker.status.SetTextColor(app.Styles.ErrorColor).SetText("Keep at least one column visible")
-		return
-	}
 	if picker.hidden[name] {
 		delete(picker.hidden, name)
 	} else {
@@ -222,6 +224,13 @@ func (picker *ColumnVisibilityModal) showAll() {
 	picker.fillList()
 }
 
+func (picker *ColumnVisibilityModal) hideAll() {
+	for _, name := range picker.columns {
+		picker.hidden[name] = true
+	}
+	picker.fillList()
+}
+
 func (picker *ColumnVisibilityModal) moveSelection(direction int) {
 	if len(picker.filtered) > 0 {
 		picker.list.SetCurrentItem(max(0, min(picker.list.GetCurrentItem()+direction, len(picker.filtered)-1)))
@@ -229,6 +238,10 @@ func (picker *ColumnVisibilityModal) moveSelection(direction int) {
 }
 
 func (picker *ColumnVisibilityModal) apply() {
+	if picker.visibleCount() == 0 {
+		picker.status.SetTextColor(app.Styles.ErrorColor).SetText("Keep at least one column visible")
+		return
+	}
 	hidden := make([]string, 0, len(picker.hidden))
 	for _, name := range picker.columns {
 		if picker.hidden[name] {
