@@ -336,6 +336,40 @@ func (e *SQLEditor) InputHandler() func(event *tcell.EventKey, setFocus func(p t
 	}
 }
 
+// PasteHandler inserts bracketed-paste text at the cursor. The app enables
+// bracketed paste, so without this the embedded Box silently drops pastes.
+func (e *SQLEditor) PasteHandler() func(pastedText string, setFocus func(p tview.Primitive)) {
+	return e.WrapPasteHandler(func(text string, _ func(p tview.Primitive)) {
+		text = strings.ReplaceAll(text, "\r", "")
+		if text == "" {
+			return
+		}
+		e.pushUndo()
+		if e.vimMode == VimModeVisual || e.vimMode == VimModeVisualLine {
+			e.vimMode = VimModeNormal
+		}
+		e.selecting = false
+		e.leaderKey = 0
+		e.acVisible = false
+
+		parts := strings.Split(text, "\n")
+		last := len(parts) - 1
+		line := e.lines[e.cy]
+		cx := min(e.cx, len(line))
+		parts[0] = line[:cx] + parts[0]
+		e.cx = len(parts[last])
+		parts[last] += line[cx:]
+
+		newLines := make([]string, 0, len(e.lines)+last)
+		newLines = append(newLines, e.lines[:e.cy]...)
+		newLines = append(newLines, parts...)
+		newLines = append(newLines, e.lines[e.cy+1:]...)
+		e.lines = newLines
+		e.cy += last
+		e.clampCursor()
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Insert mode handling
 // ---------------------------------------------------------------------------
