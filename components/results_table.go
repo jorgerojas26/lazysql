@@ -2175,6 +2175,8 @@ func (table *ResultsTable) updateSortHeader(column, direction string) {
 		tableCell.SetSelectable(false)
 		tableCell.SetExpansion(1)
 		tableCell.SetTextColor(app.Styles.PrimaryTextColor)
+		// Keep the undecorated name so readers never pick up the sort icon.
+		tableCell.SetReference(columnName)
 		if columnName == column {
 			tableCell.SetText(fmt.Sprintf("%s %s", columnName, iconDirection))
 		}
@@ -2227,11 +2229,7 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 		table.SetIsEditing(false)
 		currentValue := cellText(cell)
 		newValue := inputField.GetText()
-		columnName := table.GetCell(0, col).Text
-
-		// Remove the sorting icon from the column name
-		columnName = strings.ReplaceAll(columnName, " ▼", "")
-		columnName = strings.ReplaceAll(columnName, " ▲", "")
+		columnName := table.columnHeaderName(col)
 
 		var appendErr error
 
@@ -3070,6 +3068,19 @@ func (table *ResultsTable) getRawCellValue(rowIndex, columnIndex int) string {
 	return cellText(cell)
 }
 
+// columnHeaderName returns the undecorated column name for header cell col,
+// ignoring display-only decorations such as the sort indicator.
+func (table *ResultsTable) columnHeaderName(col int) string {
+	cell := table.GetCell(0, col)
+	if cell == nil {
+		return ""
+	}
+	if name, ok := cell.GetReference().(string); ok {
+		return name
+	}
+	return cell.Text
+}
+
 // cellText returns the value shown in a results cell. Cell text is stored
 // tview-escaped so values like "[red]" or `["x"]` are not parsed as style or
 // region tags; this undoes that escaping.
@@ -3236,7 +3247,7 @@ func (table *ResultsTable) UpdateSidebar() {
 		isRecordsTab := table.Menu == nil || table.Menu.GetSelectedOption() == 1
 
 		for i := 1; i <= table.GetColumnCount(); i++ {
-			name := table.GetCell(0, i-1).Text
+			name := table.columnHeaderName(i - 1)
 
 			colType := ""
 			if isRecordsTab && i < len(columns) {
