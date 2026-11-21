@@ -102,7 +102,7 @@ func (table *ResultsTable) formatCopyRows(current int, format string) (string, e
 	}
 	columns := make([]string, table.GetColumnCount())
 	for col := range columns {
-		columns[col] = table.getRawCellValue(0, col)
+		columns[col] = table.columnHeaderName(col)
 	}
 	values := make([][]string, 0, len(indexes))
 	for _, row := range indexes {
