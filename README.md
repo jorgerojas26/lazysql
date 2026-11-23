@@ -312,6 +312,23 @@ Keys for `[theme.Colors]`:
 | `SQLKeyword`, `SQLString`, `SQLNumber`, `SQLComment`, `SQLFunction`, `SQLOperator`, `SQLType`, `SQLBoolean`, `SQLParameter` | SQL syntax highlighting |
 | `JSONKey`, `JSONString`, `JSONBoolean`, `JSONNull`, `JSONNumber` | JSON viewer |
 
+### Borders
+
+The optional `[borders]` section controls line style and colors independently of the theme:
+
+```toml
+[borders]
+style = "single"           # auto, single, or double
+normal_color = "#6B7280"  # optional
+focus_color = "#38BDF8"   # optional
+```
+
+The default style is `auto`: normal panels use single lines and focused panels use double lines, as in earlier LazySQL versions. `single` and `double` use that line style for both states. Focus remains visible through the existing selection and focus colors. Omitting a color uses the active theme; colors accept the same names, `#RRGGBB` values, and `default` value as `[theme.Colors]`. `none` is not supported because borders reserve space used by tables, titles, and navigation.
+
+Press `Ctrl+B` to cycle `auto` → `single` → `double` and save the style. Press `Ctrl+G` to open the border color picker. Use `Tab` to switch between normal and focused borders, arrows or `j`/`k` to preview preset colors, `h` to enter a color name or hex value, `r` or `Ctrl+R` to restore theme colors, `Enter` to save, and `Esc` or `q` to cancel. A reset in a local `.lazysql.toml` saves an empty color value to override a global custom color.
+
+Changing the theme keeps explicitly configured border colors and style. If a color is omitted or reset, the new theme supplies it. Choosing a theme also preserves existing `[theme.Colors]` overrides.
+
 ### Local Configuration
 
 You can place a `.lazysql.toml` file in your project directory (next to your `.git` folder) to override the global configuration for that project. This is useful for defining project-specific database connections or settings.
@@ -326,6 +343,7 @@ lazysql searches for `.lazysql.toml` by walking up from the current working dire
 | `[[database]]` | Replace — local connections completely replace global connections |
 | `[keymap.*]` | Deep merge — local keybindings override global ones for the same command |
 | `[theme]` | Deep merge — a local `Preset` or color overrides the global one, other colors are kept |
+| `[borders]` | Deep merge — local style and colors override only the matching global fields |
 
 **Example `.lazysql.toml`:**
 
@@ -344,6 +362,16 @@ With this local config, `DefaultPageSize` overrides the global value, and only t
 Environment variables (`${env:VAR_NAME}`) work in local config files just like in the global config. Saving connections preserves these placeholders in fields you have not changed, instead of writing the expanded credentials.
 
 Note: Changes made from the UI only update the setting that changed and keep the rest of the target file. Connections you add, edit or delete are saved to the local `.lazysql.toml` if it defines `[[database]]`, otherwise to the global config file. A theme picked with `Ctrl+T` is saved to the local `.lazysql.toml` when one is found, otherwise to the global config file. Comments in a file are not kept when lazysql saves it.
+
+Border changes use the same local-first save location. If `Ctrl+B` or `Ctrl+G` is already assigned to another command in your custom keymap, that binding takes priority. You can remap `BorderStyle` and `BorderPicker` in `[keymap.Global]`.
+
+For example, to use function keys instead:
+
+```toml
+[keymap.Global]
+BorderStyle = "F6"
+BorderPicker = "F7"
+```
 
 ### Manual database test environment
 
@@ -763,6 +791,15 @@ Group names are case-insensitive (`Home`, `home`, and `HOME` all work).
 Available groups: `Home`, `Connection`, `Tree`, `TreeFilter`, `Table`, `Editor`, `Sidebar`, `QueryPreview`, `QueryHistory`, `JSONViewer`.
 
 ### Default Keybindings
+
+#### Global
+
+| Default Key | Command | Description |
+| --- | --- | --- |
+| Ctrl-T | ThemePicker | Choose color theme |
+| Ctrl-B | BorderStyle | Cycle border line style |
+| Ctrl-G | BorderPicker | Choose normal and focused border colors |
+| F10 | CheckForUpdates | Check for updates |
 
 #### Home
 
