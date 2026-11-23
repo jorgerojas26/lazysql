@@ -304,6 +304,9 @@ func TestSaveThemePreset(t *testing.T) {
 		Preset: "dracula",
 		Colors: map[string]string{"Border": "red"},
 	}
+	if err := os.WriteFile(config.ConfigFile, []byte("[theme]\nPreset = 'dracula'\nKeep = 'yes'\n[theme.Colors]\nBorder = 'red'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := config.SaveThemePreset("tokyo-night"); err != nil {
 		t.Fatal(err)
@@ -320,8 +323,15 @@ func TestSaveThemePreset(t *testing.T) {
 	if saved.Theme == nil || saved.Theme.Preset != "tokyo-night" {
 		t.Fatalf("saved theme = %#v, want tokyo-night", saved.Theme)
 	}
-	if len(saved.Theme.Colors) != 0 {
-		t.Fatalf("saved theme overrides = %v, want none", saved.Theme.Colors)
+	if saved.Theme.Colors["Border"] != "red" {
+		t.Fatalf("saved theme overrides = %v, want Border red preserved", saved.Theme.Colors)
+	}
+	table := map[string]any{}
+	if err := toml.Unmarshal(file, &table); err != nil {
+		t.Fatal(err)
+	}
+	if table["theme"].(map[string]any)["Keep"] != "yes" {
+		t.Fatal("unknown theme key was removed")
 	}
 }
 

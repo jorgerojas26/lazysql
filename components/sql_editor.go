@@ -1550,7 +1550,7 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 	}
 
 	// Draw popup border and background
-	borderStyle := tcell.StyleDefault.Foreground(app.Styles.AutocompleteTextColor).Background(app.Styles.AutocompleteBackgroundColor)
+	borderStyle := tcell.StyleDefault.Foreground(app.BorderForeground(app.Styles.AutocompleteTextColor, false)).Background(app.Styles.AutocompleteBackgroundColor)
 	contentStyle := tcell.StyleDefault.Foreground(app.Styles.AutocompleteTextColor).Background(app.Styles.AutocompleteBackgroundColor)
 	selectedBg := app.Styles.AutocompleteSelectedColor
 
@@ -1577,7 +1577,7 @@ func (e *SQLEditor) drawAutocomplete(screen tcell.Screen, x, y, width, height in
 				} else if px == 0 || px == popupWidth-1 {
 					ch = tcell.RuneVLine
 				}
-				screen.SetContent(sx, sy, ch, nil, borderStyle)
+				screen.SetContent(sx, sy, app.BorderRune(ch), nil, borderStyle)
 				continue
 			}
 

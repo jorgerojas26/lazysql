@@ -11,6 +11,7 @@ const (
 	// General
 	pageNameHelp          string = "Help"
 	pageNameThemePicker   string = "ThemePicker"
+	pageNameBorderPicker  string = "BorderPicker"
 	pageNameConfirmation  string = "Confirmation"
 	pageNameConnections   string = "Connections"
 	pageNameDMLPreview    string = "DMLPreview"

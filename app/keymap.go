@@ -60,6 +60,8 @@ const (
 var Keymaps = KeymapSystem{
 	Global: Map{
 		Bind{Key: Key{Code: tcell.KeyCtrlT}, Cmd: cmd.ThemePicker, Description: "Choose color theme"},
+		Bind{Key: Key{Code: tcell.KeyCtrlB}, Cmd: cmd.BorderStyle, Description: "Cycle border style"},
+		Bind{Key: Key{Code: tcell.KeyCtrlG}, Cmd: cmd.BorderPicker, Description: "Choose border colors"},
 		Bind{Key: Key{Code: tcell.KeyF10}, Cmd: cmd.CheckForUpdates, Description: "Check for updates / upgrade LazySQL"},
 	},
 	Groups: map[string]Map{
@@ -257,7 +259,20 @@ func ApplyKeymapConfig(keymaps models.KeymapConfig) error {
 			if err != nil {
 				return err
 			}
-			Keymaps.Global = updated
+			// Explicit global bindings take precedence over untouched defaults
+			// when both resolve to the same key.
+			prioritized := make(Map, 0, len(updated))
+			for _, bind := range updated {
+				if _, ok := bindings[bind.Cmd.String()]; ok {
+					prioritized = append(prioritized, bind)
+				}
+			}
+			for _, bind := range updated {
+				if _, ok := bindings[bind.Cmd.String()]; !ok {
+					prioritized = append(prioritized, bind)
+				}
+			}
+			Keymaps.Global = prioritized
 			continue
 		}
 

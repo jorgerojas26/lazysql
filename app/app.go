@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -35,6 +36,8 @@ type Application struct {
 
 	onThemePickerRequestMu sync.RWMutex
 	onThemePickerRequest   func()
+	onBorderPickerRequest  func()
+	onBorderStyleChange    func(string)
 }
 
 func init() {
@@ -50,7 +53,10 @@ func init() {
 	App.register()
 	App.EnableMouse(true)
 	App.EnablePaste(true)
-	App.SetAfterDrawFunc(themeRenderer.recolor)
+	App.SetAfterDrawFunc(func(screen tcell.Screen) {
+		themeRenderer.recolor(screen)
+		drawBorders(screen)
+	})
 
 	// Start with the default theme; LoadConfig applies the configured one.
 	if err := ApplyTheme(ThemeConfig{}); err != nil {
@@ -145,6 +151,25 @@ func (a *Application) getOnThemePickerRequest() func() {
 	return a.onThemePickerRequest
 }
 
+func (a *Application) SetOnBorderPickerRequest(fn func())     { a.onBorderPickerRequest = fn }
+func (a *Application) SetOnBorderStyleChange(fn func(string)) { a.onBorderStyleChange = fn }
+
+// A user binding in any group takes priority over the default border keys.
+func (a *Application) borderShortcutReserved(event *tcell.EventKey, selected commands.Command) bool {
+	for group, bindings := range a.config.Keymaps {
+		for name, keyName := range bindings {
+			if strings.EqualFold(group, GlobalGroup) && name == selected.String() {
+				continue
+			}
+			key, err := parseKeyString(keyName)
+			if err == nil && ((event.Key() == tcell.KeyRune && key.Char == event.Rune()) || (event.Key() != tcell.KeyRune && key.Code == event.Key())) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // register listens for interrupt and termination signals to
 // gracefully handle shutdowns by calling the Stop method.
 func (a *Application) register() {
@@ -186,6 +211,20 @@ func (a *Application) register() {
 		if Keymaps.Resolve(event) == commands.ThemePicker {
 			if fn := a.getOnThemePickerRequest(); fn != nil {
 				fn()
+			}
+			return nil
+		}
+		if action := Keymaps.Resolve(event); action == commands.BorderStyle || action == commands.BorderPicker {
+			if a.borderShortcutReserved(event, action) {
+				return event
+			}
+			if action == commands.BorderStyle {
+				style := NextBorderStyle(a.BorderConfig().Style)
+				if a.onBorderStyleChange != nil {
+					a.onBorderStyleChange(style)
+				}
+			} else if a.onBorderPickerRequest != nil {
+				a.onBorderPickerRequest()
 			}
 			return nil
 		}
