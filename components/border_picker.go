@@ -23,6 +23,7 @@ type BorderPicker struct {
 }
 
 var borderPalette = []struct{ name, value string }{
+	{"Theme colors (reset both)", ""},
 	{"Slate", "#6B7280"}, {"Sky", "#38BDF8"},
 	{"White", "#FFFFFF"}, {"Black", "#000000"},
 	{"Red", "#EF4444"}, {"Orange", "#F97316"},
@@ -79,7 +80,12 @@ func NewBorderPicker(onClose func()) *BorderPicker {
 		}
 		return event
 	})
-	p.list.SetSelectedFunc(func(_ int, _, _ string, _ rune) { p.save(onClose) })
+	p.list.SetSelectedFunc(func(index int, _, _ string, _ rune) {
+		if index >= 0 && index < len(borderPalette) {
+			p.setSelected(borderPalette[index].value)
+		}
+		p.save(onClose)
+	})
 	p.list.SetDoneFunc(func() {
 		_ = app.App.PreviewBorders(p.original)
 		onClose()
@@ -136,7 +142,9 @@ func NewBorderPicker(onClose func()) *BorderPicker {
 }
 
 func (p *BorderPicker) setSelected(value string) {
-	if p.focusColor {
+	if value == "" {
+		p.working.NormalColor, p.working.FocusColor = "", ""
+	} else if p.focusColor {
 		p.working.FocusColor = value
 	} else {
 		p.working.NormalColor = value
@@ -149,8 +157,8 @@ func (p *BorderPicker) setSelected(value string) {
 }
 
 func (p *BorderPicker) reset() {
-	p.working.NormalColor, p.working.FocusColor = "", ""
-	_ = app.App.PreviewBorders(p.working)
+	p.setSelected("")
+	p.list.SetCurrentItem(0)
 	p.showStatus("Theme colors restored in preview; Enter saves")
 }
 

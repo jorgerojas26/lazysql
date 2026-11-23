@@ -90,6 +90,38 @@ func TestBorderColorsRenderIndependently(t *testing.T) {
 	}
 }
 
+func TestExistingPanelRedrawsAfterBorderPreview(t *testing.T) {
+	restoreBorders(t)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(12, 5)
+	panel := tview.NewBox().SetBorder(true)
+	ui := tview.NewApplication().SetScreen(screen).SetRoot(panel, true).SetAfterDrawFunc(drawBorders)
+	ui.SetFocus(panel)
+	for _, tc := range []struct {
+		cfg       BorderConfig
+		wantRune  rune
+		wantColor tcell.Color
+	}{
+		{BorderConfig{Style: "auto"}, '╔', Styles.BorderColor},
+		{BorderConfig{Style: "single", FocusColor: "#38BDF8"}, '┌', tcell.GetColor("#38BDF8")},
+		{BorderConfig{Style: "double", FocusColor: "#EF4444"}, '╔', tcell.GetColor("#EF4444")},
+	} {
+		if err := App.PreviewBorders(tc.cfg); err != nil {
+			t.Fatal(err)
+		}
+		ui.ForceDraw()
+		ch, _, style, _ := screen.GetContent(0, 0)
+		fg, _, _ := style.Decompose()
+		if ch != tc.wantRune || fg != tc.wantColor {
+			t.Errorf("preview %+v drew %q in %v, want %q in %v", tc.cfg, ch, fg, tc.wantRune, tc.wantColor)
+		}
+	}
+}
+
 func TestFocusedTableGridUsesFocusColorWithMatchingThemeColors(t *testing.T) {
 	restoreBorders(t)
 	previousTheme := Styles
