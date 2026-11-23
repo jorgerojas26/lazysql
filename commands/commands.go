@@ -11,6 +11,8 @@ const (
 	HelpPopup
 	CheckForUpdates
 	ThemePicker
+	BorderStyle
+	BorderPicker
 	ToggleQueryHistory
 	ToggleTree
 	WidenTree
@@ -117,6 +119,10 @@ func (c Command) String() string {
 		return "CheckForUpdates"
 	case ThemePicker:
 		return "ThemePicker"
+	case BorderStyle:
+		return "BorderStyle"
+	case BorderPicker:
+		return "BorderPicker"
 	case ToggleQueryHistory:
 		return "ToggleQueryHistory"
 	case ToggleTree:

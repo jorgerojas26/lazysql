@@ -23,6 +23,7 @@ type Config struct {
 	Connections     []models.Connection                       `toml:"database"`
 	Keymaps         models.KeymapConfig                       `toml:"keymap"`
 	Theme           *ThemeConfig                              `toml:"theme,omitempty"`
+	Borders         *BorderConfig                             `toml:"borders,omitempty"`
 	HiddenColumns   map[string]map[string]map[string][]string `toml:"hidden_columns,omitempty"`
 }
 
@@ -222,6 +223,13 @@ func LoadConfig(configFile string) error {
 		themeConfig = *App.config.Theme
 	}
 	if err := ApplyTheme(themeConfig); err != nil {
+		return err
+	}
+	borderConfig := BorderConfig{}
+	if App.config.Borders != nil {
+		borderConfig = *App.config.Borders
+	}
+	if err := App.PreviewBorders(borderConfig); err != nil {
 		return err
 	}
 
@@ -463,12 +471,46 @@ func marshalConnectionConfig(connection models.Connection) (map[string]any, erro
 // SaveThemePreset writes the preset to the local config when one is in use,
 // otherwise to the global config.
 func (c *Config) SaveThemePreset(preset string) error {
-	theme := &ThemeConfig{Preset: preset}
-	if err := saveConfigKey(c.activeConfigFile(), "theme", theme); err != nil {
+	if _, err := NewTheme(ThemeConfig{Preset: preset}); err != nil {
 		return err
 	}
-	c.Theme = theme
+	table, err := readConfigTable(c.activeConfigFile())
+	if err != nil {
+		return err
+	}
+	theme, _ := table["theme"].(map[string]any)
+	if theme == nil {
+		theme = map[string]any{}
+	}
+	theme["Preset"] = preset
+	if err := saveConfigTable(c.activeConfigFile(), table, "theme", theme); err != nil {
+		return err
+	}
+	if c.Theme == nil {
+		c.Theme = &ThemeConfig{}
+	}
+	c.Theme.Preset = preset
 	return nil
+}
+
+func (c *Config) saveBorderField(key, value string) error {
+	return c.saveBorderFields(map[string]string{key: value})
+}
+
+func (c *Config) saveBorderFields(fields map[string]string) error {
+	path := c.activeConfigFile()
+	table, err := readConfigTable(path)
+	if err != nil {
+		return err
+	}
+	borders, _ := table["borders"].(map[string]any)
+	if borders == nil {
+		borders = map[string]any{}
+	}
+	for key, value := range fields {
+		borders[key] = value
+	}
+	return saveConfigTable(path, table, "borders", borders)
 }
 
 func (c *Config) activeConfigFile() string {

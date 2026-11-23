@@ -1018,7 +1018,7 @@ func (table *ResultsTable) shouldShowForeignKeyHeaderMarker(columnIndex int) boo
 
 func (table *ResultsTable) RemoveHighlightTable() {
 	table.SetBorderColor(app.Styles.InverseTextColor)
-	table.SetBordersColor(app.Styles.InverseTextColor)
+	table.SetBordersColor(app.TableBorderMarker(false))
 	table.SetTitleColor(app.Styles.InverseTextColor)
 	table.UpdateRowsColor(app.Styles.InverseTextColor, tview.Styles.InverseTextColor)
 }
@@ -1035,7 +1035,7 @@ func (table *ResultsTable) RemoveHighlightAll() {
 
 func (table *ResultsTable) HighlightTable() {
 	table.SetBorderColor(app.Styles.PrimaryTextColor)
-	table.SetBordersColor(app.Styles.PrimaryTextColor)
+	table.SetBordersColor(app.TableBorderMarker(true))
 	table.SetTitleColor(app.Styles.PrimaryTextColor)
 	table.UpdateRowsColor(app.Styles.PrimaryTextColor, tview.Styles.PrimaryTextColor)
 }

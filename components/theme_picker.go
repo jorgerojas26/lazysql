@@ -61,7 +61,9 @@ func NewThemePicker(onClose func()) *ThemePicker {
 
 	picker.list.SetChangedFunc(func(_ int, name, _ string, _ rune) {
 		picker.selectedPreset = name
-		if err := app.App.PreviewTheme(app.ThemeConfig{Preset: name}); err != nil {
+		preview := picker.originalConfig
+		preview.Preset = name
+		if err := app.App.PreviewTheme(preview); err != nil {
 			picker.status.SetText(fmt.Sprintf("[%s]%s[-]", app.Styles.ErrorColor, err))
 			return
 		}
@@ -83,7 +85,9 @@ func NewThemePicker(onClose func()) *ThemePicker {
 	}
 
 	picker.list.SetSelectedFunc(func(_ int, name, _ string, _ rune) {
-		if err := app.App.PreviewTheme(app.ThemeConfig{Preset: name}); err != nil {
+		preview := picker.originalConfig
+		preview.Preset = name
+		if err := app.App.PreviewTheme(preview); err != nil {
 			picker.status.SetText(fmt.Sprintf("[%s]%s[-]", app.Styles.ErrorColor, err))
 			return
 		}
