@@ -73,6 +73,9 @@ func showThemePicker() {
 	if mainPages == nil {
 		return
 	}
+	if mainPages.HasPage(pageNameBorderPicker) {
+		return
+	}
 	if mainPages.HasPage(pageNameThemePicker) {
 		mainPages.ShowPage(pageNameThemePicker).SendToFront(pageNameThemePicker)
 		_, picker := mainPages.GetFrontPage()
@@ -87,6 +90,15 @@ func showThemePicker() {
 	app.App.SetFocus(picker.list)
 }
 
+func showBorderPicker() {
+	if mainPages == nil || mainPages.HasPage(pageNameBorderPicker) || mainPages.HasPage(pageNameThemePicker) {
+		return
+	}
+	picker := NewBorderPicker(func() { mainPages.RemovePage(pageNameBorderPicker) })
+	mainPages.AddPage(pageNameBorderPicker, picker, true, true)
+	app.App.SetFocus(picker.list)
+}
+
 func MainPages() *tview.Pages {
 	mainPages = tview.NewPages()
 	mainPages.SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
@@ -95,6 +107,7 @@ func MainPages() *tview.Pages {
 	// Show global dialogs from application-level shortcuts and signals.
 	app.App.SetOnQuitRequest(showQuitConfirmation)
 	app.App.SetOnThemePickerRequest(showThemePicker)
+	app.App.SetOnBorderPickerRequest(showBorderPicker)
 
 	return mainPages
 }

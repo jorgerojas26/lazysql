@@ -25,6 +25,7 @@ type updateUI struct {
 	pages         *tview.Pages
 	toast         *tview.TextView
 	toastUntil    time.Time
+	toastAlways   bool
 	release       *updater.Release
 	busy          bool
 	installed     bool
@@ -36,6 +37,16 @@ func WithUpdates(pages *tview.Pages, version string) *tview.Pages {
 	u := &updateUI{client: updater.New(), current: version, footer: tview.NewTextView(), pages: pages}
 	u.footer.SetTextColor(app.Styles.TertiaryTextColor).SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	u.status("LazySQL " + version)
+	app.App.SetOnBorderStyleChange(func(style string) {
+		if mainPages != nil && mainPages.HasPage(pageNameBorderPicker) {
+			return
+		}
+		if err := app.App.SaveBorderStyle(style); err != nil {
+			u.showMessage("Could not save border style: " + err.Error())
+			return
+		}
+		u.showMessage("Border style: " + style)
+	})
 	app.App.OnUpdateRequest = u.open
 	u.Flex = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(pages, 0, 1, true).AddItem(u.footer, 1, 0, false)
@@ -47,6 +58,27 @@ func WithUpdates(pages *tview.Pages, version string) *tview.Pages {
 		u.check(false)
 	}
 	return root
+}
+
+func (u *updateUI) showMessage(message string) {
+	u.toast = tview.NewTextView().SetText(" " + message + " ").SetTextColor(app.Styles.PrimaryTextColor)
+	u.toast.SetBorder(true).SetBorderColor(app.Styles.TertiaryTextColor).SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
+	u.toastUntil = time.Now().Add(5 * time.Second)
+	u.toastAlways = true
+	go func(toast *tview.TextView) {
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-app.App.Context().Done():
+			return
+		case <-timer.C:
+		}
+		app.App.QueueUpdateDraw(func() {
+			if u.toast == toast {
+				u.toast = nil
+			}
+		})
+	}(u.toast)
 }
 
 func (u *updateUI) status(message string) {
@@ -86,7 +118,7 @@ func (u *updateUI) Draw(screen tcell.Screen) {
 		return
 	}
 	name, front := u.pages.GetFrontPage()
-	if _, home := front.(*Home); !home && name != pageNameConnections {
+	if _, home := front.(*Home); !u.toastAlways && !home && name != pageNameConnections {
 		return
 	}
 	x, y, width, height := u.GetRect()
@@ -99,6 +131,7 @@ func (u *updateUI) Draw(screen tcell.Screen) {
 }
 
 func (u *updateUI) showUpgradeToast() {
+	u.toastAlways = false
 	u.toast = tview.NewTextView().SetText(u.footer.GetText(false) + " ").SetTextColor(app.Styles.PrimaryTextColor)
 	u.toast.SetBorder(true).SetBorderColor(app.Styles.TertiaryTextColor).SetBackgroundColor(app.Styles.PrimitiveBackgroundColor)
 	u.toastUntil = time.Now().Add(8 * time.Second)
