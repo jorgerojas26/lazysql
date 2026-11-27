@@ -43,6 +43,7 @@ type Tree struct {
 	loadGeneration      uint64
 	loadCancel          context.CancelFunc
 	queueUpdateDraw     func(func())
+	preparingMouseClick bool
 }
 
 type TreeNodeType int
@@ -335,6 +336,34 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	tree.Wrapper.AddItem(tree, 0, 1, true)
 
 	return tree
+}
+
+// SetSelectedFunc preserves activation for a completed click or keyboard input.
+func (tree *Tree) SetSelectedFunc(handler func(*tview.TreeNode)) *Tree {
+	tree.TreeView.SetSelectedFunc(func(node *tview.TreeNode) {
+		if !tree.preparingMouseClick && handler != nil {
+			handler(node)
+		}
+	})
+	return tree
+}
+
+func (tree *Tree) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
+	defaultHandler := tree.TreeView.MouseHandler()
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
+		if action == tview.MouseLeftDown {
+			x, y := event.Position()
+			rx, ry, width, height := tree.GetInnerRect()
+			if x >= rx && x < rx+width && y >= ry && y < ry+height {
+				// Resolve the row while TreeView still has the displayed scroll
+				// offset. Its mouse-down redraw can otherwise move that offset.
+				tree.preparingMouseClick = true
+				defaultHandler(tview.MouseLeftClick, event, setFocus)
+				tree.preparingMouseClick = false
+			}
+		}
+		return defaultHandler(action, event, setFocus)
+	}
 }
 
 func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {
