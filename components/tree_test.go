@@ -7,11 +7,58 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
 )
+
+func TestTreeMouseSelectionAfterScrolling(t *testing.T) {
+	screen := tcell.NewSimulationScreen("")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(30, 5)
+
+	tree := &Tree{TreeView: tview.NewTreeView()}
+	root := tview.NewTreeNode("root")
+	var nodes []*tview.TreeNode
+	for i := 0; i < 12; i++ {
+		node := tview.NewTreeNode(fmt.Sprintf("table%d", i))
+		nodes = append(nodes, node)
+		root.AddChild(node)
+	}
+	tree.SetRoot(root).SetTopLevel(1).SetCurrentNode(nodes[0])
+	tree.SetRect(0, 0, 30, 5)
+	var selected *tview.TreeNode
+	tree.SetSelectedFunc(func(node *tview.TreeNode) { selected = node })
+	tree.Draw(screen)
+	handler := tree.MouseHandler()
+	var focused tview.Primitive
+	focus := func(primitive tview.Primitive) { focused = primitive }
+	for i := 0; i < 8; i++ {
+		handler(tview.MouseScrollDown, tcell.NewEventMouse(1, 1, tcell.WheelDown, tcell.ModNone), focus)
+		tree.Draw(screen)
+	}
+	// The scroll offset is capped at seven for twelve rows in a five-row view.
+	handler(tview.MouseLeftDown, tcell.NewEventMouse(1, 0, tcell.Button1, tcell.ModNone), focus)
+	if focused != tree.TreeView {
+		t.Fatalf("focused %v, want the tree view", focused)
+	}
+	if selected != nil {
+		t.Fatal("mouse-down must not activate a node")
+	}
+	if tree.GetCurrentNode() != nodes[7] {
+		t.Fatal("mouse-down did not resolve the visible node")
+	}
+	tree.Draw(screen)
+	handler(tview.MouseLeftClick, tcell.NewEventMouse(1, 0, tcell.Button1, tcell.ModNone), focus)
+	if selected != nodes[7] {
+		t.Fatalf("selected %v, want table7", selected)
+	}
+}
 
 // ── parseSearchQuery ────────────────────────────────────────────────────────
 
